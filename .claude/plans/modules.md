@@ -116,7 +116,11 @@ and the risk sits in the middle.
   into `../gloss/build` (`GLOSS_EXTENSION`, `GLOSS_KITS`, or the
   default beside the checkout); a release of `../gloss` per platform,
   or a CI build of it, for the image and for CI to run the `duck`
-  suites. Settled at step 5, with the release machinery.
+  suites. The binary links `libduckdb.dylib` by `@rpath` and carries
+  none: the image ships the library beside the binary, and a laptop
+  release binary needs an rpath (`install_name_tool -add_rpath` onto
+  libduckdb-sys's `out/`) to run outside cargo. Settled at step 5,
+  with the release machinery.
 
 ## The next row, drafted
 
