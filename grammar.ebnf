@@ -124,7 +124,9 @@ pair_path         = rel_side, rel_op, rel_side ;
 
 aspect_decl       = "ASPECT", name, "WITH", json, "AS", aspect_kind,
                     [ "ON", grain, { ",", grain },
-                      [ "WHEN", name, "=", string ] ] ;
+                      [ "WHEN", ( name, "=", string
+                                | "TYPE", ( "=", string
+                                          | "IN", "(", string, { ",", string }, ")" ) ) ] ] ;
 grain             = "DATASET" | "TABLE" | "COLUMN" | "RELATIONSHIP" | "SOURCE" ;
                     (* the subject classes glosses may attach to;
                        absent = all. WHEN names a sibling aspect and a
@@ -134,7 +136,11 @@ grain             = "DATASET" | "TABLE" | "COLUMN" | "RELATIONSHIP" | "SOURCE" ;
                        `unassessed` disclosure and every count derived
                        from it; writes stay gated by grain alone, and a
                        spoken slot outside its condition serves
-                       normally. *)
+                       normally. WHEN TYPE, on a grain list of COLUMN
+                       alone, names data types instead: the aspect is
+                       owed on the columns whose base type (the name
+                       before any parenthesis, DECIMAL for
+                       DECIMAL(18,2)) is one of them. *)
 aspect_kind       = "MEASUREMENT"            (* never glossed; value = bound
                                                 function's cached JSON output *)
                   | "FACT"                   (* authored assertion; WITH schema

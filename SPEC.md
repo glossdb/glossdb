@@ -244,6 +244,16 @@ strands nothing. No sibling slot spoken means nothing owed yet. At
 `DECLARE`, the referenced aspect must exist, and when its schema pins
 `value` to an enum the literal must be a member.
 
+A grain list of `COLUMN` alone may instead carry a **type condition**:
+`ON COLUMN WHEN TYPE = 'GEOMETRY'` or `WHEN TYPE IN ('DOUBLE', 'DECIMAL')`
+names data types, and the aspect is owed on the columns whose base type
+— the name before any parenthesis, `DECIMAL` for `DECIMAL(18,2)`,
+matched without regard to case — is one of them. A kit for a kind of
+column (geometry, text, time) narrows its words this way without a
+sibling aspect judged on every column. The condition bounds disclosure
+as the sibling form does and never gates a write; with any other grain
+in the list it is refused at `DECLARE`.
+
 `SOURCE` grain: the subject is a declared source's name
 (§3) — no further formality; `DECLARE SOURCE` is the definition. Sources
 are workspace rows, so source-grain slots read, supersede, and disclose
