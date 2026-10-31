@@ -20,13 +20,34 @@ use rmcp::model::{ListResourceTemplatesResult, ResourceTemplate};
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
 
+use crate::engine::Caller;
 use glossql_glossary::{Actor, ActorKind};
-use glossql_session::Caller;
 
-use glossql_session::{CallShape, Plane, Session, SessionError};
+use crate::engine::{CallShape, Plane, Session, SessionError};
 
 use crate::window;
 use crate::wire;
+
+/// The brief's counts, the type each engine serves.
+#[cfg(not(feature = "duck"))]
+type BriefCounts = glossql_glossary::BriefCounts;
+#[cfg(feature = "duck")]
+type BriefCounts = crate::engine::BriefCounts;
+
+/// The brief's counts, as each engine serves them.
+#[cfg(feature = "duck")]
+async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
+    plane.brief_counts().await.map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "duck"))]
+async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
+    plane
+        .store()
+        .brief_counts()
+        .await
+        .map_err(|e| e.to_string())
+}
 
 const INSTRUCTIONS: &str = "glossql workspace server — one SQL-shaped surface over a \
 workspace's data and its context, behind one tool, `glossql`, which runs statements and \
@@ -52,7 +73,7 @@ and `doc://grammar.ebnf` — rows of `pages()` too.";
 /// rendered string is display, not identity).
 #[derive(Clone, PartialEq, Eq)]
 pub struct BriefFacts {
-    counts: glossql_glossary::BriefCounts,
+    counts: BriefCounts,
     questions: usize,
     datasets: usize,
 }
@@ -151,7 +172,7 @@ impl GlossqlMcp {
              read, not a gate: what it counts waits for the human while the work goes on."
         }
         .to_string();
-        match plane.store().brief_counts().await {
+        match brief_counts(plane).await {
             Ok(counts) => {
                 // Debt first, presence last: what owes an act is what
                 // the reader acts on, and a count of human writings is
@@ -488,7 +509,7 @@ impl GlossqlMcp {
         // The cheap answer (`params` below) is how the repeat stops
         // costing a re-read.
         //
-        // The composing and the writing are `glossql_session::rulings`,
+        // The composing and the writing are `crate::engine::rulings`,
         // shared with the app door — the docket answers these same
         // questions when a person comes back to a page rather than to a
         // form. This door's part is to say WHO is speaking: the token's
@@ -508,9 +529,9 @@ impl GlossqlMcp {
             Ok(session) => session,
             Err(e) => return format!("question-round: refused: {e}"),
         };
-        match glossql_session::rulings::land(
+        match crate::engine::rulings::land(
             &human,
-            glossql_session::rulings::Ruling {
+            crate::engine::rulings::Ruling {
                 subject,
                 aspect,
                 dimension,
@@ -1032,7 +1053,7 @@ impl ServerHandler for GlossqlMcp {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let shape = glossql_session::call_shape(statements);
+        let shape = crate::engine::call_shape(statements);
         let probed = match self
             .question_round(&request, &context, &shape, &session, &id)
             .await
@@ -1043,7 +1064,17 @@ impl ServerHandler for GlossqlMcp {
         let (rendered, landed) = self
             .run_statements(&session, &actor, bound.as_deref(), statements)
             .await;
-        let brief_moved = self.brief_moved(shape.writes || probed.is_some()).await;
+        // A write (or a landed ruling) moves the counts; a call before
+        // the boot's own refresh has landed composes them too.
+        let unset = self
+            .brief
+            .facts
+            .read()
+            .map(|f| f.is_none())
+            .unwrap_or(false);
+        let brief_moved = self
+            .brief_moved(shape.writes || probed.is_some() || unset)
+            .await;
         // Where the call left the agent and one act per goal from there,
         // on every call (`window`). It rides the result, never the
         // instructions, so the stable prefix holds.

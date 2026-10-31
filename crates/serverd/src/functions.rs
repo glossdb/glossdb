@@ -9,8 +9,8 @@
 
 use std::fmt::Write as _;
 
+use crate::engine::{DOORS, DoorPage, Plane, Registered, SessionError};
 use glossql_glossary::{Actor, ActorKind};
-use glossql_session::{DOORS, DoorPage, Plane, Registered, SessionError};
 
 use crate::wire;
 
@@ -21,6 +21,9 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         id: crate::BOOTSTRAP.into(),
     };
     let session = plane.channel(actor, None).await?;
+    #[cfg(feature = "duck")]
+    let mut door = session.registered_functions().await?;
+    #[cfg(not(feature = "duck"))]
     let mut door = session.registered_functions();
     door.extend(DOORS.iter().map(|(name, syntax)| Registered {
         kind: "door",
@@ -73,14 +76,14 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
              engine's defaults, the try-casts, and the three readers over \
              the source's files. Nothing else — no JSON functions, no \
              shipped aggregates, no declared function.",
-            &glossql_session::reader_functions(),
+            &crate::engine::reader_functions(),
         ),
         page(
             "detector",
             "Functions in a detector",
             "What a witness's detector query can call over its `slots` \
              relation: the engine's defaults, nothing more.",
-            &glossql_session::detector_functions(),
+            &crate::engine::detector_functions(),
         ),
     ])
 }

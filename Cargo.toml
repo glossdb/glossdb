@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/parser", "crates/glossary", "crates/session", "crates/catalog", "crates/import", "crates/scripts", "crates/apps", "crates/serverd"]
+members = ["crates/parser", "crates/glossary", "crates/session", "crates/catalog", "crates/import", "crates/scripts", "crates/apps", "crates/serverd", "crates/duck"]
 
 [workspace.package]
 version = "0.3.0"
@@ -100,6 +100,12 @@ moka = { version = "0.12", features = ["future"] }
 # same lockstep rule as above; bumping either alone splits the arrow tree.
 arrow-ipc = "59.2"
 arrow-json = "59.2"
+# The engine on DuckDB (crates/duck): neo is the v2 C API crate; its
+# libduckdb-sys downloads the prebuilt library of the DuckDB release it
+# pins (DUCKDB_LIB_DIR points it at one instead). arrow's `ffi` feature
+# reads the Arrow C stream DuckDB hands out, on the same arrow line.
+duckdb-neo = "0.20000.1"
+arrow = { version = "59.2", default-features = false, features = ["ffi"] }
 axum = "0.8"
 rmcp = { version = "3.1", features = ["transport-streamable-http-server", "elicitation"] }
 jsonschema = { version = "0.60", default-features = false }

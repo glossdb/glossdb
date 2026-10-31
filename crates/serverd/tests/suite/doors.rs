@@ -9,16 +9,26 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use datafusion::arrow::array::Int64Array;
+#[cfg(not(feature = "duck"))]
 use glossql_glossary::{Actor, ActorKind, Store};
 use std::collections::HashMap;
 
-use glossql_serverd::{
-    ARROW_STREAM, Access, BOOTSTRAP, DoorConfig, INSECURE_DEV_MODE, Login, Plane, bootstrap, router,
-};
+use glossql_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
+#[cfg(not(feature = "duck"))]
+use glossql_serverd::{BOOTSTRAP, Plane, bootstrap};
 
 use crate::common;
-use glossql_session::NoRuntime;
+
+/// What the engine types an integer literal as: the session engine a
+/// 64-bit integer, DuckDB a 32-bit one.
+#[cfg(not(feature = "duck"))]
+const INT: &str = "Int64";
+#[cfg(feature = "duck")]
+const INT: &str = "Int32";
+#[cfg(not(feature = "duck"))]
+type IntArray = datafusion::arrow::array::Int64Array;
+#[cfg(feature = "duck")]
+type IntArray = datafusion::arrow::array::Int32Array;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -31,9 +41,9 @@ async fn app_capped(
     doors: DoorConfig,
     login: Arc<Login>,
 ) -> (Router, tempfile::TempDir) {
-    let (dir, store) = common::scratch_store().await;
+    let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
-        Plane::new(store, Arc::new(NoRuntime))
+        plane
             .with_row_cap(row_cap)
             .with_pages(glossql_serverd::skills::door_pages()),
     );
@@ -127,6 +137,8 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
 /// A refusal answers by its class: a name the record does not hold is
 /// not found, a door whose service is not named is unavailable, and
 /// the statement's own fault is unprocessable.
+// The read namespace and the metric reads are served in later steps.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refusal_answers_by_its_class() {
     let (app, _dir) = app_on_fin().await;
@@ -194,7 +206,7 @@ async fn the_query_door_streams_arrow_ipc() {
     let column = batches[0]
         .column(0)
         .as_any()
-        .downcast_ref::<Int64Array>()
+        .downcast_ref::<IntArray>()
         .unwrap();
     assert_eq!(column.value(0), 2);
 }
@@ -369,9 +381,8 @@ async fn the_token_names_the_subject_and_the_door_names_the_standing() {
 /// with no 401 to answer, a client is never sent to authenticate.
 #[tokio::test(flavor = "multi_thread")]
 async fn open_doors_ask_no_token_and_stamp_the_dev_actor() {
-    let (_dir, store) = common::scratch_store().await;
-    let plane = Arc::new(Plane::new(store, Arc::new(NoRuntime)));
-    let app = router(plane, DoorConfig::default(), Access::Open);
+    let (_dir, plane) = common::scratch_plane().await;
+    let app = router(Arc::new(plane), DoorConfig::default(), Access::Open);
 
     // The agent door, bare: agent standing, the dev actor as the id.
     let request = Request::post("/mcp")
@@ -916,12 +927,8 @@ async fn the_discovery_document_and_the_assets_answer_without_a_token() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_probe_answers_without_a_token_in_both_arrangements() {
     let (gated, _dir) = app().await;
-    let (_dir, store) = common::scratch_store().await;
-    let open = router(
-        Arc::new(Plane::new(store, Arc::new(NoRuntime))),
-        DoorConfig::default(),
-        Access::Open,
-    );
+    let (_dir, plane) = common::scratch_plane().await;
+    let open = router(Arc::new(plane), DoorConfig::default(), Access::Open);
     for app in [gated, open] {
         let response = app
             .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
@@ -1260,7 +1267,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     // recipe just to DESCRIBE it).
     assert_eq!(
         outcomes[0]["columns"],
-        json!([{"name": "answer", "type": "Int64"}]),
+        json!([{"name": "answer", "type": INT}]),
         "{outcomes}"
     );
     let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer LIMIT 0")).await).await;
@@ -1269,7 +1276,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
     assert_eq!(
         outcomes[0]["columns"],
-        json!([{"name": "answer", "type": "Int64"}]),
+        json!([{"name": "answer", "type": INT}]),
         "{outcomes}"
     );
 
@@ -1318,6 +1325,8 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
 /// dataset's `next` line on every result. The workspace door keeps
 /// opening unbound, and a dataset the workspace does not hold is the
 /// same 404 the human doors answer.
+// The `next:` line reads the routes (next.sql), ported with them.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     let (app, _dir) = app_on_fin().await;
@@ -1399,6 +1408,8 @@ fn meta_elicit() -> Value {
     })
 }
 
+// The kit\'s witnesses run the session engine\'s script runtime.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_asks_the_human_for_statistics() {
     // An unassessed
@@ -2302,6 +2313,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 }
 
+// A grounding's write answers with the metric_axes() shape (step 3).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_brief_rides_the_call_that_moved_it() {
     // Run 2's friction 11: initialize instructions are fetched once
@@ -2598,6 +2611,9 @@ async fn an_agent_authors_an_app_over_the_tool() {
     assert!(!html.contains("What stands open"), "superseded: {html}");
 }
 
+// `workspace_next` counts the whole record, functions and measurements
+// included; ported with the next routes.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_workspace_says_what_it_affords() {
     // The map that replaces the staged manuals: what this workspace can
@@ -2711,6 +2727,9 @@ async fn the_workspace_says_what_it_affords() {
 /// real counts. A filter that is silently dropped is bad; one that also
 /// corrupts the counts it returns is worse, so both halves are asserted
 /// here against the same session.
+// `workspace_next` counts the whole record, functions and measurements
+// included; ported with the next routes.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let (app, _dir) = app().await;

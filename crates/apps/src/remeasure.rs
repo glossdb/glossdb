@@ -16,11 +16,11 @@
 //! the store drops them too, and every tile refetches in place. The
 //! next cube read rebuilds at the new version.
 
+use crate::engine::Caller;
 use axum::Extension;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use glossql_session::Caller;
 
 use crate::AppDoor;
 use crate::app::AppDef;

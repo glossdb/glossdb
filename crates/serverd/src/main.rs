@@ -18,9 +18,15 @@ mod config;
 use std::future::IntoFuture;
 use std::sync::Arc;
 
-use config::{Catalog, Config, USAGE};
+#[cfg(not(feature = "duck"))]
+use config::Catalog;
+use config::{Config, USAGE};
+#[cfg(not(feature = "duck"))]
 use glossql_catalog::Lake;
-use glossql_glossary::{Actor, ActorKind, Store};
+#[cfg(not(feature = "duck"))]
+use glossql_glossary::Store;
+use glossql_glossary::{Actor, ActorKind};
+#[cfg(not(feature = "duck"))]
 use glossql_scripts::KernelRuntime;
 use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
@@ -89,24 +95,52 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
 
 /// Everything between the runtime's start and the server's stop.
 async fn doors(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = runtime_of(&config.points)?;
-    let store = Store::open(open_lake(config.catalog).await?).await?;
-    let plane = Plane::new(store.clone(), runtime)
-        .with_row_cap(config.row_cap)
-        .with_cube_cache(config.cube_cache_mb)
-        .with_memory_limit(config.memory_limit_mb)
-        .with_spill_limit(config.spill_limit_mb)
-        .with_local_sources(config.local_sources);
+    let plane = opened(&config).await?;
     let plane = bootstrapped(plane).await?;
     let access = access_of(config.auth, &config.audience).await?;
     let app = router(plane, config.doors, access);
     serve_until_stopped(app, &config.addr).await
 }
 
+/// The workspace opened on the engine this build carries.
+#[cfg(not(feature = "duck"))]
+async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
+    let runtime = runtime_of(&config.points)?;
+    let store = Store::open(open_lake(config.catalog.clone()).await?).await?;
+    Ok(Plane::new(store, runtime)
+        .with_row_cap(config.row_cap)
+        .with_cube_cache(config.cube_cache_mb)
+        .with_memory_limit(config.memory_limit_mb)
+        .with_spill_limit(config.spill_limit_mb)
+        .with_local_sources(config.local_sources))
+}
+
+/// The workspace on DuckDB: the directory's lake on a laptop, the
+/// named catalog in a deployment.
+#[cfg(feature = "duck")]
+async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
+    let mut duck = match config.catalog.catalog.strip_prefix("sqlite://") {
+        Some(path) => {
+            let dir = std::path::Path::new(path)
+                .parent()
+                .ok_or("the catalog path has no directory")?;
+            glossql_serverd::engine::Config::laptop(dir)
+        }
+        None => glossql_serverd::engine::Config::deployment(
+            &config.catalog.catalog,
+            &config.catalog.warehouse,
+        ),
+    };
+    duck.row_cap = config.row_cap;
+    tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
+    Ok(Plane::open(duck).await?)
+}
+
 /// The native kernels, and the service behind each point the
 /// environment names (bodies ride their declarations, fixture 24 —
 /// nothing of the runtime's lives in the workspace). Every point is
 /// on the record at start-up, named or not.
+#[cfg(not(feature = "duck"))]
 fn runtime_of(
     points: &[config::Point],
 ) -> Result<Arc<KernelRuntime>, Box<dyn std::error::Error + Send + Sync>> {
@@ -119,12 +153,12 @@ fn runtime_of(
         )?;
     }
     let runtime = Arc::new(runtime);
-    for point in glossql_session::POINTS {
+    for point in glossql_serverd::engine::POINTS {
         match runtime.url(point) {
             Some(url) => tracing::info!(point, url, "service"),
             None => tracing::info!(
                 point,
-                variable = glossql_session::point_variable(point, "URL"),
+                variable = glossql_serverd::engine::point_variable(point, "URL"),
                 "no service — the point's reads refuse by name"
             ),
         }
@@ -215,6 +249,7 @@ async fn serve_until_stopped(
 
 /// Open the data plane the run names. The SQL catalog's URI carries
 /// the credentials, so the record gets its scheme and nothing more.
+#[cfg(not(feature = "duck"))]
 async fn open_lake(catalog: Catalog) -> Result<Lake, String> {
     tracing::info!(
         catalog = catalog.catalog.split(':').next().unwrap_or("sql"),

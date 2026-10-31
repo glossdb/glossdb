@@ -6,10 +6,10 @@
 //! result held more, so the agent refines (aggregate, LIMIT, WHERE)
 //! instead of reading a capped result as complete.
 
+use crate::engine::Outcome;
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::execution::SendableRecordBatchStream;
 use futures::StreamExt;
-use glossql_session::Outcome;
 use serde_json::{Value, json};
 
 pub const DEFAULT_ROW_CAP: usize = 200;

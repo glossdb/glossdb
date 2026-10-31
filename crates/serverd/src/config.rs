@@ -79,6 +79,7 @@ fn number<T: std::str::FromStr<Err: std::fmt::Display>>(
 
 /// The run's whole configuration. Nothing past [`Config::read`] reads a
 /// flag or a variable.
+#[cfg_attr(feature = "duck", allow(dead_code))]
 pub struct Config {
     pub addr: String,
     pub doors: DoorConfig,
@@ -125,11 +126,12 @@ pub struct Auth {
     pub client_secret: String,
 }
 
-/// The service behind one point (`glossql_session::POINTS`):
+/// The service behind one point (`glossql_serverd::engine::POINTS`):
 /// `GLOSSQL_<POINT>_URL`, its bearer in `GLOSSQL_<POINT>_TOKEN` — or,
 /// on a platform that mints ID tokens for the service account this
 /// process runs as, the audience the service verifies in
 /// `GLOSSQL_<POINT>_AUDIENCE`.
+#[cfg_attr(feature = "duck", allow(dead_code))]
 pub struct Point {
     pub name: &'static str,
     pub url: String,
@@ -143,6 +145,7 @@ pub struct Point {
 /// warehouse; a deployment names both in the environment and has no
 /// directory at all. The catalog URI carries the credentials; the
 /// warehouse carries none.
+#[derive(Debug, Clone)]
 pub struct Catalog {
     pub catalog: String,
     pub warehouse: String,
@@ -180,24 +183,24 @@ impl Config {
         Ok(Config {
             cube_cache_mb: match flags.cube_cache_mb {
                 Some(mb) => mb,
-                None => {
-                    sized("GLOSSQL_CUBE_CACHE")?.unwrap_or(glossql_session::DEFAULT_CUBE_CACHE_MB)
-                }
+                None => sized("GLOSSQL_CUBE_CACHE")?
+                    .unwrap_or(glossql_serverd::engine::DEFAULT_CUBE_CACHE_MB),
             },
             memory_limit_mb: match flags.memory_limit_mb {
                 Some(mb) => mb,
                 None => sized("GLOSSQL_MEMORY_LIMIT")?
-                    .unwrap_or(glossql_session::DEFAULT_MEMORY_LIMIT_MB),
+                    .unwrap_or(glossql_serverd::engine::DEFAULT_MEMORY_LIMIT_MB),
             },
             spill_limit_mb: match flags.spill_limit_mb {
                 Some(mb) => Some(mb),
                 None => sized("GLOSSQL_SPILL_LIMIT")?,
             },
             local_sources: flags.workspace.is_some(),
-            points: glossql_session::POINTS
+            points: glossql_serverd::engine::POINTS
                 .iter()
                 .filter_map(|point| {
-                    let named = |suffix| var(&glossql_session::point_variable(point, suffix));
+                    let named =
+                        |suffix| var(&glossql_serverd::engine::point_variable(point, suffix));
                     named("URL").map(|url| Point {
                         name: point,
                         url,
@@ -422,18 +425,18 @@ mod tests {
         let default = read(&[], &[]).expect("readable");
         assert_eq!(
             default.memory_limit_mb,
-            glossql_session::DEFAULT_MEMORY_LIMIT_MB
+            glossql_serverd::engine::DEFAULT_MEMORY_LIMIT_MB
         );
         assert_eq!(
             default.cube_cache_mb,
-            glossql_session::DEFAULT_CUBE_CACHE_MB
+            glossql_serverd::engine::DEFAULT_CUBE_CACHE_MB
         );
 
         let set = read(&["--memory-limit", "512"], &[]).expect("readable");
         assert_eq!(set.memory_limit_mb, 512);
         assert_eq!(
             set.cube_cache_mb,
-            glossql_session::DEFAULT_CUBE_CACHE_MB,
+            glossql_serverd::engine::DEFAULT_CUBE_CACHE_MB,
             "naming one budget must not move the other"
         );
         assert_eq!(

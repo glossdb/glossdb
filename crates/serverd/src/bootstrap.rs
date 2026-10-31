@@ -18,6 +18,16 @@ use crate::Plane;
 /// (fixture 24), so the reference library arrives as
 /// fourteen ordinary declarations and reads back through the `functions`
 /// relation like anything else an agent wrote.
+#[cfg(feature = "duck")]
+pub async fn bootstrap(
+    _plane: &Plane,
+    _actor: Actor,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // The kits are declared when the workspace opens (`glossql_duck::Plane::open`).
+    Ok(())
+}
+
+#[cfg(not(feature = "duck"))]
 pub async fn bootstrap(
     plane: &Plane,
     actor: Actor,

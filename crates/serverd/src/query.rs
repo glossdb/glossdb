@@ -16,8 +16,8 @@ use axum::{Extension, Json};
 
 use std::sync::Arc;
 
+use crate::engine::{Caller, Plane, SessionError};
 use futures::StreamExt;
-use glossql_session::{Caller, Plane, SessionError};
 
 use crate::wire;
 

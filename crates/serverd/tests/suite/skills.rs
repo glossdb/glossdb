@@ -20,13 +20,18 @@
 //! Nothing here executes a write. A block that declares or glosses is
 //! held to rule 1 alone.
 
+#[cfg(not(feature = "duck"))]
 use std::sync::Arc;
 
+#[cfg(not(feature = "duck"))]
 use glossql_glossary::{Actor, ActorKind};
 
+#[cfg(not(feature = "duck"))]
 use crate::common;
+#[cfg(not(feature = "duck"))]
 use glossql_serverd::{Plane, bootstrap};
 
+#[cfg(not(feature = "duck"))]
 fn human() -> Actor {
     Actor {
         kind: ActorKind::Human,
@@ -141,6 +146,7 @@ fn blocks() -> Vec<Block> {
 /// missing column, so the test passed on the exact example that
 /// shipped. The harness declares and USEs a dataset instead, and a
 /// read that cannot plan for any other reason is a defect.
+#[cfg(not(feature = "duck"))]
 fn missing_table(error: &str) -> bool {
     // Any qualified table this workspace does not have, not just the
     // default schema: an extract example names its subject as
@@ -228,9 +234,11 @@ async fn every_skill_function_body_compiles() {
 /// A runtime that says it fills every point and serves none: the point's
 /// doors pass the plan-time gate and stop at their aspect lookup, which
 /// is where an example naming an undeclared frame belongs.
+#[cfg(not(feature = "duck"))]
 #[derive(Debug)]
 struct ModelStub;
 
+#[cfg(not(feature = "duck"))]
 #[glossql_session::async_trait]
 impl glossql_session::FunctionRuntime for ModelStub {
     fn serves(&self, _point: &str) -> bool {
@@ -238,6 +246,8 @@ impl glossql_session::FunctionRuntime for ModelStub {
     }
 }
 
+// The examples name the session engine\'s service points.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_read_names_columns_that_exist() {
     let (dir, store) = common::scratch_store().await;

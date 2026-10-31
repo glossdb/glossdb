@@ -54,20 +54,28 @@ pub mod telemetry;
 pub mod window;
 mod wire;
 
+/// The engine the doors are built on: the session on DataFusion, or,
+/// under the `duck` feature, the facade over DuckDB and the gloss
+/// extension. One name, so a door never says which.
+#[cfg(feature = "duck")]
+pub use glossql_duck as engine;
+#[cfg(not(feature = "duck"))]
+pub use glossql_session as engine;
+
+pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};
 pub use bootstrap::bootstrap;
 pub use glossql_apps::ipc::ARROW_STREAM;
-pub use glossql_session::Plane;
 pub use login::Login;
 pub use mcp::GlossqlMcp;
 pub use wire::DEFAULT_ROW_CAP;
 
 use std::sync::Arc;
 
+use crate::engine::Caller;
 use axum::Router;
 use axum::routing::{get, post};
 use glossql_glossary::{Actor, ActorKind};
-use glossql_session::Caller;
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tower_http::trace::TraceLayer;

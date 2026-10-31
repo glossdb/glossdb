@@ -65,7 +65,7 @@ pub use doors::DOORS;
 pub use memo::ShippedCache;
 pub use plane::{Caller, DEFAULT_MEMORY_LIMIT_MB, Plane};
 pub use session::{
-    CallShape, Registered, Session, call_shape, detector_functions, reader_functions,
+    CallShape, QueryStream, Registered, Session, call_shape, detector_functions, reader_functions,
 };
 pub use shared::{
     Answered, DoorPage, FORECAST, FunctionRuntime, MISFIT, NoRuntime, Outcome, POINTS,

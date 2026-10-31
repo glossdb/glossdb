@@ -146,8 +146,8 @@ fn first_heading(body: &str) -> Option<&str> {
 /// references after its SKILL.md, the docs pages, the engine's SQL
 /// guide. A tree page is described by its first heading, which is what
 /// tells a reader when the page is worth its tokens.
-pub fn door_pages() -> std::sync::Arc<[glossql_session::DoorPage]> {
-    use glossql_session::DoorPage;
+pub fn door_pages() -> std::sync::Arc<[crate::engine::DoorPage]> {
+    use crate::engine::DoorPage;
     let mut out: Vec<DoorPage> = SKILLS
         .iter()
         .map(|s| DoorPage {
@@ -187,9 +187,9 @@ pub fn door_pages() -> std::sync::Arc<[glossql_session::DoorPage]> {
 /// The door's pages plus the ones built at boot — the function
 /// listings — in one list, the boot pages last.
 pub fn door_pages_with(
-    extra: Vec<glossql_session::DoorPage>,
-) -> std::sync::Arc<[glossql_session::DoorPage]> {
-    let mut out: Vec<glossql_session::DoorPage> = door_pages().to_vec();
+    extra: Vec<crate::engine::DoorPage>,
+) -> std::sync::Arc<[crate::engine::DoorPage]> {
+    let mut out: Vec<crate::engine::DoorPage> = door_pages().to_vec();
     out.extend(extra);
     out.into()
 }

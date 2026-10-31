@@ -17,14 +17,18 @@
 //! with no examples is legitimate. The skills file keeps the floors
 //! that prove the harness still finds its subject.
 
+#[cfg(not(feature = "duck"))]
 use std::sync::Arc;
 
+#[cfg(not(feature = "duck"))]
 use glossql_glossary::{Actor, ActorKind};
 
+#[cfg(not(feature = "duck"))]
 use crate::common;
-use glossql_serverd::{Plane, bootstrap};
-use glossql_session::NoRuntime;
+#[cfg(not(feature = "duck"))]
+use glossql_serverd::bootstrap;
 
+#[cfg(not(feature = "duck"))]
 fn human() -> Actor {
     Actor {
         kind: ActorKind::Human,
@@ -114,6 +118,7 @@ fn blocks() -> Vec<Block> {
 /// recorded in `skills.rs`: it swallows the missing-column class this
 /// invariant exists to catch. The harness declares and USEs a dataset
 /// instead.
+#[cfg(not(feature = "duck"))]
 fn missing_table(error: &str) -> bool {
     error.contains("table 'datafusion.")
         || error.contains("No table named")
@@ -178,10 +183,13 @@ async fn every_doc_function_body_compiles() {
     );
 }
 
+// The examples name the shipped reads (next, open_questions, the metric
+// reads), which the DuckDB build ports in later steps.
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn every_doc_read_names_columns_that_exist() {
-    let (_dir, store) = common::scratch_store().await;
-    let plane = Arc::new(Plane::new(store.clone(), Arc::new(NoRuntime)));
+    let (_dir, plane) = common::scratch_plane().await;
+    let plane = Arc::new(plane);
     bootstrap(&plane, human()).await.unwrap();
 
     // One session for the run, with a dataset in use — the names the

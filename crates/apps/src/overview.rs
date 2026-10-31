@@ -3,9 +3,6 @@
 //! frames, no params, one visit — so the rows come through the same
 //! channel a frame would use and land in the template as JSON.
 
-use std::collections::HashMap;
-
-use datafusion::common::{ParamValues, ScalarValue};
 use futures::StreamExt;
 use glossql_glossary::{Actor, ActorKind};
 use serde_json::Value;
@@ -58,13 +55,11 @@ pub(crate) async fn rows(
         .channel(reader(), dataset)
         .await
         .map_err(|e| e.to_string())?;
-    let values: HashMap<String, ScalarValue> = params
+    let pairs: Vec<(String, String)> = params
         .iter()
-        .map(|(k, v)| (k.to_string(), ScalarValue::Utf8(Some(v.to_string()))))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
-    let params = (!values.is_empty()).then(|| ParamValues::from(values));
-    let query = session
-        .query_stream_with_params(sql, params)
+    let query = crate::query_with(&session, sql, pairs)
         .await
         .map_err(|e| e.to_string())?;
     let mut stream = query.stream;

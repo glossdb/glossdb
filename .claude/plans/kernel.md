@@ -22,6 +22,9 @@ the work is in five plans beside it:
 - `grounding.md` — one SPEC.md §5.2 change: the grounding contract
   the engine reads and the grounding schema a kit declares. It touches
   the glossary crate and the KPI kit's script; the corpus decides first.
+- `modules.md` — the server's shape inside one binary: modules along
+  the process, one seam each, built and tested alone. It touches every
+  crate; build order is risk order, the engine's inner boundary first.
 
 Read a plan when picking the next piece of kernel work. A plan links
 its issues and shrinks: a row that becomes an issue links the issue;

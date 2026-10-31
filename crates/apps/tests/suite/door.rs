@@ -3,6 +3,11 @@
 //! exactly as serverd mounts it): pages render from the app's own
 //! directory, frames stream Arrow IPC with URL params bound as plan
 //! placeholders, and everything that should refuse refuses.
+//!
+//! Under the DuckDB build (`duck`), the tests that seed the cube and the
+//! judged axes through the session engine's SQL stand out until the
+//! metrics kit lands (design doc §7, step 3): each is marked
+//! `cfg(not(feature = "duck"))` with its reason.
 
 use std::sync::Arc;
 
@@ -10,13 +15,29 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use datafusion::arrow::array::Float64Array;
-use glossql_catalog::Lake;
-use glossql_glossary::{Actor, ActorKind, Store};
-use glossql_session::{Caller, NoRuntime, Plane};
+use glossql_apps::engine::{Caller, Plane};
+use glossql_glossary::{Actor, ActorKind};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
+
+/// The plane over the directory, on the engine this build carries.
+#[cfg(not(feature = "duck"))]
+async fn open_plane(dir: &std::path::Path) -> Plane {
+    let lake = glossql_catalog::Lake::open(&dir.join("catalog.db"), &dir.join("warehouse"))
+        .await
+        .unwrap();
+    let store = glossql_glossary::Store::open(lake).await.unwrap();
+    Plane::new(store, Arc::new(glossql_apps::engine::NoRuntime))
+}
+
+#[cfg(feature = "duck")]
+async fn open_plane(dir: &std::path::Path) -> Plane {
+    Plane::open(glossql_apps::engine::Config::laptop(dir))
+        .await
+        .unwrap()
+}
 
 async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
@@ -26,14 +47,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     )
     .unwrap();
 
-    let lake = Lake::open(
-        &dir.path().join("catalog.db"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = Store::open(lake).await.unwrap();
-    let plane = Arc::new(Plane::new(store, Arc::new(NoRuntime)));
+    let plane = Arc::new(open_plane(dir.path()).await);
     let session = plane
         .channel(
             Actor {
@@ -100,6 +114,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
 /// workspace enforces. The hand-rolled permissive copy this replaces
 /// hid a real refusal: a shipped enum lacking the `unclear` stance
 /// left the docket's button answering 422.
+#[cfg(not(feature = "duck"))]
 fn shipped_ruling_declaration() -> &'static str {
     let kit = glossql_scripts::library::KIT;
     let start = kit
@@ -133,6 +148,7 @@ fn shipped_app_declarations() -> &'static str {
 
 /// The SHIPPED `cube` aspect, cut the same way — the floor and the
 /// ladder the cube computes under.
+#[cfg(not(feature = "duck"))]
 fn shipped_cube_declaration() -> &'static str {
     let kit = glossql_scripts::library::KIT;
     let start = kit
@@ -309,6 +325,9 @@ async fn pages_render_and_frames_stream() {
 /// release serves under `?draft` and not at the plain URL, the bar says
 /// which is on the page, a release naming an earlier one's time serves
 /// that cut, and an app nobody released serves its draft.
+// Reads `app_releases`, a shipped read (ported with the others; `at` is a
+// reserved word in DuckDB\'s SQL).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_release_gates_what_the_door_serves() {
     let (app, plane, _dir) = workspace().await;
@@ -359,7 +378,7 @@ async fn a_release_gates_what_the_door_serves() {
         .execute("SELECT min(written_at) FROM glossary WHERE aspect = 'app_release';")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = &first[0] else {
+    let glossql_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
         panic!("a read answers rows")
     };
     let first_at =
@@ -376,7 +395,7 @@ async fn a_release_gates_what_the_door_serves() {
         .execute("SELECT app, note, at FROM app_releases;")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = &released[0] else {
+    let glossql_apps::engine::Outcome::Rows { batches, .. } = &released[0] else {
         panic!("a read answers rows")
     };
     let cell = |i: usize| {
@@ -535,6 +554,8 @@ async fn the_shell_passes_its_own_policy() {
     }
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_glossed_part_may_not_take_a_builtin_name() {
     let (app, plane, _dir) = workspace().await;
@@ -578,6 +599,7 @@ async fn a_glossed_part_may_not_take_a_builtin_name() {
     );
 }
 
+#[cfg(not(feature = "duck"))]
 async fn row_count(response: Response<Body>) -> usize {
     assert_eq!(
         response.headers()[header::CONTENT_TYPE],
@@ -592,6 +614,7 @@ async fn row_count(response: Response<Body>) -> usize {
 
 /// Every cell of the frame, flattened to one string — for asserting a
 /// rendered value is present without caring which column carries it.
+#[cfg(not(feature = "duck"))]
 async fn body_text(response: Response<Body>) -> String {
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let reader =
@@ -614,6 +637,7 @@ async fn body_text(response: Response<Body>) -> String {
 
 /// Seed the shapes the docket's frames read: a grounded metric with
 /// assumptions, a formulas map, and definitions.
+#[cfg(not(feature = "duck"))]
 async fn seed_model_shapes(plane: &Arc<Plane>) {
     let agent = plane
         .channel(
@@ -671,6 +695,7 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
         .unwrap();
 }
 
+#[cfg(not(feature = "duck"))]
 fn assert_classic(dt: &datafusion::arrow::datatypes::DataType, frame: &str, field: &str) {
     use datafusion::arrow::datatypes::DataType;
     match dt {
@@ -696,6 +721,8 @@ fn assert_classic(dt: &datafusion::arrow::datatypes::DataType, frame: &str, fiel
 /// a human door: the gate stamps human standing on whoever reaches it,
 /// and the record takes the token's subject — nothing anonymous stands
 /// in for the person.
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ruling_is_signed_with_the_callers_own_name() {
     let (app, plane, _dir) = workspace().await;
@@ -733,7 +760,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
         .execute("SELECT actor_id FROM glossary WHERE aspect = 'ruling' AND actor_kind = 'human';")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
+    let glossql_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
         panic!("expected rows");
     };
     let batch = batches.iter().find(|b| b.num_rows() > 0).unwrap();
@@ -743,6 +770,8 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn every_builtin_frame_executes_and_serves_classic_types() {
     // Parse-only coverage lets two defect classes ship:
@@ -791,6 +820,8 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
     }
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // Metadata and data are not one pile: every
@@ -868,6 +899,8 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     }
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_dossier_faces_survive_a_second_dataset() {
     // With two datasets in the
@@ -909,6 +942,8 @@ async fn the_dossier_faces_survive_a_second_dataset() {
     assert_eq!(row_count(assumptions).await, 2);
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_brief_counts_what_waits_on_the_agent() {
     // The waiting derivation: a human formula
@@ -974,6 +1009,8 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     assert_eq!(row_count(cleared).await, 0, "re-recording clears the wait");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metric_faces_serve_the_winning_slot_once() {
     // With two slots on `formulas` (human and
@@ -1031,6 +1068,8 @@ async fn the_metric_faces_serve_the_winning_slot_once() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
     // A human ruling is its own record — the queue
@@ -1076,6 +1115,8 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
     assert!(text.contains("awaiting the fold-in"), "{text}");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
     // The door's one write. A human who
@@ -1168,6 +1209,8 @@ async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
     // The third stance: the human refuses the
@@ -1223,6 +1266,8 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
     assert!(settled.contains("which lines?"), "{settled}");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // A standing check is an ATTEST row — a
@@ -1358,6 +1403,9 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     );
 }
 
+// The landing ledger's refused cells are the import crate's accounting;
+// the extension lands recipes on its own terms (step 5).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_quality_page_accounts_for_each_landing() {
     // The loads are the import's own: what each scan held, what landed
@@ -1449,6 +1497,8 @@ async fn the_quality_page_accounts_for_each_landing() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_findings_open_with_a_breached_corridor_and_where_the_move_is() {
     // A corridor breach is the first finding: the metric's newest
@@ -1565,6 +1615,8 @@ async fn the_findings_open_with_a_breached_corridor_and_where_the_move_is() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metrics_faces_serve_the_cube() {
     // The business surface end to end from the cube: nothing is
@@ -1755,6 +1807,8 @@ async fn the_metrics_faces_serve_the_cube() {
     assert_eq!(row_count(trend).await, 4, "and the numbers stand");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_plan_stands_beside_its_metric() {
     // A plan declared on dso over the same ledger (fixture 27): the
@@ -1817,6 +1871,8 @@ async fn the_plan_stands_beside_its_metric() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_list_serves_a_workspace_without_a_fact() {
     // A workspace that declares no fact has an empty facts list, and
@@ -1922,6 +1978,8 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metrics_pages_render_both_states() {
     // The pulse and the dossier, as pages: the front renders the list
@@ -1953,6 +2011,8 @@ async fn the_metrics_pages_render_both_states() {
     assert!(sliced.contains("frames/slices"), "{sliced}");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
     // Not a 303 to the Referer: a
@@ -2074,6 +2134,8 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
     }
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_root_lists_every_dataset_at_a_glance() {
     // The workspace root: each dataset with what landed, what is served
@@ -2122,6 +2184,8 @@ async fn the_root_lists_every_dataset_at_a_glance() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_export_tab_lists_tables_and_reads() {
     let (app, plane, _dir) = workspace().await;
@@ -2218,6 +2282,8 @@ async fn a_table_downloads_as_csv_and_parquet() {
     assert_eq!(rows, 3);
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_served_metric_downloads_its_relation() {
     let (app, plane, _dir) = workspace().await;
@@ -2272,6 +2338,8 @@ async fn a_download_refuses_what_it_should() {
     assert_eq!(csv.status(), StatusCode::OK);
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_lineage_page_draws_the_record() {
     // The graph's two frames are the record as rows: every column of
@@ -2499,6 +2567,8 @@ async fn every_documented_tile_is_shipped() {
     }
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_stopped_surface_folds_under_the_lists() {
     // A grounding its author stopped serves no number and no file;
@@ -2552,6 +2622,8 @@ async fn a_stopped_surface_folds_under_the_lists() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_views_page_serves_its_columns_and_its_rows() {
     // A view is rows, not a series: its page lists every column the
@@ -2598,6 +2670,8 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
     assert_eq!(tables, "ledger\n", "the one table the view reads");
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     // The Glossary: the vocabulary first — every declared aspect in
@@ -2772,6 +2846,8 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     );
 }
 
+// Seeds the cube and the judged axes (session engine).
+#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     // Three pages under the Glossary tab, each a page param: a table
