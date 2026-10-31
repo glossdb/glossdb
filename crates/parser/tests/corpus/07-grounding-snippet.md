@@ -1,4 +1,4 @@
-# 07 · Grounding / `sql_snippets` — TRANSCRIBES (QUERY gloss, standard grounding schema)
+# 07 · Grounding / `sql_snippets` — TRANSCRIBES (QUERY gloss, grounding contract)
 
 Source: `sql_snippets` (engine schema.sql), semantic key:
 

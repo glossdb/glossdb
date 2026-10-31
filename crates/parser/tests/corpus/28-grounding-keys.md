@@ -1,4 +1,4 @@
-# 28 · Grounding keys: behaviour, row identity, slices — PROPOSED (C: the contract, the claims as glosses on the view's columns; the lead's verdict closes it)
+# 28 · Grounding keys: behaviour, row identity, slices — RULED (C: the grounding contract, the claims as glosses on the view's columns)
 
 Source: three artifacts the corpus and the docs already hold, and one
 host. The City of Baton Rouge revised budget (fixture 27): a flow booked
@@ -155,5 +155,5 @@ DECLARE ASPECT behavior WITH $${
   kit-declared grounding schema stays for a key a body truly needs;
   the KPI kit declares none. Fixtures 07 and 26 and the corpus README
   rows read "grounding contract".
-- **The fork this plan proposes: C.** It is the structure the metrics
-  kit is built on (`.claude/plans/modules-design.md` §7.1).
+- **Ruled: C.** It is the structure the metrics kit is built on
+  (`.claude/plans/modules-design.md` §7.1).

@@ -28,7 +28,7 @@ simplified language.
 | 04 | validation `trial_balance` | TRANSCRIBES (aspect + witness, no dedicated construct) |
 | 05 | cycle `accounts_receivable` | TRANSCRIBES (in-blob) |
 | 06 | witnesses + reliabilities | slots TRANSCRIBE · calibration DROPPED |
-| 07 | grounding / `sql_snippets` | TRANSCRIBES (standard grounding schema) |
+| 07 | grounding / `sql_snippets` | TRANSCRIBES (grounding contract) |
 | 08 | teach payloads | TRANSCRIBES (teach = re-gloss) |
 | 09 | answer-agent served context | DROPPED BY DESIGN (the agent experiment) |
 | 10 | remaining engine artifacts | TRANSCRIBES (coverage completion) |
@@ -47,6 +47,6 @@ simplified language.
 | 23 | conditional relevance (medium run) | RULED: `WHEN` narrows what a subject owes — the backlog counts what is real, not columns × vocabulary |
 | 24 | functions in a table (run 4) | RULED: a function's body is data — `AS $$…$$` replaces `FROM 'path'`, the `functions/` directory retires, and the shipped library reads back as examples · body-in-a-file INFORMATION LOST |
 | 25 | mixed-case names (avito run) | RULED: an unquoted name folds to lowercase at the declaration and at the read; a double-quoted name keeps its case |
-| 26 | grounding grain / stock serving shape (finance integration run) | TRANSCRIBES (grain key, standard grounding schema) |
+| 26 | grounding grain / stock serving shape (finance integration run) | TRANSCRIBES (grain key; since fixture 28 the row identity is the `entity` gloss on the view) |
 | 27 | plan: a budget beside its actuals (Baton Rouge expense budget) | RULED: a plan is its own QUERY aspect, `x-kind: plan`, tied to its metric by name in the declaration; the plan world on `metric_series`, read by name |
-| 28 | grounding keys: behaviour, row identity, slices (Baton Rouge budget, finance `ar_balance`, harmonisation service level) | PROPOSED: C — the grounding contract, the claims as glosses on the view's columns; the verdict closes it |
+| 28 | grounding keys: behaviour, row identity, slices (Baton Rouge budget, finance `ar_balance`, harmonisation service level) | RULED: the grounding contract is `sql` or `stopped` and `assumptions`; the behaviour, the row identity and the slices are glosses on the view's columns |

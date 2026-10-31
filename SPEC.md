@@ -212,8 +212,8 @@ The kind fixes the aspect's role:
   simply not `AS QUERY`.
 - **QUERY** — an SQL-grounded concept (revenue, accounts_receivable, dso).
   Metrics are QUERY aspects: the value materializes by running the grounding
-  SQL, never through a function. Glosses validate against the **standard
-  grounding schema** (§5.2), not the `WITH` schema; the `WITH` schema
+  SQL, never through a function. Glosses validate against the **grounding
+  contract** (§5.2), not the `WITH` schema; the `WITH` schema
   carries the ontology entry (description, indicators, parameters,
   rendering). Anything the company revises — meaning, unit, owner, source —
   belongs in a gloss instead, because a declaration cannot be re-declared
@@ -289,12 +289,13 @@ GLOSS fk_note ON orders.customer_id -> customers.id AS $${"value": "2% orphaned 
 
 - You cannot gloss an aspect that was not declared. Admission validates the
   body by the aspect's kind: FACT → the aspect's `WITH` schema, QUERY → the
-  standard grounding schema, MEASUREMENT → rejected.
+  grounding contract, MEASUREMENT → rejected.
 - An aspect whose grain names `TABLE` or `COLUMN` takes only landed
   subjects: the table, and the column, must exist in the dataset. An
   aspect without a grain clause takes the subject as spelled; a QUERY
   aspect takes the dataset.
-- The **standard grounding schema** is fixed, like the attest schema (§7.2):
+- The **grounding contract** is fixed, like the attest schema (§7.2): what
+  the engine reads of a grounding, and nothing a reader of its rows needs:
 
 ```json
 {
@@ -304,9 +305,6 @@ GLOSS fk_note ON orders.customer_id -> customers.id AS $${"value": "2% orphaned 
   "properties": {
     "sql": {"type": "string"},
     "stopped": {"type": "string"},
-    "behavior": {"enum": ["stock", "flow"]},
-    "grain": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-    "axes": {"type": "array", "items": {"type": "string"}},
     "assumptions": {
       "type": "array",
       "items": {
@@ -324,33 +322,32 @@ GLOSS fk_note ON orders.customer_id -> customers.id AS $${"value": "2% orphaned 
 }
 ```
 
-- `behavior` is the authored stock marker: readers that window a
-  grounding take last-per-window for `"stock"`, sum for `"flow"`;
-  absent reads as flow.
-- `grain` is the declared row identity: the served columns whose
-  combination identifies a row — one row per what. A reader that
-  aggregates validates the frame against it and refuses a frame that
-  breaks it (the cube abstains, the reason naming the columns);
-  absent, the shape is undeclared and the frame is taken as served.
-- `axes` is the authored slice list: the served columns the metric is
-  sliced by, in that order, every other served column closed. The
-  empty list closes them all and holds for a distinct count and a
-  ratio — the shapes no column slices whole; on any other shape it is
-  read as absent. Absent, the judged verdicts and the `dimension`
-  glosses on the columns decide. The time axis is not an entry: it is
-  the served date column with a verdict.
+- A grounding's view is a table of its dataset (§3), and its columns
+  are subjects. What a reader needs to combine the view's rows — which
+  column is the period, which is the measure and how it combines over
+  periods and members (a flow sums, a stock keeps its last level, a
+  ratio re-divides its summed halves, served as columns the claim
+  names), which columns slice it, and the row identity — is glossed on
+  the view and its columns under the aspects a kit declares, never
+  keyed in the body. A reader that needs a claim nobody made refuses
+  and names the gloss; it defaults nothing.
+- A kit may declare a schema for a body key its readers need, an
+  aspect flavored `x-kind: grounding`: the engine validates every
+  QUERY gloss against each such schema after the contract. The aspect
+  is never glossed, no witness names it, and re-declaring it is
+  refused while a current QUERY slot would stop matching.
 - `stopped` in place of `sql` records that the author serves no number,
   and why: what is missing, where, how much, what closes it. The read
-  door refuses with that text, the cube abstains with it (`stopped: …`
-  in the fact row's `reason`), `metric_surfaces` serves it, and the
-  assumptions ride the body as on any grounding. Supersession is the
+  door refuses with that text, a reader of the view's rows abstains
+  with it, `metric_surfaces` serves it, and the assumptions ride the
+  body as on any grounding. Supersession is the
   usual: a human `sql` over an agent `stopped` serves, a human `stopped`
   over an agent `sql` stops.
 - **A grounding is a view in the catalog.** The dataset's schema holds
   a view under the metric's name carrying the serving grounding's
   `sql`, in the engine's dialect; a superseding grounding replaces it,
-  a stop ends it. `read.<metric>()` keeps its meaning, and the bare
-  name — or `dataset.metric` — plans the same way. A dataset's schema
+  a stop ends it. The bare name — or `dataset.metric` — plans as a
+  table does. A dataset's schema
   is one name space: a grounding on a landed table's name is refused,
   and a recipe on a grounded metric's name is refused.
 - **Supersession key: (subject, aspect, actor kind).** A human re-gloss
@@ -628,11 +625,10 @@ running system's run_id + snapshot-head pointer is the verbose version of
 the same guarantee · the actor rides the transport — the connection,
 or a door-elicited answer, server-witnessed with human standing ·
 value-at-read: a QUERY aspect's
-value materializes as a namespaced table function — `FROM read.dso()`
-expands the collapsed current grounding at plan time, nesting allowed
-behind a cycle guard; running stays the reader's act. The prefix is
-`read.` (no alias): one
-serving door over every QUERY gloss, whatever flavor `x-kind` names.
+value is its view — `FROM dso`, or `FROM fin.dso` — the collapsed
+current grounding expanded at plan time, nesting allowed behind a
+cycle guard; running stays the reader's act: one serving door over
+every QUERY gloss, whatever flavor `x-kind` names.
 A scenario is a world on the cube's read (fixture 19): a FACT aspect
 per scenario, `x-kind: scenario`, carrying a factor per period on
 declared levers — a lever a FACT aspect on its column — read as
@@ -641,8 +637,8 @@ actual and the forecast worlds; the two passes, the arithmetic
 through the groundings over the data and the estimate ahead, are
 machinery, never statement syntax. A plan is a world on the same read
 (fixture 27): one QUERY aspect per plan, `x-kind: plan`, tied to its
-metric by `x-plan-of` in the declaration, its body the standard
-grounding schema — a plan's numbers are a landed table, read by SQL
+metric by `x-plan-of` in the declaration, its body the grounding
+contract — a plan's numbers are a landed table, read by SQL
 as the actual's are — read as `metric_series(world => 'plan', plan =>
 '<name>')` under the metric it names, at the plan's own resolution;
 an edition of a plan is an aspect of its own, and a plan aspect is no
