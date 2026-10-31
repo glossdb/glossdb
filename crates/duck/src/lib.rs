@@ -287,6 +287,20 @@ pub fn call_shape(statements: &str) -> CallShape {
 /// `ws.glossql`, and the two reads over the record.
 const RECORD: &[&str] = &[
     "glossary",
+    // the door's derived reads, which say what the record holds
+    "open_questions",
+    "ruling_entries",
+    "agent_assumptions",
+    "owed",
+    "metric_surfaces",
+    "metric_axes",
+    "metric_sources",
+    "workspace_next",
+    "app_parts",
+    "app_releases",
+    "next",
+    "imports",
+    "recipes",
     "aspects",
     "witnesses",
     "functions",
@@ -1140,10 +1154,36 @@ impl Session {
         })
     }
 
-    /// Nothing to do on this engine: a measurement recomputes at its
-    /// next extraction once what it read moved.
+    /// The docket's re-measure: every function voice of the bound
+    /// dataset that landed before the last change runs again over its
+    /// subject, and every measurement a metric's fact row wants and
+    /// nobody ran runs for the first time. Returns how many ran.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
-        Ok(0)
+        let acts = self
+            .batches(
+                &format!(
+                    "SELECT DISTINCT m.function, m.subject \
+                     FROM gloss_glossary(current_schema(), NULL, true) r \
+                     JOIN {LAKE}.glossql.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
+                     WHERE r.actor = 'function' AND NOT r.current \
+                     UNION \
+                     SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
+                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.glossql.metric_axes()) \
+                     ORDER BY 1, 2"
+                ),
+                &[],
+            )
+            .await?;
+        let mut ran = 0;
+        for row in rows_as_text(&acts) {
+            let (Some(Some(function)), Some(Some(subject))) = (row.first(), row.get(1)) else {
+                continue;
+            };
+            self.execute(&format!("SELECT {function}() FROM {subject}"))
+                .await?;
+            ran += 1;
+        }
+        Ok(ran)
     }
 
     /// What SQL on this channel can call beyond the engine's own: the

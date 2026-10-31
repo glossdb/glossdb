@@ -10,13 +10,32 @@ use serde_json::Value;
 use crate::AppDoor;
 
 /// The datasets and their purpose. Workspace-scoped: read unbound.
+#[cfg(not(feature = "duck"))]
 pub(crate) const DATASETS: &str = "SELECT name, \
        arrow_cast(coalesce(json_get_str(settings, 'purpose'), ''), 'Utf8') AS purpose \
+     FROM datasets ORDER BY name";
+#[cfg(feature = "duck")]
+pub(crate) const DATASETS: &str = "SELECT name, \
+       coalesce(json_extract_string(settings, '$.purpose'), '') AS purpose \
      FROM datasets ORDER BY name";
 
 /// A dataset at a glance: what has landed, what is served, what waits
 /// on a person. Bound to the dataset; `current_dataset` narrows the
 /// workspace-wide relations.
+#[cfg(feature = "duck")]
+pub(crate) const COUNTS: &str = "WITH latest AS ( \
+       SELECT i.table_name, i.rows, i.imported_at, \
+              row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn \
+       FROM imports i JOIN current_dataset d ON d.dataset = i.dataset) \
+     SELECT \
+       (SELECT count(*) FROM latest WHERE rn = 1) AS tables, \
+       (SELECT coalesce(sum(CAST(rows AS BIGINT)), 0) FROM latest WHERE rn = 1) AS rows, \
+       (SELECT coalesce(max(imported_at)::VARCHAR, '') FROM latest) AS landed, \
+       (SELECT count(*) FROM metric_surfaces WHERE grounded AND stopped = '') AS served, \
+       (SELECT count(*) FROM metric_surfaces WHERE stopped <> '') AS stopped, \
+       (SELECT count(*) FROM open_questions q \
+        JOIN current_dataset d ON d.dataset = q.dataset) AS open";
+#[cfg(not(feature = "duck"))]
 pub(crate) const COUNTS: &str = "WITH latest AS ( \
        SELECT i.table_name, max(i.imported_at) AS imported_at \
        FROM imports i JOIN current_dataset d ON d.dataset = i.dataset \

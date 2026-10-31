@@ -88,7 +88,13 @@ fn relation_sql(name: &str) -> Option<String> {
             && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     };
     if let Some(aspect) = name.strip_prefix("read.") {
-        return ident(aspect).then(|| format!("SELECT * FROM read.{aspect}()"));
+        // the session engine serves a grounding through its read
+        // namespace; the DuckDB engine as the view under its name
+        #[cfg(not(feature = "duck"))]
+        let relation = format!("read.{aspect}()");
+        #[cfg(feature = "duck")]
+        let relation = aspect.to_string();
+        return ident(aspect).then(|| format!("SELECT * FROM {relation}"));
     }
     ident(name).then(|| format!("SELECT * FROM \"{name}\""))
 }

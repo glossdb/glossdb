@@ -699,7 +699,10 @@ rules; what each replaces is the cube's serve-and-mark (section 3).
    re-marked at read time; a verdict older than its data is stale by the
    record's own rule, and the read says so.
 7. The extension admits a view and its columns as subjects: one generic
-   change, built (`../gloss`, `test/sql/gloss_views.test`).
+   change, built (`../gloss`, `test/sql/gloss_views.test`). The kit on
+   these rules is built (`kits/metrics`), and the lead ruled fixture 28:
+   the grounding contract is `sql` or `stopped` and `assumptions`, open;
+   the claims are the view's columns'.
 
 The no-claim rule: at the period column's own cadence nothing is
 combined and no behaviour is needed; at a coarser grain, with no

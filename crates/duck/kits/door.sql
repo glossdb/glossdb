@@ -6,7 +6,8 @@
 
 -- What stands waiting on an act in the bound dataset, from the data
 -- alone: `recipe`, an approved recipe change with no landing since;
--- `contest`, a slot withheld at read; `re-measure`, a function voice
+-- `formula`, a human formula answer newer than the metric's recorded
+-- grounding; `contest`, a slot withheld at read; `re-measure`, a function voice
 -- landed before the last change; `never measured`, a measurement a
 -- metric's row reads and nobody ran, or a witnessed measurement on the
 -- dataset with no voice while a metric is grounded; `fold-in`, a ruling
@@ -25,6 +26,25 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
     WHERE a.tbl IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM ws.glossql.imports i
                       WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
+  -- a human formula answer newer than the agent's standing grounding:
+  -- the view keeps serving the recorded SQL until the agent recomposes it
+  query_aspects AS (
+    SELECT name FROM ws.glossql.aspects
+    QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1 AND kind = 'QUERY'),
+  standing AS (
+    SELECT g.dataset, g.subject, g.aspect, g.seq FROM ws.glossql.glossary g, ds
+    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind = 'agent'
+      AND g.aspect IN (SELECT name FROM query_aspects)
+    QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
+  answered AS (
+    SELECT h.dataset, h.subject, h.body, h.seq, h.written_at FROM ws.glossql.glossary h, ds
+    WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'formulas' AND h.actor_kind = 'human'
+    QUALIFY row_number() OVER (ORDER BY h.seq DESC) = 1),
+  formulas AS (
+    SELECT 'formula' AS kind, g.aspect AS subject, 'formula answer on ' || g.aspect AS what,
+           'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
+    FROM standing g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.seq > g.seq
+    WHERE json_extract(h.body, '$.formulas.' || g.aspect) IS NOT NULL),
   collapsed AS (SELECT subject, aspect, state FROM gloss_glossary(current_schema(), NULL, false)),
   contests AS (
     SELECT 'contest' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
@@ -61,6 +81,7 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
            'ruled (' || r.stance || ') — the fold-in has not run' AS why, r.written_at::VARCHAR AS since
     FROM ws.glossql.ruling_entries r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
   SELECT * FROM recipes
+  UNION ALL SELECT * FROM formulas
   UNION ALL SELECT * FROM contests
   UNION ALL SELECT * FROM remeasures
   UNION ALL SELECT * FROM unmeasured

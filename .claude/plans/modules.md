@@ -34,7 +34,7 @@ and the risk sits in the middle.
 |---|---|---|---|---|
 | Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
 | Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
-| Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads (`next`, `workspace_next`, `owed`, `app_releases`, `metric_surfaces`), the metrics and slices goals, the docket's frames | High: the routes carry 893 lines of tests, and the marked tests are revisited one by one — rewritten, moved or retired | `../gloss/kits`, `core.sql`; `crates/session/reads/*.sql` and `cube.rs` as the source to port | Next; ten to fourteen days | drafted below |
+| Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads, the routes per kit and the composed `next`, the docket's frames in DuckDB SQL | Built; the gate passed (below); the glossval run is open | `../gloss/kits/metrics`, `core.sql`, `door.sql`, `docket/duck/frames` | | |
 | Step 4: the futures kit with the service calls from the host; the scenario's replay deferred | Medium: forecast and bands through the service; the plan as a declared table | `../gloss/kits`; `crates/scripts` (the service client carried over) | After step 3; ten to sixteen days | |
 | Step 5: the cut-over — the image and the release carry DuckDB and the extension; `duck` the only build; session, catalog, import's DataFusion half, the kernels and their tests deleted; docs and skills | Medium: the release machinery (`glossql-release`); CI fetching the extension | `.github/`, the image, `docs/`, `skills/`, the crates deleted | After step 4; six to nine days | |
 
@@ -64,15 +64,41 @@ and the risk sits in the middle.
   and one skills read), apps 27 (25 that seed the cube and the judged
   axes in the session's SQL, the landing's refused cells,
   `app_releases`).
-- **The extension** (`../gloss`, branch `kit-quality`, three commits):
-  the quality kit, the temporal profile, and a view and its columns as
-  subjects — glossed, measured and owed like a table's, the view's
-  definition a leg of what is measured over it and the shape its
-  glosses age by (`test/sql/gloss_views.test`). Its suite: 11 files
-  green. A QUERY aspect takes no grain clause there, and now in the
-  grammar, the docs, the skills, the corpus and the tests here. The
-  extension resolves relative subjects under a `USE` as the docs spell
-  them.
+- **The extension** (`../gloss`, branch `kit-quality`): the quality
+  kit, the temporal profile, a view and its columns as subjects
+  (`test/sql/gloss_views.test`), the metrics kit
+  (`kits/metrics/kit.sql`, `test/sql/gloss_kit_metrics.test`: the
+  ladder, `metric_axes()`, `metric_series(grain, unclaimed)`,
+  `fact_values()`, `metric_sources(for_metric)`, `routes_metrics()`),
+  `gloss_views_lineage(dataset)`, and the record read planned once
+  (seven witnesses: 4 s to 0.5 s). Its suite: 12 files green. A QUERY
+  aspect takes no grain clause; the grounding contract is open and the
+  claims are the view's columns' (fixture 28); `behavior` takes `ratio`
+  with its halves; the KPI kit declares no grounding schema.
+- **Step 3's server half.** `door.sql` (after the kits): `owed` and the
+  core routes; `core.sql`: `app_parts`, `app_releases`,
+  `metric_surfaces`, `workspace_next`. The engine composes one `next`
+  view at open from every `routes_<kit>()` macro's CTE and arm text
+  over the relations it reads once (`ds`, `axes`, `owed`, `reds`,
+  `bodies`, `applicable`); a grounding's write answers with the
+  metric's fact row; an extraction runs unwrapped; re-measure runs the
+  stale and the wanted measurements. The docket's 52 frames stand in
+  DuckDB SQL under `builtin/docket/duck/frames`, the pages shared; the
+  futures frames (breaches, corridor, check points, movers, plan) serve
+  no row until step 4.
+- **The gate, measured.** On DuckDB: serverd 55 of 55 (the routes
+  suite: a fresh dataset routes every goal, a metric walks from its
+  claim to its behaviour, the next page carries the forms), apps 34 of
+  34, the engine's own 3; on the session engine: serverd 66, apps 38,
+  the whole workspace green. Still marked session-only, with reasons:
+  serverd — the next suite (its harness is the session's; the routes
+  suite is its DuckDB counterpart), bootstrap, the judge, the docs and
+  skills reads (their examples spell the session engine's reads, step
+  5), the points test (step 4); apps — the corridor and the plan
+  (step 4), the landing's refused cells (step 5), the frame parse test
+  (the DuckDB frames parse in the engine). `next` reads the record once
+  per relation, about 2 s on a laptop; the record read's planning is
+  the extension's next performance lever.
 - **Conventions the port fixed.** The extension keeps a subject
   dataset-qualified (`fin.t.a`) and the session as spelled; the app
   door gives the prefix back. `written_at` is a TIMESTAMP, rendered
@@ -91,32 +117,15 @@ and the risk sits in the middle.
 
 ## The next row, drafted
 
-**Step 3: the metrics kit.** What it buys: the metrics and slices
-goals on DuckDB over one structure, the design doc's §7.1: a metric is
-a view, its columns are subjects, and its temporal behaviour is its
-value column's collapsed behaviour slot at its period column's cadence
-under that column's ladder; the cube's Rust (`cube.rs`, 4,000 lines)
-and its serve-and-mark have nothing left to serve. What stands: the
-vocabulary kit's `role`, `behavior`, `unit` and `dimension`
-(`../gloss/kits/kpi/kit.sql:24-48`); the quality kit's
-`temporal_profile` (`kits/quality/kit.sql:500`); the grounding schema
-(SPEC §5.2); the series read as 32 lines of SQL in
-`../gloss-neo-spike/kit/series.sql`; the four reads in
-`crates/session/src/cube.rs` (`metric_series_batch` at 4117–4227,
-`metric_axes`, `fact_values`, `metric_sources`); the nine shipped
-reads in `crates/session/reads/` with `next.sql` the routes; the
-docket's 52 frames in `crates/apps/builtin/docket/frames/`; the tests
-marked session-only above; and the extension's view subjects: the
-temporal profile runs on a view's period column and is served while
-the view's definition and its tables stand. Done when: the metrics
-kit declares the ladder fact on time
-columns and `behavior` takes `ratio` with its halves, and the
-dataset's `cube` fact is gone; the reads are macros over the
-collapsed slots and the view — series, axes, sources, the fact row —
-and a coarser grain with no behaviour claim refuses naming the act
-with the evidence quoted; a detector proposes a view's roles from its
-sources through lineage and `next` routes the glosses a new metric's
-columns owe; the shipped reads stand in `core.sql` or the kit; the
-`next` suite and the six door tests run under `duck` with their marks
-gone; the docket's metric pages render under `duck` with the 25 marks
-gone; one glossval run compares.
+**Step 4: the futures kit.** What it buys: the bands, forecast, plan
+and scenario worlds on DuckDB through the service calls from the host,
+the plan as a declared table, the scenario's replay deferred; the
+docket's corridor, breaches, check points, movers and plan frames
+serve again. What stands: `crates/scripts` (the service client), the
+session's `metric_bands`, `metric_forecast`, `band_points`,
+`forecast_points`, `plan_points`, `scenario_points` as the source to
+port; the worlds' framing is a discussion with the lead first. Done
+when: the futures kit declares its aspects and functions; the service
+points are declared on the engine; `metric_series(world := …)` serves
+the worlds; the bands and plan goals route; the marked step 4 tests run
+under `duck`; the futures frames serve rows.
