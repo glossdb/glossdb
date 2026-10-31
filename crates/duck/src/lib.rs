@@ -50,6 +50,8 @@ const PAGES_DB: &str = "memory";
 /// The record's own words, declared at every open before any kit:
 /// the ruling channel, a recipe's approval, the apps as glosses.
 pub const CORE: &str = include_str!("../kits/core.sql");
+/// The door's reads that stand on the kits', declared after them.
+pub const DOOR: &str = include_str!("../kits/door.sql");
 
 // -- the refusal -------------------------------------------------------
 
@@ -426,6 +428,7 @@ impl Config {
             kits: vec![
                 kits_dir.join("kpi/kit.sql"),
                 kits_dir.join("quality/kit.sql"),
+                kits_dir.join("metrics/kit.sql"),
             ],
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
@@ -482,6 +485,83 @@ impl std::fmt::Debug for Plane {
 }
 
 /// Run one statement for its effect on a connection.
+/// The `next` read, written at open from every `routes_<kit>()` macro
+/// the kits and the door declare: each serves its goals' CTEs and arms
+/// as SQL text over the reads this query takes once — `ds`, `axes`,
+/// `owed`, `reds`, `bodies`, `applicable` — so one `next` reads the
+/// record once per relation, and the lowest step decides each goal, in
+/// the goals' order.
+fn next_view(conn: &Connection) -> Result<String, SessionError> {
+    let (_, _, batches) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT function_name FROM duckdb_functions() WHERE database_name = '{LAKE}' \
+             AND schema_name = 'glossql' AND function_name LIKE 'routes\\_%' ESCAPE '\\' \
+             AND function_type = 'table_macro' ORDER BY function_name"
+        ),
+        &[],
+    )?;
+    let routes: Vec<String> = rows_as_text(&batches)
+        .into_iter()
+        .filter_map(|row| row.into_iter().next().flatten())
+        .collect();
+    let mut ctes = Vec::new();
+    let mut arms = Vec::new();
+    for route in &routes {
+        let (_, _, batches) = arrow_batches(
+            conn,
+            &format!("SELECT ctes, arms FROM {LAKE}.glossql.{route}()"),
+            &[],
+        )?;
+        for row in rows_as_text(&batches) {
+            if let Some(Some(c)) = row.first()
+                && !c.trim().is_empty()
+            {
+                ctes.push(c.trim().trim_end_matches(',').to_string());
+            }
+            if let Some(Some(a)) = row.get(1)
+                && !a.trim().is_empty()
+            {
+                arms.push(a.trim().to_string());
+            }
+        }
+    }
+    let steps = if arms.is_empty() {
+        "SELECT NULL::VARCHAR AS surface, NULL::INTEGER AS step, NULL::VARCHAR AS state, \
+         NULL::VARCHAR AS act, NULL::VARCHAR AS say, NULL::VARCHAR AS why, \
+         NULL::VARCHAR AS statement, NULL::VARCHAR AS \"then\" WHERE false"
+            .to_string()
+    } else {
+        arms.join("\nUNION ALL\n")
+    };
+    let shared = format!(
+        "ds AS (SELECT dataset FROM {LAKE}.glossql.current_dataset), \
+         axes AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.metric_axes()), \
+         owed AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.owed), \
+         reds AS MATERIALIZED (SELECT subject, witness FROM gloss_attest(current_schema(), NULL) WHERE band = 'red'), \
+         bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
+           SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
+           FROM {LAKE}.glossql.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
+         applicable AS (SELECT count(*) AS n, string_agg(metric, ', ' ORDER BY metric) AS metrics, \
+           string_agg(chr(39) || metric || chr(39), ', ' ORDER BY metric) AS metric_list FROM axes WHERE applicable)"
+    );
+    let kit_ctes = if ctes.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", ctes.join(", "))
+    };
+    Ok(format!(
+        "CREATE OR REPLACE VIEW {LAKE}.glossql.next AS WITH {shared}{kit_ctes}, \
+         steps AS ({steps}), \
+         first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
+         SELECT CASE surface WHEN 'structure' THEN 1 WHEN 'metrics' THEN 2 WHEN 'slices' THEN 3 \
+                             WHEN 'bands' THEN 4 WHEN 'checks' THEN 5 WHEN 'app' THEN 6 \
+                             WHEN 'plan' THEN 7 ELSE 8 END AS goal, \
+                surface, step, state, act, say, why, statement, \"then\" \
+         FROM first WHERE rn = 1"
+    ))
+}
+
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
     conn.query(sql, Parameters::None)
         .map_err(|e| {
@@ -548,8 +628,31 @@ fn set_search_path(conn: &Connection) -> Result<(), SessionError> {
     let schema = one_cell(&batches).unwrap_or_else(|| "main".to_string());
     run(
         conn,
-        &format!("SET search_path = '{LAKE}.{schema},{LAKE}.glossql,{PAGES_DB}.main'"),
+        &format!("SET search_path = '{LAKE}.{schema},{LAKE}.glossql,{LAKE}.main,{PAGES_DB}.main'"),
     )
+}
+
+/// An extraction, `SELECT <function>() FROM <subject>`: the language's
+/// form, which the grammar takes whole and a paging subquery would hide.
+fn is_extraction(sql: &str) -> bool {
+    let tokens: Vec<&str> = sql
+        .trim()
+        .trim_end_matches(';')
+        .split_whitespace()
+        .collect();
+    let [select, call, from, subject] = tokens.as_slice() else {
+        return false;
+    };
+    let function = call.strip_suffix("()").unwrap_or("");
+    select.eq_ignore_ascii_case("select")
+        && from.eq_ignore_ascii_case("from")
+        && !function.is_empty()
+        && function
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && subject
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
 }
 
 /// The glossql heads: a statement of the language answers one line.
@@ -638,6 +741,10 @@ impl Plane {
                     run(&conn, &format!("FROM gloss_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
+                for statement in split_statements(DOOR) {
+                    run(&conn, &statement)?;
+                }
+                run(&conn, &next_view(&conn)?)?;
                 Ok((environment, instance))
             }
         })
@@ -1009,7 +1116,9 @@ impl Session {
         }
         let one = pieces[0].clone();
         let record = reads_record(&one);
-        let cap = if paged && !record {
+        // an extraction is the language's, not a SELECT to page: it runs
+        // as written, and lands one row per function
+        let cap = if paged && !record && !is_extraction(&one) {
             self.row_cap
         } else {
             usize::MAX
@@ -1092,6 +1201,12 @@ fn execute_one(conn: &Connection, sql: &str, cap: usize) -> Result<Outcome, Sess
             if is_glossql_head(sql)
                 && let Some(text) = one_cell(&batches)
             {
+                if let Some(row) = grounding_row(conn, &text)? {
+                    return Ok(Outcome::Rows {
+                        batches: row,
+                        truncated: false,
+                    });
+                }
                 return Ok(Outcome::Done(text));
             }
             let (batches, truncated) = cut(batches, cap);
@@ -1100,45 +1215,111 @@ fn execute_one(conn: &Connection, sql: &str, cap: usize) -> Result<Outcome, Sess
     }
 }
 
-/// Statements split on `;` outside quotes, dollar quotes and comments.
+/// A grounding's write answers with the metric's fact row: what the
+/// view's columns say and what they owe, at the pin the write moved
+/// to, in place of the outcome's one line. Any other gloss keeps its
+/// line; a metric with no row (the kit not loaded) keeps it too.
+fn grounding_row(
+    conn: &Connection,
+    outcome: &str,
+) -> Result<Option<Vec<RecordBatch>>, SessionError> {
+    let Some(rest) = outcome.strip_prefix("glossed ") else {
+        return Ok(None);
+    };
+    let Some(aspect) = rest.split(" on ").next().filter(|a| !a.is_empty()) else {
+        return Ok(None);
+    };
+    let quoted = aspect.replace('\'', "''");
+    let (_, _, kind) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT kind FROM {LAKE}.glossql.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
+        ),
+        &[],
+    )?;
+    if one_cell(&kind).as_deref() != Some("QUERY") {
+        return Ok(None);
+    }
+    let (_, _, row) = arrow_batches(
+        conn,
+        &format!("SELECT * FROM {LAKE}.glossql.metric_axes() WHERE metric = '{quoted}'"),
+        &[],
+    )?;
+    let rows: usize = row.iter().map(|b| b.num_rows()).sum();
+    Ok((rows > 0).then_some(row))
+}
+
+/// Statements split on `;` outside quotes, dollar quotes (`$$` and
+/// tagged, `$tag$`) and comments.
 fn split_statements(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
-    let mut chars = text.chars().peekable();
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
     let mut in_single = false;
     let mut in_double = false;
-    let mut in_dollar = false;
+    // the tag of the dollar quote open, `""` for `$$`
+    let mut dollar: Option<String> = None;
     let mut in_line_comment = false;
-    while let Some(c) = chars.next() {
+    // a dollar quote opening or closing at `i`: its tag, and its length
+    let delimiter = |i: usize| -> Option<(String, usize)> {
+        if chars.get(i) != Some(&'$') {
+            return None;
+        }
+        let mut j = i + 1;
+        while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+            j += 1;
+        }
+        (chars.get(j) == Some(&'$')).then(|| (chars[i + 1..j].iter().collect(), j + 1 - i))
+    };
+    while i < chars.len() {
+        let c = chars[i];
         if in_line_comment {
             current.push(c);
             if c == '\n' {
                 in_line_comment = false;
             }
+            i += 1;
             continue;
         }
-        if !in_single && !in_double && !in_dollar && c == '-' && chars.peek() == Some(&'-') {
+        let in_dollar = dollar.is_some();
+        if !in_single && !in_double && !in_dollar && c == '-' && chars.get(i + 1) == Some(&'-') {
             in_line_comment = true;
             current.push(c);
+            i += 1;
             continue;
+        }
+        if !in_single && !in_double && c == '$' {
+            match (&dollar, delimiter(i)) {
+                (None, Some((tag, len))) => {
+                    current.extend(chars[i..i + len].iter());
+                    dollar = Some(tag);
+                    i += len;
+                    continue;
+                }
+                (Some(open), Some((tag, len))) if *open == tag => {
+                    current.extend(chars[i..i + len].iter());
+                    dollar = None;
+                    i += len;
+                    continue;
+                }
+                _ => {}
+            }
         }
         if !in_double && !in_dollar && c == '\'' {
             in_single = !in_single;
         } else if !in_single && !in_dollar && c == '"' {
             in_double = !in_double;
-        } else if !in_single && !in_double && c == '$' && chars.peek() == Some(&'$') {
-            chars.next();
-            current.push_str("$$");
-            in_dollar = !in_dollar;
-            continue;
         } else if !in_single && !in_double && !in_dollar && c == ';' {
             if !current.trim().is_empty() {
                 out.push(current.trim().to_string());
             }
             current.clear();
+            i += 1;
             continue;
         }
         current.push(c);
+        i += 1;
     }
     if !current.trim().is_empty() {
         out.push(current.trim().to_string());

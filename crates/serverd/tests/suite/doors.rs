@@ -137,8 +137,6 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
 /// A refusal answers by its class: a name the record does not hold is
 /// not found, a door whose service is not named is unavailable, and
 /// the statement's own fault is unprocessable.
-// The read namespace and the metric reads are served in later steps.
-#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refusal_answers_by_its_class() {
     let (app, _dir) = app_on_fin().await;
@@ -158,27 +156,33 @@ async fn a_refusal_answers_by_its_class() {
             (status, body_json(response).await)
         }
     };
-    let (status, body) = ask("SELECT * FROM read.nope()").await;
+    // A name the record does not hold: the session engine's read
+    // namespace, or on DuckDB a metric's view by its name.
+    #[cfg(not(feature = "duck"))]
+    let (missing, said) = ("SELECT * FROM read.nope()", "no aspect `nope`");
+    #[cfg(feature = "duck")]
+    let (missing, said) = ("SELECT * FROM nope", "nope");
+    let (status, body) = ask(missing).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(
-        body["error"].as_str().unwrap().contains("no aspect `nope`"),
-        "{body}"
-    );
-    let (status, body) = ask("SELECT * FROM metric_forecast_ahead('fin')").await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
-    assert!(
-        body["error"].as_str().unwrap().contains("names none"),
-        "{body}"
-    );
+    assert!(body["error"].as_str().unwrap().contains(said), "{body}");
+    // A door whose service is not named: the session engine's points;
+    // the DuckDB build names none before the futures kit.
+    #[cfg(not(feature = "duck"))]
+    {
+        let (status, body) = ask("SELECT * FROM metric_forecast_ahead('fin')").await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert!(
+            body["error"].as_str().unwrap().contains("names none"),
+            "{body}"
+        );
+    }
     let (status, body) = ask("SELECT * FROM metric_axes('revenue')").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert!(
-        body["error"]
-            .as_str()
-            .unwrap()
-            .contains("takes no arguments"),
-        "{body}"
-    );
+    #[cfg(not(feature = "duck"))]
+    let fault = "takes no arguments";
+    #[cfg(feature = "duck")]
+    let fault = "metric_axes";
+    assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1325,8 +1329,6 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
 /// dataset's `next` line on every result. The workspace door keeps
 /// opening unbound, and a dataset the workspace does not hold is the
 /// same 404 the human doors answer.
-// The `next:` line reads the routes (next.sql), ported with them.
-#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     let (app, _dir) = app_on_fin().await;
@@ -1406,6 +1408,53 @@ fn meta_elicit() -> Value {
         "io.modelcontextprotocol/clientCapabilities": {"elicitation": {}},
         "io.modelcontextprotocol/clientInfo": {"name": "doors-test", "version": "0"}
     })
+}
+
+/// The same round on DuckDB: the kits are declared at open, a source
+/// and a recipe land the table, and the role gloss leaves the behavior
+/// claim owed — the witnessed claim a measurement settles, never a
+/// question for the human.
+#[cfg(feature = "duck")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_round_never_asks_the_human_for_statistics() {
+    let (app, _dir) = app().await;
+    let files = tempfile::tempdir().unwrap();
+    std::fs::write(
+        files.path().join("ledger.csv"),
+        "month,value\n2026-01-01,10.5\n2026-02-01,4.0\n",
+    )
+    .unwrap();
+    let setup = format!(
+        r#"DECLARE DATASET perf SET (purpose: 'kit test');
+           USE perf;
+           DECLARE SOURCE erp SET (type: csv, location: '{}');
+           DECLARE RECIPE ledger ON perf FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(value AS DOUBLE) AS value FROM read_csv('ledger.csv')$$;
+           GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;"#,
+        files.path().display()
+    );
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 70, &setup, None)).await).await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    let body = expect_ok(
+        mcp(
+            app.clone(),
+            call_with(
+                meta_elicit(),
+                71,
+                "SELECT subject, aspect FROM glossary LIMIT 5",
+                None,
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(
+        body["result"]["resultType"],
+        json!("input_required"),
+        "the door asked the human for a statistic: {body}"
+    );
+    let body = expect_ok(mcp(app, initialize()).await).await;
+    let instructions = body["result"]["instructions"].as_str().unwrap();
+    assert!(!instructions.contains("question"), "{instructions}");
 }
 
 // The kit\'s witnesses run the session engine\'s script runtime.
@@ -2313,8 +2362,6 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 }
 
-// A grounding's write answers with the metric_axes() shape (step 3).
-#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_brief_rides_the_call_that_moved_it() {
     // Run 2's friction 11: initialize instructions are fetched once
@@ -2611,9 +2658,6 @@ async fn an_agent_authors_an_app_over_the_tool() {
     assert!(!html.contains("What stands open"), "superseded: {html}");
 }
 
-// `workspace_next` counts the whole record, functions and measurements
-// included; ported with the next routes.
-#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_workspace_says_what_it_affords() {
     // The map that replaces the staged manuals: what this workspace can
@@ -2652,6 +2696,12 @@ async fn the_workspace_says_what_it_affords() {
     let outcomes: Value = serde_json::from_str(text).unwrap();
     let rows = outcomes[0]["rows"].as_array().unwrap();
     let surfaces: Vec<&str> = rows.iter().filter_map(|r| r["surface"].as_str()).collect();
+    // The sample door is the session engine's; the DuckDB build affords no
+    // samples surface.
+    #[cfg(not(feature = "duck"))]
+    let samples: &[&str] = &["samples"];
+    #[cfg(feature = "duck")]
+    let samples: &[&str] = &[];
     for expected in [
         "apps",
         "aspects",
@@ -2661,13 +2711,15 @@ async fn the_workspace_says_what_it_affords() {
         "plans",
         "relationships",
         "rulings",
-        "samples",
         "scenarios",
         "sources",
         "tables",
         "validations",
-    ] {
-        assert!(surfaces.contains(&expected), "{expected} missing: {rows:?}");
+    ]
+    .iter()
+    .chain(samples)
+    {
+        assert!(surfaces.contains(expected), "{expected} missing: {rows:?}");
     }
     let row = |name: &str| {
         rows.iter()
@@ -2686,15 +2738,28 @@ async fn the_workspace_says_what_it_affords() {
     // standing with no body, which is exactly what `open` means.
     assert_eq!(row("scenarios")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
-    assert_eq!(row("samples")["stands"], json!(1), "{rows:?}");
-    assert_eq!(row("samples")["open"], json!(1), "{rows:?}");
+    #[cfg(not(feature = "duck"))]
+    {
+        assert_eq!(row("samples")["stands"], json!(1), "{rows:?}");
+        assert_eq!(row("samples")["open"], json!(1), "{rows:?}");
+    }
     // Nothing ruled yet, so nothing owes a fold-in.
     assert_eq!(row("rulings")["stands"], json!(0), "{rows:?}");
     assert_eq!(row("rulings")["open"], json!(0), "{rows:?}");
     // A validation stands with its witness and is open while nobody
-    // has spoken on the witnessed aspect.
-    assert_eq!(row("validations")["stands"], json!(1), "{rows:?}");
-    assert_eq!(row("validations")["open"], json!(1), "{rows:?}");
+    // has spoken on the witnessed aspect. The DuckDB build opens with
+    // its kits declared, whose seven witnesses stand open here too.
+    let kit_witnesses = if cfg!(feature = "duck") { 7 } else { 0 };
+    assert_eq!(
+        row("validations")["stands"],
+        json!(1 + kit_witnesses),
+        "{rows:?}"
+    );
+    assert_eq!(
+        row("validations")["open"],
+        json!(1 + kit_witnesses),
+        "{rows:?}"
+    );
 
     // The authored expectation is speech on the aspect: the validation
     // stops being owed the moment somebody speaks.
@@ -2717,7 +2782,11 @@ async fn the_workspace_says_what_it_affords() {
     .await;
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(outcomes[0]["rows"][0]["open"], json!(0), "{outcomes}");
+    assert_eq!(
+        outcomes[0]["rows"][0]["open"],
+        json!(kit_witnesses),
+        "{outcomes}"
+    );
 }
 
 /// Run 4 read `workspace_next` twice in one session and got two
@@ -2727,9 +2796,6 @@ async fn the_workspace_says_what_it_affords() {
 /// real counts. A filter that is silently dropped is bad; one that also
 /// corrupts the counts it returns is worse, so both halves are asserted
 /// here against the same session.
-// `workspace_next` counts the whole record, functions and measurements
-// included; ported with the next routes.
-#[cfg(not(feature = "duck"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let (app, _dir) = app().await;

@@ -12,8 +12,11 @@ mod common;
 mod conformance;
 mod docs;
 mod doors;
+// The routes on the DuckDB engine, read through the bound agent door.
 #[cfg(not(feature = "duck"))]
 mod judge;
+#[cfg(feature = "duck")]
+mod routes;
 // The routes read the record through the session engine's shipped
 // reads over tables landed in memory; the DuckDB build ports them in a
 // later step.

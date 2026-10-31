@@ -295,13 +295,14 @@ GLOSS fk_note ON orders.customer_id -> customers.id AS $${"value": "2% orphaned 
   aspect without a grain clause takes the subject as spelled; a QUERY
   aspect takes the dataset.
 - The **grounding contract** is fixed, like the attest schema (§7.2): what
-  the engine reads of a grounding, and nothing a reader of its rows needs:
+  the engine reads of a grounding, and nothing a reader of its rows needs.
+  It is open: a key it does not name passes, and a kit's grounding schema
+  is what closes the body.
 
 ```json
 {
   "type": "object",
   "oneOf": [{"required": ["sql"]}, {"required": ["stopped"]}],
-  "additionalProperties": false,
   "properties": {
     "sql": {"type": "string"},
     "stopped": {"type": "string"},
