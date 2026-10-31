@@ -96,11 +96,12 @@ and the risk sits in the middle.
   skills reads (their examples spell the session engine's reads, step
   5), the points test (step 4); apps — the corridor and the plan
   (step 4), the landing's refused cells (step 5), the frame parse test
-  (the DuckDB frames parse in the engine). A connection keeps a
-  dataset's record read while the store and the lake stand still, so
-  `next` costs about 100 ms on a laptop after a connection's first read
-  (about 300 ms), and a gloss read binds in under 10 ms; the server
-  still opens a connection per call, so every call pays the first read.
+  (the DuckDB frames parse in the engine). The extension keeps a
+  dataset's record read in the instance's object cache under the
+  store's version, shared by every connection, so a call's `next`
+  costs about 120 ms on a laptop, `owed` 60 ms and a gloss read 20 ms
+  on a fresh connection; the first read after a write computes the
+  rows once, about 300 ms. Connections stay per call, as on the session.
 - **Conventions the port fixed.** The extension keeps a subject
   dataset-qualified (`fin.t.a`) and the session as spelled; the app
   door gives the prefix back. `written_at` is a TIMESTAMP, rendered
