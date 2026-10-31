@@ -676,6 +676,46 @@ is deleted at the cut-over, never refactored.
 Step 1 passed its gate; the plan's three engine rows on DataFusion
 are dropped, not done.
 
+### 7.1 The metrics structure, ruled
+
+The temporal behaviour of a metric, as the metrics kit builds it. Seven
+rules; what each replaces is the cube's serve-and-mark (section 3).
+
+1. A metric is a view, and the view's columns are subjects, glossed and
+   measured like a table's.
+2. The view's period column carries `role = timestamp` and gets its own
+   profile; the view's value column carries `role = measure` and its
+   `behavior`: stock, flow, or ratio with its halves named.
+3. The ladder — floor, windows, calendar — is a fact on a time column,
+   owed where the role is timestamp, with the measured cadence as the
+   floor's default. The dataset-level `cube` fact goes.
+4. A metric's temporal behaviour is its value column's collapsed
+   behaviour slot, at its period column's cadence, under that column's
+   ladder.
+5. A table's columns keep their roles, profiles and behaviour: what the
+   agent reads to write the grounding's aggregation, and what a detector
+   reads through lineage to propose the view's roles.
+6. The reads are SQL over the collapsed slots and the view. Nothing is
+   re-marked at read time; a verdict older than its data is stale by the
+   record's own rule, and the read says so.
+7. The extension admits view columns as subjects: one generic change.
+
+The no-claim rule: at the period column's own cadence nothing is
+combined and no behaviour is needed; at a coarser grain, with no
+behaviour claim on the value column, the read refuses and names the
+act — no behaviour stands on `spend.value`, the evidence says flow at
+0.9, gloss it. A silent default is wrong for a stock and teaches the
+agent nothing; a refusal is what `next` routes.
+
+Why the view's columns and not keys in the grounding body: a ruling
+then lands on one fact instead of the whole grounding; the behaviour
+has a slot the witness can band and `ATTEST` can serve; the metric's
+own period has a subject for its profile, which a filtered or joined
+grounding needs; a derived period has a column for its ladder; and a
+metric used as another grounding's source is a table with a table's
+facts. Measured on 2026-10-31: the profile runs on a table column on
+the extension; a view's column is not yet admitted as a subject.
+
 ## 8. For the long run
 
 Four directions the lead set, held here as design, not as rows.
