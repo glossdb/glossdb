@@ -150,7 +150,7 @@ judgment in the assumptions. Every disclosed assumption carries a
 `key` — the claim's identity, what rulings join on.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
 
 GLOSS definitions ON ops AS $${"definitions": {
   "throughput": {"meaning": "work completed and accepted; counted at completion date",

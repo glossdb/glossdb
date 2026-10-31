@@ -861,8 +861,8 @@ async fn the_walk_sends_the_series_as_one_table_and_reads_the_bands() {
         Arc::clone(&rt),
         vec![("lines", dates.clone(), flow), ("levels", dates, stock)],
         &[
-            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
             r#"GLOSS revenue ON fin AS $${"sql": "SELECT date, value FROM lines"}$$;"#,
             r#"GLOSS inventory ON fin AS $${"sql": "SELECT date, value FROM levels", "behavior": "stock"}$$;"#,
         ],
@@ -1021,7 +1021,7 @@ async fn the_forecast_lands_at_the_origin_and_the_reads_follow_the_actuals() {
          CAST(value AS DOUBLE) AS value FROM read_csv('lines/*.csv')$$;"
             .to_string(),
         "IMPORT lines;".to_string(),
-        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#.to_string(),
+        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#.to_string(),
         r#"GLOSS revenue ON fin AS $${"sql": "SELECT date, value FROM lines"}$$;"#.to_string(),
         // The cube admits a series on a judged time column.
         "SELECT judge_time() FROM lines.date;".to_string(),
@@ -1207,7 +1207,7 @@ async fn the_scenario_world_is_replayed_and_estimated_through_the_whatif_point()
          CAST(value AS DOUBLE) AS value, CAST(price AS DOUBLE) AS price FROM read_csv('lines/*.csv')$$;"
             .to_string(),
         "IMPORT lines;".to_string(),
-        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#.to_string(),
+        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#.to_string(),
         r#"GLOSS revenue ON fin AS $${"sql": "SELECT date, value * price AS value FROM lines"}$$;"#.to_string(),
         "SELECT judge_time() FROM lines.date;".to_string(),
         r#"DECLARE ASPECT lever WITH $${"type": "object", "required": ["value"], "properties": {"value": {"type": "boolean"}, "grounds": {"type": "string"}}}$$ AS FACT ON COLUMN;"#.to_string(),

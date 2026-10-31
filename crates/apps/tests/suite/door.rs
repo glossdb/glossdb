@@ -654,9 +654,9 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
     agent
         .execute(&format!(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT payables WITH $${{"title": "Outstanding payables", "x-kind": "fact"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT cleaned WITH $${{"title": "Cleaned ledger", "x-kind": "relation"}}$$ AS QUERY ON DATASET;
+               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY;
+               DECLARE ASPECT payables WITH $${{"title": "Outstanding payables", "x-kind": "fact"}}$$ AS QUERY;
+               DECLARE ASPECT cleaned WITH $${{"title": "Cleaned ledger", "x-kind": "relation"}}$$ AS QUERY;
                DECLARE ASPECT definitions WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
                DECLARE ASPECT formulas WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
                DECLARE ASPECT temporal_profile WITH $${{"type": "object",
@@ -1832,7 +1832,7 @@ async fn the_plan_stands_beside_its_metric() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY ON DATASET;
+               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY;
                GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM ledger"}$$;"#,
         )
         .await
@@ -1896,8 +1896,8 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap()
         .execute(&format!(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT undated WITH $${{"title": "Undated"}}$$ AS QUERY ON DATASET;
+               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY;
+               DECLARE ASPECT undated WITH $${{"title": "Undated"}}$$ AS QUERY;
                DECLARE ASPECT temporal_profile WITH $${{"type": "object",
                  "required": ["applicable"],
                  "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
@@ -2589,7 +2589,7 @@ async fn a_stopped_surface_folds_under_the_lists() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS QUERY;
                GLOSS old_dso ON perf AS $${"stopped": "superseded by dso, which reads the cohort"}$$;"#,
         )
         .await

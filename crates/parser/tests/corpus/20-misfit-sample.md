@@ -31,7 +31,7 @@ DECLARE ASPECT payment_pairs WITH $${
   "title": "Payment rows against their invoice, six months and March",
   "description": "Authored after the relationship check went red on March",
   "x-kind": "sample"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 ```
 
 ## 2. The frame body — one SQL, ranked against itself

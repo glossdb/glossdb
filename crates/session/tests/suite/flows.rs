@@ -136,7 +136,7 @@ async fn a_grounding_is_a_view_in_the_catalog() {
     land_orders_and_customers(&session).await;
     run(
         &session,
-        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
            GLOSS revenue ON fin AS $${"sql": "SELECT amount AS value FROM orders"}$$;"#,
     )
     .await;
@@ -214,7 +214,7 @@ async fn a_grounding_is_a_view_in_the_catalog() {
     // One name space per dataset, both ways.
     run(
         &session,
-        r#"DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS QUERY ON DATASET;"#,
+        r#"DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS QUERY;"#,
     )
     .await;
     let e = session
@@ -228,7 +228,7 @@ async fn a_grounding_is_a_view_in_the_catalog() {
     assert!(e.to_string().contains("never share a name"), "{e}");
     run(
         &session,
-        r#"DECLARE ASPECT margin WITH $${"title": "Margin"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT margin WITH $${"title": "Margin"}$$ AS QUERY;
            GLOSS margin ON fin AS $${"sql": "SELECT amount AS value FROM orders"}$$;"#,
     )
     .await;
@@ -259,13 +259,13 @@ async fn a_view_composes_as_a_view_does() {
     land_orders_and_customers(&session).await;
     run(
         &session,
-        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
            GLOSS revenue ON fin AS $${"sql": "SELECT amount AS value FROM orders"}$$;
-           DECLARE ASPECT half WITH $${"title": "Half"}$$ AS QUERY ON DATASET;
+           DECLARE ASPECT half WITH $${"title": "Half"}$$ AS QUERY;
            GLOSS half ON fin AS $${"sql": "SELECT value / 2 AS value FROM revenue"}$$;
-           DECLARE ASPECT asked WITH $${"title": "Asked"}$$ AS QUERY ON DATASET;
+           DECLARE ASPECT asked WITH $${"title": "Asked"}$$ AS QUERY;
            GLOSS asked ON fin AS $${"sql": "SELECT count(*) AS value FROM open_questions"}$$;
-           DECLARE ASPECT looping WITH $${"title": "Loop"}$$ AS QUERY ON DATASET;
+           DECLARE ASPECT looping WITH $${"title": "Loop"}$$ AS QUERY;
            GLOSS looping ON fin AS $${"sql": "SELECT value FROM looping"}$$;"#,
     )
     .await;
@@ -933,7 +933,7 @@ async fn a_grounding_admits_and_serves_its_sql_back() {
     run(
         &session,
         r##"
-        DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
         GLOSS revenue ON fin AS $${
           "sql": "SELECT e.date, l.credit - l.debit AS value FROM journal_lines l JOIN journal_entries e ON l.entry_id = e.entry_id",
           "assumptions": [{"assumption": "grain-preserving join", "basis": "relationship glosses"}]
@@ -991,8 +991,8 @@ async fn the_serve_door_runs_the_current_grounding() {
     run(
         &agent,
         r##"
-        DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT doubled WITH $${"title": "Doubled"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
+        DECLARE ASPECT doubled WITH $${"title": "Doubled"}$$ AS QUERY;
         GLOSS revenue ON fin AS $${"sql": "SELECT amount AS value FROM orders"}$$;
         GLOSS doubled ON fin AS $${"sql": "SELECT value * 2 AS value FROM read.revenue()"}$$;
         "##,
@@ -1030,7 +1030,7 @@ async fn the_serve_door_runs_the_current_grounding() {
     run(
         &agent,
         r##"
-        DECLARE ASPECT looping WITH $${"title": "Loop"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT looping WITH $${"title": "Loop"}$$ AS QUERY;
         GLOSS looping ON fin AS $${"sql": "SELECT value FROM read.looping()"}$$;
         "##,
     )
@@ -1058,7 +1058,7 @@ async fn the_serve_door_runs_the_current_grounding() {
     }
     run(
         &agent,
-        r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;"#,
+        r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;"#,
     )
     .await;
     let e = agent
@@ -1220,7 +1220,7 @@ async fn a_self_referential_frame_errors_instead_of_recursing() {
     run(&session, SETUP).await;
     run(
         &session,
-        r#"DECLARE ASPECT selfframe WITH $${"type": "object"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT selfframe WITH $${"type": "object"}$$ AS QUERY;
            GLOSS selfframe ON fin AS $${"sql": "SELECT * FROM misfit.selfframe()", "assumptions": []}$$;"#,
     )
     .await;
@@ -1290,7 +1290,7 @@ async fn the_cube_reads_compute_under_the_declared_cube_aspect() {
     // without it is refused with the road out (the kit ships it).
     run(
         &session,
-        r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;
            GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v"}$$;"#,
     )
     .await;
@@ -1362,7 +1362,7 @@ async fn a_grounding_written_unbound_lands_and_names_where_it_is_judged() {
     run(
         &session,
         r#"DECLARE DATASET fin SET (purpose: 'metrics');
-           DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;"#,
+           DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;"#,
     )
     .await;
     let row = table(
@@ -2164,7 +2164,7 @@ async fn a_stopped_grounding_serves_its_reason_and_no_number() {
              "resolution": {"default": "day"},
              "windows": {"type": "object", "properties": {"month": {"default": "48 months"}}}}}$$
            AS FACT ON DATASET;
-           DECLARE ASPECT utilization WITH $${"title": "Utilization"}$$ AS QUERY ON DATASET;"#,
+           DECLARE ASPECT utilization WITH $${"title": "Utilization"}$$ AS QUERY;"#,
     )
     .await;
     let written = table(
@@ -2485,7 +2485,7 @@ async fn a_grounding_the_physical_planner_refuses_abstains_at_the_write() {
              "windows": {"type": "object", "properties": {"month": {"default": "48 months"}}}}}$$
            AS FACT ON DATASET;
            DECLARE ASPECT orders_per_customer WITH $${"title": "orders per customer"}$$
-           AS QUERY ON DATASET;"#,
+           AS QUERY;"#,
     )
     .await;
     let fact = table(
@@ -2647,8 +2647,8 @@ async fn a_landed_table_wins_over_an_aspect_of_its_name_in_a_read() {
     land_orders_and_customers(&session).await;
     run(
         &session,
-        r#"DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS QUERY ON DATASET;
-           DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS QUERY;
+           DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;
            GLOSS unit ON orders.amount AS $${"value": "EUR"}$$;"#,
     )
     .await;
@@ -3017,9 +3017,9 @@ async fn metric_sources_serves_the_provenance_walk_as_rows() {
     land_orders_and_customers(&session).await;
     run(
         &session,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY ON DATASET;
-           DECLARE ASPECT halted WITH $${"title": "Halted"}$$ AS QUERY ON DATASET;
-           DECLARE ASPECT broken WITH $${"title": "Broken"}$$ AS QUERY ON DATASET;
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;
+           DECLARE ASPECT halted WITH $${"title": "Halted"}$$ AS QUERY;
+           DECLARE ASPECT broken WITH $${"title": "Broken"}$$ AS QUERY;
            GLOSS spend ON fin AS $${"sql": "SELECT customer_id AS cust, sum(amount) AS value FROM orders GROUP BY 1"}$$;
            GLOSS halted ON fin AS $${"stopped": "the export lacks the column"}$$;
            GLOSS broken ON fin AS $${"sql": "SELECT nothing FROM nowhere"}$$;"#,

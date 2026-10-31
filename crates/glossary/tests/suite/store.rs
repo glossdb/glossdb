@@ -229,7 +229,7 @@ async fn a_metric_is_grounded_on_the_dataset() {
         .unwrap();
     // The clause may only say what the kind already says.
     let Declaration::Aspect(spelled) =
-        decl(r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;"#)
+        decl(r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;"#)
     else {
         unreachable!()
     };

@@ -208,7 +208,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         .execute(
             "DECLARE DATASET fin SET (purpose: 'reads');
              USE fin;
-             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS QUERY ON DATASET;
+             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS QUERY;
              GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\", \"assumptions\": [
                {\"dimension\": \"definition\", \"key\": \"per-line\", \"assumption\": \"per line\", \"basis\": \"judgment\", \"confidence\": 0.7},
                {\"dimension\": \"grain\", \"key\": \"g\", \"assumption\": \"monthly\", \"basis\": \"measured\", \"confidence\": 1.0}]}$$;",

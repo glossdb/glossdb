@@ -212,7 +212,7 @@ fn constructors() -> RecordBatch {
 }
 
 const POINTS_BY_TEAM: &[&str] = &[
-    r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY ON DATASET;"#,
+    r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY;"#,
     r#"GLOSS points ON fin AS $${"sql": "SELECT r.date, c.label AS team, r.constructor_id AS cid, r.venue AS venue, r.points AS value FROM results r JOIN constructors c ON r.constructor_id = c.constructor_id"}$$;"#,
     "SELECT judge_time() FROM results.date;",
     "SELECT judge_axis() FROM constructors.label;",
@@ -224,7 +224,7 @@ const AXES: &str = "SELECT dims, basis, admitted_by FROM metric_axes();";
 /// A second metric over the results alone, serving no dimension —
 /// what a gloss on `results.venue` cannot reach.
 const TOTAL_POINTS: &[&str] = &[
-    r#"DECLARE ASPECT total WITH $${"title": "Total"}$$ AS QUERY ON DATASET;"#,
+    r#"DECLARE ASPECT total WITH $${"title": "Total"}$$ AS QUERY;"#,
     r#"GLOSS total ON fin AS $${"sql": "SELECT date, points AS value FROM results"}$$;"#,
 ];
 
@@ -616,7 +616,7 @@ async fn a_grounding_write_answers_with_the_metrics_fact() {
     let session = cube_session(
         dir.path(),
         vec![("results", results()), ("constructors", constructors())],
-        &[r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY ON DATASET;"#],
+        &[r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY;"#],
     )
     .await;
     let ground = |sql: &str| format!(r#"GLOSS points ON fin AS $${{"sql": "{sql}"}}$$;"#);
@@ -737,7 +737,7 @@ async fn the_grounding_names_its_axes() {
         dir.path(),
         vec![("results", results()), ("constructors", constructors())],
         &[
-            r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY;"#,
             "SELECT judge_time() FROM results.date;",
             "SELECT judge_axis() FROM results.constructor_id;",
         ],
@@ -840,7 +840,7 @@ async fn a_slot_walkers_measurement_owes_its_re_run_to_a_grounding_alone() {
         dir.path(),
         vec![("results", results()), ("constructors", constructors())],
         &[
-            r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT points WITH $${"title": "Points"}$$ AS QUERY;"#,
             r#"GLOSS points ON fin AS $${"sql": "SELECT r.date, r.venue AS venue, r.points AS value FROM results r"}$$;"#,
             "SELECT judge_time() FROM results.date;",
             r#"DECLARE ASPECT sources_seen WITH $${"type": "object", "required": ["applicable"],
@@ -1001,8 +1001,8 @@ async fn the_cube_slices_windows_and_carries_the_rival() {
         dir.path(),
         vec![("lines", lines), ("alt", alt), ("levels", levels)],
         &[
-            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
             r#"GLOSS revenue ON fin AS $${
                  "sql": "SELECT date, value, region, channel, note FROM lines",
                  "assumptions": [
@@ -1227,7 +1227,7 @@ async fn the_stock_total_sums_the_months_latest_snapshot() {
         dir.path(),
         vec![("levels", levels)],
         &[
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
             r#"GLOSS inventory ON fin AS $${"sql": "SELECT date, value, product FROM levels", "behavior": "stock"}$$;"#,
             "SELECT judge_time() FROM levels.date;",
             "SELECT judge_axis() FROM levels.product;",
@@ -1321,15 +1321,15 @@ async fn the_declared_grain_gates_the_frame_one_row_per_key() {
         dir.path(),
         vec![("events", events)],
         &[
-            r#"DECLARE ASPECT held WITH $${"title": "Held"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT held WITH $${"title": "Held"}$$ AS QUERY;"#,
             r#"GLOSS held ON fin AS $${"sql": "SELECT date, value, account FROM events", "behavior": "stock", "grain": ["date", "account"]}$$;"#,
-            r#"DECLARE ASPECT broken WITH $${"title": "Broken"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT broken WITH $${"title": "Broken"}$$ AS QUERY;"#,
             r#"GLOSS broken ON fin AS $${"sql": "SELECT date, value FROM events", "behavior": "stock", "grain": ["date"]}$$;"#,
-            r#"DECLARE ASPECT unserved WITH $${"title": "Unserved"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT unserved WITH $${"title": "Unserved"}$$ AS QUERY;"#,
             r#"GLOSS unserved ON fin AS $${"sql": "SELECT date, value FROM events", "grain": ["account"]}$$;"#,
-            r#"DECLARE ASPECT undeclared WITH $${"title": "Undeclared"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT undeclared WITH $${"title": "Undeclared"}$$ AS QUERY;"#,
             r#"GLOSS undeclared ON fin AS $${"sql": "SELECT date, value FROM events"}$$;"#,
-            r#"DECLARE ASPECT joined WITH $${"title": "Joined"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT joined WITH $${"title": "Joined"}$$ AS QUERY;"#,
             r#"GLOSS joined ON fin AS $${"sql": "WITH dates AS (SELECT DISTINCT date AS as_of FROM events), snap AS (SELECT d.as_of, i.account, i.value FROM dates d JOIN events i ON i.date <= d.as_of) SELECT as_of AS date, account, sum(value) AS value FROM snap GROUP BY as_of, account", "behavior": "stock", "grain": ["date", "account"]}$$;"#,
             "SELECT judge_time() FROM events.date;",
         ],
@@ -1485,7 +1485,7 @@ async fn a_ratio_totals_by_dividing_the_summed_halves_never_by_adding_ratios() {
         dir.path(),
         vec![("cells", batch)],
         &[
-            r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT dso WITH $${"title": "DSO"}$$ AS QUERY;"#,
             // The rival is a ratio too: it serves num and den, at twice
             // the numerator — so at every grain it reads as exactly
             // twice the chosen reading, which only holds if the rival's
@@ -1743,9 +1743,9 @@ async fn the_axes_come_from_judged_verdicts_never_from_the_datas_shape() {
         dir.path(),
         vec![("lines", lines), ("bare", bare)],
         &[
-            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT raw WITH $${"title": "Raw"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT signings WITH $${"title": "Signings"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT raw WITH $${"title": "Raw"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT signings WITH $${"title": "Signings"}$$ AS QUERY;"#,
             r#"GLOSS revenue ON fin AS $${"sql": "SELECT signed, booked, date, value, region, channel FROM lines"}$$;"#,
             r#"GLOSS raw ON fin AS $${"sql": "SELECT date, value FROM bare"}$$;"#,
             r#"GLOSS signings ON fin AS $${"sql": "SELECT signed, value FROM lines"}$$;"#,
@@ -1936,9 +1936,9 @@ async fn the_resolution_is_the_coarser_of_cadence_and_floor_and_the_window_its_r
         dir.path(),
         vec![("daily", daily), ("ticks", ticks), ("months", months)],
         &[
-            r#"DECLARE ASPECT by_day WITH $${"title": "By day"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT by_minute WITH $${"title": "By minute"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT by_month WITH $${"title": "By month"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT by_day WITH $${"title": "By day"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT by_minute WITH $${"title": "By minute"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT by_month WITH $${"title": "By month"}$$ AS QUERY;"#,
             r#"GLOSS by_day ON fin AS $${"sql": "SELECT date, value FROM daily"}$$;"#,
             r#"GLOSS by_minute ON fin AS $${"sql": "SELECT ts, value FROM ticks"}$$;"#,
             r#"GLOSS by_month ON fin AS $${"sql": "SELECT date, value FROM months"}$$;"#,
@@ -2132,8 +2132,8 @@ async fn the_cache_builds_once_and_misses_when_the_surface_or_data_moves() {
         )
     };
     let glosses = [
-        r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY ON DATASET;"#,
-        r#"DECLARE ASPECT b WITH $${"title": "B"}$$ AS QUERY ON DATASET;"#,
+        r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY;"#,
+        r#"DECLARE ASPECT b WITH $${"title": "B"}$$ AS QUERY;"#,
         r#"GLOSS a ON fin AS $${"sql": "SELECT date, value FROM t"}$$;"#,
         r#"GLOSS b ON fin AS $${"sql": "SELECT date, value * 2 AS value FROM u"}$$;"#,
         "SELECT judge_time() FROM t.date;",
@@ -2319,8 +2319,8 @@ async fn a_coarser_grain_is_a_plan_over_the_head_never_a_build() {
         dir.path(),
         vec![("t", months)],
         &[
-            r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT b WITH $${"title": "B"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT b WITH $${"title": "B"}$$ AS QUERY;"#,
             r#"GLOSS a ON fin AS $${"sql": "SELECT date, value FROM t"}$$;"#,
             r#"GLOSS b ON fin AS $${"sql": "SELECT date, value * 2 AS value FROM t"}$$;"#,
             "SELECT judge_time() FROM t.date;",
@@ -2448,10 +2448,10 @@ async fn every_grain_is_the_raw_query_at_that_grain() {
         dir.path(),
         vec![("daily", daily), ("weekly", weekly)],
         &[
-            r#"DECLARE ASPECT flow WITH $${"title": "Flow"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT level WITH $${"title": "Level"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT share WITH $${"title": "Share"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT weekly_flow WITH $${"title": "Weekly"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT flow WITH $${"title": "Flow"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT level WITH $${"title": "Level"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT share WITH $${"title": "Share"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT weekly_flow WITH $${"title": "Weekly"}$$ AS QUERY;"#,
             r#"GLOSS flow ON fin AS $${"sql": "SELECT date, value FROM daily"}$$;"#,
             r#"GLOSS level ON fin AS $${"sql": "SELECT date, value FROM daily", "behavior": "stock"}$$;"#,
             r#"GLOSS share ON fin AS $${"sql": "SELECT date, num / den AS value, num, den FROM daily"}$$;"#,
@@ -2578,7 +2578,7 @@ async fn the_fact_row_counts_the_periods_outside_the_window() {
         dir.path(),
         vec![("t", months)],
         &[
-            r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT a WITH $${"title": "A"}$$ AS QUERY;"#,
             r#"GLOSS a ON fin AS $${"sql": "SELECT date, value FROM t"}$$;"#,
             "SELECT judge_time() FROM t.date;",
         ],
@@ -2637,7 +2637,7 @@ async fn the_fact_row_names_the_judged_columns_the_frame_does_not_serve() {
         dir.path(),
         vec![("results", results()), ("constructors", constructors())],
         &[
-            r#"DECLARE ASPECT total WITH $${"title": "Total"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT total WITH $${"title": "Total"}$$ AS QUERY;"#,
             r#"GLOSS total ON fin AS $${"sql": "SELECT date, points AS value FROM results"}$$;"#,
             "SELECT judge_time() FROM results.date;",
             "SELECT judge_axis() FROM results.venue;",
@@ -2714,12 +2714,12 @@ async fn an_unmarked_metric_takes_the_verdict_on_the_column_it_sums() {
                  "properties": {"value": {"enum": ["stock", "flow", "none"]},
                                 "grounds": {"type": "string"}}}$$ AS FACT ON COLUMN;"#,
             r#"GLOSS behavior ON stocks.qty AS $${"value": "stock", "grounds": "a carried level"}$$;"#,
-            r#"DECLARE ASPECT stocked WITH $${"title": "Stocked"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT overruled WITH $${"title": "Overruled"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT flowed WITH $${"title": "Flowed"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT counted WITH $${"title": "Counted"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT glossed WITH $${"title": "Glossed"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT cumulated WITH $${"title": "Cumulated"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT stocked WITH $${"title": "Stocked"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT overruled WITH $${"title": "Overruled"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT flowed WITH $${"title": "Flowed"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT counted WITH $${"title": "Counted"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT glossed WITH $${"title": "Glossed"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT cumulated WITH $${"title": "Cumulated"}$$ AS QUERY;"#,
             // Unmarked, one sum of a column glossed a stock, on which
             // the judge the write runs abstains.
             r#"GLOSS glossed ON fin AS $${"sql": "SELECT date, sum(qty) AS value FROM stocks GROUP BY date"}$$;"#,
@@ -2817,7 +2817,7 @@ async fn the_fact_row_wants_what_nobody_measured_and_re_measure_lands_it() {
         dir.path(),
         vec![("sales", sales)],
         &[
-            r#"DECLARE ASPECT sold WITH $${"title": "Sold"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT sold WITH $${"title": "Sold"}$$ AS QUERY;"#,
             r#"DECLARE ASPECT probe_walk WITH $${"type": "object", "required": ["applicable"],
                  "properties": {"applicable": {"type": "boolean"}}}$$ AS MEASUREMENT ON DATASET;"#,
             r#"DECLARE FUNCTION walker FOR GLOBAL AS
@@ -2912,7 +2912,7 @@ async fn a_door_with_nothing_to_say_serves_the_empty_relation() {
         dir.path(),
         vec![("stocks", stocks)],
         &[
-            r#"DECLARE ASPECT series WITH $${"title": "Series"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT series WITH $${"title": "Series"}$$ AS QUERY;"#,
             r#"GLOSS series ON fin AS $${"sql": "SELECT date, qty AS value FROM stocks"}$$;"#,
         ],
     )
@@ -2946,11 +2946,11 @@ async fn fact_values_serves_the_declared_facts() {
         dir.path(),
         vec![("stocks", stocks)],
         &[
-            r#"DECLARE ASPECT on_hand WITH $${"title": "On hand", "x-kind": "fact"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT each WITH $${"title": "Each", "x-kind": "fact"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT bare WITH $${"title": "Bare", "x-kind": "relation"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT series WITH $${"title": "Series"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT undated WITH $${"title": "Undated"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT on_hand WITH $${"title": "On hand", "x-kind": "fact"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT each WITH $${"title": "Each", "x-kind": "fact"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT bare WITH $${"title": "Bare", "x-kind": "relation"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT series WITH $${"title": "Series"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT undated WITH $${"title": "Undated"}$$ AS QUERY;"#,
             r#"GLOSS on_hand ON fin AS $${"sql": "SELECT sum(qty) AS value FROM stocks"}$$;"#,
             r#"GLOSS each ON fin AS $${"sql": "SELECT qty AS value FROM stocks"}$$;"#,
             r#"GLOSS bare ON fin AS $${"sql": "SELECT qty FROM stocks"}$$;"#,
@@ -3007,10 +3007,10 @@ async fn a_union_of_reads_carries_the_time_axis_its_arms_share() {
         dir.path(),
         vec![("results", results()), ("daily", daily)],
         &[
-            r#"DECLARE ASPECT gross WITH $${"title": "Gross"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT rebates WITH $${"title": "Rebates"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT net WITH $${"title": "Net"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT mixed WITH $${"title": "Mixed"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT gross WITH $${"title": "Gross"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT rebates WITH $${"title": "Rebates"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT net WITH $${"title": "Net"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT mixed WITH $${"title": "Mixed"}$$ AS QUERY;"#,
             r#"GLOSS gross ON fin AS $${"sql": "SELECT date, points AS value FROM results"}$$;"#,
             r#"GLOSS rebates ON fin AS $${"sql": "SELECT date, points / 10.0 AS value FROM results"}$$;"#,
             r#"GLOSS net ON fin AS $${"sql": "SELECT date, value FROM read.gross() UNION ALL SELECT date, -value AS value FROM read.rebates()"}$$;"#,
@@ -3081,9 +3081,9 @@ async fn an_interval_stock_traces_through_the_union_of_its_judged_columns() {
         dir.path(),
         vec![("stints", stints), ("daily", daily)],
         &[
-            r#"DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT half WITH $${"title": "Half"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT across WITH $${"title": "Across"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT half WITH $${"title": "Half"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT across WITH $${"title": "Across"}$$ AS QUERY;"#,
             &body("from_date", "to_date").replace("from_date_to_date", "headcount"),
             // The same shape with the end date unjudged, and one with
             // an arm on another table's judged date.
@@ -3157,7 +3157,7 @@ async fn a_frame_over_a_workspace_relation_rebuilds_with_the_version() {
         dir.path(),
         vec![("t", batch)],
         &[
-            r#"DECLARE ASPECT meta WITH $${"title": "Meta"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT meta WITH $${"title": "Meta"}$$ AS QUERY;"#,
             r#"GLOSS meta ON fin AS $${"sql": "SELECT date, value * (SELECT count(*) FROM glossary) AS value FROM t"}$$;"#,
             "SELECT judge_time() FROM t.date;",
         ],
@@ -3247,10 +3247,10 @@ async fn a_wide_dimension_is_bucketed_never_refused() {
         dir.path(),
         vec![("events", events), ("late", tail)],
         &[
-            r#"DECLARE ASPECT wide WITH $${"title": "Wide"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT wide WITH $${"title": "Wide"}$$ AS QUERY;"#,
             r#"GLOSS wide ON fin AS $${"sql": "SELECT date, value, region FROM events"}$$;"#,
             r#"GLOSS dimension ON events.region AS $${"value": "supporting"}$$;"#,
-            r#"DECLARE ASPECT emptied WITH $${"title": "Emptied"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT emptied WITH $${"title": "Emptied"}$$ AS QUERY;"#,
             r#"GLOSS emptied ON fin AS $${"sql": "SELECT date, value, region FROM late"}$$;"#,
             r#"GLOSS dimension ON late.region AS $${"value": "supporting"}$$;"#,
             "SELECT judge_time() FROM events.date;",

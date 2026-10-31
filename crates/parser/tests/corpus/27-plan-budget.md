@@ -73,7 +73,7 @@ DECLARE ASPECT expense WITH $${
   "title": "Operating expense",
   "description": "What the City-Parish spent, per account and month",
   "x-kind": "measure", "x-unit": "USD"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 GLOSS expense ON brla AS $${
   "sql": "SELECT fiscalmonth, actual AS value, fund, segment2, charactercodedescription FROM expense_budget",
@@ -124,7 +124,7 @@ DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget",
   "description": "The adopted budget with the Metropolitan Council's amendments, as booked",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 GLOSS revised_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, revisedbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",
@@ -140,7 +140,7 @@ DECLARE ASPECT original_budget WITH $${
   "title": "Original budget",
   "description": "The budget the Metropolitan Council adopted",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 GLOSS original_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, originalbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",

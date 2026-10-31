@@ -122,11 +122,22 @@ pair_path         = rel_side, rel_op, rel_side ;
 
 (* -- glossary ----------------------------------------------------------- *)
 
-aspect_decl       = "ASPECT", name, "WITH", json, "AS", aspect_kind,
-                    [ "ON", grain, { ",", grain },
-                      [ "WHEN", ( name, "=", string
-                                | "TYPE", ( "=", string
-                                          | "IN", "(", string, { ",", string }, ")" ) ) ] ] ;
+aspect_decl       = "ASPECT", name, "WITH", json, "AS", aspect_kind ;
+aspect_kind       = "QUERY"                  (* SQL-grounded; glosses validate
+                                                against the standard grounding
+                                                schema; WITH schema carries the
+                                                ontology entry; grounded on the
+                                                dataset, so it takes no grain
+                                                clause *)
+                  | ( "MEASUREMENT"          (* never glossed; value = bound
+                                                function's cached JSON output *)
+                    | "FACT" ),              (* authored assertion; WITH schema
+                                                validates the gloss body *)
+                    [ grain_clause ] ;
+grain_clause      = "ON", grain, { ",", grain },
+                    [ "WHEN", ( name, "=", string
+                              | "TYPE", ( "=", string
+                                        | "IN", "(", string, { ",", string }, ")" ) ) ] ;
 grain             = "DATASET" | "TABLE" | "COLUMN" | "RELATIONSHIP" | "SOURCE" ;
                     (* the subject classes glosses may attach to;
                        absent = all. WHEN names a sibling aspect and a
@@ -141,14 +152,6 @@ grain             = "DATASET" | "TABLE" | "COLUMN" | "RELATIONSHIP" | "SOURCE" ;
                        owed on the columns whose base type (the name
                        before any parenthesis, DECIMAL for
                        DECIMAL(18,2)) is one of them. *)
-aspect_kind       = "MEASUREMENT"            (* never glossed; value = bound
-                                                function's cached JSON output *)
-                  | "FACT"                   (* authored assertion; WITH schema
-                                                validates the gloss body *)
-                  | "QUERY" ;                (* SQL-grounded; glosses validate
-                                                against the standard grounding
-                                                schema; WITH schema carries the
-                                                ontology entry *)
 
 gloss             = "GLOSS", name, "ON", subject, "AS", json ;
                     (* body admission by declared kind:

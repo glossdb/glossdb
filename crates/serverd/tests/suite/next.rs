@@ -229,7 +229,7 @@ async fn fin() -> (tempfile::TempDir, Arc<Plane>, Arc<Session>) {
 /// the detector may not run, and the goals then stand blocked.
 async fn grounded_takings(session: &Session) -> Result<(), String> {
     session
-        .execute("DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY ON DATASET")
+        .execute("DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY")
         .await
         .unwrap();
     session
@@ -325,7 +325,7 @@ async fn a_declared_metric_asks_for_its_claim_then_its_grounding() {
     // Declared and claimed by nobody: the claim is the act, with the
     // name filled — the declare counts on the declare.
     session
-        .execute("DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY ON DATASET")
+        .execute("DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY")
         .await
         .unwrap();
     let unclaimed = goal(&session, "metrics").await;
@@ -556,7 +556,7 @@ async fn the_plan_goal_runs_from_the_first_plan_to_the_forecast() {
     );
     session
         .execute(
-            "DECLARE ASPECT takings_budget WITH $${\"title\": \"Budget\", \"x-kind\": \"plan\", \"x-plan-of\": \"takings\"}$$ AS QUERY ON DATASET",
+            "DECLARE ASPECT takings_budget WITH $${\"title\": \"Budget\", \"x-kind\": \"plan\", \"x-plan-of\": \"takings\"}$$ AS QUERY",
         )
         .await
         .unwrap();
@@ -607,7 +607,7 @@ async fn a_refused_measure_holds_the_metrics_goal_and_a_stop_closes_it() {
     let (_dir, _plane, session) = fin().await;
     let _judged = grounded_takings(&session).await;
     session
-        .execute("DECLARE ASPECT gate WITH $${\"title\": \"Gate\"}$$ AS QUERY ON DATASET")
+        .execute("DECLARE ASPECT gate WITH $${\"title\": \"Gate\"}$$ AS QUERY")
         .await
         .unwrap();
     session
@@ -615,7 +615,7 @@ async fn a_refused_measure_holds_the_metrics_goal_and_a_stop_closes_it() {
         .await
         .unwrap();
     session
-        .execute("DECLARE ASPECT entries WITH $${\"title\": \"Entries\", \"x-kind\": \"relation\"}$$ AS QUERY ON DATASET")
+        .execute("DECLARE ASPECT entries WITH $${\"title\": \"Entries\", \"x-kind\": \"relation\"}$$ AS QUERY")
         .await
         .unwrap();
     session
@@ -837,7 +837,7 @@ async fn the_door_says_where_the_call_left_the_agent_and_what_is_next() {
             app.clone(),
             call(
                 20,
-                "DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY ON DATASET; \
+                "DECLARE ASPECT takings WITH $${\"title\": \"Takings\"}$$ AS QUERY; \
                  USE fin; GLOSS takings ON fin AS $${\"sql\": \"SELECT CAST('2024-01-15' AS DATE) AS race_date, 1.0 AS value\"}$$",
             ),
         )

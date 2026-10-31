@@ -1498,8 +1498,8 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "convention", "key": "days-in-period",
             "assumption": "days are the month's own calendar days, 28 to 31",
@@ -1651,7 +1651,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7},
@@ -1797,7 +1797,7 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -1882,7 +1882,7 @@ async fn the_round_never_interrupts_a_working_call() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2135,7 +2135,7 @@ async fn sequential_rulings_compose_instead_of_reverting() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "convention", "key": "flat-30-day-month", "assumption": "a flat 30-day month", "basis": "judgment", "confidence": 0.6},
@@ -2238,8 +2238,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS QUERY;
         GLOSS purchases ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "scope", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.7}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2325,7 +2325,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'brief delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2398,7 +2398,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'unkeyed assumptions');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
     "#;
@@ -2436,8 +2436,8 @@ async fn the_open_questions_read_composes_like_a_table() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the read library');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2624,11 +2624,11 @@ async fn the_workspace_says_what_it_affords() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         DECLARE ASPECT price_hike WITH $${"title": "Price +15%", "x-kind": "scenario"}$$ AS FACT ON DATASET;
-        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS QUERY;
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
         DECLARE WITNESS ar_tie_w ON ar_tie BY (AGENT, HUMAN);
     "#;
@@ -2736,7 +2736,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 170, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");

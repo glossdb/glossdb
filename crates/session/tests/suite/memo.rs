@@ -168,7 +168,7 @@ async fn a_plan_by_name_takes_the_walk() {
              "resolution": {"default": "day"},
              "windows": {"type": "object", "properties": {"month": {"default": "48 months"}}}}}$$
            AS FACT ON DATASET;
-           DECLARE ASPECT orders_seen WITH $${"title": "Orders seen"}$$ AS QUERY ON DATASET;
+           DECLARE ASPECT orders_seen WITH $${"title": "Orders seen"}$$ AS QUERY;
            GLOSS orders_seen ON fin AS $${"sql": "SELECT id, 1.0 AS value FROM orders"}$$;"#,
     )
     .await;

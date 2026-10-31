@@ -43,9 +43,9 @@ DECLARE ASPECT grounding_collisions WITH $${
 }$$ AS MEASUREMENT ON DATASET;
 DECLARE FUNCTION detect_grounding_collisions FOR fin AS $$grounding_collisions.sql$$
   RETURNS grounding_collisions;
-DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT turnover WITH $${"title": "Turnover"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT costs WITH $${"title": "Costs"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
+DECLARE ASPECT turnover WITH $${"title": "Turnover"}$$ AS QUERY;
+DECLARE ASPECT costs WITH $${"title": "Costs"}$$ AS QUERY;
 "#;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -131,7 +131,7 @@ async fn identical_served_series_collide_even_when_the_sql_differs() {
         let stmt = glossql_scripts::library::splice(&format!("{stmt};")).expect("shipped");
         s.execute(&stmt).await.unwrap();
     }
-    s.execute(r#"DECLARE ASPECT open_items WITH $${"title": "Open items"}$$ AS QUERY ON DATASET;"#)
+    s.execute(r#"DECLARE ASPECT open_items WITH $${"title": "Open items"}$$ AS QUERY;"#)
         .await
         .unwrap();
 

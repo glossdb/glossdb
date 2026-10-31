@@ -203,8 +203,8 @@ DECLARE ASPECT lever WITH $${
   "type": "object", "required": ["value"],
   "properties": {"value": {"type": "boolean"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON COLUMN;
-DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;
+DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS QUERY;
 GLOSS revenue ON fin AS $${"sql": "SELECT sale_date, units * price AS value FROM sales"}$$;
 GLOSS win_rate ON fin AS $${"sql": "SELECT race_date, wins / starts AS value, wins AS num, starts AS den FROM races"}$$;
 DECLARE ASPECT price_up WITH $${
@@ -786,7 +786,7 @@ async fn a_lever_dated_through_a_declared_edge_is_replayed_and_estimated() {
         .execute(
             r##"DECLARE RELATIONSHIP orders.date_sk -> days.date_sk;
 SELECT judge_time() FROM days.day;
-DECLARE ASPECT keyed WITH $${"title": "Keyed revenue"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT keyed WITH $${"title": "Keyed revenue"}$$ AS QUERY;
 GLOSS keyed ON fin AS $${"sql": "SELECT d.day, o.units * o.price AS value FROM orders o JOIN days d ON d.date_sk = o.date_sk"}$$;
 GLOSS lever ON orders.price AS $${"value": true, "grounds": "the list price"}$$;
 DECLARE ASPECT keyed_up WITH $${

@@ -71,7 +71,7 @@ DECLARE ASPECT dso WITH $${
     {"min": 61, "max": 90,  "label": "POOR"},
     {"min": 91, "max": 999, "label": "CRITICAL"}
   ]
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 GLOSS dso ON fin AS $${
   "sql": "SELECT (sum(accounts_receivable) / sum(revenue)) * 30 FROM monthly_balances",

@@ -21,7 +21,7 @@ DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget",
   "description": "The adopted budget with the council's amendments, as booked",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 GLOSS revised_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, revisedbudget AS value, fund, segment2 FROM expense_budget",

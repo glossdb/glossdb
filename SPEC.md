@@ -227,9 +227,8 @@ The kind fixes the aspect's role:
 The optional `ON DATASET | TABLE | COLUMN | RELATIONSHIP | SOURCE, …` list
 is the aspect's **grain**: the subject classes glosses (and a `RETURNS`
 binding) may attach to. Absent, the aspect speaks to all grains. A QUERY
-aspect is the exception: a metric is grounded on the dataset (§4), so its
-grain is the dataset with or without the clause, and a clause naming any
-other grain is refused. Disclosure
+aspect takes no grain clause: a metric is grounded on the dataset (§4),
+so its grain is the dataset. Disclosure
 (§5.3) stays within it: absence shows only on subjects the aspect is
 declared for.
 

@@ -32,25 +32,25 @@ DECLARE ASPECT revenue WITH $${
   "title": "Revenue",
   "description": "Income recognized in the ledger",
   "x-kind": "measure", "x-unit": "currency"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 DECLARE ASPECT accounts_receivable WITH $${
   "title": "Accounts Receivable",
   "description": "Open receivables — a stock at (account, period) grain",
   "x-kind": "measure", "x-unit": "currency"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 DECLARE ASPECT dso WITH $${
   "title": "Days Sales Outstanding",
   "description": "Average days to collect a receivable",
   "x-kind": "metric", "x-unit": "days"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 
 DECLARE ASPECT gross_profit WITH $${
   "title": "Gross Profit",
   "description": "Revenue less expenses",
   "x-kind": "metric", "x-unit": "currency"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 ```
 
 ## 2. Concepts ground as extracts (fixture 07's shape, taken seriously)

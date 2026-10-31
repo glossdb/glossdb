@@ -207,8 +207,8 @@ fn races() -> (Arc<Schema>, RecordBatch) {
 const SETUP: &str = r##"
 DECLARE DATASET fin SET (purpose: 'bands on exact values');
 USE fin;
-DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS QUERY;
+DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY;
 GLOSS win_rate ON fin AS $${"sql": "SELECT race_date, wins / starts AS value, wins AS num, starts AS den FROM races"}$$;
 GLOSS takings ON fin AS $${"sql": "SELECT race_date, takings AS value FROM races"}$$;
 "##;
@@ -348,7 +348,7 @@ async fn a_null_date_is_no_period() {
         r##"
 DECLARE DATASET fin SET (purpose: 'a null date');
 USE fin;
-DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY;
 GLOSS takings ON fin AS $${"sql": "SELECT race_date, takings AS value FROM races"}$$;
 "##,
     )
@@ -417,8 +417,8 @@ async fn a_series_the_engine_refuses_abstains_on_its_metric_alone() {
         r##"
 DECLARE DATASET fin SET (purpose: 'a refused series');
 USE fin;
-DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT gathered WITH $${"title": "Gathered"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT takings WITH $${"title": "Takings"}$$ AS QUERY;
+DECLARE ASPECT gathered WITH $${"title": "Gathered"}$$ AS QUERY;
 GLOSS takings ON fin AS $${"sql": "SELECT race_date, takings AS value FROM races"}$$;
 GLOSS gathered ON fin AS $${"sql": "SELECT gathered, takings AS value FROM races"}$$;
 "##,
@@ -479,7 +479,7 @@ async fn a_partial_month_is_read_from_the_extract_not_the_judgment() {
         r##"
 DECLARE DATASET fin SET (purpose: 'a partial month');
 USE fin;
-DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;
 GLOSS spend ON fin AS $${"sql": "SELECT day, spend AS value FROM lines"}$$;
 "##,
     )
@@ -554,10 +554,10 @@ async fn a_short_history_walks_the_origins_it_has() {
         r##"
 DECLARE DATASET fin SET (purpose: 'short histories');
 USE fin;
-DECLARE ASPECT eight WITH $${"title": "Eight"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT seven WITH $${"title": "Seven"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT six WITH $${"title": "Six"}$$ AS QUERY ON DATASET;
-DECLARE ASPECT gapped WITH $${"title": "Gapped"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT eight WITH $${"title": "Eight"}$$ AS QUERY;
+DECLARE ASPECT seven WITH $${"title": "Seven"}$$ AS QUERY;
+DECLARE ASPECT six WITH $${"title": "Six"}$$ AS QUERY;
+DECLARE ASPECT gapped WITH $${"title": "Gapped"}$$ AS QUERY;
 GLOSS eight ON fin AS $${"sql": "SELECT race_date, eight AS value FROM races WHERE eight IS NOT NULL"}$$;
 GLOSS seven ON fin AS $${"sql": "SELECT race_date, seven AS value FROM races WHERE seven IS NOT NULL"}$$;
 GLOSS six ON fin AS $${"sql": "SELECT race_date, six AS value FROM races WHERE six IS NOT NULL"}$$;

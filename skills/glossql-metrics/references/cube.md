@@ -88,7 +88,7 @@ and the glossary holds how to read it. A plan is one QUERY aspect per
 plan, declared with `x-kind: plan` and `x-plan-of: <metric>`, the
 metric it plans, and grounded by SQL like a metric: `DECLARE ASPECT
 revised_budget WITH $${"title": "Revised budget", "x-kind": "plan",
-"x-plan-of": "expense"}$$ AS QUERY ON DATASET;` then `GLOSS
+"x-plan-of": "expense"}$$ AS QUERY;` then `GLOSS
 revised_budget ON fin AS $${"sql": "SELECT month, revised AS value FROM
 budget"}$$;`. The declaration is refused where `x-plan-of` names no
 declared metric, or another plan. A row covers its own period; where

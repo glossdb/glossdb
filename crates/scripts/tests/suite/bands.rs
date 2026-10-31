@@ -208,9 +208,9 @@ async fn metric_bands_walks_and_reads_the_breach() {
             ("levels", dates, stock),
         ],
         &[
-            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT share WITH $${"title": "Share"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT share WITH $${"title": "Share"}$$ AS QUERY;"#,
             r#"GLOSS revenue ON fin AS $${"sql": "SELECT date, value FROM lines"}$$;"#,
             r#"GLOSS inventory ON fin AS $${"sql": "SELECT date, value FROM levels", "behavior": "stock"}$$;"#,
             // A ratio serves both halves; the month reads as the
@@ -451,7 +451,7 @@ async fn the_stock_walk_sums_the_months_latest_snapshot() {
         Arc::clone(&rt),
         vec![("levels", dates, values)],
         &[
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
             r#"GLOSS inventory ON fin AS $${"sql": "SELECT date, value FROM levels", "behavior": "stock"}$$;"#,
         ],
     )
@@ -581,7 +581,7 @@ async fn a_partial_trailing_month_is_withheld_and_the_month_before_scores() {
         Arc::clone(&rt),
         vec![("lines", dates, values)],
         &[
-            r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;"#,
             r#"GLOSS spend ON fin AS $${"sql": "SELECT date, value FROM lines"}$$;"#,
             r#"SELECT judge_time() FROM lines.date;"#,
         ],
@@ -672,8 +672,8 @@ async fn metric_forecast_lands_against_the_service() {
             ("levels", dates, stock),
         ],
         &[
-            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY ON DATASET;"#,
-            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY ON DATASET;"#,
+            r#"DECLARE ASPECT revenue WITH $${"title": "Revenue"}$$ AS QUERY;"#,
+            r#"DECLARE ASPECT inventory WITH $${"title": "Inventory"}$$ AS QUERY;"#,
             r#"GLOSS revenue ON fin AS $${"sql": "SELECT date, value FROM lines"}$$;"#,
             r#"GLOSS inventory ON fin AS $${"sql": "SELECT date, value FROM levels", "behavior": "stock"}$$;"#,
             r#"SELECT judge_time() FROM lines.date;"#,

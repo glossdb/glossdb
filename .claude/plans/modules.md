@@ -64,10 +64,10 @@ and the risk sits in the middle.
   and one skills read), apps 27 (25 that seed the cube and the judged
   axes in the session's SQL, the landing's refused cells,
   `app_releases`).
-- **The extension** (`../gloss`, branch `kit-quality`, four commits):
-  the quality kit and the temporal profile; `AS QUERY ON DATASET`
-  lands as no grain, as the docs and skills spell it. Its suite: 11
-  files green.
+- **The extension** (`../gloss`, branch `kit-quality`, two commits):
+  the quality kit and the temporal profile. Its suite: 10 files green.
+  A QUERY aspect takes no grain clause there, and now in the grammar,
+  the docs, the skills, the corpus and the tests here.
 - **Conventions the port fixed.** The extension keeps a subject
   dataset-qualified (`fin.t.a`) and the session as spelled; the app
   door gives the prefix back. `written_at` is a TIMESTAMP, rendered

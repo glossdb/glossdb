@@ -275,10 +275,10 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"month": {{"default": "48 months"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT revenue WITH $${{"title": "Revenue"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT win_rate WITH $${{"title": "Win rate"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT dated WITH $${{"title": "Dates alone"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT recent WITH $${{"title": "Recent revenue"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT revenue WITH $${{"title": "Revenue"}}$$ AS QUERY;
+DECLARE ASPECT win_rate WITH $${{"title": "Win rate"}}$$ AS QUERY;
+DECLARE ASPECT dated WITH $${{"title": "Dates alone"}}$$ AS QUERY;
+DECLARE ASPECT recent WITH $${{"title": "Recent revenue"}}$$ AS QUERY;
 GLOSS revenue ON fin AS $${{"sql": "SELECT sale_date, amount AS value FROM sales"}}$$;
 GLOSS win_rate ON fin AS $${{"sql": "SELECT race_date, wins / starts AS value, wins AS num, starts AS den FROM races"}}$$;
 GLOSS dated ON fin AS $${{"sql": "SELECT sale_date FROM sales"}}$$;
@@ -418,7 +418,7 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"week": {{"default": "3 years"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT visits WITH $${{"title": "Visits"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT visits WITH $${{"title": "Visits"}}$$ AS QUERY;
 GLOSS visits ON fin AS $${{"sql": "SELECT visit_date, amount AS value FROM visit_log"}}$$;
 "##,
         judged = judged("week")
@@ -745,10 +745,10 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"month": {{"default": "48 months"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT revenue WITH $${{"title": "Revenue"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT win_rate WITH $${{"title": "Win rate"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT balance WITH $${{"title": "Balance"}}$$ AS QUERY ON DATASET;
-DECLARE ASPECT signups WITH $${{"title": "Signups"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT revenue WITH $${{"title": "Revenue"}}$$ AS QUERY;
+DECLARE ASPECT win_rate WITH $${{"title": "Win rate"}}$$ AS QUERY;
+DECLARE ASPECT balance WITH $${{"title": "Balance"}}$$ AS QUERY;
+DECLARE ASPECT signups WITH $${{"title": "Signups"}}$$ AS QUERY;
 GLOSS revenue ON fin AS $${{"sql": "SELECT sale_date, amount AS value FROM sales"}}$$;
 GLOSS win_rate ON fin AS $${{"sql": "SELECT race_date, wins / starts AS value, wins AS num, starts AS den FROM races"}}$$;
 GLOSS balance ON fin AS $${{"sql": "SELECT as_of, amount AS value FROM balances", "behavior": "stock"}}$$;
@@ -920,7 +920,7 @@ GLOSS signups ON fin AS $${{"sql": "SELECT signed_on, amount AS value FROM regis
     );
     session
         .execute(
-            r##"DECLARE ASPECT shipped WITH $${"title": "Shipped"}$$ AS QUERY ON DATASET;
+            r##"DECLARE ASPECT shipped WITH $${"title": "Shipped"}$$ AS QUERY;
 GLOSS shipped ON fin AS $${"sql": "SELECT shipped_on, amount AS value FROM shipments"}$$;"##,
         )
         .await
@@ -965,7 +965,7 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"month": {{"default": "48 months"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT spend WITH $${{"title": "Spend"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT spend WITH $${{"title": "Spend"}}$$ AS QUERY;
 GLOSS spend ON fin AS $${{"sql": "SELECT c.day AS month, s.amount AS value FROM spending s JOIN calendar c ON c.day = s.on_day"}}$$;
 {kit}
 "##,
@@ -1045,7 +1045,7 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"week": {{"default": "3 years"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT visits WITH $${{"title": "Visits"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT visits WITH $${{"title": "Visits"}}$$ AS QUERY;
 GLOSS visits ON fin AS $${{"sql": "SELECT visit_date, amount AS value FROM visit_log"}}$$;
 "##,
         judged = judged("week")
@@ -1127,7 +1127,7 @@ DECLARE ASPECT cube WITH $${{"type": "object", "properties": {{
   "windows": {{"type": "object", "properties": {{"day": {{"default": "3 years"}}}}}}}}}}$$
 AS FACT ON DATASET;
 {judged}
-DECLARE ASPECT sales WITH $${{"title": "Sales"}}$$ AS QUERY ON DATASET;
+DECLARE ASPECT sales WITH $${{"title": "Sales"}}$$ AS QUERY;
 GLOSS sales ON fin AS $${{"sql": "SELECT sale_date, amount AS value FROM sale_log"}}$$;
 "##,
         judged = judged("day")

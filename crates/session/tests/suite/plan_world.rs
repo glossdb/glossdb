@@ -36,14 +36,14 @@ DECLARE ASPECT temporal_profile WITH $${"type": "object", "required": ["applicab
 DECLARE FUNCTION judge_time FOR GLOBAL AS
   $$SELECT true AS applicable, 'month' AS granularity, named_struct('ratio', 1.0) AS completeness$$
   RETURNS temporal_profile;
-DECLARE ASPECT expense WITH $${"title": "Operating expense", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT expense WITH $${"title": "Operating expense", "x-kind": "measure"}$$ AS QUERY;
 GLOSS expense ON fin AS $${"sql": "SELECT month, amount AS value FROM spend"}$$;
 DECLARE ASPECT original_budget WITH $${
   "title": "Original budget", "x-kind": "plan", "x-plan-of": "expense"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget", "x-kind": "plan", "x-plan-of": "expense"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 GLOSS original_budget ON fin AS $${"sql": "SELECT month, original AS value FROM budget"}$$;
 GLOSS revised_budget ON fin AS $${"sql": "SELECT month, revised AS value FROM budget"}$$;
 "##
@@ -156,31 +156,31 @@ async fn a_plan_declares_on_a_declared_metric_or_is_refused() {
             "a plan is a QUERY aspect",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan"}$$ AS QUERY;"##,
             "a plan names the metric it plans",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "nobody"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "nobody"}$$ AS QUERY;"##,
             "`nobody` is not a declared aspect",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "cube"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "cube"}$$ AS QUERY;"##,
             "`cube` is a fact aspect",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "revised_budget"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "revised_budget"}$$ AS QUERY;"##,
             "`revised_budget` is itself a plan",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "measure", "x-plan-of": "expense"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "measure", "x-plan-of": "expense"}$$ AS QUERY;"##,
             "`x-plan-of` rides `x-kind: plan`",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "measure", "x-covers": "year"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "measure", "x-covers": "year"}$$ AS QUERY;"##,
             "`x-covers` rides `x-kind: plan`",
         ),
         (
-            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "expense", "x-covers": "month"}$$ AS QUERY ON DATASET;"##,
+            r##"DECLARE ASPECT bad WITH $${"x-kind": "plan", "x-plan-of": "expense", "x-covers": "month"}$$ AS QUERY;"##,
             "`x-covers` names the grain a row's value is booked against, `year` or `quarter` — \"month\" is neither",
         ),
     ] {
@@ -345,7 +345,7 @@ async fn the_plan_read_is_refused_without_its_name_or_its_world() {
     }
     // A plan declared and not yet grounded is named as such.
     session
-        .execute(r##"DECLARE ASPECT draft WITH $${"x-kind": "plan", "x-plan-of": "expense"}$$ AS QUERY ON DATASET;"##)
+        .execute(r##"DECLARE ASPECT draft WITH $${"x-kind": "plan", "x-plan-of": "expense"}$$ AS QUERY;"##)
         .await
         .expect("declared");
     let e = refused(
@@ -386,21 +386,21 @@ DECLARE FUNCTION judge_time FOR GLOBAL AS
   RETURNS temporal_profile;
 DECLARE ASPECT lever WITH $${"type": "object", "properties": {
   "value": {"type": "boolean"}, "grounds": {"type": "string"}}}$$ AS FACT ON COLUMN;
-DECLARE ASPECT expense WITH $${"title": "Operating expense", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT expense WITH $${"title": "Operating expense", "x-kind": "measure"}$$ AS QUERY;
 GLOSS expense ON fin AS $${"sql": "SELECT month, amount AS value FROM spend"}$$;
 DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget", "x-kind": "plan", "x-plan-of": "expense"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 DECLARE ASPECT annual_budget WITH $${
   "title": "Annual budget", "x-kind": "plan", "x-plan-of": "expense"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 GLOSS revised_budget ON fin AS $${"sql": "SELECT month, revised AS value FROM budget"}$$;
 GLOSS annual_budget ON fin AS $${"sql": "SELECT year, planned AS value FROM yearly"}$$;
-DECLARE ASPECT headcount WITH $${"title": "Headcount", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT headcount WITH $${"title": "Headcount", "x-kind": "measure"}$$ AS QUERY;
 GLOSS headcount ON fin AS $${"sql": "SELECT month, heads AS value FROM staff", "behavior": "stock"}$$;
 DECLARE ASPECT headcount_target WITH $${
   "title": "Headcount target", "x-kind": "plan", "x-plan-of": "headcount"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 GLOSS headcount_target ON fin AS $${"sql": "SELECT year, heads AS value FROM targets", "behavior": "stock"}$$;
 "##
 }
@@ -717,11 +717,11 @@ async fn coverage_session(stub: Arc<crate::forecast::Flat>) -> Session {
         .execute(
             r##"DECLARE ASPECT schedule WITH $${
   "title": "Service schedule", "x-kind": "plan", "x-plan-of": "expense"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 GLOSS schedule ON fin AS $${"sql": "SELECT month, planned AS value FROM timetable"}$$;
 DECLARE ASPECT booked_budget WITH $${
   "title": "Booked budget", "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year"
-}$$ AS QUERY ON DATASET;
+}$$ AS QUERY;
 GLOSS booked_budget ON fin AS $${"sql": "SELECT month, booked AS value FROM bookings"}$$;"##,
         )
         .await

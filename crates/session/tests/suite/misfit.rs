@@ -194,9 +194,9 @@ fn orders_table() -> (Arc<Schema>, RecordBatch) {
 const SETUP: &str = r##"
 DECLARE DATASET fin SET (purpose: 'misfit frames');
 USE fin;
-DECLARE ASPECT suspects WITH $${"title": "The March suspects", "x-kind": "sample"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT suspects WITH $${"title": "The March suspects", "x-kind": "sample"}$$ AS QUERY;
 DECLARE ASPECT note WITH $${"type": "object"}$$ AS FACT ON DATASET;
-DECLARE ASPECT unglossed WITH $${"title": "Declared, never glossed"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT unglossed WITH $${"title": "Declared, never glossed"}$$ AS QUERY;
 GLOSS suspects ON fin AS $${"sql": "SELECT * FROM orders"}$$;
 "##;
 
@@ -322,7 +322,7 @@ async fn stated_caps_and_the_surface_abstention_refuse_by_name() {
         .unwrap();
     run(
         &session,
-        r##"DECLARE ASPECT wide_net WITH $${"x-kind": "sample"}$$ AS QUERY ON DATASET;
+        r##"DECLARE ASPECT wide_net WITH $${"x-kind": "sample"}$$ AS QUERY;
             GLOSS wide_net ON fin AS $${"sql": "SELECT * FROM big"}$$;"##,
     )
     .await;
@@ -337,7 +337,7 @@ async fn stated_caps_and_the_surface_abstention_refuse_by_name() {
     // the read abstains with the reason instead of serving noise.
     run(
         &session,
-        r##"DECLARE ASPECT thin WITH $${"x-kind": "sample"}$$ AS QUERY ON DATASET;
+        r##"DECLARE ASPECT thin WITH $${"x-kind": "sample"}$$ AS QUERY;
             GLOSS thin ON fin AS $${"sql": "SELECT region, flag FROM orders"}$$;"##,
     )
     .await;
@@ -352,7 +352,7 @@ async fn stated_caps_and_the_surface_abstention_refuse_by_name() {
     // is told to rename, not silently shadowed.
     run(
         &session,
-        r##"DECLARE ASPECT clash WITH $${"x-kind": "sample"}$$ AS QUERY ON DATASET;
+        r##"DECLARE ASPECT clash WITH $${"x-kind": "sample"}$$ AS QUERY;
             GLOSS clash ON fin AS $${"sql": "SELECT amount AS misfit, order_date FROM orders"}$$;"##,
     )
     .await;

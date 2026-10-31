@@ -36,7 +36,7 @@ DECLARE ASPECT temporal_profile WITH $${"type": "object", "required": ["applicab
 DECLARE FUNCTION judge_time FOR GLOBAL AS
   $$SELECT true AS applicable, 'day' AS granularity, named_struct('ratio', 1.0) AS completeness$$
   RETURNS temporal_profile;
-DECLARE ASPECT tickets WITH $${"title": "Tickets sold", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT tickets WITH $${"title": "Tickets sold", "x-kind": "measure"}$$ AS QUERY;
 GLOSS tickets ON ops AS $${"sql": "SELECT d, sold AS value FROM sales"}$$;
 "##
 }

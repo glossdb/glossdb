@@ -9,7 +9,7 @@ supersedes with actor and timestamp. A field lives in exactly one
 place, never both.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
 ```
 
 **Two registries ship with the kit — gloss into them, never redeclare.**

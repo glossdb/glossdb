@@ -108,7 +108,7 @@ pub(crate) async fn check_declaration(
     }
     if d.kind != AspectKind::Query {
         return Err(bad(
-            "a plan is a QUERY aspect — `AS QUERY ON DATASET`; its numbers are a landed table \
+            "a plan is a QUERY aspect — `AS QUERY`; its numbers are a landed table \
              read by SQL, as a metric's are"
                 .into(),
         ));
@@ -123,7 +123,7 @@ pub(crate) async fn check_declaration(
     match shared.store.aspect(metric).await? {
         None => Err(bad(format!(
             "`{metric}` is not a declared aspect — a plan is tied to a declared QUERY aspect; \
-             `DECLARE ASPECT {metric} … AS QUERY ON DATASET` first"
+             `DECLARE ASPECT {metric} … AS QUERY` first"
         ))),
         Some((_, kind, _)) if kind != "query" => Err(bad(format!(
             "`{metric}` is a {kind} aspect — a plan is tied to a QUERY aspect, a metric"
