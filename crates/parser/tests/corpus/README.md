@@ -49,3 +49,4 @@ simplified language.
 | 25 | mixed-case names (avito run) | RULED: an unquoted name folds to lowercase at the declaration and at the read; a double-quoted name keeps its case |
 | 26 | grounding grain / stock serving shape (finance integration run) | TRANSCRIBES (grain key, standard grounding schema) |
 | 27 | plan: a budget beside its actuals (Baton Rouge expense budget) | RULED: a plan is its own QUERY aspect, `x-kind: plan`, tied to its metric by name in the declaration; the plan world on `metric_series`, read by name |
+| 28 | grounding keys: behaviour, row identity, slices (Baton Rouge budget, finance `ar_balance`, harmonisation service level) | PROPOSED: C — the grounding contract, the claims as glosses on the view's columns; the verdict closes it |

@@ -34,7 +34,7 @@ and the risk sits in the middle.
 |---|---|---|---|---|
 | Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
 | Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
-| Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads (`next`, `workspace_next`, `owed`, `app_releases`, `metric_surfaces`), the metrics and slices goals, the docket's frames | High: the extension's view subjects come first; the routes carry 893 lines of tests | `../gloss` (view subjects), `../gloss/kits`, `core.sql`; `crates/session/reads/*.sql` and `cube.rs` as the source to port | Next; ten to fourteen days | drafted below |
+| Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads (`next`, `workspace_next`, `owed`, `app_releases`, `metric_surfaces`), the metrics and slices goals, the docket's frames | High: the routes carry 893 lines of tests, and the marked tests are revisited one by one — rewritten, moved or retired | `../gloss/kits`, `core.sql`; `crates/session/reads/*.sql` and `cube.rs` as the source to port | Next; ten to fourteen days | drafted below |
 | Step 4: the futures kit with the service calls from the host; the scenario's replay deferred | Medium: forecast and bands through the service; the plan as a declared table | `../gloss/kits`; `crates/scripts` (the service client carried over) | After step 3; ten to sixteen days | |
 | Step 5: the cut-over — the image and the release carry DuckDB and the extension; `duck` the only build; session, catalog, import's DataFusion half, the kernels and their tests deleted; docs and skills | Medium: the release machinery (`glossql-release`); CI fetching the extension | `.github/`, the image, `docs/`, `skills/`, the crates deleted | After step 4; six to nine days | |
 
@@ -64,10 +64,15 @@ and the risk sits in the middle.
   and one skills read), apps 27 (25 that seed the cube and the judged
   axes in the session's SQL, the landing's refused cells,
   `app_releases`).
-- **The extension** (`../gloss`, branch `kit-quality`, two commits):
-  the quality kit and the temporal profile. Its suite: 10 files green.
-  A QUERY aspect takes no grain clause there, and now in the grammar,
-  the docs, the skills, the corpus and the tests here.
+- **The extension** (`../gloss`, branch `kit-quality`, three commits):
+  the quality kit, the temporal profile, and a view and its columns as
+  subjects — glossed, measured and owed like a table's, the view's
+  definition a leg of what is measured over it and the shape its
+  glosses age by (`test/sql/gloss_views.test`). Its suite: 11 files
+  green. A QUERY aspect takes no grain clause there, and now in the
+  grammar, the docs, the skills, the corpus and the tests here. The
+  extension resolves relative subjects under a `USE` as the docs spell
+  them.
 - **Conventions the port fixed.** The extension keeps a subject
   dataset-qualified (`fin.t.a`) and the session as spelled; the app
   door gives the prefix back. `written_at` is a TIMESTAMP, rendered
@@ -76,16 +81,13 @@ and the risk sits in the middle.
   `at` and `lambda` are reserved words in DuckDB. A kit's `$subject`
   is spelled bare; optional typed keys are `["type", "null"]`.
 
-## Decisions that are the lead's
+## Parked until the switch
 
 - How the build, CI and the image obtain the extension: today a path
   into `../gloss/build` (`GLOSS_EXTENSION`, `GLOSS_KITS`, or the
   default beside the checkout); a release of `../gloss` per platform,
   or a CI build of it, for the image and for CI to run the `duck`
-  suites.
-- Whether relative subjects (`FROM work_orders.duration_min` under a
-  `USE`) are the extension's to resolve; today it takes the
-  dataset-qualified form, and the docs spell the relative one.
+  suites. Settled at step 5, with the release machinery.
 
 ## The next row, drafted
 
@@ -104,11 +106,10 @@ vocabulary kit's `role`, `behavior`, `unit` and `dimension`
 `metric_axes`, `fact_values`, `metric_sources`); the nine shipped
 reads in `crates/session/reads/` with `next.sql` the routes; the
 docket's 52 frames in `crates/apps/builtin/docket/frames/`; the tests
-marked session-only above; and two measured facts: the profile runs
-on a table column on the extension, and a view's column is not yet
-admitted as a subject. Done when: the extension admits view columns
-as subjects (admission, `subject_column`, a measurement's pin over a
-view's legs); the metrics kit declares the ladder fact on time
+marked session-only above; and the extension's view subjects: the
+temporal profile runs on a view's period column and is served while
+the view's definition and its tables stand. Done when: the metrics
+kit declares the ladder fact on time
 columns and `behavior` takes `ratio` with its halves, and the
 dataset's `cube` fact is gone; the reads are macros over the
 collapsed slots and the view — series, axes, sources, the fact row —

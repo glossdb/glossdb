@@ -514,6 +514,8 @@ mod tests {
     /// A service is named per point, each with its own bearer; a point
     /// left unnamed is simply not there, and a URL under a name the
     /// server declares no point for names nothing.
+    // the DuckDB engine declares no service point before the futures kit (port step 4)
+    #[cfg(not(feature = "duck"))]
     #[test]
     fn a_service_is_named_per_point() {
         let none = read(&[], &[("GLOSSQL_OTHER_URL", "http://127.0.0.1:8100")]).expect("readable");

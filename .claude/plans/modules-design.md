@@ -698,7 +698,8 @@ rules; what each replaces is the cube's serve-and-mark (section 3).
 6. The reads are SQL over the collapsed slots and the view. Nothing is
    re-marked at read time; a verdict older than its data is stale by the
    record's own rule, and the read says so.
-7. The extension admits view columns as subjects: one generic change.
+7. The extension admits a view and its columns as subjects: one generic
+   change, built (`../gloss`, `test/sql/gloss_views.test`).
 
 The no-claim rule: at the period column's own cadence nothing is
 combined and no behaviour is needed; at a coarser grain, with no
@@ -713,8 +714,9 @@ has a slot the witness can band and `ATTEST` can serve; the metric's
 own period has a subject for its profile, which a filtered or joined
 grounding needs; a derived period has a column for its ladder; and a
 metric used as another grounding's source is a table with a table's
-facts. Measured on 2026-10-31: the profile runs on a table column on
-the extension; a view's column is not yet admitted as a subject.
+facts. Measured: the profile runs on a table column and on a view's
+period column on the extension, served while the view's definition and
+its tables stand, and stale beside a re-grounding.
 
 ## 8. For the long run
 
