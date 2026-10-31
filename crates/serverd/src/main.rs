@@ -119,13 +119,8 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
 /// named catalog in a deployment.
 #[cfg(feature = "duck")]
 async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
-    let mut duck = match config.catalog.catalog.strip_prefix("sqlite://") {
-        Some(path) => {
-            let dir = std::path::Path::new(path)
-                .parent()
-                .ok_or("the catalog path has no directory")?;
-            glossql_serverd::engine::Config::laptop(dir)
-        }
+    let mut duck = match laptop_dir(&config.catalog.catalog) {
+        Some(dir) => glossql_serverd::engine::Config::laptop(&dir),
         None => glossql_serverd::engine::Config::deployment(
             &config.catalog.catalog,
             &config.catalog.warehouse,
@@ -134,6 +129,34 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
     duck.row_cap = config.row_cap;
     tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
     Ok(Plane::open(duck).await?)
+}
+
+/// The workspace directory behind a laptop's catalog URL — the
+/// `sqlite:<dir>/catalog.sqlite?mode=rwc` the configuration spells
+/// for `--workspace <dir>` — or none for a deployment's catalog.
+#[cfg(feature = "duck")]
+fn laptop_dir(catalog: &str) -> Option<std::path::PathBuf> {
+    let path = catalog
+        .strip_prefix("sqlite://")
+        .or_else(|| catalog.strip_prefix("sqlite:"))?;
+    let path = path.split('?').next()?;
+    std::path::Path::new(path).parent().map(std::path::Path::to_path_buf)
+}
+
+#[cfg(all(test, feature = "duck"))]
+mod laptop {
+    #[test]
+    fn the_workspace_directory_is_read_off_the_catalog_url() {
+        assert_eq!(
+            super::laptop_dir("sqlite:/tmp/ws/catalog.sqlite?mode=rwc"),
+            Some(std::path::PathBuf::from("/tmp/ws"))
+        );
+        assert_eq!(
+            super::laptop_dir("sqlite:///tmp/ws/catalog.sqlite"),
+            Some(std::path::PathBuf::from("/tmp/ws"))
+        );
+        assert_eq!(super::laptop_dir("postgres://host/db"), None);
+    }
 }
 
 /// The native kernels, and the service behind each point the
