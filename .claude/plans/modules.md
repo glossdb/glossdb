@@ -140,7 +140,9 @@ the bands and plan goals routed, the futures frames served. Measured
 through the door on the tpcds copy: `next` 0.28 s with a plan judged
 (0.95 s before the rule); a dataset's views kept once per store version
 and the cells read bound over the views alone, so the series read is
-0.2 s of its own SQL and reads no table. Next: the glossval forecast
-and plan lanes on DuckDB (they spell `=>`); the scenario's estimate
-through `/whatif`, its replay deferred. Done when: every goal routes,
-the lanes grade, the frames serve rows.
+0.2 s of its own SQL and reads no table. The glossval plan lane grades
+the tpcds seat on DuckDB as it graded the session (glossval 7d0a57e:
+`--engine=duck`, a setup per metric, the judgement run as the forecast
+is). Next: the scenario's estimate through `/whatif`, its replay
+deferred; the forecast lane's switch and the other plan seats' setups.
+Done when: every goal routes, the lanes grade, the frames serve rows.
