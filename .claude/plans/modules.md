@@ -54,8 +54,7 @@ and the risk sits in the middle.
   compile; `duck` is off by default, so CI is unchanged.
 - **Core** (`crates/duck/kits/core.sql`): the record's aspects
   (`recipe_change`, `ruling`, the app parts) and the derived reads
-  `current_dataset`, `agent_assumptions`, `ruling_entries`,
-  `open_questions`, replaced at every open.
+  (`current_dataset`, the assumptions, the rulings, the open questions), replaced at every open.
 - **The extension** (`../gloss`, branch `kit-quality`): the quality
   kit, the temporal profile, a view and its columns as subjects, the
   metrics kit (the ladder, `metric_axes()`, `metric_series()`, the
@@ -91,11 +90,9 @@ and the risk sits in the middle.
   on a fresh connection; the first read after a write computes the
   rows once, about 300 ms. Connections stay per call, as on the session.
 - **Conventions the port fixed.** The extension keeps a subject
-  dataset-qualified (`fin.t.a`) and the session as spelled; the app
-  door gives the prefix back. `written_at` is a TIMESTAMP, rendered
-  by the door's one formatter. DataFusion 55 types `VARCHAR` as
-  `Utf8View`, so a door decodes a cell by value, never by a downcast.
-  `at` and `lambda` are reserved words in DuckDB. A kit's `$subject`
+  dataset-qualified (`fin.t.a`); the app door gives the prefix back.
+  `written_at` is a TIMESTAMP, rendered by the door's one formatter. A
+  door decodes a cell by value, never by a downcast. A kit's `$subject`
   is spelled bare; optional typed keys are `["type", "null"]`.
 
 ## Parked until the switch
@@ -140,11 +137,14 @@ the tpcds seat on DuckDB as it graded the session (glossval 7d0a57e:
 is). The scenario (`../gloss` 1f2d6c9): a lever is a FACT on a column
 of a metric's view, no grounding is replayed; a scenario is the actor's
 FACT aspect with a factor per period; the estimate through `/whatif`
-lands as `metric_scenario` with `scenario_w`, the lever held at its
-last value as planned and times the factor under the scenario (its own
-forecast later); `scenario_points()`, `scenario_levers()`, the scenario
-world on the series read, the plan goal judging the gap under it;
-measured live on the tpcds copy: the estimate 7 s, served on repeat.
+lands as `metric_scenario` with `scenario_w`, each lever's own forecast
+as the planned input (held at its last value where the forecast is
+refused, through the service call's soft form) and times the factor
+under the scenario; `scenario_points()`, `scenario_levers()`, the
+scenario world on the series read, the plan goal judging the gap under
+it; live on Rossmann weekly from the what-if test data: a holiday
+scenario estimated with a direction, a promotion scenario answered with
+the history's bounds.
 Next: the forecast lane's switch and the other plan seats' setups, then
 step 5. Done when: every goal routes, the lanes grade, the frames serve
 rows.
