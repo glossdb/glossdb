@@ -1006,9 +1006,10 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     seed_model_shapes(&plane).await;
 
     // Seeded state: agent formulas + agent dso gloss — nothing waits
-    // but, on DuckDB, the futures kit's walk and forecast: witnessed
-    // measurements on the dataset nobody ran while a metric is grounded.
-    let walk = if cfg!(feature = "duck") { 2 } else { 0 };
+    // but, on DuckDB, the futures kit's walk, forecast and estimate:
+    // witnessed measurements on the dataset nobody ran while a metric is
+    // grounded.
+    let walk = if cfg!(feature = "duck") { 3 } else { 0 };
     let before = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, walk);
@@ -2055,13 +2056,13 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The futures kit's walk and forecast are owed beside the profile.
+    // The futures kit's walk, forecast and estimate are owed beside the profile.
     assert!(
-        banner.contains("3 a metric or a witness reads were never made (metric_bands, metric_forecast, temporal)"),
+        banner.contains("4 a metric or a witness reads were never made (metric_bands, metric_forecast, metric_scenario, temporal)"),
         "{banner}"
     );
     let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 3, "the profile over dso.month, the walk and the forecast");
+    assert_eq!(row_count(owed).await, 4, "the profile over dso.month, the walk, the forecast and the estimate");
     let response = app
         .clone()
         .oneshot(

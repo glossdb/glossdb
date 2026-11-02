@@ -35,7 +35,7 @@ and the risk sits in the middle.
 | Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
 | Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
 | Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads, the routes per kit and the composed `next`, the docket's frames in DuckDB SQL | Built; the gate passed (below); glossval's f1 seat on DuckDB equals the session's score, and the tpcds seat grades the weekly stock at month and per warehouse right, `glossval/notes/duckdb-first-run.md` | `../gloss/kits/metrics`, `core.sql`, `door.sql`, `docket/duck/frames` | | |
-| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | The worlds built and measured (below); open: the glossval lanes on DuckDB, the scenario's estimate | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast`; `crates/duck`, `serverd`'s config; the docket's futures frames | In progress; three to five days left, estimated | |
+| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | The four worlds built and measured (below); open: the forecast lane's switch and the other plan seats' setups | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast` and `/whatif`; `crates/duck`, `serverd`'s config; the docket's futures frames | In progress; one to two days left, estimated | |
 | Step 5: the cut-over — the image and the release carry DuckDB and the extension; `duck` the only build; session, catalog, import's DataFusion half, the kernels and their tests deleted; docs and skills | Medium: the release machinery (`glossql-release`); CI fetching the extension | `.github/`, the image, `docs/`, `skills/`, the crates deleted | After step 4; six to nine days | |
 
 ## What stands
@@ -57,16 +57,12 @@ and the risk sits in the middle.
   `current_dataset`, `agent_assumptions`, `ruling_entries`,
   `open_questions`, replaced at every open.
 - **The extension** (`../gloss`, branch `kit-quality`): the quality
-  kit, the temporal profile, a view and its columns as subjects
-  (`test/sql/gloss_views.test`), the metrics kit
-  (`kits/metrics/kit.sql`, `test/sql/gloss_kit_metrics.test`: the
-  ladder, `metric_axes()`, `metric_series(grain, unclaimed)`,
-  `fact_values()`, `metric_sources(for_metric)`, `routes_metrics()`),
-  `gloss_views_lineage(dataset)`, and the record read planned once
-  (seven witnesses: 4 s to 0.5 s). Its suite: 12 files green. A QUERY
-  aspect takes no grain clause; the grounding contract is open and the
-  claims are the view's columns' (fixture 28); `behavior` takes `ratio`
-  with its halves; the KPI kit declares no grounding schema.
+  kit, the temporal profile, a view and its columns as subjects, the
+  metrics kit (the ladder, `metric_axes()`, `metric_series()`, the
+  routes), the lineage of views, the record read planned once (seven
+  witnesses: 4 s to 0.5 s). A QUERY aspect takes no grain clause; the
+  grounding contract is open and the claims are the view's columns'
+  (fixture 28); `behavior` takes `ratio` with its halves.
 - **Step 3's server half.** `door.sql` (after the kits): `owed` and the
   core routes; `core.sql`: `app_parts`, `app_releases`,
   `metric_surfaces`, `workspace_next`. The engine composes one `next`
@@ -109,12 +105,10 @@ and the risk sits in the middle.
   default beside the checkout); a release of `../gloss` per platform,
   or a CI build of it, for the image and for CI to run the `duck`
   suites. The binary links `libduckdb.dylib` by `@rpath` and carries
-  none: the image ships the library beside the binary, and a laptop
-  release binary needs an rpath (`install_name_tool -add_rpath` onto
-  libduckdb-sys's `out/`) to run outside cargo. httpfs comes the same
-  way as ducklake, installed from the repository, and is named
-  explicitly: `gloss_service` needs it for POST and TLS. Settled at
-  step 5, with the release machinery.
+  none: the image ships the library beside the binary, a laptop release
+  binary gets an rpath onto libduckdb-sys's `out/`. httpfs is installed
+  like ducklake and named explicitly: `gloss_service` needs it for POST
+  and TLS. Settled at step 5, with the release machinery.
 
 ## The next row, drafted
 
@@ -143,6 +137,14 @@ and the cells read bound over the views alone, so the series read is
 0.2 s of its own SQL and reads no table. The glossval plan lane grades
 the tpcds seat on DuckDB as it graded the session (glossval 7d0a57e:
 `--engine=duck`, a setup per metric, the judgement run as the forecast
-is). Next: the scenario's estimate through `/whatif`, its replay
-deferred; the forecast lane's switch and the other plan seats' setups.
-Done when: every goal routes, the lanes grade, the frames serve rows.
+is). The scenario (`../gloss` 1f2d6c9): a lever is a FACT on a column
+of a metric's view, no grounding is replayed; a scenario is the actor's
+FACT aspect with a factor per period; the estimate through `/whatif`
+lands as `metric_scenario` with `scenario_w`, the lever held at its
+last value as planned and times the factor under the scenario (its own
+forecast later); `scenario_points()`, `scenario_levers()`, the scenario
+world on the series read, the plan goal judging the gap under it;
+measured live on the tpcds copy: the estimate 7 s, served on repeat.
+Next: the forecast lane's switch and the other plan seats' setups, then
+step 5. Done when: every goal routes, the lanes grade, the frames serve
+rows.
