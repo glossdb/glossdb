@@ -35,7 +35,7 @@ and the risk sits in the middle.
 | Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
 | Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
 | Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads, the routes per kit and the composed `next`, the docket's frames in DuckDB SQL | Built; the gate passed (below); glossval's f1 seat on DuckDB equals the session's score, and the tpcds seat grades the weekly stock at month and per warehouse right, `glossval/notes/duckdb-first-run.md` | `../gloss/kits/metrics`, `core.sql`, `door.sql`, `docket/duck/frames` | | |
-| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | Medium: the walk's verdict moves to glossthesi; the host names the service at open; the lanes to compare | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast`; `crates/duck`, `serverd`'s config; the docket's futures frames | After step 3; eight to twelve days, estimated | |
+| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | The worlds built and measured (below); open: the glossval lanes on DuckDB, the scenario's estimate | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast`; `crates/duck`, `serverd`'s config; the docket's futures frames | In progress; three to five days left, estimated | |
 | Step 5: the cut-over — the image and the release carry DuckDB and the extension; `duck` the only build; session, catalog, import's DataFusion half, the kernels and their tests deleted; docs and skills | Medium: the release machinery (`glossql-release`); CI fetching the extension | `.github/`, the image, `docs/`, `skills/`, the crates deleted | After step 4; six to nine days | |
 
 ## What stands
@@ -56,14 +56,6 @@ and the risk sits in the middle.
   (`recipe_change`, `ruling`, the app parts) and the derived reads
   `current_dataset`, `agent_assumptions`, `ruling_entries`,
   `open_questions`, replaced at every open.
-- **The gate, measured.** On DuckDB: serverd 46 of 46, apps 11 of 11,
-  the engine's own 3. On the session engine: serverd 66, apps 38, all
-  green. Marked session-only with a reason: serverd 21 (the next
-  routes 8, bootstrap 3, the judge 2, six door tests — the next line,
-  the affordance map, the metric reads, the kit's witnesses — one docs
-  and one skills read), apps 27 (25 that seed the cube and the judged
-  axes in the session's SQL, the landing's refused cells,
-  `app_releases`).
 - **The extension** (`../gloss`, branch `kit-quality`): the quality
   kit, the temporal profile, a view and its columns as subjects
   (`test/sql/gloss_views.test`), the metrics kit
@@ -137,14 +129,18 @@ stays the caller's, so the kit sends complete buckets only. What
 stands: `gloss_service` and an extraction running its body once
 (`../gloss` af97f6a, 182981b), measured on the tpcds workspace: the
 walk of six metrics one call of 0.1 s, the extraction 0.67 s, a repeat
-served. Build order: glossthesi's walk verdict with its
-tests and contract; the kit — `metric_bands` and `band_points()`,
-`metric_forecast` and `forecast_points()`, `metric_series(world := …)`
-serving forecast and plan, the plan a QUERY aspect `x-kind: plan`,
-`routes_futures()`, the suite over a macro the tests replace with
-canned answers; the host — the settings at open from
-`GLOSSQL_SERVICE_URL` and `_TOKEN`, the ID token refreshed, the futures
-frames, the marked tests under `duck`; the glossval forecast and plan
-lanes against the session's records; the scenario's estimate through
-`/whatif`, its replay deferred. Done when: every goal routes, the lanes
-grade, the frames serve rows.
+served. The three worlds (`../gloss` 9ef6cf2, a5789ab, 3793dcc; glossql
+88dc254, 28f39d9): glossthesi's walk verdict (branch `walk-verdict`);
+the walk and the forecast as measurements on the dataset; the plan a
+QUERY aspect `x-kind: plan` read through its metric (`x-plan-of`), its
+judgement a measurement on the plan (`metric_plan`, witness `plan_w`),
+under the rule that an arm of `next` reads the record and never the
+data; the host naming the service at open and refreshing the ID token;
+the bands and plan goals routed, the futures frames served. Measured
+through the door on the tpcds copy: `next` 0.28 s with a plan judged
+(0.95 s before the rule); a dataset's views kept once per store version
+and the cells read bound over the views alone, so the series read is
+0.2 s of its own SQL and reads no table. Next: the glossval forecast
+and plan lanes on DuckDB (they spell `=>`); the scenario's estimate
+through `/whatif`, its replay deferred. Done when: every goal routes,
+the lanes grade, the frames serve rows.
