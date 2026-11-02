@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # The server image: one Rust binary, the DuckDB library it links, the
 # gloss extension and its kits, and the lake extensions DuckDB loads at
 # open — on a distroless base; no model, no weights, no GPU. Built at a

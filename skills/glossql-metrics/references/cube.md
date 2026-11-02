@@ -227,7 +227,7 @@ FROM metric_surfaces ORDER BY name
 What the cube admitted, per metric, and why not:
 
 ```sql
-SELECT metric, applicable, reason, behavior, grain, resolution, dims, bucketed, alternative
+SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, owed
 FROM metric_axes() ORDER BY metric
 ```
 

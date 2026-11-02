@@ -221,7 +221,7 @@ FROM metric_surfaces ORDER BY name
 ```
 
 ```sql
-SELECT metric, applicable, reason, behavior, resolution, dims
+SELECT metric, applicable, reason, behavior, floor, dims
 FROM metric_axes() ORDER BY metric
 ```
 

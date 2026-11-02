@@ -103,7 +103,7 @@ GLOSS app_release ON delivery AS $${"at": "2026-09-23T09:00:00.000Z", "note": "b
 ```
 
 ```sql
-SELECT app, at, note, released_at FROM app_releases
+SELECT app, "at", note, released_at FROM app_releases
 ```
 
 ## Frames are SQL, and they are where the thinking goes

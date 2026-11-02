@@ -64,11 +64,11 @@ Only what the *next* export from that system will also carry belongs
 at source grain; dataset-local evidence stays in dataset glosses.
 
 **List the files before naming one.** A recipe names its files, and
-the listing is a read under the source's location, subdirectories
-included — no other door is needed:
+the listing is a probe at the source's location — `glob('**')` lists
+the subdirectories too:
 
 ```glossql
-SELECT path, size, modified FROM source_files('erp_export') ORDER BY path;
+PROBE erp_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
 ```
 
 **Rehearse the schema with `LIMIT 0`, per file, before authoring any

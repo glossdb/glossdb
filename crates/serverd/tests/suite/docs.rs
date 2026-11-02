@@ -17,6 +17,8 @@
 //! with no examples is legitimate. The skills file keeps the floors
 //! that prove the harness still finds its subject.
 
+use crate::common;
+
 struct Block {
     page: String,
     line: usize,
@@ -145,11 +147,89 @@ async fn every_doc_function_body_compiles() {
     );
 }
 
+/// A missing table is fine: an example may name a customer's data, or a
+/// grounding a fresh workspace has none of. A missing column is not.
+fn missing_table(error: &str) -> bool {
+    error.contains("Table with name") && error.contains("does not exist")
+}
+
+/// A frame's read binds its parameters at the call: an example that
+/// spells them bound up to the values it was not given.
+fn unbound_parameters(error: &str) -> bool {
+    error.contains("Values were not provided for the following parameters")
+}
+
+/// The examples' reads, bound on a fresh workspace: a read naming a
+/// column, a relation or a function the engine and its kits do not
+/// serve fails here. One channel for the run, with a dataset in use —
+/// the names the examples spell — so a read reaches its columns
+/// instead of stopping at the binding.
+async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, Vec<String>) {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
+    for name in ["ops", "fin", "orders", "erp_export"] {
+        session
+            .execute(&format!(
+                "DECLARE DATASET {name} SET (purpose: 'the docs harness');"
+            ))
+            .await
+            .unwrap();
+    }
+    session.execute("USE ops;").await.unwrap();
+    let mut bound = 0;
+    let mut broken = Vec::new();
+    for b in blocks {
+        let trimmed: String = b
+            .sql
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("--"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let head = trimmed.trim_start().to_lowercase();
+        // Reads only: a write example is held to parsing alone, and a
+        // read of the language's own — GLOSSARY(), ATTEST(), a
+        // measurement over a subject — binds in the extension, not in
+        // a plan.
+        if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
+            || head.contains("glossary(")
+            || head.contains("attest(")
+            || head.starts_with("select temporal(")
+        {
+            continue;
+        }
+        // One statement per block, or we cannot bound it.
+        if trimmed.trim_end().trim_end_matches(';').contains(';') {
+            continue;
+        }
+        bound += 1;
+        let sql = format!("EXPLAIN {}", trimmed.trim().trim_end_matches(';'));
+        if let Err(e) = session.batches(&sql, &[]).await {
+            let text = e.to_string();
+            if !missing_table(&text) && !unbound_parameters(&text) {
+                broken.push(format!("{} — {text}", at(b)));
+            }
+        }
+    }
+    (bound, broken)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_doc_read_names_columns_that_exist() {
+    let blocks = blocks();
+    let (_, broken) = bind_reads(&blocks, |b| format!("{}:{}", b.page, b.line)).await;
+    assert!(
+        broken.is_empty(),
+        "doc examples naming something the reads do not serve:\n{}",
+        broken.join("\n")
+    );
+}
+
 /// The engine's SQL guide under `vendor/` is served as it stands on
-/// disk, at the version the lock resolves: `vendor/datafusion/VERSION`
-/// against Cargo.lock's `datafusion` package. A pin move that skips
-/// `vendor/datafusion/refresh.sh` fails here instead of teaching a
-/// dialect this build does not run.
+/// disk, for the release the lock resolves: `vendor/duckdb/VERSION`
+/// against Cargo.lock's `libduckdb-sys` package, whose version spells
+/// the DuckDB release it downloads. A pin move that skips
+/// `vendor/duckdb/refresh.sh` fails here instead of teaching a dialect
+/// this build does not run.
 #[test]
 fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -198,20 +278,28 @@ fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
             p.path
         );
     }
-    let vendored = std::fs::read_to_string(repo.join("vendor/datafusion/VERSION"))
-        .unwrap()
+    let version = std::fs::read_to_string(repo.join("vendor/duckdb/VERSION")).unwrap();
+    let vendored = version
+        .lines()
+        .next()
+        .unwrap_or_default()
         .trim()
         .to_string();
+    // libduckdb-sys 1.MMmmpp.n downloads DuckDB MM.mm.pp; the guide is
+    // versioned by MM.mm.
     let lock = std::fs::read_to_string(repo.join("Cargo.lock")).unwrap();
     let locked = lock
         .lines()
-        .skip_while(|l| *l != "name = \"datafusion\"")
+        .skip_while(|l| *l != "name = \"libduckdb-sys\"")
         .nth(1)
         .and_then(|l| l.strip_prefix("version = \""))
         .and_then(|l| l.strip_suffix('"'))
-        .expect("Cargo.lock resolves datafusion");
+        .and_then(|v| v.split('.').nth(1))
+        .and_then(|n| n.parse::<u32>().ok())
+        .map(|n| format!("{}.{}", n / 10000, (n / 100) % 100))
+        .expect("Cargo.lock resolves libduckdb-sys");
     assert_eq!(
         vendored, locked,
-        "vendor/datafusion/VERSION is not the lock's datafusion — run vendor/datafusion/refresh.sh {locked}"
+        "vendor/duckdb/VERSION is not the lock's DuckDB — run vendor/duckdb/refresh.sh {locked} <duckdb-web commit>"
     );
 }

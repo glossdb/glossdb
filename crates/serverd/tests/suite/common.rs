@@ -145,6 +145,14 @@ pub fn far_future() -> u64 {
 
 /// The same workspace on DuckDB: the extension and its kits from beside
 /// this checkout, the lake in the directory.
+/// The person the harness speaks as: the bootstrap actor.
+pub fn human() -> glossql_glossary::Actor {
+    glossql_glossary::Actor {
+        kind: glossql_glossary::ActorKind::Human,
+        id: glossql_serverd::BOOTSTRAP.into(),
+    }
+}
+
 pub async fn scratch_plane() -> (tempfile::TempDir, glossql_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
     let config = glossql_serverd::engine::Config::laptop(dir.path());

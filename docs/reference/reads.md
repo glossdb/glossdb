@@ -492,17 +492,13 @@ read from the cube and the forecast record, nothing recorded. The
 next read's plan goal reads the year rows; the docket's plan tile
 reads them all. Requires a bound dataset.
 
-## The sources' read
+## The sources' files
 
-### source_files('source')
-
-One row per file under a declared file source's location,
-subdirectories included: `path` (relative to the location — what a
-`read_*` call names), `size`, `modified`. Listed through the engine's
-object store, the same walk a `read_*` glob resolves through, so what
-it serves is what a recipe path reaches. Workspace-scoped: sources are
-workspace rows, and the read needs no dataset. A relational source has
-no files and refuses the read by name.
+A file source's files are listed at the source, where a recipe's paths
+resolve: `PROBE erp_export AS $$SELECT file FROM glob('*')$$` serves
+one row per file under the source's location, `glob('**')` the
+subdirectories too. A probe runs at the source and lands nothing, so
+the listing is the same walk a recipe's `read_*` glob resolves through.
 
 ## The door's read
 
