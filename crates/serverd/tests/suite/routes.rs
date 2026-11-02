@@ -169,14 +169,13 @@ async fn a_fresh_dataset_routes_every_goal() {
     assert_eq!(state("slices"), "blocked");
     assert_eq!(state("app"), "blocked");
     assert_eq!(state("rulings"), "done");
-    // The bands goal is the futures kit's: blocked while no metric is
-    // applicable. The plan world waits for the kit's second half.
-    let bands = goal(&app, "bands").await;
-    assert_eq!(text(&bands, "state"), "blocked", "{bands}");
-    assert_eq!(text(&bands, "why"), "no applicable metric stands", "{bands}");
-    let plan = goal(&app, "plan").await;
-    assert_eq!(text(&plan, "state"), "blocked", "{plan}");
-    assert!(text(&plan, "why").contains("futures kit"), "{plan}");
+    // The bands and plan goals are the futures kit's: blocked while no
+    // metric is applicable.
+    for surface in ["bands", "plan"] {
+        let row = goal(&app, surface).await;
+        assert_eq!(text(&row, "state"), "blocked", "{row}");
+        assert_eq!(text(&row, "why"), "no applicable metric stands", "{row}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

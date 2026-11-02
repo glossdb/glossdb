@@ -1006,9 +1006,9 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     seed_model_shapes(&plane).await;
 
     // Seeded state: agent formulas + agent dso gloss — nothing waits
-    // but, on DuckDB, the futures kit's walk: a witnessed measurement
-    // on the dataset nobody ran while a metric is grounded.
-    let walk = if cfg!(feature = "duck") { 1 } else { 0 };
+    // but, on DuckDB, the futures kit's walk and forecast: witnessed
+    // measurements on the dataset nobody ran while a metric is grounded.
+    let walk = if cfg!(feature = "duck") { 2 } else { 0 };
     let before = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, walk);
@@ -1796,9 +1796,10 @@ async fn the_metrics_faces_serve_the_cube() {
     );
 
     // The axes banner is silent while the verdicts stand at this pin.
-    // On DuckDB the futures kit's walk is owed from the first grounding
-    // and refuses while no service is named: the banner counts it, the
-    // re-measure runs what it can and leaves it owed.
+    // On DuckDB the futures kit's walk and forecast are owed from the
+    // first grounding: the banner counts them in one row, the re-measure
+    // runs them, and with too short a history each lands its reasons
+    // without a call.
     let walk = if cfg!(feature = "duck") { 1 } else { 0 };
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
@@ -1935,6 +1936,70 @@ async fn the_plan_stands_beside_its_metric() {
     );
 }
 
+/// The plan on DuckDB: a plan declared on dso over the same ledger,
+/// read through the metric it plans (x-plan-of): the pulse lists no
+/// plan as a metric; the plan frame serves it period by period at its
+/// own grain and at the year — two months landed with their variance,
+/// and the year landed on those two of its twelve months, which the
+/// row says, with no band read over part of a year; the trend carries
+/// its cells as the plan world beside the reading.
+#[cfg(feature = "duck")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_plan_stands_beside_its_metric() {
+    let (app, plane, _dir) = workspace().await;
+    plane
+        .channel(
+            Actor {
+                kind: ActorKind::Agent,
+                id: "builder".into(),
+            },
+            None,
+        )
+        .await
+        .unwrap()
+        .execute(
+            r#"USE perf;
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
+               GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
+               GLOSS role ON dso.value AS $${"value": "measure"}$$;
+               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
+               SELECT temporal() FROM dso.month;
+               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY;
+               GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM perf.ledger"}$$;"#,
+        )
+        .await
+        .unwrap();
+    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
+    assert_eq!(row_count(pulse).await, 1, "the plan is no metric surface");
+    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
+    assert_eq!(plan.status(), StatusCode::OK);
+    let text = body_text(plan).await;
+    assert!(
+        text.contains("landed") && text.contains("landed, covers 2 of 12 months"),
+        "{text}"
+    );
+    assert!(text.contains("-12.5") && text.contains("2026"), "{text}");
+    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
+    assert_eq!(row_count(plan).await, 3, "two months and the year");
+    let trend = get(
+        &app,
+        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
+    )
+    .await;
+    assert_eq!(
+        row_count(trend).await,
+        4,
+        "the reading and the plan, two months each"
+    );
+    let yearly = get(
+        &app,
+        "/perf/app/docket/frames/trend?metric=dso&grain=year&span=24",
+    )
+    .await;
+    assert_eq!(row_count(yearly).await, 2, "one year: the reading and the plan");
+}
+
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes slot, and a metric whose
 /// period column nobody profiled — the banner counts the want, the
@@ -1990,14 +2055,13 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The futures kit's walk is owed beside the profile, and refuses
-    // while no service is named.
+    // The futures kit's walk and forecast are owed beside the profile.
     assert!(
-        banner.contains("2 a metric or a witness reads were never made (metric_bands, temporal)"),
+        banner.contains("3 a metric or a witness reads were never made (metric_bands, metric_forecast, temporal)"),
         "{banner}"
     );
     let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 2, "the profile over dso.month, and the walk");
+    assert_eq!(row_count(owed).await, 3, "the profile over dso.month, the walk and the forecast");
     let response = app
         .clone()
         .oneshot(
@@ -2009,7 +2073,7 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the profile ran, and the walk landed its reasons");
+    assert_eq!(row_count(banner).await, 0, "the profile ran; the walk and the forecast landed their reasons");
     let latest = get(&app, "/perf/app/docket/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
 }

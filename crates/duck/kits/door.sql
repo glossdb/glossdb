@@ -89,10 +89,10 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
   UNION ALL SELECT * FROM foldins;
 
 -- The goals the door's own reads answer, as a route each: structure,
--- checks, app, rulings; bands and plan stand blocked until the futures
--- kit. Served as the arms' SQL text, like a kit's routes, over the
--- relations the engine's next read takes once: ds, axes, owed, reds,
--- bodies, applicable.
+-- checks, app, rulings; the metrics kit answers metrics and slices, the
+-- futures kit bands and plan. Served as the arms' SQL text, like a kit's
+-- routes, over the relations the engine's next read takes once: ds,
+-- axes, owed, reds, bodies, applicable.
 CREATE OR REPLACE MACRO ws.glossql.routes_core() AS TABLE
 SELECT '' AS ctes, $arms$
 SELECT 'structure' AS surface, 1 AS step, 'next' AS state, 'DECLARE SOURCE' AS act,
@@ -136,9 +136,6 @@ FROM ds
 WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.measurements m WHERE m.dataset = ds.dataset AND m.function = 'relationship_coherence')
 UNION ALL
 SELECT 'structure', 6, 'done', '', '', 'tables landed, edges declared and checked', '', ''
-FROM ds
-UNION ALL
-SELECT 'plan', 1, 'blocked', '', '', 'the futures kit is not loaded: the plan world and the forecast come with it', '', ''
 FROM ds
 UNION ALL
 SELECT 'checks', 1, 'next', 'EXTRACT', 're-run ' || o.subject, o.why,
