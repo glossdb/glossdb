@@ -191,23 +191,48 @@ pub const DOORS: &[(&str, &str)] = &[];
 #[derive(Debug, Clone)]
 pub struct Caller(pub Actor);
 
-/// The service points. None is served on this engine yet: the worlds
-/// are the port's fourth step, and their service calls come with them.
-pub const POINTS: [&str; 0] = [];
+/// The model service, named once for the instance: `GLOSSQL_SERVICE_URL`
+/// its base, the route each call's own; `GLOSSQL_SERVICE_TOKEN` a key
+/// sent as-is, or `GLOSSQL_SERVICE_AUDIENCE` the audience an ID token is
+/// minted for by the platform this process runs on — the host mints and
+/// refreshes it through `Plane::token_sink`. Unnamed, every service call
+/// refuses by name.
+pub const SERVICE_URL: &str = "GLOSSQL_SERVICE_URL";
+pub const SERVICE_TOKEN: &str = "GLOSSQL_SERVICE_TOKEN";
+pub const SERVICE_AUDIENCE: &str = "GLOSSQL_SERVICE_AUDIENCE";
+
+/// The model service as the environment names it.
+#[derive(Clone, Debug, Default)]
+pub struct Service {
+    pub url: String,
+    pub token: Option<String>,
+    pub audience: Option<String>,
+}
+
+/// Sets the bearer every service call sends, for the host that mints it.
+#[derive(Clone)]
+pub struct TokenSink {
+    instance: Arc<Instance>,
+}
+
+impl TokenSink {
+    pub fn set(&self, token: &str) -> Result<(), SessionError> {
+        let conn = self.instance.connect()?;
+        run(
+            &conn,
+            &format!(
+                "SET GLOBAL gloss_service_token = '{}'",
+                token.replace('\'', "''")
+            ),
+        )
+    }
+}
 
 /// The two budgets the flags name, as the session names them; this
 /// engine takes neither yet.
 pub const DEFAULT_CUBE_CACHE_MB: u64 = 2048;
 pub const DEFAULT_MEMORY_LIMIT_MB: u64 = 4096;
 
-/// The environment variable a point is configured by, `GLOSSQL_<POINT>_<WHAT>`.
-pub fn point_variable(point: &str, what: &str) -> String {
-    format!(
-        "GLOSSQL_{}_{}",
-        point.to_ascii_uppercase(),
-        what.to_ascii_uppercase()
-    )
-}
 
 /// What a recipe or a probe can call: the engine's readers over the
 /// source's files, as DuckDB names them.
@@ -417,6 +442,8 @@ pub struct Config {
     /// The lake's data path.
     pub warehouse: String,
     pub row_cap: usize,
+    /// The model service, where the environment names one.
+    pub service: Option<Service>,
 }
 
 impl Config {
@@ -448,6 +475,7 @@ impl Config {
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
             row_cap: DEFAULT_ROW_CAP,
+            service: None,
         }
     }
 }
@@ -734,6 +762,27 @@ impl Plane {
                 run(&conn, &format!("LOAD '{}'", config.extension.display()))?;
                 run(&conn, "INSTALL ducklake")?;
                 run(&conn, "LOAD ducklake")?;
+                // The service named once for the instance, and httpfs
+                // loaded for the POST its calls make; unnamed, a call
+                // refuses by name before any HTTP client is asked.
+                if let Some(service) = &config.service {
+                    run(&conn, "INSTALL httpfs")?;
+                    run(&conn, "LOAD httpfs")?;
+                    run(
+                        &conn,
+                        &format!(
+                            "SET GLOBAL gloss_service_url = '{}'",
+                            service.url.replace('\'', "''")
+                        ),
+                    )?;
+                    run(
+                        &conn,
+                        &format!(
+                            "SET GLOBAL gloss_service_token = '{}'",
+                            service.token.as_deref().unwrap_or_default().replace('\'', "''")
+                        ),
+                    )?;
+                }
                 let catalog = if config.catalog.starts_with("ducklake:") {
                     config.catalog.clone()
                 } else {
@@ -772,6 +821,18 @@ impl Plane {
             config,
             pages: Arc::from(Vec::new()),
         })
+    }
+
+    /// The model service as named at open, for the host's log and its minting.
+    pub fn service(&self) -> Option<&Service> {
+        self.config.service.as_ref()
+    }
+
+    /// Where the host sets the service's bearer when it mints one.
+    pub fn token_sink(&self) -> TokenSink {
+        TokenSink {
+            instance: self.instance.clone(),
+        }
     }
 
     /// The pages the door serves, held here and published as rows of
@@ -1406,5 +1467,64 @@ mod tests {
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert!(reads_record("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_record("SELECT * FROM fin.orders"));
+    }
+
+    /// The service is named once for the instance: the settings every
+    /// service call reads, httpfs loaded for the POST, and the bearer
+    /// the host mints set through the sink.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_service_is_named_once_for_the_instance() {
+        let dir = tempfile::tempdir().expect("a directory");
+        let mut config = Config::laptop(dir.path());
+        config.service = Some(Service {
+            url: "http://127.0.0.1:1".into(),
+            token: Some("k1".into()),
+            audience: None,
+        });
+        let plane = Plane::open(config).await.expect("opens");
+        let channel = plane
+            .channel(
+                Actor {
+                    kind: ActorKind::Agent,
+                    id: "t".into(),
+                },
+                None,
+            )
+            .await
+            .expect("a channel");
+        let read = "SELECT current_setting('gloss_service_url'), current_setting('gloss_service_token'), \
+                    (SELECT loaded FROM duckdb_extensions() WHERE extension_name = 'httpfs')";
+        let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
+        assert_eq!(
+            rows[0],
+            vec![
+                Some("http://127.0.0.1:1".to_string()),
+                Some("k1".to_string()),
+                Some("true".to_string())
+            ]
+        );
+        plane.token_sink().set("k2").expect("set");
+        let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
+        assert_eq!(rows[0][1].as_deref(), Some("k2"));
+        let unnamed = Plane::open(Config::laptop(tempfile::tempdir().expect("a directory").path()))
+            .await
+            .expect("opens");
+        let channel = unnamed
+            .channel(
+                Actor {
+                    kind: ActorKind::Agent,
+                    id: "t".into(),
+                },
+                None,
+            )
+            .await
+            .expect("a channel");
+        let rows = rows_as_text(
+            &channel
+                .batches("SELECT current_setting('gloss_service_url')", &[])
+                .await
+                .expect("reads"),
+        );
+        assert_eq!(rows[0][0].as_deref(), Some(""));
     }
 }

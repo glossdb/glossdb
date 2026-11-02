@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use glossql_serverd::{DEFAULT_ROW_CAP, DoorConfig};
 
-pub const USAGE: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] \
+const USAGE_TEXT: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] \
 [--row-cap <n>] [--cube-cache <megabytes>] [--memory-limit <megabytes>] \
 [--spill-limit <megabytes>] \
 | glossql --version | glossql --help\n\
@@ -25,16 +25,30 @@ directory.\n\
 every other flag has a variable named after it, the flag winning: \
 GLOSSQL_ADDR, GLOSSQL_ROW_CAP, GLOSSQL_CUBE_CACHE, GLOSSQL_MEMORY_LIMIT, \
 GLOSSQL_SPILL_LIMIT.\n\
-the model behind a point — forecast for the metric-bands walk, misfit for \
-misfit. — is a service named per point: GLOSSQL_FORECAST_URL and \
-GLOSSQL_MISFIT_URL (each with its bearer in _TOKEN, or minted by the \
-platform for _AUDIENCE); a point left unnamed refuses by name and \
-everything else serves.\n\
+{service}\
 the authorization arrangement is read from .env or the environment: \
 GLOSSQL_ISSUER, GLOSSQL_CLIENT_ID, GLOSSQL_CLIENT_SECRET, [GLOSSQL_AUDIENCE] \
 — or GLOSSQL_INSECURE_OPEN=true serves the doors without authentication, \
 every caller recorded as insecure_dev_mode (the name is the warning) \
 (see .env.example)";
+
+/// The model service's line of the usage, as this build names it.
+#[cfg(not(feature = "duck"))]
+const SERVICE_USAGE: &str = "the model behind a point — forecast for the metric-bands walk, misfit for \
+misfit. — is a service named per point: GLOSSQL_FORECAST_URL and \
+GLOSSQL_MISFIT_URL (each with its bearer in _TOKEN, or minted by the \
+platform for _AUDIENCE); a point left unnamed refuses by name and \
+everything else serves.\n";
+#[cfg(feature = "duck")]
+const SERVICE_USAGE: &str = "the model service — the walk, the forecast, the misfit, the what-if — is \
+named once: GLOSSQL_SERVICE_URL, with its bearer in GLOSSQL_SERVICE_TOKEN or \
+minted by the platform for GLOSSQL_SERVICE_AUDIENCE; unnamed, its reads \
+refuse by name and everything else serves.\n";
+
+/// The usage, with the service's line as this build names it.
+pub fn usage() -> String {
+    USAGE_TEXT.replace("{service}", SERVICE_USAGE)
+}
 
 /// The command line as typed. `workspace` decides whether `.env` is
 /// read, so the flags are parsed before the environment is.
@@ -107,7 +121,11 @@ pub struct Config {
     /// The authorization arrangement; none under the open switch.
     pub auth: Option<Auth>,
     /// The services the environment names, one per point it fills.
+    #[cfg(not(feature = "duck"))]
     pub points: Vec<Point>,
+    /// The model service, named once, where the environment names it.
+    #[cfg(feature = "duck")]
+    pub service: Option<glossql_serverd::engine::Service>,
     pub catalog: Catalog,
 }
 
@@ -131,7 +149,7 @@ pub struct Auth {
 /// on a platform that mints ID tokens for the service account this
 /// process runs as, the audience the service verifies in
 /// `GLOSSQL_<POINT>_AUDIENCE`.
-#[cfg_attr(feature = "duck", allow(dead_code))]
+#[cfg(not(feature = "duck"))]
 pub struct Point {
     pub name: &'static str,
     pub url: String,
@@ -196,6 +214,7 @@ impl Config {
                 None => sized("GLOSSQL_SPILL_LIMIT")?,
             },
             local_sources: flags.workspace.is_some(),
+            #[cfg(not(feature = "duck"))]
             points: glossql_serverd::engine::POINTS
                 .iter()
                 .filter_map(|point| {
@@ -209,6 +228,14 @@ impl Config {
                     })
                 })
                 .collect(),
+            #[cfg(feature = "duck")]
+            service: var(glossql_serverd::engine::SERVICE_URL).map(|url| {
+                glossql_serverd::engine::Service {
+                    url,
+                    token: var(glossql_serverd::engine::SERVICE_TOKEN),
+                    audience: var(glossql_serverd::engine::SERVICE_AUDIENCE),
+                }
+            }),
             catalog: Catalog::from(&var, flags.workspace.as_deref())?,
             addr,
             doors,
@@ -511,10 +538,43 @@ mod tests {
         );
     }
 
+    /// The model service is named once, with its bearer a key or the
+    /// audience the platform mints a token for; unnamed, it is not there.
+    #[cfg(feature = "duck")]
+    #[test]
+    fn the_service_is_named_once() {
+        let none = read(&[], &[("GLOSSQL_FORECAST_URL", "http://127.0.0.1:8100")]).expect("readable");
+        assert!(none.service.is_none(), "a point's variable names no service");
+        let key = read(
+            &[],
+            &[
+                ("GLOSSQL_SERVICE_URL", "http://127.0.0.1:8100"),
+                ("GLOSSQL_SERVICE_TOKEN", "k1"),
+            ],
+        )
+        .expect("readable");
+        let service = key.service.expect("named");
+        assert_eq!(service.url, "http://127.0.0.1:8100");
+        assert_eq!(service.token.as_deref(), Some("k1"));
+        assert_eq!(service.audience, None);
+        let minted = read(
+            &[],
+            &[
+                ("GLOSSQL_SERVICE_URL", "https://thesi.example"),
+                ("GLOSSQL_SERVICE_AUDIENCE", "https://thesi.example"),
+            ],
+        )
+        .expect("readable");
+        assert_eq!(
+            minted.service.expect("named").audience.as_deref(),
+            Some("https://thesi.example")
+        );
+        assert!(super::usage().contains("GLOSSQL_SERVICE_URL"));
+    }
+
     /// A service is named per point, each with its own bearer; a point
     /// left unnamed is simply not there, and a URL under a name the
     /// server declares no point for names nothing.
-    // the DuckDB engine declares no service point before the futures kit (port step 4)
     #[cfg(not(feature = "duck"))]
     #[test]
     fn a_service_is_named_per_point() {

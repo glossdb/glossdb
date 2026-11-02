@@ -14,13 +14,15 @@
 )]
 
 mod config;
+#[cfg(feature = "duck")]
+mod service;
 
 use std::future::IntoFuture;
 use std::sync::Arc;
 
 #[cfg(not(feature = "duck"))]
 use config::Catalog;
-use config::{Config, USAGE};
+use config::{Config, usage};
 #[cfg(not(feature = "duck"))]
 use glossql_catalog::Lake;
 #[cfg(not(feature = "duck"))]
@@ -40,7 +42,7 @@ fn main() {
             return;
         }
         Some("--help" | "-h") => {
-            println!("{USAGE}");
+            println!("{}", usage());
             return;
         }
         _ => {}
@@ -48,7 +50,7 @@ fn main() {
     let flags = match config::parse(std::env::args()) {
         Ok(flags) => flags,
         Err(e) => {
-            eprintln!("{e}\n{USAGE}");
+            eprintln!("{e}\n{}", usage());
             std::process::exit(2);
         }
     };
@@ -70,7 +72,7 @@ fn run(flags: config::Flags) -> Result<(), Box<dyn std::error::Error + Send + Sy
         dotenvy::dotenv().ok();
     }
     let config = Config::read(flags, |name| std::env::var(name).ok())
-        .map_err(|e| format!("{e}\n{USAGE}"))?;
+        .map_err(|e| format!("{e}\n{}", usage()))?;
     serve(config)
 }
 
@@ -127,8 +129,22 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
         ),
     };
     duck.row_cap = config.row_cap;
+    duck.service = config.service.clone();
     tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
-    Ok(Plane::open(duck).await?)
+    let plane = Plane::open(duck).await?;
+    match plane.service() {
+        Some(service) => {
+            tracing::info!(url = %service.url, "model service");
+            if let Some(audience) = &service.audience {
+                service::keep_minting(plane.token_sink(), audience.clone()).await;
+            }
+        }
+        None => tracing::info!(
+            variable = glossql_serverd::engine::SERVICE_URL,
+            "no model service — the walk, the forecast and the what-if refuse by name"
+        ),
+    }
+    Ok(plane)
 }
 
 /// The workspace directory behind a laptop's catalog URL — the

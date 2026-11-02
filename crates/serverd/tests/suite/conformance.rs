@@ -32,7 +32,10 @@ const CEILING: [(&str, usize); 4] = [
     ("block_in_place", 1),
     ("block_on", 1),
     ("thread_local!", 0),
-    ("tokio::spawn", 3),
+    // Three stand from before; the fourth is the model service's bearer
+    // minted anew before it expires (serverd/src/service.rs), a timer
+    // the engine has no answer for.
+    ("tokio::spawn", 4),
 ];
 
 fn crates_dir() -> PathBuf {
