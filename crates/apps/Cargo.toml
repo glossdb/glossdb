@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-glossql-duck = { path = "../duck", optional = true }
+glossql-duck = { path = "../duck" }
 glossql-glossary = { path = "../glossary" }
-glossql-session = { path = "../session" }
 datafusion = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-json = { workspace = true }
@@ -23,15 +22,8 @@ tokio = { workspace = true }
 toml.workspace = true
 tracing.workspace = true
 
-[features]
-# The engine on DuckDB in place of the session: the doors switch by
-# one `use`; the DataFusion engine stays the default until the cut-over.
-duck = ["dep:glossql-duck"]
-
 [dev-dependencies]
-glossql-catalog = { path = "../catalog" }
 glossql-parser = { path = "../parser" }
-glossql-scripts = { path = "../scripts" }
 tower.workspace = true
 tempfile.workspace = true
 

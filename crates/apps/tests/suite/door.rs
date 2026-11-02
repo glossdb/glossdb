@@ -3,11 +3,6 @@
 //! exactly as serverd mounts it): pages render from the app's own
 //! directory, frames stream Arrow IPC with URL params bound as plan
 //! placeholders, and everything that should refuse refuses.
-//!
-//! Under the DuckDB build (`duck`), the tests that seed the cube and the
-//! judged axes through the session engine's SQL stand out until the
-//! metrics kit lands (design doc §7, step 3): each is marked
-//! `cfg(not(feature = "duck"))` with its reason.
 
 use std::sync::Arc;
 
@@ -22,17 +17,6 @@ use tower::ServiceExt;
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
 
-/// The plane over the directory, on the engine this build carries.
-#[cfg(not(feature = "duck"))]
-async fn open_plane(dir: &std::path::Path) -> Plane {
-    let lake = glossql_catalog::Lake::open(&dir.join("catalog.db"), &dir.join("warehouse"))
-        .await
-        .unwrap();
-    let store = glossql_glossary::Store::open(lake).await.unwrap();
-    Plane::new(store, Arc::new(glossql_apps::engine::NoRuntime))
-}
-
-#[cfg(feature = "duck")]
 async fn open_plane(dir: &std::path::Path) -> Plane {
     Plane::open(glossql_apps::engine::Config::laptop(dir))
         .await
@@ -109,28 +93,9 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     (router, plane, dir)
 }
 
-/// The SHIPPED ruling aspect, cut from the KPI kit the binary
-/// bootstraps — so the ruling tests exercise the schema a real
-/// workspace enforces. The hand-rolled permissive copy this replaces
-/// hid a real refusal: a shipped enum lacking the `unclear` stance
-/// left the docket's button answering 422.
-#[cfg(not(feature = "duck"))]
-fn shipped_ruling_declaration() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
-    let start = kit
-        .find("DECLARE ASPECT ruling")
-        .expect("the kit ships the ruling aspect");
-    let len = kit[start..]
-        .find("AS FACT;")
-        .expect("the declaration closes")
-        + "AS FACT;".len();
-    &kit[start..start + len]
-}
-
 /// The same aspect as the DuckDB engine declares it at every open,
 /// cut from its core: re-declared here, it is a no-op, and the tests
 /// keep one shape on both engines.
-#[cfg(feature = "duck")]
 fn shipped_ruling_declaration() -> &'static str {
     let kit = glossql_apps::engine::CORE;
     let start = kit
@@ -144,10 +109,10 @@ fn shipped_ruling_declaration() -> &'static str {
 }
 
 /// The SHIPPED app aspects — `app`, `app_page`, `app_frame`,
-/// `app_spec` — cut from the kit the same way, so the door serves the
+/// `app_spec` — cut from the core the same way, so the door serves the
 /// parts a real workspace writes.
 fn shipped_app_declarations() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
+    let kit = glossql_apps::engine::CORE;
     let start = kit
         .find("DECLARE ASPECT app WITH")
         .expect("the kit ships the app aspects");
@@ -159,21 +124,6 @@ fn shipped_app_declarations() -> &'static str {
             .find("AS FACT;")
             .expect("the declaration closes")
         + "AS FACT;".len();
-    &kit[start..start + len]
-}
-
-/// The SHIPPED `cube` aspect, cut the same way — the floor and the
-/// ladder the cube computes under.
-#[cfg(not(feature = "duck"))]
-fn shipped_cube_declaration() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
-    let start = kit
-        .find("DECLARE ASPECT cube")
-        .expect("the kit ships the cube aspect");
-    let len = kit[start..]
-        .find("AS FACT ON DATASET;")
-        .expect("the declaration closes")
-        + "AS FACT ON DATASET;".len();
     &kit[start..start + len]
 }
 
@@ -644,71 +594,10 @@ async fn body_text(response: Response<Body>) -> String {
     out
 }
 
-/// Seed the shapes the docket's frames read: a grounded metric with
-/// assumptions, a formulas map, and definitions.
-#[cfg(not(feature = "duck"))]
-async fn seed_model_shapes(plane: &Arc<Plane>) {
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
-    // The judged verdicts the cube reads land LAST: a measurement is
-    // keyed at the statement pin and every declaration moves it.
-    agent
-        .execute(&format!(
-            r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY;
-               DECLARE ASPECT payables WITH $${{"title": "Outstanding payables", "x-kind": "fact"}}$$ AS QUERY;
-               DECLARE ASPECT cleaned WITH $${{"title": "Cleaned ledger", "x-kind": "relation"}}$$ AS QUERY;
-               DECLARE ASPECT definitions WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
-               DECLARE ASPECT formulas WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
-               DECLARE ASPECT temporal_profile WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               DECLARE ASPECT dimension_relevance WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               {cube}
-               DECLARE FUNCTION judge_time FOR GLOBAL AS
-                 $$SELECT true AS applicable, 'month' AS granularity,
-                          named_struct('ratio', 1.0) AS completeness$$
-                 RETURNS temporal_profile;
-               DECLARE FUNCTION judge_axis FOR GLOBAL AS
-                 $$SELECT true AS applicable, 0.8 AS relevance$$
-                 RETURNS dimension_relevance;
-               GLOSS dso ON perf AS $${{"sql": "SELECT month, value, cohort FROM ledger",
-                 "assumptions": [
-                   {{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
-                    "alternative": "doubled", "alternative_sql": "SELECT month, value * 2 AS value FROM ledger"}},
-                   {{"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}}
-                 ]}}$$;
-               GLOSS payables ON perf AS $${{"sql": "SELECT sum(value) AS value FROM ledger"}}$$;
-               GLOSS cleaned ON perf AS $${{"sql": "SELECT month, value AS amount, cohort FROM ledger WHERE value IS NOT NULL"}}$$;
-               GLOSS formulas ON perf AS $${{"formulas": {{"dso": "ar[end of w] / revenue[w] * days[w]"}}}}$$;
-               GLOSS definitions ON perf AS $${{"definitions": {{"dso": {{
-                 "meaning": "receivables outstanding expressed in days of revenue",
-                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3"}}}}}}$$;
-               DECLARE DATASET second SET (purpose: 'multi-dataset guard');
-               USE perf;
-               SELECT judge_time() FROM ledger.month;
-               SELECT judge_axis() FROM ledger.cohort;"#,
-            cube = shipped_cube_declaration()
-        ))
-        .await
-        .unwrap();
-}
-
 /// The same shapes on DuckDB, the metrics kit's way: the metric is a
 /// view whose columns carry the vocabulary — the period and the value
 /// glossed by role, the behaviour on the value, the slice ranked — and
 /// the period column profiled.
-#[cfg(feature = "duck")]
 async fn seed_model_shapes(plane: &Arc<Plane>) {
     let agent = plane
         .channel(
@@ -1009,7 +898,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     // but, on DuckDB, the futures kit's walk, forecast and estimate:
     // witnessed measurements on the dataset nobody ran while a metric is
     // grounded.
-    let walk = if cfg!(feature = "duck") { 3 } else { 0 };
+    let walk = 3;
     let before = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, walk);
@@ -1060,12 +949,9 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         .await
         .unwrap();
     let cleared = get(&app, "/perf/app/docket/frames/owed").await;
-    #[cfg(not(feature = "duck"))]
-    assert_eq!(row_count(cleared).await, 0, "re-recording clears the wait");
     // On DuckDB the re-record redefines the view, so the profile over
     // its period column reads stale and waits on a re-measure; the
     // formula answer itself no longer waits.
-    #[cfg(feature = "duck")]
     {
         let cleared = body_text(cleared).await;
         assert!(
@@ -1406,17 +1292,15 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
 
-    // A voice check: the shipped detector over a slot two actors
+    // A voice check: the kit's detector over a slot two actors
     // disagree on. The evidence lists that column with both voices,
     // the human's first; the agreeing columns are counted, not listed.
     agent
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               DECLARE FUNCTION slot_entropy FOR GLOBAL AS $${}$$;
                DECLARE WITNESS value_w ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
-               GLOSS meaning ON ledger.month AS $${{"value": "the month"}}$$;"#,
-            include_str!("../../../scripts/functions/slot_entropy.sql")
-        ))
+               GLOSS meaning ON ledger.month AS $${"value": "the month"}$$;"#,
+        )
         .await
         .unwrap();
     plane
@@ -1456,218 +1340,6 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         row_count(points).await,
         0,
         "a voice check has no corridor points"
-    );
-}
-
-// The landing ledger's refused cells are the import crate's accounting;
-// the extension lands recipes on its own terms (step 5).
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn the_quality_page_accounts_for_each_landing() {
-    // The loads are the import's own: what each scan held, what landed
-    // and when, and per column the cells a cast refused with the values
-    // it could not read, most frequent first. A refusal is a finding
-    // too, in a sentence from the same fields; what the vocabulary
-    // still owes is listed by name.
-    let (app, plane, dir) = workspace().await;
-    std::fs::write(dir.path().join("dirty.csv"), "v\n1\nx\nx\n2\n").unwrap();
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
-        .execute(
-            "USE perf;\n\
-             DECLARE RECIPE dirty ON perf FROM erp AS $$\
-               SELECT try_cast(v AS DOUBLE) AS v FROM read_csv('dirty.csv')$$;\n\
-             DECLARE ASPECT meaning WITH $${\"type\": \"object\"}$$ AS FACT ON COLUMN;\n\
-             DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);\n\
-             GLOSS meaning ON dirty.v AS $${\"value\": \"a number, when it is one\"}$$;",
-        )
-        .await
-        .unwrap();
-
-    let page = text(get(&app, "/perf/app/docket/p/quality").await).await;
-    assert!(page.contains("Findings"), "{page}");
-    assert!(page.contains("The loads"), "{page}");
-    assert!(page.contains("frames/breaches"), "{page}");
-    assert!(page.contains("frames/findings"), "{page}");
-    assert!(page.contains("frames/unsaid"), "{page}");
-    assert!(
-        !page.contains("frames/census"),
-        "the counts are gone:\n{page}"
-    );
-    assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/docket/p/quality\">Quality</a>"),
-        "{page}"
-    );
-
-    let landing = body_text(get(&app, "/perf/app/docket/frames/landing").await).await;
-    assert!(landing.contains("ledger.csv (3 rows)\n"), "{landing}");
-    assert!(landing.contains("dirty.csv (4 rows)\n"), "{landing}");
-    // The refused cells fold under their table: how many, the column,
-    // the values the cast could not read.
-    assert!(
-        landing.contains("2 cells of v refused: x \u{d7}2\n"),
-        "dirty's one refusing cast, as a line under the row:\n{landing}"
-    );
-    assert!(
-        landing.contains("/perf/app/docket/p/glossary?table=dirty\n"),
-        "the table opens its page:\n{landing}"
-    );
-    assert!(!landing.contains("not counted"), "{landing}");
-
-    // The refusal is a finding: a sentence from the landing's fields,
-    // the column's meaning beside it, no hue of its own.
-    let findings = body_text(get(&app, "/perf/app/docket/frames/findings").await).await;
-    assert!(findings.contains("landing\n"), "{findings}");
-    assert!(
-        findings.contains("2 cells of dirty.v could not be read.\n"),
-        "{findings}"
-    );
-    assert!(
-        findings.contains("read dirty.csv (4 rows) and landed 4 rows; the cast of v refused 2 and landed them empty. The values it refused, most frequent first: x \u{d7}2. The record says of the column: a number, when it is one.\n"),
-        "{findings}"
-    );
-
-    // What the vocabulary owes, by name: the witnessed meaning on every
-    // column nobody has described, under its table.
-    let unsaid = body_text(get(&app, "/perf/app/docket/frames/unsaid").await).await;
-    assert!(unsaid.contains("meaning\n"), "{unsaid}");
-    assert!(
-        unsaid.contains("ledger: cohort, month, value\n"),
-        "the names under their table:\n{unsaid}"
-    );
-    assert!(
-        !unsaid.contains("dirty"),
-        "a described column is not owed:\n{unsaid}"
-    );
-    assert!(
-        unsaid.contains("/perf/app/docket/p/glossary?aspect=meaning\n"),
-        "{unsaid}"
-    );
-}
-
-// The corridor and the walk are the futures kit's (port step 4).
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn the_findings_open_with_a_breached_corridor_and_where_the_move_is() {
-    // A corridor breach is the first finding: the metric's newest
-    // complete month outside the corridor its own history predicted,
-    // as a sentence, with the bands witness's verdict, the picture's
-    // frame, and per axis the member that moved most between the
-    // previous month and this one — the cube's own cells. The walk is
-    // planted as a measurement body, since no service answers here.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
-    agent
-        .execute(&format!(
-            r#"USE perf;
-               DECLARE ASPECT metric_bands WITH $${{"type": "object", "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}, "metrics": {{"type": "array"}}}}}}$$
-                 AS MEASUREMENT ON DATASET;
-               DECLARE FUNCTION planted_walk FOR GLOBAL AS $$
-                 SELECT true AS applicable, [named_struct(
-                   'metric', 'dso', 'applicable', true, 'grain', 'month', 'aggregation', 'sum',
-                   'trained_on', 2, 'axis', 'month', 'axis_judged', true, 'served_by', 'planted 0',
-                   'points', [
-                     named_struct('period', '2026-01', 'actual', 12.5, 'p05', 10.0, 'p10', 11.0,
-                                  'p50', 12.0, 'p90', 13.0, 'p95', 14.0, 'pit', 0.6, 'partial', false),
-                     named_struct('period', '2026-02', 'actual', 4.0, 'p05', 10.0, 'p10', 11.0,
-                                  'p50', 12.0, 'p90', 13.0, 'p95', 14.0, 'pit', 0.005, 'partial', false)])] AS metrics$$
-                 RETURNS metric_bands;
-               DECLARE FUNCTION band_breach FOR GLOBAL AS $${}$$;
-               DECLARE WITNESS bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
-               SELECT planted_walk() FROM perf;"#,
-            include_str!("../../../scripts/functions/band_breach.sql")
-        ))
-        .await
-        .unwrap();
-
-    let breaches = body_text(get(&app, "/perf/app/docket/frames/breaches").await).await;
-    assert!(
-        breaches.contains("DSO fell out of its corridor in February 2026.\n"),
-        "the sentence:\n{breaches}"
-    );
-    assert!(breaches.contains("below\n"), "{breaches}");
-    assert!(breaches.contains("0.99\n"), "the displacement:\n{breaches}");
-    assert!(
-        breaches.contains("red\n"),
-        "the bands witness's verdict:\n{breaches}"
-    );
-    assert!(
-        breaches.contains("bands_w \u{b7} band_breach @ 0.98 on metric_bands\n"),
-        "{breaches}"
-    );
-    assert!(
-        breaches.contains("?check=bands_w&kind=corridor\n"),
-        "{breaches}"
-    );
-    assert!(
-        breaches.contains("/perf/app/docket/p/metrics?metric=dso&dim=cohort\n"),
-        "the link opens the metric sliced by the axis that moved most:\n{breaches}"
-    );
-
-    // The picture's rows: every walked point, the outside one marked.
-    let corridor = body_text(get(&app, "/perf/app/docket/frames/corridor?metric=dso").await).await;
-    assert!(corridor.contains("DSO\n"), "{corridor}");
-    assert!(
-        corridor.ends_with("false\ntrue\n"),
-        "the newest point is outside:\n{corridor}"
-    );
-
-    // Where the move is: on the one axis, the member that moved most,
-    // the move signed, the rest's net beside it — a member absent in
-    // one month counts as zero there.
-    let movers = body_text(get(&app, "/perf/app/docket/frames/movers?metric=dso").await).await;
-    assert!(
-        movers.starts_with("cohort\na\n10.5\n4.0\n\u{2212}\n6.5\nthe other one\n\u{2212}\n2.0\n"),
-        "{movers}"
-    );
-
-    // The corridor check's row links the same way.
-    let points =
-        body_text(get(&app, "/perf/app/docket/frames/check_points?check=bands_w").await).await;
-    assert!(
-        points.contains("/perf/app/docket/p/metrics?metric=dso&dim=cohort\n"),
-        "{points}"
-    );
-
-    // The tab draws the finding with the chart and the movers nested
-    // under it, keyed by the row's metric.
-    let page = text(get(&app, "/perf/app/docket/p/quality").await).await;
-    assert!(page.contains("frames/corridor?metric={metric}"), "{page}");
-    assert!(page.contains("frames/movers?metric={metric}"), "{page}");
-
-    // What the functions measured, in words from their bodies: the
-    // planted walk beside the judged time axis and the judged
-    // dimension the workspace carries.
-    let measured = body_text(get(&app, "/perf/app/docket/frames/measured").await).await;
-    assert!(measured.contains("temporal_profile\n"), "{measured}");
-    assert!(measured.contains("ledger.month: month.\n"), "{measured}");
-    assert!(measured.contains("dimension_relevance\n"), "{measured}");
-    assert!(
-        measured.contains("Relevance from 0.8 to 0.8.\n"),
-        "{measured}"
-    );
-    assert!(
-        measured.contains("1 of 1 metrics walked at month grain, trained on up to 2 months, served by planted 0.\n"),
-        "{measured}"
     );
 }
 
@@ -1762,7 +1434,7 @@ async fn the_metrics_faces_serve_the_cube() {
     .await;
     // The session engine serves the disclosed rival beside the chosen
     // reading; the DuckDB engine serves the chosen reading.
-    let series = if cfg!(feature = "duck") { 1 } else { 2 };
+    let series = 1;
     assert_eq!(
         row_count(trend).await,
         2 * series,
@@ -1801,7 +1473,7 @@ async fn the_metrics_faces_serve_the_cube() {
     // first grounding: the banner counts them in one row, the re-measure
     // runs them, and with too short a history each lands its reasons
     // without a call.
-    let walk = if cfg!(feature = "duck") { 1 } else { 0 };
+    let walk = 1;
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
@@ -1873,70 +1545,6 @@ async fn the_metrics_faces_serve_the_cube() {
     assert_eq!(row_count(trend).await, 2 * series, "and the numbers stand");
 }
 
-// The plan world is the futures kit's (port step 4).
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn the_plan_stands_beside_its_metric() {
-    // A plan declared on dso over the same ledger (fixture 27): the
-    // pulse lists no plan as a metric; the plan frame serves it period
-    // by period at its own grain and at the year — two months landed
-    // with their variance, and the year landed on those two of its
-    // twelve months, which the row says, with no band read over part
-    // of a year; the trend carries its cells as the plan
-    // world at the viewer's grain beside the reading and the rival.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
-        .execute(
-            r#"USE perf;
-               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY;
-               GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM ledger"}$$;"#,
-        )
-        .await
-        .unwrap();
-    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
-    assert_eq!(row_count(pulse).await, 1, "the plan is no metric surface");
-    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
-    assert_eq!(plan.status(), StatusCode::OK);
-    let text = body_text(plan).await;
-    assert!(
-        text.contains("landed") && text.contains("landed, covers 2 of 12 months"),
-        "{text}"
-    );
-    assert!(text.contains("-12.5") && text.contains("2026"), "{text}");
-    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
-    assert_eq!(row_count(plan).await, 3, "two months and the year");
-    let trend = get(
-        &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
-    )
-    .await;
-    assert_eq!(
-        row_count(trend).await,
-        6,
-        "the reading, the rival and the plan, two months each"
-    );
-    let yearly = get(
-        &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=year&span=24",
-    )
-    .await;
-    assert_eq!(
-        row_count(yearly).await,
-        3,
-        "one year: the reading, the rival and the plan"
-    );
-}
-
 /// The plan on DuckDB: a plan declared on dso over the same ledger,
 /// read through the metric it plans (x-plan-of): the pulse lists no
 /// plan as a metric; the plan frame serves it period by period at its
@@ -1944,7 +1552,6 @@ async fn the_plan_stands_beside_its_metric() {
 /// and the year landed on those two of its twelve months, which the
 /// row says, with no band read over part of a year; the trend carries
 /// its cells as the plan world beside the reading.
-#[cfg(feature = "duck")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_plan_stands_beside_its_metric() {
     let (app, plane, _dir) = workspace().await;
@@ -1998,14 +1605,17 @@ async fn the_plan_stands_beside_its_metric() {
         "/perf/app/docket/frames/trend?metric=dso&grain=year&span=24",
     )
     .await;
-    assert_eq!(row_count(yearly).await, 2, "one year: the reading and the plan");
+    assert_eq!(
+        row_count(yearly).await,
+        2,
+        "one year: the reading and the plan"
+    );
 }
 
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes slot, and a metric whose
 /// period column nobody profiled — the banner counts the want, the
 /// docket's re-measure runs the profile, and the series serves.
-#[cfg(feature = "duck")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_list_serves_a_workspace_without_a_fact() {
     let (app, plane, _dir) = workspace().await;
@@ -2062,7 +1672,11 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         "{banner}"
     );
     let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 4, "the profile over dso.month, the walk, the forecast and the estimate");
+    assert_eq!(
+        row_count(owed).await,
+        4,
+        "the profile over dso.month, the walk, the forecast and the estimate"
+    );
     let response = app
         .clone()
         .oneshot(
@@ -2074,116 +1688,13 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the profile ran; the walk and the forecast landed their reasons");
+    assert_eq!(
+        row_count(banner).await,
+        0,
+        "the profile ran; the walk and the forecast landed their reasons"
+    );
     let latest = get(&app, "/perf/app/docket/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
-}
-
-// Declares the cube and the judged axes (session engine).
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn the_list_serves_a_workspace_without_a_fact() {
-    // A workspace that declares no fact has an empty facts list, and
-    // `frames/latest` serves the series alone: a door with nothing to
-    // say is the empty relation, not a refusal. The undated measure
-    // declares no kind, so it is no fact either: nothing shows its
-    // number, and the list carries the cube's reason in the axes slot.
-    // The series serves `cohort`, which nobody judged: the banner
-    // counts the want, re-measure runs the judge, and the axis is
-    // admitted.
-    let (app, plane, _dir) = workspace().await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
-        .execute(&format!(
-            r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY;
-               DECLARE ASPECT undated WITH $${{"title": "Undated"}}$$ AS QUERY;
-               DECLARE ASPECT temporal_profile WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               DECLARE ASPECT dimension_relevance WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               {cube}
-               DECLARE FUNCTION judge_time FOR GLOBAL AS
-                 $$SELECT true AS applicable, 'month' AS granularity,
-                          named_struct('ratio', 1.0) AS completeness$$
-                 RETURNS temporal_profile;
-               DECLARE FUNCTION judge_axis FOR GLOBAL AS
-                 $$SELECT true AS applicable, 0.8 AS relevance$$
-                 RETURNS dimension_relevance;
-               GLOSS dso ON perf AS $${{"sql": "SELECT month, value, cohort FROM ledger"}}$$;
-               GLOSS undated ON perf AS $${{"sql": "SELECT sum(value) AS value FROM ledger"}}$$;
-               SELECT judge_time() FROM ledger.month;"#,
-            cube = shipped_cube_declaration()
-        ))
-        .await
-        .unwrap();
-
-    let latest = get(&app, "/perf/app/docket/frames/latest").await;
-    assert_eq!(latest.status(), StatusCode::OK);
-    assert_eq!(
-        row_count(latest).await,
-        1,
-        "the one series' newest period, and no fact row"
-    );
-    let facts = get(&app, "/perf/app/docket/frames/facts?stopped=0").await;
-    assert_eq!(facts.status(), StatusCode::OK);
-    assert_eq!(row_count(facts).await, 0, "no fact declared, no fact row");
-    let fact = get(&app, "/perf/app/docket/frames/fact?metric=dso").await;
-    assert_eq!(fact.status(), StatusCode::OK);
-    assert_eq!(row_count(fact).await, 0, "a series is not a fact");
-    let fact = get(&app, "/perf/app/docket/frames/fact?metric=undated").await;
-    assert_eq!(row_count(fact).await, 0, "an undeclared kind is not a fact");
-
-    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
-    assert_eq!(pulse.status(), StatusCode::OK);
-    let pulse = body_text(pulse).await;
-    assert!(
-        pulse.contains("no judged time column"),
-        "the list carries the cube's reason: {pulse}"
-    );
-
-    // Nobody judged `cohort`: the fact row wants the judge over it,
-    // `owed` lists it, and the banner counts it beside the stale.
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(banner.status(), StatusCode::OK);
-    let banner = body_text(banner).await;
-    assert!(
-        banner.contains("1 the cube or a witness reads were never made (judge_axis)"),
-        "{banner}"
-    );
-    let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 1, "the judge over ledger.cohort");
-    let response = app
-        .clone()
-        .oneshot(
-            Request::post("/perf/app/docket/remeasure")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the judge ran");
-    let dims = get(
-        &app,
-        "/perf/app/docket/frames/dims?metric=dso&grain=month&span=24",
-    )
-    .await;
-    assert!(
-        body_text(dims).await.contains("cohort"),
-        "the axis is admitted on the new verdict"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2414,13 +1925,7 @@ async fn the_export_tab_lists_tables_and_reads() {
     // The served reads as their relations, with the definition's
     // meaning beside them, the kind as the chip, and the files.
     let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=0").await).await;
-    let relation = |name: &str| {
-        if cfg!(feature = "duck") {
-            format!("\n{name}\n")
-        } else {
-            format!("read.{name}()\n")
-        }
-    };
+    let relation = |name: &str| format!("\n{name}\n");
     assert!(reads.contains(&relation("dso")), "{reads}");
     assert!(reads.contains("receivables outstanding"), "{reads}");
     assert!(reads.contains("metric\n"), "{reads}");
@@ -2814,13 +2319,7 @@ async fn a_stopped_surface_folds_under_the_lists() {
     );
 
     let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=1").await).await;
-    let relation = |name: &str| {
-        if cfg!(feature = "duck") {
-            format!("\n{name}\n")
-        } else {
-            format!("read.{name}()\n")
-        }
-    };
+    let relation = |name: &str| format!("\n{name}\n");
     assert!(reads.contains(&relation("old_dso")), "{reads}");
     assert!(!reads.contains(&relation("dso")), "{reads}");
     let page = text(get(&app, "/perf/app/docket/p/metrics").await).await;
@@ -2899,16 +2398,6 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         )
         .await
         .unwrap();
-    // The words: declared here on the session engine, by the kit the
-    // DuckDB engine opens with.
-    #[cfg(not(feature = "duck"))]
-    let words = r#"DECLARE ASPECT meaning WITH $${"type": "object", "required": ["value"],
-                 "properties": {"value": {"type": "string"}, "term": {"type": "string"}}}$$ AS FACT ON COLUMN;
-               DECLARE ASPECT role WITH $${"type": "object", "required": ["value"],
-                 "properties": {"value": {"enum": ["key", "measure", "dimension", "timestamp", "attribute"]}}}$$ AS FACT ON COLUMN;
-               DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);
-               DECLARE WITNESS role_w ON role BY (AGENT, HUMAN);"#;
-    #[cfg(feature = "duck")]
     let words = "";
     agent
         .execute(&format!(
@@ -2964,14 +2453,9 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         "what the aspect holds, from its schema:\n{facts}"
     );
     assert!(facts.contains("on a column\n"), "{facts}");
-    // The owed columns spoken on: the one of the ledger's three on the
-    // session engine; on DuckDB the views' columns are owed too, and the
-    // seed spoke on the ledger's and dso's.
-    let spoken = if cfg!(feature = "duck") {
-        "4 of 10\n"
-    } else {
-        "1 of 3\n"
-    };
+    // The owed columns spoken on: the views' columns are owed too, and
+    // the seed spoke on the ledger's and dso's.
+    let spoken = "4 of 10\n";
     assert!(
         facts.contains(spoken),
         "the owed columns spoken on:\n{facts}"
@@ -2993,13 +2477,8 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         measurements.contains("temporal_profile\n"),
         "{measurements}"
     );
-    // The function that lands the profile: the test's own on the session
-    // engine, the quality kit's on DuckDB.
-    let lands = if cfg!(feature = "duck") {
-        "temporal\n"
-    } else {
-        "judge_time\n"
-    };
+    // The function that lands the profile: the quality kit's.
+    let lands = "temporal\n";
     assert!(
         measurements.contains(lands),
         "the function that lands it:\n{measurements}"
@@ -3090,13 +2569,6 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         )
         .await
         .unwrap();
-    // The words: declared here on the session engine, by the kit the
-    // DuckDB engine opens with.
-    #[cfg(not(feature = "duck"))]
-    let words = r#"DECLARE ASPECT meaning WITH $${"type": "object"}$$ AS FACT ON COLUMN;
-               DECLARE ASPECT entity WITH $${"type": "object"}$$ AS FACT ON TABLE;
-               DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);"#;
-    #[cfg(feature = "duck")]
     let words = "";
     agent
         .execute(&format!(
@@ -3168,18 +2640,8 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         landing.starts_with("read\nlanded\nthe recipe\n"),
         "{landing}"
     );
-    // The session engine's landing records what the recipe read; the
-    // DuckDB engine's names the source.
-    #[cfg(not(feature = "duck"))]
-    assert!(
-        landing.contains("ledger.csv, 3 rows, from the source erp\n"),
-        "{landing}"
-    );
-    #[cfg(feature = "duck")]
-    {
-        assert!(landing.contains("from the source erp\n"), "{landing}");
-        assert!(landing.contains("3 rows on "), "{landing}");
-    }
+    // The landing names the source.
+    assert!(landing.contains("from the source erp\n"), "{landing}");
     assert!(landing.contains("3 rows on "), "{landing}");
     assert!(
         landing.contains("read_csv('ledger.csv')"),
@@ -3224,14 +2686,10 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .await,
     )
     .await;
-    // Both voices on the meaning, the person's first. On DuckDB the
-    // kit's witness owes the role on every column, and the unfilled
-    // role slot leads the list.
-    let lead = if cfg!(feature = "duck") {
-        "role\nmeaning\nmeaning\n"
-    } else {
-        "meaning\nmeaning\n"
-    };
+    // Both voices on the meaning, the person's first; the kit's witness
+    // owes the role on every column, and the unfilled role slot leads
+    // the list.
+    let lead = "role\nmeaning\nmeaning\n";
     assert!(
         slots.starts_with(lead),
         "both voices on the meaning, the person's first:\n{slots}"
@@ -3242,14 +2700,6 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     assert!(
         slots.contains("spoken by ada\n"),
         "the who rides the hover:\n{slots}"
-    );
-    // An owed measurement: the session engine owes every measurement
-    // aspect on its grain; the DuckDB engine owes one where a witness
-    // stands on it, and none does in the kits it opens with.
-    #[cfg(not(feature = "duck"))]
-    assert!(
-        slots.contains("not yet measured\n"),
-        "an owed measurement:\n{slots}"
     );
 
     // The aspect's page: the declaration, then every value and every
@@ -3265,25 +2715,15 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         head.starts_with("meaning\na fact: said by the agent or a person\n"),
         "{head}"
     );
-    // Where it is owed: the test's own word on a column; the kit's on a
-    // table, a column and a join.
-    let owed_on = if cfg!(feature = "duck") {
-        "on a table, a column, a join\n"
-    } else {
-        "on a column\n"
-    };
+    // Where it is owed: the kit's word on a table, a column and a join.
+    let owed_on = "on a table, a column, a join\n";
     assert!(head.contains(owed_on), "{head}");
     assert!(
         head.contains("witness meaning_w by agent, human\n"),
         "{head}"
     );
-    // The owed subjects: the ledger's three columns on the session
-    // engine; on DuckDB the views' columns and the tables are owed too.
-    let owed = if cfg!(feature = "duck") {
-        "1 of 14"
-    } else {
-        "1 of 3"
-    };
+    // The owed subjects: the views' columns and the tables are owed too.
+    let owed = "1 of 14";
     assert!(
         head.contains(&format!("{owed} owed subjects carry a value\n")),
         "{head}"

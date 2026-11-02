@@ -17,25 +17,6 @@
 //! with no examples is legitimate. The skills file keeps the floors
 //! that prove the harness still finds its subject.
 
-#[cfg(not(feature = "duck"))]
-use std::sync::Arc;
-
-#[cfg(not(feature = "duck"))]
-use glossql_glossary::{Actor, ActorKind};
-
-#[cfg(not(feature = "duck"))]
-use crate::common;
-#[cfg(not(feature = "duck"))]
-use glossql_serverd::bootstrap;
-
-#[cfg(not(feature = "duck"))]
-fn human() -> Actor {
-    Actor {
-        kind: ActorKind::Human,
-        id: glossql_serverd::BOOTSTRAP.into(),
-    }
-}
-
 struct Block {
     page: String,
     line: usize,
@@ -111,25 +92,6 @@ fn blocks() -> Vec<Block> {
     out
 }
 
-/// A refusal that only says "this example names data this workspace
-/// does not have". Everything else is the page's fault.
-///
-/// "No dataset in use" is deliberately NOT here, for the reason
-/// recorded in `skills.rs`: it swallows the missing-column class this
-/// invariant exists to catch. The harness declares and USEs a dataset
-/// instead.
-#[cfg(not(feature = "duck"))]
-fn missing_table(error: &str) -> bool {
-    error.contains("table 'datafusion.")
-        || error.contains("No table named")
-        || error.contains("table not found")
-        // `read.<metric>()` / `misfit.<frame>()` name a workspace's own
-        // groundings, which a fresh one has none of. Narrow on purpose:
-        // only an undeclared aspect behind a serve door, never a
-        // missing column inside one.
-        || (error.contains("not a subject:") && error.contains("is declared"))
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn every_doc_example_parses() {
     let mut broken = Vec::new();
@@ -179,64 +141,6 @@ async fn every_doc_function_body_compiles() {
     assert!(
         broken.is_empty(),
         "doc function bodies that do not compile:\n{}",
-        broken.join("\n")
-    );
-}
-
-// The examples name the shipped reads (next, open_questions, the metric
-// reads), which the DuckDB build ports in later steps.
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn every_doc_read_names_columns_that_exist() {
-    let (_dir, plane) = common::scratch_plane().await;
-    let plane = Arc::new(plane);
-    bootstrap(&plane, human()).await.unwrap();
-
-    // One session for the run, with a dataset in use — the names the
-    // examples actually spell, so a read reaches its columns instead
-    // of stopping at the binding.
-    let session = plane.channel(human(), None).await.unwrap();
-    for name in ["ops", "orders", "erp_export"] {
-        session
-            .execute(&format!(
-                "DECLARE DATASET {name} SET (purpose: 'the docs harness');"
-            ))
-            .await
-            .unwrap();
-    }
-    session.execute("USE ops;").await.unwrap();
-
-    let mut broken = Vec::new();
-    for b in blocks() {
-        let trimmed: String = b
-            .sql
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let head = trimmed.trim_start();
-        // Reads only: a write example is held to parsing alone.
-        if !head.to_lowercase().starts_with("select") {
-            continue;
-        }
-        // One statement per block, or we cannot bound it.
-        if trimmed.trim_end().trim_end_matches(';').contains(';') {
-            continue;
-        }
-        let sql = format!(
-            "SELECT * FROM ({}) LIMIT 0",
-            trimmed.trim().trim_end_matches(';')
-        );
-        if let Err(e) = session.execute(&sql).await {
-            let text = e.to_string();
-            if !missing_table(&text) {
-                broken.push(format!("{}:{} — {text}", b.page, b.line));
-            }
-        }
-    }
-    assert!(
-        broken.is_empty(),
-        "doc examples naming something the reads do not serve:\n{}",
         broken.join("\n")
     );
 }

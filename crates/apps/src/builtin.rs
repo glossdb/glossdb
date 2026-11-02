@@ -30,24 +30,11 @@ macro_rules! docket {
     };
 }
 
-/// A frame in the dialect of the engine this build carries: the
-/// session engine's under `frames/`, the DuckDB engine's under
-/// `duck/frames/`, served at the same path. The pages are one.
-#[cfg(not(feature = "duck"))]
 macro_rules! frame {
     ($name:literal) => {
         (
             concat!("frames/", $name),
             include_str!(concat!("../builtin/docket/frames/", $name)),
-        )
-    };
-}
-#[cfg(feature = "duck")]
-macro_rules! frame {
-    ($name:literal) => {
-        (
-            concat!("frames/", $name),
-            include_str!(concat!("../builtin/docket/duck/frames/", $name)),
         )
     };
 }

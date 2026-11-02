@@ -21,10 +21,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         id: crate::BOOTSTRAP.into(),
     };
     let session = plane.channel(actor, None).await?;
-    #[cfg(feature = "duck")]
     let mut door = session.registered_functions().await?;
-    #[cfg(not(feature = "duck"))]
-    let mut door = session.registered_functions();
     door.extend(DOORS.iter().map(|(name, syntax)| Registered {
         kind: "door",
         name: (*name).to_string(),

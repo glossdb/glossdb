@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/parser", "crates/glossary", "crates/session", "crates/catalog", "crates/import", "crates/scripts", "crates/apps", "crates/serverd", "crates/duck"]
+members = ["crates/parser", "crates/glossary", "crates/apps", "crates/serverd", "crates/duck"]
 
 [workspace.package]
 version = "0.3.0"
@@ -54,15 +54,6 @@ debug = "line-tables-only"
 debug = false
 
 [workspace.dependencies]
-# adbc rides the engine's arrow. Its own requirement spans two arrow
-# majors (>=58, <60), so a bare `cargo update` can split the tree by
-# resolving it to the newer one — and the import seam shares
-# RecordBatch types with datafusion, so a split does not compile.
-# After an update, converge the duplicate back onto the engine's copy:
-# `cargo update arrow-array@<added> --precise <the engine's>`.
-adbc_core = "0.24"
-adbc_driver_manager = "0.24"
-chrono = { version = "0.4", default-features = false, features = ["std"] }
 futures = "0.3"
 # datafusion at the major its lockstep siblings release for: the
 # planner, the parquet scan and sink, and the function libraries the
@@ -71,31 +62,10 @@ futures = "0.3"
 datafusion = { version = "55.1", default-features = false, features = ["parquet", "sql", "compression", "recursive_protection", "nested_expressions", "crypto_expressions", "datetime_expressions", "encoding_expressions", "regex_expressions", "string_expressions", "unicode_expressions"] }
 datafusion-sql = "55.1"
 datafusion-common = "55.1"
-datafusion-functions-json = "0.55"
-# The catalog tables and the record's relations, on one database. Two
-# drivers: SQLite for the workspace directory, Postgres for the cloud
-# (`GLOSSQL_CATALOG_SQL`); `any` is the driver both sit behind;
-# `tls-rustls` is rustls on ring, the provider the rest of the tree
-# already carries.
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "any", "sqlite", "postgres", "tls-rustls"] }
-# The warehouse's object store — the crate DataFusion already runs on,
-# so the binary carries one storage stack: `aws` is the S3 family,
-# `azure` the ADLS/Blob family (Container Apps' managed identity is
-# read by that client), `gcp` Google Cloud Storage (the attached
-# service account's token is read from the metadata server by that
-# client).
-object_store = { version = "0.13", features = ["aws", "azure", "gcp"] }
-# The engine's own glob crate, for the glob a remote source path carries.
-glob = "0.3"
-# Whole-location parsing for the storage seam; in the tree under object_store.
-url = "2"
-bytes = "1"
 # `preserve_order`: a JSON object keeps its authored key order.
 # datafusion-physical-plan 55 switches it on for every workspace build;
 # named here so a single crate built alone orders the same way.
 serde_json = { version = "1", features = ["preserve_order"] }
-# The cube cache (crates/session/src/cube.rs).
-moka = { version = "0.12", features = ["future"] }
 # arrow-ipc/arrow-json ride the arrow that datafusion 55 pins (59.2) — the
 # same lockstep rule as above; bumping either alone splits the arrow tree.
 arrow-ipc = "59.2"
@@ -108,38 +78,29 @@ duckdb-neo = "0.20000.1"
 arrow = { version = "59.2", default-features = false, features = ["ffi"] }
 axum = "0.8"
 rmcp = { version = "3.1", features = ["transport-streamable-http-server", "elicitation"] }
-jsonschema = { version = "0.60", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 thiserror = "2"
 insta = "1"
-async-trait = "0.1"
-# The header/status types the storage seam speaks; already in the tree
-# under axum and reqwest.
-http = "1"
-faer = "0.24"
 serde = { version = "1", features = ["derive"] }
 # tera stays on its 1 line: the agents write the page snippets in its
 # syntax, and the 2 line changes it (.github/dependabot.yml).
 tera = { version = "1", default-features = false }
 toml = "1"
-uuid = { version = "1", features = ["v7"] }
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 # The HTTP client the server makes its own calls with: the issuer's
-# discovery document and key set (serverd), and glossthesi behind
-# the model reads (glossql-scripts). rustls names the TLS
-# backend — pure Rust, the same in a container as on a laptop.
+# discovery document and key set, and the token it mints for the model
+# service. rustls names the TLS backend — pure Rust, the same in a
+# container as on a laptop.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # base64's default features add SIMD engines written in unsafe code;
 # the strings here are cookie-sized, so the plain engine does.
 base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Instrumentation. `tracing` is the facade every crate emits through —
-# already in the tree via axum, rmcp and sqlx; the subscriber is
-# installed once, at the process edge (serverd). blake3 keys a call's
-# spans to its text by digest.
+# already in the tree via axum and rmcp; the subscriber is installed
+# once, at the process edge (serverd).
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-blake3 = "1"
 # The OTLP export (crates/serverd/src/telemetry.rs): the same spans and
 # events, sent to a collector when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 # opentelemetry-rust, traces only, protobuf over HTTP through the

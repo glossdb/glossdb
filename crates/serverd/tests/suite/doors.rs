@@ -9,25 +9,13 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-#[cfg(not(feature = "duck"))]
-use glossql_glossary::{Actor, ActorKind, Store};
 use std::collections::HashMap;
 
 use glossql_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
-#[cfg(not(feature = "duck"))]
-use glossql_serverd::{BOOTSTRAP, Plane, bootstrap};
 
 use crate::common;
 
-/// What the engine types an integer literal as: the session engine a
-/// 64-bit integer, DuckDB a 32-bit one.
-#[cfg(not(feature = "duck"))]
-const INT: &str = "Int64";
-#[cfg(feature = "duck")]
 const INT: &str = "Int32";
-#[cfg(not(feature = "duck"))]
-type IntArray = datafusion::arrow::array::Int64Array;
-#[cfg(feature = "duck")]
 type IntArray = datafusion::arrow::array::Int32Array;
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -156,31 +144,12 @@ async fn a_refusal_answers_by_its_class() {
             (status, body_json(response).await)
         }
     };
-    // A name the record does not hold: the session engine's read
-    // namespace, or on DuckDB a metric's view by its name.
-    #[cfg(not(feature = "duck"))]
-    let (missing, said) = ("SELECT * FROM read.nope()", "no aspect `nope`");
-    #[cfg(feature = "duck")]
     let (missing, said) = ("SELECT * FROM nope", "nope");
     let (status, body) = ask(missing).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert!(body["error"].as_str().unwrap().contains(said), "{body}");
-    // A door whose service is not named: the session engine's points;
-    // the DuckDB build names none before the futures kit.
-    #[cfg(not(feature = "duck"))]
-    {
-        let (status, body) = ask("SELECT * FROM metric_forecast_ahead('fin')").await;
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
-        assert!(
-            body["error"].as_str().unwrap().contains("names none"),
-            "{body}"
-        );
-    }
     let (status, body) = ask("SELECT * FROM metric_axes('revenue')").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    #[cfg(not(feature = "duck"))]
-    let fault = "takes no arguments";
-    #[cfg(feature = "duck")]
     let fault = "metric_axes";
     assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
 }
@@ -1414,7 +1383,6 @@ fn meta_elicit() -> Value {
 /// and a recipe land the table, and the role gloss leaves the behavior
 /// claim owed — the witnessed claim a measurement settles, never a
 /// question for the human.
-#[cfg(feature = "duck")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_asks_the_human_for_statistics() {
     let (app, _dir) = app().await;
@@ -1452,81 +1420,6 @@ async fn the_round_never_asks_the_human_for_statistics() {
         json!("input_required"),
         "the door asked the human for a statistic: {body}"
     );
-    let body = expect_ok(mcp(app, initialize()).await).await;
-    let instructions = body["result"]["instructions"].as_str().unwrap();
-    assert!(!instructions.contains("question"), "{instructions}");
-}
-
-// The kit\'s witnesses run the session engine\'s script runtime.
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn the_round_never_asks_the_human_for_statistics() {
-    // An unassessed
-    // witnessed claim a measurement can settle (behavior, unit) is the
-    // AGENT's backlog — behavior_evidence computes it — and the door
-    // must not ask the human for it. The kit ships the vocabulary, a
-    // table lands, a role gloss marks the measure, the behavior claim
-    // stands owed — and the round stays silent; the brief counts no
-    // question. (Judgment questions — loose assumptions — still ask:
-    // the sibling test below.)
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        dir.path().join("ledger.csv"),
-        "month,value\n2026-01-01,10.5\n2026-02-01,4.0\n",
-    )
-    .unwrap();
-    let lake = glossql_catalog::Lake::open(
-        &dir.path().join("catalog.db"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = Store::open(lake).await.unwrap();
-    // The kit's witnesses carry detectors (slot_entropy), and reads
-    // adjudicate — this test needs the real script runtime.
-    let runtime = Arc::new(glossql_scripts::KernelRuntime::native());
-    let plane = Arc::new(Plane::new(store.clone(), runtime));
-    let human = Actor {
-        kind: ActorKind::Human,
-        id: BOOTSTRAP.into(),
-    };
-    bootstrap(&plane, human).await.unwrap();
-    let app = router(plane, DoorConfig::default(), Access::Gated(common::login()));
-
-    let setup = format!(
-        r#"DECLARE DATASET perf SET (purpose: 'kit test');
-           USE perf;
-           DECLARE SOURCE erp SET (type: csv, location: '{}');
-           DECLARE RECIPE ledger ON perf FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(value AS DOUBLE) AS value FROM read_csv('ledger.csv')$$;
-           GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;"#,
-        dir.path().display()
-    );
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 70, &setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    // The owed behavior claim derives in the store (unassessed row) —
-    // but the round asks nothing, even on a review-shaped call: no
-    // input_required, no form.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                71,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(
-        body["result"]["resultType"],
-        json!("input_required"),
-        "the door asked the human for a statistic: {body}"
-    );
-
-    // And the brief counts no open question — the claim is agent work.
     let body = expect_ok(mcp(app, initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(!instructions.contains("question"), "{instructions}");
@@ -2696,11 +2589,6 @@ async fn the_workspace_says_what_it_affords() {
     let outcomes: Value = serde_json::from_str(text).unwrap();
     let rows = outcomes[0]["rows"].as_array().unwrap();
     let surfaces: Vec<&str> = rows.iter().filter_map(|r| r["surface"].as_str()).collect();
-    // The sample door is the session engine's; the DuckDB build affords no
-    // samples surface.
-    #[cfg(not(feature = "duck"))]
-    let samples: &[&str] = &["samples"];
-    #[cfg(feature = "duck")]
     let samples: &[&str] = &[];
     for expected in [
         "apps",
@@ -2738,18 +2626,13 @@ async fn the_workspace_says_what_it_affords() {
     // standing with no body, which is exactly what `open` means.
     assert_eq!(row("scenarios")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
-    #[cfg(not(feature = "duck"))]
-    {
-        assert_eq!(row("samples")["stands"], json!(1), "{rows:?}");
-        assert_eq!(row("samples")["open"], json!(1), "{rows:?}");
-    }
     // Nothing ruled yet, so nothing owes a fold-in.
     assert_eq!(row("rulings")["stands"], json!(0), "{rows:?}");
     assert_eq!(row("rulings")["open"], json!(0), "{rows:?}");
     // A validation stands with its witness and is open while nobody
     // has spoken on the witnessed aspect. The DuckDB build opens with
     // its kits declared, whose witnesses stand open here too.
-    let kit_witnesses = if cfg!(feature = "duck") { 11 } else { 0 };
+    let kit_witnesses = 11;
     assert_eq!(
         row("validations")["stands"],
         json!(1 + kit_witnesses),

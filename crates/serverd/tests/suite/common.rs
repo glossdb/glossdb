@@ -143,37 +143,11 @@ pub fn far_future() -> u64 {
     9_999_999_999
 }
 
-/// A plane over its own throwaway workspace; hold the dir for the
-/// test's life.
-#[cfg(not(feature = "duck"))]
-pub async fn scratch_plane() -> (tempfile::TempDir, glossql_serverd::Plane) {
-    let (dir, store) = scratch_store().await;
-    (
-        dir,
-        glossql_serverd::Plane::new(store, Arc::new(glossql_session::NoRuntime)),
-    )
-}
-
 /// The same workspace on DuckDB: the extension and its kits from beside
 /// this checkout, the lake in the directory.
-#[cfg(feature = "duck")]
 pub async fn scratch_plane() -> (tempfile::TempDir, glossql_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
     let config = glossql_serverd::engine::Config::laptop(dir.path());
     let plane = glossql_serverd::Plane::open(config).await.unwrap();
     (dir, plane)
-}
-
-/// A store over its own throwaway lake; hold the dir for the test's life.
-#[cfg(not(feature = "duck"))]
-pub async fn scratch_store() -> (tempfile::TempDir, glossql_glossary::Store) {
-    let dir = tempfile::tempdir().unwrap();
-    let lake = glossql_catalog::Lake::open(
-        &dir.path().join("catalog.sqlite"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = glossql_glossary::Store::open(lake).await.unwrap();
-    (dir, store)
 }

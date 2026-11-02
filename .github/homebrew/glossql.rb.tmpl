@@ -1,5 +1,9 @@
 # The tap formula, rewritten by .github/release-macos.sh at each
-# release; lives at glossdb/homebrew-glossql/Formula/glossql.rb.
+# release; lives at glossdb/homebrew-glossql/Formula/glossql.rb. The
+# tarball's bin, lib and share go under libexec whole — the binary finds
+# the DuckDB library and the extension beside itself — and the command
+# in bin is a script that runs it there, so nothing of the DuckDB
+# library's name is linked into the prefix.
 class Glossql < Formula
   desc "Context language server: SQL-shaped surface over a workspace's data and context"
   homepage "https://github.com/glossdb/glossql"
@@ -12,7 +16,8 @@ class Glossql < Formula
   depends_on arch: :arm64
 
   def install
-    bin.install "glossql"
+    libexec.install "bin", "lib", "share"
+    bin.write_exec_script libexec/"bin/glossql"
   end
 
   test do

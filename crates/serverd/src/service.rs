@@ -115,8 +115,8 @@ mod tests {
             .unwrap()
             .as_secs()
             + 600;
-        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(format!(r#"{{"exp": {exp}}}"#));
+        let payload =
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!(r#"{{"exp": {exp}}}"#));
         let ttl = expires_in(&format!("h.{payload}.s")).expect("an exp claim");
         assert!(ttl > Duration::from_secs(590) && ttl <= Duration::from_secs(600));
         assert_eq!(expires_in("not.a.jwt"), None);

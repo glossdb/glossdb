@@ -15,12 +15,9 @@ path = "src/main.rs"
 # `GLOSSQL_<POINT>_URL` names.
 
 [dependencies]
-glossql-duck = { path = "../duck", optional = true }
+glossql-duck = { path = "../duck" }
 glossql-glossary = { path = "../glossary" }
-glossql-session = { path = "../session" }
 glossql-apps = { path = "../apps" }
-glossql-catalog = { path = "../catalog" }
-glossql-scripts = { path = "../scripts" }
 datafusion = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }
@@ -55,11 +52,6 @@ oauth2 = { version = "5", default-features = false, features = ["reqwest", "rust
 # to the issuer and back.
 base64 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-
-[features]
-# The engine on DuckDB in place of the session: the doors switch by
-# one `use`; the DataFusion engine stays the default until the cut-over.
-duck = ["dep:glossql-duck", "glossql-apps/duck"]
 
 [dev-dependencies]
 # The docs and skills suites parse every fenced example.

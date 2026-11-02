@@ -45,7 +45,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 /// The filter variable — `tracing`'s directive syntax. A bare level
 /// (`debug`) is this server's crates at that level, the substrate at
 /// `info` and the MCP library at `warn`; directives
-/// (`glossql_session=debug,apache_avro=debug`) are taken as written. `RUST_LOG` is honoured when it is unset;
+/// (`glossql_duck=debug,rmcp=debug`) are taken as written. `RUST_LOG` is honoured when it is unset;
 /// `info` when neither is.
 pub const FILTER_VAR: &str = "GLOSSQL_LOG";
 

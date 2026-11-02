@@ -57,10 +57,7 @@ mod wire;
 /// The engine the doors are built on: the session on DataFusion, or,
 /// under the `duck` feature, the facade over DuckDB and the gloss
 /// extension. One name, so a door never says which.
-#[cfg(feature = "duck")]
 pub use glossql_duck as engine;
-#[cfg(not(feature = "duck"))]
-pub use glossql_session as engine;
 
 pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};

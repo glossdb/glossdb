@@ -20,25 +20,6 @@
 //! Nothing here executes a write. A block that declares or glosses is
 //! held to rule 1 alone.
 
-#[cfg(not(feature = "duck"))]
-use std::sync::Arc;
-
-#[cfg(not(feature = "duck"))]
-use glossql_glossary::{Actor, ActorKind};
-
-#[cfg(not(feature = "duck"))]
-use crate::common;
-#[cfg(not(feature = "duck"))]
-use glossql_serverd::{Plane, bootstrap};
-
-#[cfg(not(feature = "duck"))]
-fn human() -> Actor {
-    Actor {
-        kind: ActorKind::Human,
-        id: glossql_serverd::BOOTSTRAP.into(),
-    }
-}
-
 struct Block {
     skill: String,
     line: usize,
@@ -137,32 +118,6 @@ fn blocks() -> Vec<Block> {
     out
 }
 
-/// A refusal that only says "this example names data this workspace
-/// does not have". Everything else is the skill's fault.
-///
-/// "No dataset in use" is deliberately NOT here. It was, and it
-/// swallowed the very bug this file exists for: `SELECT value FROM
-/// GLOSSARY()` fails on the missing dataset before it ever reaches the
-/// missing column, so the test passed on the exact example that
-/// shipped. The harness declares and USEs a dataset instead, and a
-/// read that cannot plan for any other reason is a defect.
-#[cfg(not(feature = "duck"))]
-fn missing_table(error: &str) -> bool {
-    // Any qualified table this workspace does not have, not just the
-    // default schema: an extract example names its subject as
-    // `orders.amount`, which resolves to `datafusion.orders.amount`.
-    // A shipped read that does not exist lands
-    // here too — as `datafusion.public.<name>` — and always did.
-    error.contains("table 'datafusion.")
-        || error.contains("No table named")
-        || error.contains("table not found")
-        // `read.<metric>()` / `misfit.<frame>()` name a workspace's own
-        // groundings, which a fresh one has none of. Narrow on purpose:
-        // only an undeclared aspect behind a serve door, never a
-        // missing column inside one.
-        || (error.contains("not a subject:") && error.contains("is declared"))
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_example_parses() {
     let mut broken = Vec::new();
@@ -228,95 +183,6 @@ async fn every_skill_function_body_compiles() {
     assert!(
         checked >= 2,
         "only {checked} function bodies were compiled — the scan has stopped finding its subject"
-    );
-}
-
-/// A runtime that says it fills every point and serves none: the point's
-/// doors pass the plan-time gate and stop at their aspect lookup, which
-/// is where an example naming an undeclared frame belongs.
-#[cfg(not(feature = "duck"))]
-#[derive(Debug)]
-struct ModelStub;
-
-#[cfg(not(feature = "duck"))]
-#[glossql_session::async_trait]
-impl glossql_session::FunctionRuntime for ModelStub {
-    fn serves(&self, _point: &str) -> bool {
-        true
-    }
-}
-
-// The examples name the session engine\'s service points.
-#[cfg(not(feature = "duck"))]
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_read_names_columns_that_exist() {
-    let (dir, store) = common::scratch_store().await;
-    let plane = Arc::new(Plane::new(store.clone(), Arc::new(ModelStub)));
-    bootstrap(&plane, human()).await.unwrap();
-
-    // One session for the run, with a dataset in use — the names the
-    // examples actually spell, so a read reaches its columns instead of
-    // stopping at the binding. The source the examples name stands
-    // too, over the scratch directory, so a listing example lists.
-    let session = plane.channel(human(), None).await.unwrap();
-    for name in ["ops", "orders", "erp_export"] {
-        session
-            .execute(&format!(
-                "DECLARE DATASET {name} SET (purpose: 'the skills harness');"
-            ))
-            .await
-            .unwrap();
-    }
-    session
-        .execute(&format!(
-            "DECLARE SOURCE erp_export SET (type: parquet, location: '{}');",
-            dir.path().display()
-        ))
-        .await
-        .unwrap();
-    session.execute("USE ops;").await.unwrap();
-
-    let mut broken = Vec::new();
-    let mut planned = 0usize;
-    for b in blocks() {
-        let trimmed: String = b
-            .sql
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let head = trimmed.trim_start();
-        // Reads only: a write example is held to parsing alone.
-        if !head.to_lowercase().starts_with("select") {
-            continue;
-        }
-        // One statement per block, or we cannot bound it.
-        if trimmed.trim_end().trim_end_matches(';').contains(';') {
-            continue;
-        }
-        let sql = format!(
-            "SELECT * FROM ({}) LIMIT 0",
-            trimmed.trim().trim_end_matches(';')
-        );
-        planned += 1;
-        if let Err(e) = session.execute(&sql).await {
-            let text = e.to_string();
-            if !missing_table(&text) {
-                broken.push(format!("{}:{} — {text}", b.skill, b.line));
-            }
-        }
-    }
-    assert!(
-        broken.is_empty(),
-        "skill examples naming something the reads do not serve:\n{}",
-        broken.join("\n")
-    );
-    // A test that silently checks nothing passes forever. The skills
-    // teach reads; if this floor is not met, the classification above
-    // has started skipping what it should be holding.
-    assert!(
-        planned >= 5,
-        "only {planned} skill reads were planned — the test is skipping its own subject"
     );
 }
 

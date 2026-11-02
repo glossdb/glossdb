@@ -1,8 +1,7 @@
-//! The engine on DuckDB. The gloss extension owns the language and the
-//! record, DuckLake the lake; this crate is the facade the doors use:
-//! a plane that opens the workspace, a channel per actor, statements
-//! executed and queries streamed as Arrow. The surface mirrors
-//! `glossql-session`'s names, so a door switches engines by one `use`.
+//! The engine. The gloss extension owns the language and the record,
+//! DuckLake the lake; this crate is the facade the doors use: a plane
+//! that opens the workspace, a channel per actor, statements executed
+//! and queries streamed as Arrow.
 //!
 //! Every DuckDB call is synchronous C, so each runs on the blocking pool
 //! and hands its rows back as batches; a channel is one connection, the
@@ -228,12 +227,6 @@ impl TokenSink {
     }
 }
 
-/// The two budgets the flags name, as the session names them; this
-/// engine takes neither yet.
-pub const DEFAULT_CUBE_CACHE_MB: u64 = 2048;
-pub const DEFAULT_MEMORY_LIMIT_MB: u64 = 4096;
-
-
 /// What a recipe or a probe can call: the engine's readers over the
 /// source's files, as DuckDB names them.
 pub fn reader_functions() -> Vec<Registered> {
@@ -436,6 +429,10 @@ pub struct Config {
     pub extension: PathBuf,
     /// The kits, in order; each a script `gloss_kit` runs at open.
     pub kits: Vec<PathBuf>,
+    /// Where DuckDB's own extensions — ducklake, httpfs, postgres —
+    /// are installed; none, DuckDB's default under the home directory,
+    /// installed from its repository at first open.
+    pub extension_dir: Option<PathBuf>,
     /// The lake's catalog: a path to a `.ducklake` file, or a
     /// `ducklake:` URI naming a Postgres catalog.
     pub catalog: String,
@@ -444,26 +441,51 @@ pub struct Config {
     pub row_cap: usize,
     /// The model service, where the environment names one.
     pub service: Option<Service>,
+    /// The engine's memory ceiling and the disk it may spill onto, in
+    /// megabytes; unset, the engine's own defaults.
+    pub memory_limit_mb: Option<u64>,
+    pub spill_limit_mb: Option<u64>,
+}
+
+/// The extension's pieces beside a released binary: `<bin>/../share/glossql`,
+/// the image's and the tarball's layout.
+fn share() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    Some(exe.parent()?.parent()?.join("share/glossql"))
+}
+
+/// Where the extension, the kits and the lake extensions are: what
+/// `GLOSS_EXTENSION`, `GLOSS_KITS` and `GLOSS_EXTENSION_DIR` name;
+/// else the share directory beside the binary where it holds them;
+/// else the sibling checkout's build, a dev tree's.
+fn pieces() -> (PathBuf, PathBuf, Option<PathBuf>) {
+    let gloss = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../gloss");
+    let share = share();
+    let beside = |name: &str| share.as_ref().map(|s| s.join(name)).filter(|p| p.exists());
+    let extension = std::env::var_os("GLOSS_EXTENSION")
+        .map(PathBuf::from)
+        .or_else(|| beside("gloss.duckdb_extension"))
+        .unwrap_or_else(|| {
+            gloss.join(format!(
+                "build/release/repository/v2.0.0/{}/gloss.duckdb_extension",
+                platform()
+            ))
+        });
+    let kits = std::env::var_os("GLOSS_KITS")
+        .map(PathBuf::from)
+        .or_else(|| beside("kits"))
+        .unwrap_or_else(|| gloss.join("kits"));
+    let extensions = std::env::var_os("GLOSS_EXTENSION_DIR")
+        .map(PathBuf::from)
+        .or_else(|| beside("extensions"));
+    (extension, kits, extensions)
 }
 
 impl Config {
-    /// The laptop's shape: the workspace directory holds the catalog
-    /// and the warehouse; the extension and the kits come from the
-    /// sibling checkout unless `GLOSS_EXTENSION` and `GLOSS_KITS` say
-    /// otherwise.
+    /// The laptop's shape: the workspace directory holds the lake's
+    /// catalog and its files.
     pub fn laptop(workspace: &Path) -> Config {
-        let gloss = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../gloss");
-        let extension = std::env::var_os("GLOSS_EXTENSION")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                gloss.join(format!(
-                    "build/release/repository/v2.0.0/{}/gloss.duckdb_extension",
-                    platform()
-                ))
-            });
-        let kits_dir = std::env::var_os("GLOSS_KITS")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| gloss.join("kits"));
+        let (extension, kits_dir, extension_dir) = pieces();
         Config {
             extension,
             kits: vec![
@@ -472,19 +494,18 @@ impl Config {
                 kits_dir.join("metrics/kit.sql"),
                 kits_dir.join("futures/kit.sql"),
             ],
+            extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
             row_cap: DEFAULT_ROW_CAP,
             service: None,
+            memory_limit_mb: None,
+            spill_limit_mb: None,
         }
     }
-}
 
-impl Config {
     /// A deployment's shape: the catalog a `ducklake:` URI or a
-    /// Postgres URI, the warehouse an object-store location; the
-    /// extension and the kits where `GLOSS_EXTENSION` and `GLOSS_KITS`
-    /// say, or beside the binary.
+    /// Postgres URI, the lake's files an object-store location.
     pub fn deployment(catalog: &str, warehouse: &str) -> Config {
         let mut config = Config::laptop(Path::new("."));
         config.catalog = if catalog.starts_with("ducklake:") {
@@ -754,11 +775,34 @@ impl Plane {
             let config = config.clone();
             move || -> Result<(Environment, Instance), SessionError> {
                 let environment = Environment::new()?;
-                let instance = InstanceBuilder::new()
-                    .option("allow_unsigned_extensions", "true")
-                    .build(&environment)?;
+                let mut builder =
+                    InstanceBuilder::new().option("allow_unsigned_extensions", "true");
+                if let Some(dir) = &config.extension_dir {
+                    builder = builder.option("extension_directory", dir.display().to_string());
+                }
+                let instance = builder.build(&environment)?;
                 instance.attach(AttachBuilder::new(StorageLocation::InMemory).make_default())?;
                 let conn = instance.connect()?;
+                // The engine's spill files under the system's temporary
+                // directory, never beside the process: an in-memory
+                // instance would spill into the working directory.
+                run(
+                    &conn,
+                    &format!(
+                        "SET temp_directory = '{}'",
+                        std::env::temp_dir()
+                            .join("glossql")
+                            .display()
+                            .to_string()
+                            .replace('\'', "''")
+                    ),
+                )?;
+                if let Some(mb) = config.memory_limit_mb {
+                    run(&conn, &format!("SET memory_limit = '{mb}MB'"))?;
+                }
+                if let Some(mb) = config.spill_limit_mb {
+                    run(&conn, &format!("SET max_temp_directory_size = '{mb}MB'"))?;
+                }
                 run(&conn, &format!("LOAD '{}'", config.extension.display()))?;
                 run(&conn, "INSTALL ducklake")?;
                 run(&conn, "LOAD ducklake")?;
@@ -779,7 +823,11 @@ impl Plane {
                         &conn,
                         &format!(
                             "SET GLOBAL gloss_service_token = '{}'",
-                            service.token.as_deref().unwrap_or_default().replace('\'', "''")
+                            service
+                                .token
+                                .as_deref()
+                                .unwrap_or_default()
+                                .replace('\'', "''")
                         ),
                     )?;
                 }
@@ -1508,9 +1556,11 @@ mod tests {
         plane.token_sink().set("k2").expect("set");
         let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
         assert_eq!(rows[0][1].as_deref(), Some("k2"));
-        let unnamed = Plane::open(Config::laptop(tempfile::tempdir().expect("a directory").path()))
-            .await
-            .expect("opens");
+        let unnamed = Plane::open(Config::laptop(
+            tempfile::tempdir().expect("a directory").path(),
+        ))
+        .await
+        .expect("opens");
         let channel = unnamed
             .channel(
                 Actor {

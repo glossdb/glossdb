@@ -28,25 +28,11 @@ use crate::engine::{CallShape, Plane, Session, SessionError};
 use crate::window;
 use crate::wire;
 
-/// The brief's counts, the type each engine serves.
-#[cfg(not(feature = "duck"))]
-type BriefCounts = glossql_glossary::BriefCounts;
-#[cfg(feature = "duck")]
 type BriefCounts = crate::engine::BriefCounts;
 
 /// The brief's counts, as each engine serves them.
-#[cfg(feature = "duck")]
 async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
     plane.brief_counts().await.map_err(|e| e.to_string())
-}
-
-#[cfg(not(feature = "duck"))]
-async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
-    plane
-        .store()
-        .brief_counts()
-        .await
-        .map_err(|e| e.to_string())
 }
 
 const INSTRUCTIONS: &str = "glossql workspace server — one SQL-shaped surface over a \
@@ -658,8 +644,8 @@ struct RulingEntry<'a> {
 /// What still stands open for a human to judge, and the round's ONLY
 /// derivation — unassessed witnessed claims (behavior, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
-/// shipped functions settle them. The derivation
-/// itself is `crates/session/reads/open_questions.sql`, which carries
+/// shipped functions settle them. The derivation itself is the core's
+/// `open_questions` read (`crates/duck/kits/core.sql`), which carries
 /// the gates and the reasons; the door only orders and serves it, and
 /// the app's docket renders the same read. Least-confident first, and
 /// the ordering rides here because an inner ORDER BY does not survive

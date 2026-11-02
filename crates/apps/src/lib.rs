@@ -39,16 +39,12 @@ mod rule;
 /// The engine the doors are built on: the session on DataFusion, or,
 /// under the `duck` feature, the facade over DuckDB and the gloss
 /// extension. One name, so a door never says which.
-#[cfg(feature = "duck")]
 pub use glossql_duck as engine;
-#[cfg(not(feature = "duck"))]
-pub use glossql_session as engine;
 
 pub use app::AppDef;
 
 /// A read with its parameters bound, `$name` in the SQL, as each
 /// engine takes them.
-#[cfg(feature = "duck")]
 pub(crate) async fn query_with(
     session: &engine::Session,
     sql: &str,
@@ -57,21 +53,6 @@ pub(crate) async fn query_with(
     session.query_stream_with_params(sql, &pairs).await
 }
 
-#[cfg(not(feature = "duck"))]
-pub(crate) async fn query_with(
-    session: &engine::Session,
-    sql: &str,
-    pairs: Vec<(String, String)>,
-) -> Result<engine::QueryStream, engine::SessionError> {
-    use datafusion::common::{ParamValues, ScalarValue};
-    let values: std::collections::HashMap<String, ScalarValue> = pairs
-        .into_iter()
-        .map(|(k, v)| (k, ScalarValue::Utf8(Some(v))))
-        .collect();
-    session
-        .query_stream_with_params(sql, (!values.is_empty()).then(|| ParamValues::from(values)))
-        .await
-}
 pub use builtin::{BUILTINS, BuiltinApp};
 pub use pages::CONTENT_SECURITY_POLICY;
 

@@ -1,71 +1,42 @@
--- One metric's story at the viewer's grain: the metric's own series
--- (dimension '' — the total at the grounding's own verb) and the
--- disclosed rival beside it where the grounding names one (dimension
--- 'alternative'). The cells at the grain are a plan over the metric's
--- head, folded by the verb each row carries and windowed to the
--- grain's rung on the server; the span clips the newest periods here
--- — the frame is the filter, and a grain finer than the metric's
--- resolution serves nothing. `$grain` and `$span` are page params;
--- the reference on the page carries the defaults.
---
--- The forecast world rides ahead of the actuals: the newest
--- `metric_forecast` run's medians for the periods ahead, served at the
--- metric's own resolution only, so another grain shows none. The span
--- is the history's and never clips it. Each period ahead carries its
--- 80% band from `forecast_points()` as `low` and `high`, and `held`
--- says how often such a band held and whose count that is; an actual
--- row carries none.
---
--- The plan world rides beside them where a plan stands on the metric
--- at the viewer's grain: every plan's cells from `plan_points()`, one
--- series per plan, the periods ahead never clipped by the span. A plan
--- at a coarser grain than the viewer's shows none here; the plan tile
--- carries it at its own grain.
---
--- The series carry their own names: the chosen one wears the metric's
--- title, the rival says it is one, the forecast says `forecast`, a
--- plan says `plan: <name>`; the world tells the chart which stroke to
--- draw.
+-- One metric's story at the viewer's grain: the total series, at the
+-- value column's behaviour, windowed to the grain's rung on the server;
+-- the span clips the newest periods here. A grain finer than the floor
+-- serves nothing. The plan worlds ride beside the actuals, one series
+-- per plan at the viewer's grain, and the forecast world with its 80%
+-- band at the metric's own grain — the futures kit's reads, the newest
+-- forecast landed, nothing re-run.
 WITH story AS (
   SELECT period, dimension, member, value, num, den, behavior, world,
          dense_rank() OVER (ORDER BY period DESC) AS recency
-  FROM metric_series(grain => $grain)
-  WHERE metric = CAST($metric AS VARCHAR) AND dimension IN ('', 'alternative')
-),
-ahead AS (
-  SELECT f.period, f.value, f.num, f.den, f.behavior, f.world,
-         p.p10 AS low, p.p90 AS high,
-         arrow_cast(CAST(CAST(round(p.held_80 * 100) AS INT) AS VARCHAR)
-           || '% of such bands held (' || p.held_from || ')', 'Utf8') AS held
-  FROM metric_series(grain => $grain, world => 'forecast') f
-  LEFT JOIN forecast_points() p
-    ON p.metric = CAST($metric AS VARCHAR) AND p.span IS NULL
-   AND CAST(p.period AS TIMESTAMP) = f.period
-  WHERE f.metric = CAST($metric AS VARCHAR) AND f.dimension = ''
-),
-planned AS (
-  SELECT p.period, arrow_cast('plan: ' || p.plan, 'Utf8') AS series, p.value
-  FROM plan_points() p
-  WHERE p.metric = CAST($metric AS VARCHAR) AND p.grain = CAST($grain AS VARCHAR)
-    AND (CAST($span AS VARCHAR) = 'all'
-         OR p.period >= (SELECT min(period) FROM story WHERE recency <= TRY_CAST($span AS INT)))
-)
-SELECT s.period,
-  arrow_cast(CASE WHEN s.dimension = ''
-    THEN coalesce(json_get_str(a.schema, 'title'), CAST($metric AS VARCHAR))
-    ELSE 'rival: ' || s.member END, 'Utf8') AS series,
-  s.value, s.num, s.den, s.behavior, s.world,
-  CAST(NULL AS DOUBLE) AS low, CAST(NULL AS DOUBLE) AS high, arrow_cast(NULL, 'Utf8') AS held
-FROM story s
-LEFT JOIN aspects a ON a.name = CAST($metric AS VARCHAR)
-WHERE CAST($span AS VARCHAR) = 'all' OR s.recency <= TRY_CAST($span AS INT)
-UNION ALL
-SELECT period, arrow_cast('forecast', 'Utf8') AS series, value, num, den, behavior, world,
-       low, high, held
-FROM ahead
-UNION ALL
-SELECT period, series, value, CAST(NULL AS DOUBLE) AS num, CAST(NULL AS DOUBLE) AS den,
-       arrow_cast('', 'Utf8') AS behavior, arrow_cast('plan', 'Utf8') AS world,
-       CAST(NULL AS DOUBLE) AS low, CAST(NULL AS DOUBLE) AS high, arrow_cast(NULL, 'Utf8') AS held
-FROM planned
+  FROM metric_series(grain := $grain)
+  WHERE metric = CAST($metric AS VARCHAR) AND dimension = ''),
+a AS (
+  SELECT name, schema FROM aspects WHERE name = CAST($metric AS VARCHAR)
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+titles AS (
+  SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+plans AS (
+  SELECT c.period, coalesce(t.title, c.plan) AS series, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.behavior, 'plan' AS world,
+         CAST(NULL AS DOUBLE) AS low, CAST(NULL AS DOUBLE) AS high, CAST(NULL AS VARCHAR) AS held
+  FROM plan_cells(CAST($grain AS VARCHAR)) c LEFT JOIN titles t ON t.name = c.plan
+  WHERE c.metric = CAST($metric AS VARCHAR)),
+forecast AS (
+  SELECT f.period, coalesce(json_extract_string(a.schema, '$.title'), CAST($metric AS VARCHAR)) || ' · forecast' AS series,
+         f.p50 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(f.behavior, 'none') AS behavior, 'forecast' AS world,
+         f.p10 AS low, f.p90 AS high,
+         coalesce(CAST(CAST(round(f.held_80 * 100) AS INT) AS VARCHAR) || '% of such bands held (' || f.held_from || ')', '') AS held
+  FROM forecast_points() f LEFT JOIN a ON true
+  WHERE f.metric = CAST($metric AS VARCHAR) AND f.applicable AND f.span IS NULL AND f.grain = CAST($grain AS VARCHAR)),
+actuals AS (
+  SELECT s.period,
+    coalesce(json_extract_string(a.schema, '$.title'), CAST($metric AS VARCHAR)) AS series,
+    s.value, s.num, s.den, s.behavior, s.world,
+    CAST(NULL AS DOUBLE) AS low, CAST(NULL AS DOUBLE) AS high, CAST(NULL AS VARCHAR) AS held
+  FROM story s
+  LEFT JOIN a ON true
+  WHERE CAST($span AS VARCHAR) = 'all' OR s.recency <= TRY_CAST($span AS INT))
+SELECT * FROM actuals
+UNION ALL SELECT * FROM plans
+UNION ALL SELECT period::TIMESTAMP, series, value, num, den, behavior, world, low, high, held FROM forecast
 ORDER BY period, series

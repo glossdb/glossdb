@@ -14,22 +14,13 @@
 )]
 
 mod config;
-#[cfg(feature = "duck")]
 mod service;
 
 use std::future::IntoFuture;
 use std::sync::Arc;
 
-#[cfg(not(feature = "duck"))]
-use config::Catalog;
 use config::{Config, usage};
-#[cfg(not(feature = "duck"))]
-use glossql_catalog::Lake;
-#[cfg(not(feature = "duck"))]
-use glossql_glossary::Store;
 use glossql_glossary::{Actor, ActorKind};
-#[cfg(not(feature = "duck"))]
-use glossql_scripts::KernelRuntime;
 use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
 fn main() {
@@ -104,25 +95,11 @@ async fn doors(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
     serve_until_stopped(app, &config.addr).await
 }
 
-/// The workspace opened on the engine this build carries.
-#[cfg(not(feature = "duck"))]
-async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = runtime_of(&config.points)?;
-    let store = Store::open(open_lake(config.catalog.clone()).await?).await?;
-    Ok(Plane::new(store, runtime)
-        .with_row_cap(config.row_cap)
-        .with_cube_cache(config.cube_cache_mb)
-        .with_memory_limit(config.memory_limit_mb)
-        .with_spill_limit(config.spill_limit_mb)
-        .with_local_sources(config.local_sources))
-}
-
 /// The workspace on DuckDB: the directory's lake on a laptop, the
 /// named catalog in a deployment.
-#[cfg(feature = "duck")]
 async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
-    let mut duck = match laptop_dir(&config.catalog.catalog) {
-        Some(dir) => glossql_serverd::engine::Config::laptop(&dir),
+    let mut duck = match &config.catalog.workspace {
+        Some(dir) => glossql_serverd::engine::Config::laptop(dir),
         None => glossql_serverd::engine::Config::deployment(
             &config.catalog.catalog,
             &config.catalog.warehouse,
@@ -130,6 +107,8 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
     };
     duck.row_cap = config.row_cap;
     duck.service = config.service.clone();
+    duck.memory_limit_mb = config.memory_limit_mb;
+    duck.spill_limit_mb = config.spill_limit_mb;
     tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
     let plane = Plane::open(duck).await?;
     match plane.service() {
@@ -145,64 +124,6 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
         ),
     }
     Ok(plane)
-}
-
-/// The workspace directory behind a laptop's catalog URL — the
-/// `sqlite:<dir>/catalog.sqlite?mode=rwc` the configuration spells
-/// for `--workspace <dir>` — or none for a deployment's catalog.
-#[cfg(feature = "duck")]
-fn laptop_dir(catalog: &str) -> Option<std::path::PathBuf> {
-    let path = catalog
-        .strip_prefix("sqlite://")
-        .or_else(|| catalog.strip_prefix("sqlite:"))?;
-    let path = path.split('?').next()?;
-    std::path::Path::new(path).parent().map(std::path::Path::to_path_buf)
-}
-
-#[cfg(all(test, feature = "duck"))]
-mod laptop {
-    #[test]
-    fn the_workspace_directory_is_read_off_the_catalog_url() {
-        assert_eq!(
-            super::laptop_dir("sqlite:/tmp/ws/catalog.sqlite?mode=rwc"),
-            Some(std::path::PathBuf::from("/tmp/ws"))
-        );
-        assert_eq!(
-            super::laptop_dir("sqlite:///tmp/ws/catalog.sqlite"),
-            Some(std::path::PathBuf::from("/tmp/ws"))
-        );
-        assert_eq!(super::laptop_dir("postgres://host/db"), None);
-    }
-}
-
-/// The native kernels, and the service behind each point the
-/// environment names (bodies ride their declarations, fixture 24 —
-/// nothing of the runtime's lives in the workspace). Every point is
-/// on the record at start-up, named or not.
-#[cfg(not(feature = "duck"))]
-fn runtime_of(
-    points: &[config::Point],
-) -> Result<Arc<KernelRuntime>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut runtime = KernelRuntime::native();
-    for point in points {
-        runtime = runtime.with_point(
-            point.name,
-            &point.url,
-            glossql_scripts::Bearer::from_env(point.token.as_deref(), point.audience.as_deref()),
-        )?;
-    }
-    let runtime = Arc::new(runtime);
-    for point in glossql_serverd::engine::POINTS {
-        match runtime.url(point) {
-            Some(url) => tracing::info!(point, url, "service"),
-            None => tracing::info!(
-                point,
-                variable = glossql_serverd::engine::point_variable(point, "URL"),
-                "no service — the point's reads refuse by name"
-            ),
-        }
-    }
-    Ok(runtime)
 }
 
 /// A fresh workspace receives the shipped system before any door
@@ -284,20 +205,6 @@ async fn serve_until_stopped(
         }
     }
     Ok(())
-}
-
-/// Open the data plane the run names. The SQL catalog's URI carries
-/// the credentials, so the record gets its scheme and nothing more.
-#[cfg(not(feature = "duck"))]
-async fn open_lake(catalog: Catalog) -> Result<Lake, String> {
-    tracing::info!(
-        catalog = catalog.catalog.split(':').next().unwrap_or("sql"),
-        warehouse = %catalog.warehouse,
-        "opening the catalog"
-    );
-    Lake::open_sql(&catalog.catalog, &catalog.warehouse)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// SIGINT or SIGTERM — the terminal's Ctrl-C or the platform's stop.

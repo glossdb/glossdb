@@ -1,39 +1,32 @@
-//! The glossary store — declarations, gloss rows, pin-keyed measurements, and
-//! the read shapes behind `GLOSSARY()` / `ATTEST()` (SPEC.md §5–§7).
-//!
-//! One store: every relation is a table in the catalog's database,
-//! ordered by the database's own identity column. Supersession is a
-//! read — latest row per (subject, aspect, actor kind) — never an
-//! update.
-//!
-//! Subjects are stored dataset-relative, exactly as statements spell them
-//! (`orders.amount`, `orders.customer_id -> customers.id`); the session
-//! resolves dataset prefixes before the store sees anything.
+//! The actor: who a connection speaks as (SPEC.md §1). Every write the
+//! engine lands is stamped with it; there is no BY clause anywhere. The
+//! doors read it off the gate and hand it to the engine with the call.
 
-// An unwrap outside a test is a panic waiting for the row that has it;
-// tests are exempt (clippy.toml).
-#![warn(clippy::unwrap_used)]
-// A narrowing cast is a value the type did not promise: a count or an
-// offset converts through `try_from` or a named conversion that states
-// its bound.
-#![warn(
-    clippy::cast_possible_wrap,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorKind {
+    Agent,
+    Human,
+}
 
-pub mod rules;
-pub mod schemas;
-mod store;
-mod types;
+impl ActorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ActorKind::Agent => "agent",
+            ActorKind::Human => "human",
+        }
+    }
+}
 
-pub use glossql_catalog::{Lake, Row};
-pub use rules::admit_grain;
-pub use store::{
-    BriefCounts, Pin, RELATIONS, ReadContext, Relation, Scope, Store, measurement_stands,
-    relation_columns, table_legs, version_view,
-};
-pub use types::{
-    Actor, ActorKind, AttestRow, CollapsedRow, Error, FunctionRow, GlossRow, MeasurementRow,
-    RawRow, RecipeAdmission, RecipeRow, Result, Verdict, Verdicts, WitnessRow,
-};
+impl std::fmt::Display for ActorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The connection's actor: the kind the door it came through says, the
+/// id the token says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Actor {
+    pub kind: ActorKind,
+    pub id: String,
+}

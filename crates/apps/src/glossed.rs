@@ -189,7 +189,6 @@ async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
     }
     // The DuckDB record keeps a subject dataset-qualified; the session's
     // keeps it as spelled. The app's name is the first segment either way.
-    #[cfg(feature = "duck")]
     for row in &mut out {
         if let Some(rest) = row.subject.strip_prefix(&format!("{dataset}.")) {
             row.subject = rest.to_string();
