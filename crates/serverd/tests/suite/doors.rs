@@ -2749,7 +2749,7 @@ async fn the_workspace_says_what_it_affords() {
     // A validation stands with its witness and is open while nobody
     // has spoken on the witnessed aspect. The DuckDB build opens with
     // its kits declared, whose nine witnesses stand open here too.
-    let kit_witnesses = if cfg!(feature = "duck") { 9 } else { 0 };
+    let kit_witnesses = if cfg!(feature = "duck") { 10 } else { 0 };
     assert_eq!(
         row("validations")["stands"],
         json!(1 + kit_witnesses),

@@ -1220,7 +1220,9 @@ impl Session {
     /// dataset that landed before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
     /// ran, and every witnessed measurement on the dataset nobody ran
-    /// (the walk), runs for the first time. Returns how many ran. A
+    /// (the walk), runs for the first time, in the functions' name order,
+    /// which runs the forecast before the plan judgement that reads it.
+    /// Returns how many ran. A
     /// function that refuses — the walk with no service named — is
     /// logged and stays owed, where the banner and the goal's next act
     /// carry its refusal by name; the others run.
