@@ -138,9 +138,6 @@ UNION ALL
 SELECT 'structure', 6, 'done', '', '', 'tables landed, edges declared and checked', '', ''
 FROM ds
 UNION ALL
-SELECT 'bands', 1, 'blocked', '', '', 'the futures kit is not loaded: the bands walk comes with it', '', ''
-FROM ds
-UNION ALL
 SELECT 'plan', 1, 'blocked', '', '', 'the futures kit is not loaded: the plan world and the forecast come with it', '', ''
 FROM ds
 UNION ALL

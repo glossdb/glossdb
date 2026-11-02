@@ -1005,10 +1005,13 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    // Seeded state: agent formulas + agent dso gloss — nothing waits.
+    // Seeded state: agent formulas + agent dso gloss — nothing waits
+    // but, on DuckDB, the futures kit's walk: a witnessed measurement
+    // on the dataset nobody ran while a metric is grounded.
+    let walk = if cfg!(feature = "duck") { 1 } else { 0 };
     let before = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(row_count(before).await, 0);
+    assert_eq!(row_count(before).await, walk);
 
     // The human's answer lands on their channel: newer than the
     // recorded dso gloss.
@@ -1030,7 +1033,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     let after = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(
         row_count(after).await,
-        1,
+        1 + walk,
         "the formula answer waits on the agent"
     );
 
@@ -1793,9 +1796,13 @@ async fn the_metrics_faces_serve_the_cube() {
     );
 
     // The axes banner is silent while the verdicts stand at this pin.
+    // On DuckDB the futures kit's walk is owed from the first grounding
+    // and refuses while no service is named: the banner counts it, the
+    // re-measure runs what it can and leaves it owed.
+    let walk = if cfg!(feature = "duck") { 1 } else { 0 };
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
-    assert_eq!(row_count(banner).await, 0, "nothing to re-measure");
+    assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
 
     // A gloss moves the pin. The cube rebuilds at the next read with
     // the same numbers — and the verdicts measured the data's columns,
@@ -1827,7 +1834,7 @@ async fn the_metrics_faces_serve_the_cube() {
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
-        0,
+        walk,
         "the verdicts read the data, not this gloss"
     );
 
@@ -1851,6 +1858,9 @@ async fn the_metrics_faces_serve_the_cube() {
         response.headers()["HX-Trigger"],
         "glossql:remeasured, glossql:written"
     );
+    // The re-measure ran the walk too: with no metric of seven whole
+    // months it called no service and landed its reasons, so nothing
+    // stays owed.
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(row_count(banner).await, 0, "the verdicts still stand");
     let trend = get(
@@ -1980,12 +1990,14 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
+    // The futures kit's walk is owed beside the profile, and refuses
+    // while no service is named.
     assert!(
-        banner.contains("1 a metric or a witness reads were never made (temporal)"),
+        banner.contains("2 a metric or a witness reads were never made (metric_bands, temporal)"),
         "{banner}"
     );
     let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 1, "the profile over dso.month");
+    assert_eq!(row_count(owed).await, 2, "the profile over dso.month, and the walk");
     let response = app
         .clone()
         .oneshot(
@@ -1997,7 +2009,7 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the profile ran");
+    assert_eq!(row_count(banner).await, 0, "the profile ran, and the walk landed its reasons");
     let latest = get(&app, "/perf/app/docket/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
 }

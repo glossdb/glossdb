@@ -443,6 +443,7 @@ impl Config {
                 kits_dir.join("kpi/kit.sql"),
                 kits_dir.join("quality/kit.sql"),
                 kits_dir.join("metrics/kit.sql"),
+                kits_dir.join("futures/kit.sql"),
             ],
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
@@ -1156,8 +1157,12 @@ impl Session {
 
     /// The docket's re-measure: every function voice of the bound
     /// dataset that landed before the last change runs again over its
-    /// subject, and every measurement a metric's fact row wants and
-    /// nobody ran runs for the first time. Returns how many ran.
+    /// subject; every measurement a metric's fact row wants and nobody
+    /// ran, and every witnessed measurement on the dataset nobody ran
+    /// (the walk), runs for the first time. Returns how many ran. A
+    /// function that refuses — the walk with no service named — is
+    /// logged and stays owed, where the banner and the goal's next act
+    /// carry its refusal by name; the others run.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
         let acts = self
             .batches(
@@ -1169,6 +1174,10 @@ impl Session {
                      UNION \
                      SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
                      FROM (SELECT unnest(wanted) AS w FROM {LAKE}.glossql.metric_axes()) \
+                     UNION \
+                     SELECT o.subject, split_part(o.what, ' over ', 2) \
+                     FROM {LAKE}.glossql.owed o \
+                     WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
                      ORDER BY 1, 2"
                 ),
                 &[],
@@ -1179,9 +1188,13 @@ impl Session {
             let (Some(Some(function)), Some(Some(subject))) = (row.first(), row.get(1)) else {
                 continue;
             };
-            self.execute(&format!("SELECT {function}() FROM {subject}"))
-                .await?;
-            ran += 1;
+            match self
+                .execute(&format!("SELECT {function}() FROM {subject}"))
+                .await
+            {
+                Ok(_) => ran += 1,
+                Err(e) => tracing::warn!(function, subject, "re-measure: {e}"),
+            }
         }
         Ok(ran)
     }
