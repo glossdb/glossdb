@@ -55,6 +55,7 @@ jobs:
           mkdir -p ../gloss-out
           cp build/release/repository/v2.0.0/*/gloss.duckdb_extension ../gloss-out/
           cp -r kits ../gloss-out/kits
+          cp SPEC.md grammar.ebnf ../gloss-out/
           cd .. && rm -rf gloss-src
       - run: cargo nextest run --workspace --locked
         env:

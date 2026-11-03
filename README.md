@@ -10,10 +10,13 @@ connects over MCP, lands data, and builds the dataset's glossary;
 questions the data cannot answer go to a human, and the answer is
 stored as part of the record.
 
-The full definition is **[SPEC.md](./SPEC.md)** — the single normative
-document of this repository. `grammar.ebnf` is the machine source of
-truth for syntax. The corpus (`corpus/`) is the language's acceptance
-record; each construct is checked against a real artifact.
+The full definition is **SPEC.md** in the extension's repository,
+[glossdb/gloss](https://github.com/glossdb/gloss), with `grammar.ebnf`,
+the machine source of truth for syntax, and the corpus, the language's
+acceptance record: each construct is checked against a real artifact.
+The server serves both documents on its door. Its own kits add
+vocabulary and reads on that language (`kits/README.md`), never
+grammar.
 
 The name: a *gloss* is a marginal annotation explaining a text's meaning;
 a glossary is a collection of them. `GLOSS` is the write verb — you gloss

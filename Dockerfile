@@ -1,6 +1,7 @@
 # The server image: one Rust binary with DuckDB compiled in, the gloss
-# extension, the kits (the extension's and this repository's, in one
-# directory), and the lake extensions DuckDB loads at open
+# extension, the language's SPEC.md and grammar.ebnf, the kits (the
+# extension's and this repository's, in one directory), and the lake
+# extensions DuckDB loads at open
 # — on a distroless base; no model, no weights, no GPU. Built at a
 # release tag by the workflow and pushed to ghcr.io/glossdb/glossql;
 # `docker build .` builds the same image from any checkout. The build
@@ -25,6 +26,7 @@ RUN git clone --filter=blob:none https://github.com/glossdb/gloss /gloss \
     && mkdir -p /out/share/glossql \
     && cp build/release/repository/v2.0.0/*/gloss.duckdb_extension /out/share/glossql/ \
     && cp -r kits /out/share/glossql/kits \
+    && cp SPEC.md grammar.ebnf /out/share/glossql/ \
     && rm -rf /gloss
 
 # The Rust stage compiles DuckDB too (libduckdb-sys, bundled), so it

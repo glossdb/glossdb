@@ -270,7 +270,8 @@ fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
         "the served guide is the files under vendor/"
     );
     assert_eq!(served, on_disk, "a served page is the file as it stands");
-    let pages = glossql_serverd::skills::door_pages();
+    let pages = glossql_serverd::skills::door_pages()
+        .expect("the language's documents beside the extension's kits");
     for p in glossql_serverd::skills::VENDORED {
         assert!(
             p.uri().starts_with("doc://vendor/") && p.title() != p.path,

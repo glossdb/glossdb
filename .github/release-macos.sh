@@ -3,8 +3,8 @@
 # are not a target), built from a laptop rather than a runner. Builds
 # the binary, the extension from the sibling checkout at the commit
 # crates/duck/gloss.ref names, and the tarball — bin/ with DuckDB
-# compiled in, share/glossql with the extension and the kits of both
-# repositories — opens
+# compiled in, share/glossql with the extension, its SPEC.md and
+# grammar.ebnf, and the kits of both repositories — opens
 # the draft release on the pushed tag, uploads the tarball to it, and
 # rewrites the tap formula with the artifact's checksum — publish the
 # release, then copy that file to
@@ -30,6 +30,7 @@ stage="target/${name}"
 rm -rf "$stage" && mkdir -p "$stage/bin" "$stage/share/glossql"
 cp target/release/glossql "$stage/bin/"
 cp "$gloss/build/release/repository/v2.0.0/osx_arm64/gloss.duckdb_extension" "$stage/share/glossql/"
+cp "$gloss/SPEC.md" "$gloss/grammar.ebnf" "$stage/share/glossql/"
 cp -R "$gloss/kits" "$stage/share/glossql/kits"
 cp -R kits/. "$stage/share/glossql/kits/"
 tar -C target -czf "target/${artifact}" "$name"

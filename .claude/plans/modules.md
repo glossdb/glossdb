@@ -32,7 +32,8 @@ order after it, its rows independent and listed in risk order.
 | Steps 1–4: the doors on `duckdb-neo`; the vocabulary, quality, metrics and futures kits; the routes and the docket on the engine | Built; the gates passed (below) | `crates/duck`, `../gloss/kits`, `apps`, `serverd` | | |
 | Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below) | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
 | Step 6a: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and a bucket; glossval's lanes on the engine | Low to medium: the extension's hour on a runner. Built: the warehouse's credential (a key pair, or the platform's own account for a `gs://` bucket, minted before the lake opens and anew before it expires); glossval's slot is the server's own image | `.github/`, the Dockerfile, glossval's Rust crate (it names the deleted crates) | Next | |
-| Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and `corpus/` move to the language's repository with the corpus check (every ```glossql block parses on the engine, every ```glossql-gap fails: measured, 27 of 28 fixtures do; fixture 17 carries a `driver` key SPEC §3 never lists, the lead's to retag); the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
+| Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the docs' links to the extension's SPEC.md, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
+| Step 6i: the language's record with its parser — SPEC.md, `grammar.ebnf` and the corpus in the extension's repository, held to the grammar by its own suite; the door serves the two documents from the extension's share; the three fixtures behind the server's kits stay here with `kits/README.md` | Built: 25 fixtures and the two documents moved; the extension's `test/sql/gloss_corpus.test` judges every block through `json_serialize_sql` (measured: 75 admitted and 15 SPEC blocks parse, 4 gaps fail); fixture 17 carries a `driver` key SPEC §3 never lists, the lead's to retag | | | |
 | Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
@@ -54,9 +55,11 @@ order after it, its rows independent and listed in risk order.
   ruling into the standing body.
 - **The extension** (`../gloss`, branch `kit-quality`, pinned by
   `crates/duck/gloss.ref`): the language, the store, the kpi, quality
-  and spatial kits with their `.test` suites; a QUERY aspect's claims
-  are the view's columns' (fixture 28); `behavior` takes `ratio`; the
-  record read planned once and cached under the store's version.
+  and spatial kits with their `.test` suites; the language's record,
+  SPEC.md, `grammar.ebnf` and the corpus, with the suite that holds it
+  to the grammar; a QUERY aspect's claims are the view's columns'
+  (fixture 28); `behavior` takes `ratio`; the record read planned once
+  and cached under the store's version.
 - **The server's kits** (`kits/`): metrics and futures with their
   suites, run by the engine crate's suite on the facade's own runner.
   The futures kit calls the model service through `gloss_service`;
@@ -91,9 +94,9 @@ order after it, its rows independent and listed in risk order.
   repository); the doors answer, a dataset declares through the MCP
   door with the four kits standing. The
   docs and skills harness binds every single read through `EXPLAIN`
-  on a fresh workspace; the vendored guide is DuckDB's. SPEC.md names
-  the series read where it named the cube; the misfit door (fixture
-  20) stays a ruled form, not built.
+  on a fresh workspace; the vendored guide is DuckDB's. The worlds on
+  the series read are `kits/README.md`'s, with fixtures 19, 20 and 27;
+  the misfit door (fixture 20) stays a ruled form, not built.
 - **What the port left out, by name.** `behavior_evidence` (the
   behaviour is a gloss on the view's value column, the cadence the
   ladder's), `dimension_relevance` (the axes are the `role` and

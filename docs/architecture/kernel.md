@@ -71,7 +71,7 @@ declared at the door.
 
 A driver turns something that is not rows into rows. The rows are the
 interface: a recipe lands them, typed by the recipe, versioned on
-every import ([SPEC.md §3](../../SPEC.md)).
+every import ([SPEC.md §3](https://github.com/glossdb/gloss/blob/main/SPEC.md)).
 
 Today:
 

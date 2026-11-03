@@ -6,19 +6,24 @@ follow the corpus-first process below.
 
 ## The map
 
-- `SPEC.md` — the only normative language prose. Open questions live
-  in §9 and close by transcription verdict, never by argument.
-- `grammar.ebnf` — the machine-readable grammar; the source of truth
-  for syntax.
+- The language is the extension's (`../gloss`, pinned by
+  `crates/duck/gloss.ref`): `SPEC.md`, the only normative language
+  prose, whose open questions live in §9 and close by transcription
+  verdict, never by argument; `grammar.ebnf`, the machine-readable
+  grammar and the source of truth for syntax; its `corpus/`, the
+  transcriptions of real artifacts that are the language's acceptance
+  record, held to the grammar by its suite (` ```glossql ` must parse,
+  ` ```glossql-gap ` documents a gap and must fail). The door serves
+  the two documents as `doc://SPEC.md` and `doc://grammar.ebnf`, read
+  at boot from beside the extension's kits.
 - The routes the `next` read answers from: per goal, its steps as
   query arms over the record, one act per goal as a statement filled
   from the record — each kit's `routes_<kit>()` in its kit under
   `kits/`, the core's in `crates/duck/kits/door.sql`, composed at
   open; the door's two lines, `crates/serverd/src/window.rs`.
-- `corpus/` — transcriptions of real artifacts, the language's
-  acceptance record: ` ```glossql ` must parse, ` ```glossql-gap `
-  documents a gap and must fail. It moves to the extension's
-  repository with SPEC.md and the grammar, where the parser is.
+- `corpus/` — the three transcriptions behind the server's kits (19,
+  20, 27), in the extension's corpus form; the serverd suite parses
+  them on the engine.
 - `crates/` — the server, a Cargo workspace: `duck` ·
   `apps` · `serverd`. What each is and how it is built: the crate
   headers and `docs/architecture/`. Directories unprefixed, packages
@@ -30,7 +35,8 @@ follow the corpus-first process below.
   `kit.test` suite beside it (DuckDB's sqllogictest form, run by the
   engine crate's suite). The extension ships the language's kits as
   examples; a kit whose words depend on the server, its doors or the
-  model service lives here.
+  model service lives here. `kits/README.md` says what they add to
+  the language: vocabulary and reads, never grammar.
 - `docs/` — the curated statement of the system: what is implemented
   and what is planned (`start/`, `concepts/`, `reference/`,
   `methods/`, `architecture/`, and the concern pages). For agents and
@@ -110,8 +116,11 @@ plan is rewritten, not patched.
 
 ## The language
 
-- **One document.** SPEC.md is the only normative prose — no
-  satellite design docs, no assumption files, no per-topic notes.
+- **One document.** The extension's SPEC.md is the only normative
+  prose — no satellite design docs, no assumption files, no per-topic
+  notes. This repository's kits add vocabulary and reads on it
+  (`kits/README.md`), never grammar; a form they need goes through
+  the extension's corpus.
 - **Ideation before prose.** No idea enters SPEC.md until it survives
   a corpus test: competing statement forms for the same real
   artifact, checked against grammar and real table shapes, the forks

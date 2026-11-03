@@ -31,9 +31,10 @@ async fn app_capped(
 ) -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
-        plane
-            .with_row_cap(row_cap)
-            .with_pages(glossql_serverd::skills::door_pages()),
+        plane.with_row_cap(row_cap).with_pages(
+            glossql_serverd::skills::door_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
     );
     (router(plane, doors, Access::Gated(login)), dir)
 }
@@ -253,8 +254,8 @@ async fn the_door_pages_are_rows_of_pages() {
         json!(glossql_serverd::skills::SKILLS[0].body)
     );
     let served = {
-        use glossql_serverd::skills::{DOCS, PAGES, REFERENCES, SKILLS, VENDORED};
-        SKILLS.len() + DOCS.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
+        use glossql_serverd::skills::{DOC_NAMES, PAGES, REFERENCES, SKILLS, VENDORED};
+        SKILLS.len() + DOC_NAMES.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
     };
     assert_eq!(outcomes[1]["rows"][0]["n"], json!(served));
 }

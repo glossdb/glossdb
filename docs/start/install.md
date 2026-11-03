@@ -23,10 +23,10 @@ container (below) or build from source.
 
 The server links DuckDB and loads the gloss extension, built from its
 own repository at the commit `crates/duck/gloss.ref` names. A source
-build takes the extension and its kits from the sibling checkout,
-`../gloss`, built there with `GEN=ninja make release`, and the server's
-own kits from `kits/`; `GLOSS_EXTENSION`, `GLOSS_KITS` and
-`GLOSSQL_KITS` name other places.
+build takes the extension, its kits and the language's two documents
+from the sibling checkout, `../gloss`, built there with `GEN=ninja
+make release`, and the server's own kits from `kits/`;
+`GLOSS_EXTENSION`, `GLOSS_KITS` and `GLOSSQL_KITS` name other places.
 
 ```bash
 cp .env.example .env            # then fill it in — see Tokens below
@@ -112,7 +112,7 @@ platform injects the variables, secrets included:
 | `GLOSSQL_SERVICE_URL` | the model service's address; each call's route is appended — the walk, the forecast, the what-if. Unnamed, those measurements refuse by name and everything else serves |
 | `GLOSSQL_SERVICE_TOKEN` | the bearer the service expects: a key it was started with, sent as-is |
 | `GLOSSQL_SERVICE_AUDIENCE` | instead of a token, on GCP: the service's URL. The server mints a Google-signed ID token for it from the metadata server, as the service account it runs as, and refreshes it before it expires — no key anywhere |
-| `GLOSS_EXTENSION`, `GLOSS_KITS`, `GLOSSQL_KITS` | where the gloss extension file, the extension's kits and the server's own kits are, when not beside the binary in `share/glossql` and not the dev tree: the sibling checkout's build and `kits/` |
+| `GLOSS_EXTENSION`, `GLOSS_KITS`, `GLOSSQL_KITS` | where the gloss extension file, the extension's kits and the server's own kits are, when not beside the binary in `share/glossql` and not the dev tree: the sibling checkout's build and `kits/`. `SPEC.md` and `grammar.ebnf`, served on the door, are read from beside the extension's kits |
 | `GLOSSQL_LOG` | what the server puts on its record — a `tracing` filter. A bare level (`debug`) is this server's crates at that level, the libraries at `info` and the MCP library at `warn`; directives (`glossql_duck=debug,rmcp=debug`) are taken as written. `RUST_LOG` is honoured when it is unset; `info` when neither is |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | where an OpenTelemetry collector listens (`http://127.0.0.1:4318`; `/v1/traces` and `/v1/logs` are appended). Set, the record is also exported there — spans as traces, events as logs, OTLP, batched. Unset, nothing is exported. The exporter's other variables are the SDK's own: `OTEL_EXPORTER_OTLP_PROTOCOL` picks the transport, `http/protobuf` (the default) or `grpc`; `OTEL_EXPORTER_OTLP_HEADERS` carries a hosted collector's credentials; `OTEL_RESOURCE_ATTRIBUTES` names the deployment beyond `service.name=glossql` |
 

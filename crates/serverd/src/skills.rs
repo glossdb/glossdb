@@ -5,11 +5,13 @@
 //! MCP door as a resource and as a prompt, and its references, served
 //! as sibling resources the SKILL.md names for the moment they are
 //! needed (the Agent Skills layout: metadata, then the one page, then
-//! files on demand). The normative artifacts, the `docs/` pages and
-//! the engine's SQL guide under `vendor/` ride along as `doc://`
-//! resources, because a connected agent has no checkout to read them
-//! from — what an agent in this repository reads is what the door
-//! serves. [`door_pages`] is the one list of them: the plane holds it,
+//! files on demand). The `docs/` pages and the engine's SQL guide
+//! under `vendor/` ride along as `doc://` resources, and the language's
+//! two documents, SPEC.md and `grammar.ebnf`, are read at boot from
+//! the extension's share, the pin's — a connected agent has no
+//! checkout to read them from, and what an agent in this repository
+//! reads is what the door serves. [`door_pages`] is the one list of
+//! them: the plane holds it,
 //! the MCP door lists and reads its resources from it, and the
 //! `pages()` read serves the same rows to a client that has the
 //! statement tool and no resource reader.
@@ -72,29 +74,46 @@ impl Skill {
     }
 }
 
-/// A normative artifact the skills cite.
+/// A normative artifact the skills cite: the language's, read at
+/// boot from beside the extension's kits, where its repository keeps
+/// it ([`crate::engine::language_document`]).
 pub struct Doc {
     pub name: &'static str,
     pub description: &'static str,
     pub mime: &'static str,
-    pub body: &'static str,
+    pub body: String,
 }
 
-pub const DOCS: [Doc; 2] = [
-    Doc {
-        name: "SPEC.md",
-        description: "The glossql language specification — the normative prose the \
-                      skills cite by section.",
-        mime: "text/markdown",
-        body: include_str!("../../../SPEC.md"),
-    },
-    Doc {
-        name: "grammar.ebnf",
-        description: "The machine-readable glossql grammar.",
-        mime: "text/plain",
-        body: include_str!("../../../grammar.ebnf"),
-    },
+/// The language's documents by name, description and type: what
+/// `doc://SPEC.md` and `doc://grammar.ebnf` serve.
+pub const DOC_NAMES: [(&str, &str, &str); 2] = [
+    (
+        "SPEC.md",
+        "The glossql language specification — the normative prose the skills cite by section.",
+        "text/markdown",
+    ),
+    (
+        "grammar.ebnf",
+        "The machine-readable glossql grammar.",
+        "text/plain",
+    ),
 ];
+
+/// The language's documents as the extension's share holds them. A
+/// document the share lacks is a boot error, never a missing page.
+pub fn docs() -> std::io::Result<Vec<Doc>> {
+    DOC_NAMES
+        .iter()
+        .map(|(name, description, mime)| {
+            Ok(Doc {
+                name,
+                description,
+                mime,
+                body: crate::engine::language_document(name)?,
+            })
+        })
+        .collect()
+}
 
 impl Doc {
     pub fn uri(&self) -> String {
@@ -146,7 +165,7 @@ fn first_heading(body: &str) -> Option<&str> {
 /// references after its SKILL.md, the docs pages, the engine's SQL
 /// guide. A tree page is described by its first heading, which is what
 /// tells a reader when the page is worth its tokens.
-pub fn door_pages() -> std::sync::Arc<[crate::engine::DoorPage]> {
+pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>> {
     use crate::engine::DoorPage;
     let mut out: Vec<DoorPage> = SKILLS
         .iter()
@@ -159,13 +178,13 @@ pub fn door_pages() -> std::sync::Arc<[crate::engine::DoorPage]> {
             body: s.body.to_string(),
         })
         .collect();
-    out.extend(DOCS.iter().map(|d| DoorPage {
+    out.extend(docs()?.into_iter().map(|d| DoorPage {
         uri: d.uri(),
         name: d.name.to_string(),
         title: d.description.to_string(),
         description: d.description.to_string(),
         mime: d.mime,
-        body: d.body.to_string(),
+        body: d.body,
     }));
     out.extend(
         REFERENCES
@@ -181,15 +200,15 @@ pub fn door_pages() -> std::sync::Arc<[crate::engine::DoorPage]> {
                 body: p.body.to_string(),
             }),
     );
-    out.into()
+    Ok(out.into())
 }
 
 /// The door's pages plus the ones built at boot — the function
 /// listings — in one list, the boot pages last.
 pub fn door_pages_with(
     extra: Vec<crate::engine::DoorPage>,
-) -> std::sync::Arc<[crate::engine::DoorPage]> {
-    let mut out: Vec<crate::engine::DoorPage> = door_pages().to_vec();
+) -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>> {
+    let mut out: Vec<crate::engine::DoorPage> = door_pages()?.to_vec();
     out.extend(extra);
-    out.into()
+    Ok(out.into())
 }

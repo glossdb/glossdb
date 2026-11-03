@@ -3,7 +3,7 @@
 glossql is a declarative context language over a SQL host. It adds a
 small set of statements and two table functions to SQL; it does not
 re-specify SQL. Recipes, groundings, and every read body are host SQL
-and stay opaque to the grammar. [SPEC.md](../../SPEC.md) is the
+and stay opaque to the grammar. [SPEC.md](https://github.com/glossdb/gloss/blob/main/SPEC.md) is the
 normative definition; this page is the working map.
 
 ## The writes

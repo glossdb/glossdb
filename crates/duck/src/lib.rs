@@ -589,6 +589,8 @@ fn share() -> Option<PathBuf> {
 struct Pieces {
     extension: PathBuf,
     /// The extension's kits: the language's examples, kpi and quality.
+    /// The language's documents, SPEC.md and grammar.ebnf, sit beside
+    /// this directory, as they do in the extension's repository.
     gloss_kits: PathBuf,
     /// This repository's kits, `kits/`: metrics and futures.
     kits: PathBuf,
@@ -631,6 +633,18 @@ fn pieces() -> Pieces {
         kits,
         extension_dir,
     }
+}
+
+/// One of the language's documents, `SPEC.md` or `grammar.ebnf`:
+/// what the door serves as `doc://SPEC.md` and `doc://grammar.ebnf`.
+/// Read from beside the extension's kits, where its repository, the
+/// share and the CI cache all keep them. A missing document is the
+/// caller's error to raise: the door serves nothing it cannot read.
+pub fn language_document(name: &str) -> std::io::Result<String> {
+    let kits = pieces().gloss_kits;
+    let path = kits.parent().unwrap_or(&kits).join(name);
+    std::fs::read_to_string(&path)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))
 }
 
 impl Config {

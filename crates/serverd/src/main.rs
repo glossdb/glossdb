@@ -185,7 +185,7 @@ async fn bootstrapped(
     .await?;
     let listings = glossql_serverd::functions::pages(&plane).await?;
     Ok(Arc::new(plane.with_pages(
-        glossql_serverd::skills::door_pages_with(listings),
+        glossql_serverd::skills::door_pages_with(listings)?,
     )))
 }
 

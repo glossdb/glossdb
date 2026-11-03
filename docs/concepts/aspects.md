@@ -4,7 +4,7 @@ An **aspect** is a declared vocabulary entry: a name, a JSON Schema,
 and a kind. A **gloss** applies an aspect to a subject with a JSON
 body. There are no fact names — the aspect is the key, and you cannot
 gloss an aspect that was not declared. Normative definition:
-[SPEC.md §5](../../SPEC.md).
+[SPEC.md §5](https://github.com/glossdb/gloss/blob/main/SPEC.md).
 
 ## The three kinds
 

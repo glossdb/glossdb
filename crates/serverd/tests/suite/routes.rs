@@ -16,7 +16,12 @@ use crate::common;
 
 async fn app() -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
-    let plane = Arc::new(plane.with_pages(glossql_serverd::skills::door_pages()));
+    let plane = Arc::new(
+        plane.with_pages(
+            glossql_serverd::skills::door_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
+    );
     (
         router(plane, DoorConfig::default(), Access::Gated(common::login())),
         dir,

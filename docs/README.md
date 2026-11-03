@@ -2,8 +2,8 @@
 
 What the system is, for every reader, agents and humans alike. Code and its comments are the
 source of truth for what is live; these pages state the shape, the
-verdicts, and the why that code cannot. SPEC.md alone is normative
-language prose; the skills teach a door-connected agent the language.
+verdicts, and the why that code cannot. The extension's SPEC.md alone
+is normative language prose; the skills teach a door-connected agent the language.
 Every fenced example in these pages is parsed and planned by the test
 suite.
 
