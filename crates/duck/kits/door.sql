@@ -166,7 +166,7 @@ SELECT 'checks', 4, 'next', 'DECLARE WITNESS',
          || '  SELECT ''<what was compared>'' AS outcome, <the violation share, as DOUBLE> AS breach_rate' || chr(10)
          || '  FROM <the second route to the number>' || chr(10)
          || '$$ RETURNS <name>_check;' || chr(10)
-         || 'DECLARE WITNESS <name>_w ON <name>_check BY (AGENT, HUMAN) DETECTOR <detector> THRESHOLD 0.0;' || chr(10)
+         || 'DECLARE WITNESS <name>_w ON <name>_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;' || chr(10)
          || 'GLOSS <name>_check ON ' || ds.dataset || ' AS $${"outcome": "<what must hold>", "tolerance": <the rate you measured>}$$;',
        'SELECT <name>_check_fn() FROM ' || ds.dataset
 FROM ds
