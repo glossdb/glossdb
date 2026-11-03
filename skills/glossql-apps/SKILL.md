@@ -132,12 +132,11 @@ frame once per state and every tile bound to it shares that one table.
 
 A frame is planned through the same path every other read takes, so
 every door is available inside one — a grounding under its name,
-`metric_series(grain => $grain)` for the cube's cells at a grain
-(`dimension = ''` is the total, `'alternative'` the disclosed rival;
-a row carries `num`/`den` for a ratio's summed halves and `behavior`,
-the verb that made it), `metric_axes()` for what the cube admitted per
-metric, and `band_points()` for the recorded walk beside the real
-books:
+`metric_series(grain := $grain)` for the cells at a grain
+(`dimension = ''` is the total; a row carries `num`/`den` for a
+ratio's summed halves and `behavior`, the verb that made it),
+`metric_axes()` for what the record says of each metric's columns,
+and `band_points()` for the recorded walk beside the real books:
 
 ```sql
 SELECT period, actual, p05, p50, p95 FROM band_points()
@@ -145,13 +144,12 @@ WHERE metric = CAST($metric AS VARCHAR) AND period IS NOT NULL ORDER BY point_se
 ```
 
 The one limit: a placeholder binds a **value, not a relation name** —
-a door argument counts as a value (`metric_series(grain => $grain)`
-works). The URL steers the metric, the month, the slice.
+a door argument counts as a value (`metric_series(grain := $grain)` works). The URL steers the metric, the month, the slice.
 
 A viewer's window is ordinary params: `?grain=quarter&span=24` binds
-as `$grain` and `$span`, and the frame SQL is the filter — the cube
-serves the grain by the metric's verb on the server, the frame clips
-the span (`dense_rank() OVER (ORDER BY period DESC)` against `$span`).
+as `$grain` and `$span`, and the frame SQL is the filter — the series
+serves the grain by the metric's behaviour on the server, the frame
+clips the span (`dense_rank() OVER (ORDER BY period DESC)` against `$span`).
 A reference's own params are the author's defaults
 (`frames/trend?grain=month&span=24`); the page URL overrides them, and
 only the frames whose URL changed refetch. Keep the back-control on
@@ -194,8 +192,8 @@ frame, a spec, a tile or a link. Four macros and a prose block:
   of matters rather than a table of numbers. `join="frames/<name>"
   on="<key>"` merges a second frame's row by key into each row — how
   a record frame and a data frame meet in one list without becoming
-  one fetch (the docket's pulse: `metric_surfaces` rows joined to the
-  cube's numbers by metric name).
+  one fetch (the docket's pulse: `metric_surfaces` rows joined to the series'
+  numbers by metric name).
 - `<gl-window frame="frames/<axes>">` — the viewer's grain and span as
   links over the page URL; it reads the metric's resolution from a
   `metric_axes()` frame and offers the grains from there up. Member

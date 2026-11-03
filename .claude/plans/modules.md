@@ -10,19 +10,15 @@ file is the plan. The frame is `kernel.md`; the content tree is
 
 The rules:
 
-- **The new path beside the old.** Each step builds on DuckDB behind
-  the `duck` feature of `serverd` and `apps` and is measured at a
-  gate; the session crates are not touched before the cut-over, and
-  then deleted, never refactored.
+- **Each step is measured at a gate**: a suite, a lane of the eval,
+  a number through the door. The old path was deleted at the cut,
+  never refactored.
 - **Engine types stop at the facade**: a door sees batches, a schema,
   a wrapped stream, string parameters; `crate::engine` is the one
-  name for whichever engine the build carries.
+  name for the engine.
 - **Kits are DuckDB SQL** and live with the extension, their `.test`
   suites beside them; the record's own words and the doors' derived
-  reads live in `crates/duck/kits/core.sql`.
-- **A test the DuckDB build cannot run yet is marked**
-  `cfg(not(feature = "duck"))` with its reason on the line above; the
-  mark leaves with the step that serves it.
+  reads live in `crates/duck/kits/core.sql` and `door.sql`.
 - **The doors stay closed** (`kernel.md`, "Not now").
 
 ## The table
@@ -35,8 +31,9 @@ and the risk sits in the middle.
 | Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
 | Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
 | Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads, the routes per kit and the composed `next`, the docket's frames in DuckDB SQL | Built; the gate passed (below); glossval's f1 seat on DuckDB equals the session's score, and the tpcds seat grades the weekly stock at month and per warehouse right, `glossval/notes/duckdb-first-run.md` | `../gloss/kits/metrics`, `core.sql`, `door.sql`, `docket/duck/frames` | | |
-| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | The four worlds built, measured and graded on three seats (below) | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast` and `/whatif`; `crates/duck`, `serverd`'s config; the docket's futures frames | In progress; one to two days left, estimated | |
-| Step 5: the cut-over — the image and the release carry DuckDB and the extension; `duck` the only build; session, catalog, import's DataFusion half, the kernels and their tests deleted; docs and skills | Medium: the release machinery (`glossql-release`); CI fetching the extension | `.github/`, the image, `docs/`, `skills/`, the crates deleted | After step 4; six to nine days | |
+| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | Built; the four worlds measured and graded on three seats (below) | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast` and `/whatif`; `crates/duck`, `serverd`'s config; the docket's futures frames | | |
+| Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below); open: CI and the image on a runner need the extension's commit pushed, the deployment's object-store secret, the eval's own image | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
+| Step 6: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and an object store; glossval's slot image on the engine | Low to medium: the extension's hour on a runner; the secrets DuckDB's httpfs reads | `.github/`, the Dockerfile, `crates/duck` (the secret at open), glossval's `evals/serverd.Dockerfile` | Next | |
 
 ## What stands
 
@@ -50,8 +47,7 @@ and the risk sits in the middle.
   statements and answers outcomes; `query_page` cuts one row past the
   cap and never cuts a record read; a named parameter binds only where
   the statement spells it; the brief's counts are one read;
-  `rulings::land` folds a ruling into the standing body. Both engines
-  compile; `duck` is off by default, so CI is unchanged.
+  `rulings::land` folds a ruling into the standing body.
 - **Core** (`crates/duck/kits/core.sql`): the record's aspects
   (`recipe_change`, `ruling`, the app parts) and the derived reads
   (`current_dataset`, the assumptions, the rulings, the open questions), replaced at every open.
@@ -70,20 +66,12 @@ and the risk sits in the middle.
   `bodies`, `applicable`); a grounding's write answers with the
   metric's fact row; an extraction runs unwrapped; re-measure runs the
   stale and the wanted measurements. The docket's 52 frames stand in
-  DuckDB SQL under `builtin/docket/duck/frames`, the pages shared; the
-  futures frames (breaches, corridor, check points, movers, plan) serve
-  no row until step 4.
-- **The gate, measured.** On DuckDB: serverd 55 of 55 (the routes
-  suite: a fresh dataset routes every goal, a metric walks from its
-  claim to its behaviour, the next page carries the forms), apps 34 of
-  34, the engine's own 3; on the session engine: serverd 66, apps 38,
-  the whole workspace green. Still marked session-only, with reasons:
-  serverd — the next suite (its harness is the session's; the routes
-  suite is its DuckDB counterpart), bootstrap, the judge, the docs and
-  skills reads (their examples spell the session engine's reads, step
-  5), the points test (step 4); apps — the corridor and the plan
-  (step 4), the landing's refused cells (step 5), the frame parse test
-  (the DuckDB frames parse in the engine). The extension keeps a
+  DuckDB SQL under `builtin/docket/frames`, the pages shared.
+- **The gate, measured.** The workspace suite on the engine: serverd
+  51 and its 14 unit tests (the routes suite: a fresh dataset routes
+  every goal, a metric walks from its claim to its behaviour, the next
+  page carries the forms; the docs and skills harness binding every
+  read), apps 35, the engine's own 6, the parser's 48. The extension keeps a
   dataset's record read in the instance's object cache under the
   store's version, shared by every connection, so a call's `next`
   costs about 120 ms on a laptop, `owed` 60 ms and a gloss read 20 ms
@@ -95,55 +83,49 @@ and the risk sits in the middle.
   door decodes a cell by value, never by a downcast. A kit's `$subject`
   is spelled bare; optional typed keys are `["type", "null"]`.
 
-## Parked until the switch
+- **The cut (step 5).** The `duck` feature is gone and the session,
+  catalog, import and scripts crates with it (67k lines); `glossary`
+  keeps the actor types; `duck` links the engine, `apps` and
+  `serverd` build on it alone. The build and the image obtain the
+  extension from its repository at the commit `crates/duck/gloss.ref`
+  names: CI builds it once per pin into the actions cache, the
+  Dockerfile builds it in a stage of its own (`-DGLOSS_LAKE=OFF`, the
+  lake installed from DuckDB's repository into `share/glossql/extensions`),
+  the macOS tarball takes it from the sibling checkout at the pin.
+  The binary carries a run path to `lib` beside its `bin`; the engine
+  finds the extension, the kits and the lake extensions in
+  `share/glossql` beside the binary, else where `GLOSS_EXTENSION`,
+  `GLOSS_KITS` and `GLOSS_EXTENSION_DIR` say, else the dev checkout.
+  The memory ceiling and the spill bound are the engine's settings;
+  the cube cache is gone. Measured on the laptop: the image built with
+  Apple's `container` (the extension stage ~7 min native, the Rust
+  stage ~4 min; a context under the system temp directory reaches the
+  builder VM empty — stage it under the repo), the doors answer, a
+  dataset declares through the MCP door with the kits standing (29
+  aspects, 17 functions, 11 witnesses). The docs and skills harness
+  binds every single read through `EXPLAIN` on a fresh workspace; the
+  vendored guide is DuckDB's (`vendor/duckdb`, 73 pages at a pinned
+  duckdb-web commit). Every docs and skills page states the engine:
+  the reads reference from the kits' own words, the methods pages on
+  the kits' screens, the behaviour-evidence page retired.
 
-- How the build, CI and the image obtain the extension: today a path
-  into `../gloss/build` (`GLOSS_EXTENSION`, `GLOSS_KITS`, or the
-  default beside the checkout); a release of `../gloss` per platform,
-  or a CI build of it, for the image and for CI to run the `duck`
-  suites. The binary links `libduckdb.dylib` by `@rpath` and carries
-  none: the image ships the library beside the binary, a laptop release
-  binary gets an rpath onto libduckdb-sys's `out/`. httpfs is installed
-  like ducklake and named explicitly: `gloss_service` needs it for POST
-  and TLS. Settled at step 5, with the release machinery.
 
 ## The next row, drafted
 
-**Step 4: the futures kit.** What it buys: bands, forecast, plan and
-scenario on DuckDB through one seam — `gloss_service(route, body)` in
-the extension, JSON each way, the service named once per instance
-(`gloss_service_url`, `_token`, `_timeout`; httpfs loaded beside
-ducklake) — and the service owning its topic: the walk answers per
-metric the held shares, the newest point's displacement and a verdict
-banded against a threshold, the withheld rule its own; the calendar
-stays the caller's, so the kit sends complete buckets only. What stands:
-`gloss_service` and an extraction running its body once (`../gloss`
-af97f6a, 182981b), measured on the tpcds workspace: the walk of six
-metrics one call of 0.1 s, the extraction 0.67 s, a repeat served. The
-three worlds (`../gloss` 9ef6cf2, a5789ab, 3793dcc; glossql 88dc254,
-28f39d9): glossthesi's walk verdict (branch `walk-verdict`); the walk
-and the forecast as measurements on the dataset; the plan a QUERY aspect
-`x-kind: plan` read through its metric (`x-plan-of`), its judgement a
-measurement on the plan (`metric_plan`, witness `plan_w`), under the
-rule that an arm of `next` reads the record and never the data; the host
-naming the service at open and refreshing the ID token; the bands and
-plan goals routed, the futures frames served. Measured through the door
-on the tpcds copy: `next` 0.28 s with a plan judged (0.95 s before the
-rule); a dataset's views kept once per store version and the cells read
-bound over the views alone, so the series read is 0.2 s of its own SQL
-and reads no table. The glossval plan and forecast lanes grade tpcds,
-employees and Baton Rouge on DuckDB equal to the session's rows
-(glossval 7d0a57e, e7bdd04: `--engine=duck`, a setup per metric, the
-judgement run as the forecast is). The scenario (`../gloss` 1f2d6c9): a
-lever is a FACT on a column of a metric's view, no grounding is
-replayed; a scenario is the actor's FACT aspect with a factor per
-period; the estimate through `/whatif` lands as `metric_scenario` with
-`scenario_w`, each lever's own forecast as the planned input (held at
-its last value where the forecast is refused, through the service call's
-soft form) and times the factor under the scenario; `scenario_points()`,
-`scenario_levers()`, the scenario world on the series read, the plan
-goal judging the gap under it; live on Rossmann weekly from the what-if
-test data: a holiday scenario estimated with a direction, a promotion
-scenario answered with the history's bounds.
-Next: step 5. Done when: every goal routes, the lanes grade, the frames
-serve rows.
+**Step 6: the runner's green.** What it buys: the standing invariant
+checked by a machine again, and a release that carries the engine.
+What stands: `ci.yml` builds the extension from `crates/duck/gloss.ref`
+into the actions cache and runs the suites on it; `release.yml` is
+unchanged and the Dockerfile builds the extension in its own stage;
+`release-macos.sh` refuses unless `../gloss` is at the pin. What is
+open: the extension's branch is not pushed, so a runner cannot check
+the commit out — the lead's push comes first; the deployment shape
+(`Config::deployment`, a Postgres catalog and an object-store data
+path) has no secret for the store — DuckDB's httpfs reads a secret
+the plane does not create yet; the deployment's `gs://` warehouse
+needs that and nothing else; glossval's slot image
+(`evals/serverd.Dockerfile`) still builds the binary alone and needs
+the same stage. Done when: CI green on main, a tag builds and pushes
+the image, one run of the image against a Postgres catalog and a
+bucket lands a table, the eval's slot image serves a lane.
+

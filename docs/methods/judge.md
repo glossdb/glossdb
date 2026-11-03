@@ -13,11 +13,11 @@ A threshold buried deep in machinery is a judgment nobody can argue
 with, made once, by the author, without the data in front of them.
 Keeping the bodies recall-oriented keeps the arguable constants
 visible — the bars are written in the measurement's own SQL (the
-derivation body's `match_rate >= 0.95 AND support >= 20`), while the
-doors beneath prune only on cost and algebra: the derivation door
-skips triples whose operand magnitudes cannot land within 30× of the
-target, and the discovery door's 0.5 containment floor bounds output,
-not judgment (`crates/session/src/search/`).
+derivation function's `match_rate >= 0.95 AND support >= 20`), while
+the screens beneath prune only on cost and algebra: the derivation
+screen skips triples whose operand magnitudes cannot land within 30×
+of the target, and the relationship screen's 0.5 containment floor
+bounds output, not judgment (the quality kit, `kits/quality`).
 
 The division is load-bearing in both directions: a reader with
 context declares edges no value statistic can see, and refuses
@@ -29,19 +29,19 @@ candidates, never conclusions.
 - **Abstention is a complete answer.** A function that cannot ground
   its output names the absent inputs (`missing_aspects`) instead of
   guessing. A failed judgment means the statistics stand.
-- **No statistic ports without its oracle.** The ported statistics
-  carry acceptance tests over data whose truth is known by
-  construction (`crates/scripts/tests/suite/`), and the glossval repo
-  grades them on corpora with declared truth;
-  an instrument whose accuracy cannot be measured does not ship.
+- **No statistic ports without its oracle.** Every kit carries its
+  acceptance tests over data whose truth is known by construction
+  (the extension's `test/sql/`), and the glossval repo grades them on
+  corpora with declared truth; an instrument whose accuracy cannot be
+  measured does not ship.
 - **Every output has a consumer.** No aspect is declared that
   nothing reads.
 - **Red exists only where a detector computes it.** Humans do not
   volunteer disagreement; triage quality is bounded by the detector
   library, not by anyone's diligence.
 - **No function voice on FACT slots.** A measured voice ranked against
-  claims puts calibration back in; the shape is an evidence
-  measurement the agent judges (see [behavior](behavior.md)).
+  claims puts calibration back in; a measurement is evidence the agent
+  reads before it glosses.
 
 ## Limits
 

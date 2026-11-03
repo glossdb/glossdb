@@ -115,7 +115,7 @@ data (what is wrong and why, the checks, what the functions measured,
 each load, what is still unsaid); the words; the column lineage; and
 under Export every landed table and every served read with a CSV and
 a Parquet download (`/fin/app/export/orders.csv`,
-`/fin/app/export/read.dso.parquet`). The URL is the whole state — a
+`/fin/app/export/dso.parquet`). The URL is the whole state — a
 filtered view is a link someone can send. A workspace's own apps
 serve beside it at `/<dataset>/app/<name>`, authored as glosses over
 the agent door.

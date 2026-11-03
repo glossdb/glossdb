@@ -1,59 +1,39 @@
 # What will bite — read on the first refusal, or before a complex read
 
-The engine is DataFusion at a pinned version, and its own SQL guide at
-that pin is on this door as `doc://vendor/datafusion/sql/…` — select,
-subqueries, windows, aggregates, operators, types, and the scalar
-functions by family under `scalar/`. A function's name, signature or
-absence is a lookup there, not a guess. This page is what the guide
-cannot say.
+The engine is DuckDB at a pinned release, and its own SQL guide for
+that release is on this door as `doc://vendor/duckdb/sql/…` — the
+query syntax, the expressions, the functions by family, the data
+types. A function's name, signature or absence is a lookup there,
+not a guess. This page is what the guide cannot say.
 
-Names that postgres reflexes get wrong here: `sign` is `signum` ·
-`len` is `length` · `regexp_extract` is `regexp_match` (a list —
-index it, `[1]`) · `strptime` / `try_strptime` is `to_timestamp(x,
-format)` and `try_to_timestamp` · `to_char` takes a Chrono pattern
-(`%Y-%m`), never `YYYY-MM`. The refusal suggests the near miss; these
-are the far ones.
+The door serves reads. DDL, DML and COPY are closed: tables come from
+recipes, and a grounding is the view. A named argument to the door's
+own table macros spells `:=` (`metric_series(grain := 'month')`); the
+engine's functions take their own arguments as the guide spells them.
 
-Shapes the parser refuses at this pin: the parser dialect is postgres,
-so generic-dialect syntax from the guide does not parse — `SELECT *
-EXCLUDE (…)`, `SELECT * EXCEPT (…)` · window *inheritance* (`OVER (w
-ORDER BY …)` extending a named window; a named window itself is fine)
-· `=>` outside the door's table functions — the engine's own functions
-are positional.
+Names are case-insensitive, quoted or not: `AdsInfo`, `adsinfo` and
+`"AdsInfo"` reach the same table, and a column landed with capitals
+from a source header keeps that spelling in every listing and is
+reached by it in any case. A name that is a reserved word is quoted:
+`"at"`, `"order"`.
 
 The schema in one read: `information_schema.tables` and
-`information_schema.columns` serve what the call mounted — the bound
-dataset's tables and every column of them. `SHOW TABLES` lists
-the landed tables; `DESCRIBE <name>` describes any readable name, the
-shipped reads included.
+`information_schema.columns` serve the bound dataset's tables and
+every column of them; `SHOW TABLES` lists the landed tables and the
+groundings' views; `DESCRIBE <name>` describes any readable name, the
+shipped reads included — `DESCRIBE band_points()`.
 
-Names fold: an unquoted `AdsInfo` is `adsinfo` in a glossql statement
-and in SQL alike, and a double-quoted `"AdsInfo"` keeps its case
-everywhere. A source column landed with capitals keeps that spelling
-and is reached by it, quoted or not; only two columns that differ by
-case alone need the quotes.
-
-Correlated subqueries are rewritten into joins, and the planner refuses
-the shapes it cannot rewrite (a `NOT EXISTS` over a read that extracts
-JSON is one); the refusal names it — write the LEFT JOIN and a count
-instead.
-
-What lands wrong without failing: a `LIKE` guard before a `CAST` in
-the same WHERE (conjuncts reorder — only `try_cast` is safe on dirty
-text) · aliasing a projection to its own qualified source name
-(`round(j.x, 2) AS x`) · **two unaliased scalar subqueries in one
-projection** ("Projections require unique expression names" — alias
-both, or compute in a CTE) · `try_to_timestamp` with a date-only
-format (NULL — `try_to_date` parses it; a timestamp format must cover
-the whole value, seconds included) · an inner `ORDER BY` does not
-survive a derived relation, so order where you consume.
-
-Memory: `count(DISTINCT (a, b, c))` over millions of rows builds a
-struct per row and exhausts the pool (`Resources exhausted`). Use
-`approx_distinct`, or count distinct over a CTE that groups the keys
-first.
+What lands wrong without failing: an inner `ORDER BY` does not
+survive a derived relation, so order where you consume · `lag` and
+ROWS frames count rows, not periods, so densify before you lag ·
+`GROUP BY ALL` re-groups when someone edits the select list, so a
+recorded grounding spells its GROUP BY · `try_cast` is the only safe
+cast on dirty text; `CAST` refuses the row.
 
 A column that landed as text: `max`/`min` are lexicographic (`'99' >
-'100'`) and `sum` refuses (`Function 'sum' requires Decimal, but
-received String`). The cast belongs in the recipe; `try_cast` at the
-read is the stopgap.
+'100'`) and `sum` refuses the type. The cast belongs in the recipe;
+`try_cast` at the read is the stopgap.
+
+A measurement is called in the SELECT list with its subject in FROM —
+`SELECT column_profile() FROM orders.amount` — never as a table
+function; `SELECT * FROM column_profile()` is refused.

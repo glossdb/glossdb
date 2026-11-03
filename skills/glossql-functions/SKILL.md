@@ -150,16 +150,16 @@ DECLARE WITNESS on_time_w ON on_time_completion BY (AGENT, HUMAN)
 ## A bespoke function is the installation's recorded thinking
 
 A workspace-scoped function (`FOR <dataset>`) holds method specific
-to this data. When a shipped measurement starves on this dataset's
-shape — `behavior_evidence` on a schema whose only edges are
-document-keyed, say — a function that encodes how the question is
-decided *here* beats a pile of hand judgments: it is versioned,
+to this data. When a shipped measurement starves on this dataset's shape — a
+derivation screen over columns that only reconcile through a document
+table, say — a function that encodes how the question is decided
+*here* beats a pile of hand judgments: it is versioned,
 re-runnable, and its abstentions stay as honest as the library's.
 
 ## Running
 
 ```glossql
-SELECT outliers() FROM work_orders.duration_min;
+SELECT outlier_profile() FROM work_orders.duration_min;
 ```
 
 Extraction computes at the read's pin — the data and declarations the

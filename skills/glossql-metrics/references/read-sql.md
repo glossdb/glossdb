@@ -2,32 +2,20 @@
 
 ## What this engine refuses
 
-The engine is DataFusion behind a postgres parser. Three refusals cost
-most of the lost calls:
-
-- Unquoted names fold to lowercase, in glossql statements and in SQL
-  alike: a table declared `AdsInfo` is read as `adsinfo` or `AdsInfo`,
-  and one declared `"SearchStream"` only quoted. A column landed with
-  capitals from a source header keeps that spelling and is reached by
-  it, quoted or not — `ObjectType`, `"ObjectType"`; only two columns
-  that differ by case alone need the quotes.
-- `EXISTS` and `IN (SELECT …)` plan in WHERE and HAVING only. In a
-  SELECT list, a `FILTER (WHERE …)` or a CASE they are refused, and so
-  is a scalar subquery inside an aggregate, `max((SELECT count(*) …))`:
-  `Physical plan does not support logical expression`, or `Invalid
-  (non-executable) plan after Analyzer`. Write the join:
-  JOIN, LEFT JOIN … IS NULL, or a window function.
-- `count(DISTINCT (a, b))` over millions of rows exhausts the memory
-  pool. Use `approx_distinct`, or GROUP BY the keys in a CTE and count
-  the rows.
+The engine is DuckDB. Names are case-insensitive, quoted or not: a
+table declared `AdsInfo` is read as `adsinfo` or `"AdsInfo"` alike,
+and a column landed with capitals from a source header keeps that
+spelling in every listing and is reached by it in any case. A name
+that is a reserved word is quoted. The door serves reads; DDL, DML
+and COPY are closed, and `skill://glossql/references/sql-here.md`
+carries what else the guide cannot say.
 
 ## Read at the reader's grain
 
 Grain is the reader's: the app asks by month, another reader by day,
-the same definitions answer both. Evaluate `FROM <metric>`: a
-grounding is a view under the metric's name, the current one after
-the collapse, human slot outranking agent, so a human answer is what
-runs. `read.<metric>()` names the same view.
+the same definitions answer both. Evaluate `FROM <metric>`: a grounding is a view under the metric's
+name, the current one after the collapse, human slot outranking
+agent, so a human answer is what runs.
 
 - **Flows sum** over any partition.
 - **Stocks take the last period per window** —
@@ -55,21 +43,20 @@ unglossed.
 ### This is columnar, not postgres
 
 You know how to write windows; what you cannot know from memory is
-which ones exist *here*. The engine is DataFusion at a pinned version,
+which ones exist *here*. The engine is DuckDB at a pinned release,
 and three of its strongest tools have no postgres equivalent, so
-nobody reaches for them by reflex. The habit to break is the
-postgres shape: a self-join per comparison, a subquery per rank.
-The engine's own guide at this pin is on the door —
-`doc://vendor/datafusion/sql/…`, the scalar functions by family under
-`scalar/` — and `skill://glossql/references/sql-here.md` is what fails
-here that the guide cannot say. This is what pays.
+nobody reaches for them by reflex. The habit to break is the postgres
+shape: a self-join per comparison, a subquery per rank. The engine's
+own guide at this pin is on the door — `doc://vendor/duckdb/sql/…`,
+the functions by family under `functions/` — and
+`skill://glossql/references/sql-here.md` is what the guide cannot say
+about this door. This is what pays.
 
 **One scan, many answers.** Declare the window once and reuse it;
 `FILTER (WHERE …)` pivots a driver into a column without a self-join
 (it is not WHERE — WHERE removes rows from every aggregate, FILTER
 from one; an empty filter gives COUNT 0 but SUM/AVG NULL, so coalesce
-before dividing). Window *inheritance* does not parse at this pin —
-flat definitions only.
+before dividing).
 
 ```sql
 SELECT period, driver, value,
@@ -94,9 +81,8 @@ SELECT period, site, value FROM completions
 QUALIFY rank() OVER (PARTITION BY period ORDER BY value DESC, site) <= 10
 ```
 
-**Densify before you lag.** `generate_series` works as a table
-function in FROM (not in the SELECT list) and includes its upper
-bound; `range` excludes it. The coalesce is the flow rule — a stock
+**Densify before you lag.** `generate_series` is a table function in
+FROM and includes its upper bound; `range` excludes it. The coalesce is the flow rule — a stock
 keeps its NULLs.
 
 ```sql
@@ -123,11 +109,11 @@ rule above. For year-over-year on a sparse axis the self-join earns
 its place: `ON prev.period = cur.period - INTERVAL '1 year'` cannot
 be fooled by a hole.
 
-**Never guess a GROUP BY — the judged reads hand you the axes.**
-Partition on `dimension` glosses, primary first, ranked by
-`dimension_relevance`: low *coverage* means a top-N over that axis
-speaks for a minority, low *evenness* means ranks and ntiles
-degenerate onto one dominant value. ROLLUP order comes from the
+**Never guess a GROUP BY — the glossed columns hand you the axes.**
+Partition on the served columns that carry `role` dimension, the
+`dimension` glosses ranking them, primary first; a column most rows
+leave empty makes a top-N speak for a minority, and one dominant
+value makes ranks and ntiles degenerate. ROLLUP order comes from the
 declared hierarchy, coarse to fine — `ROLLUP(region, country, city)`;
 reversed, the subtotals are junk. Subtotal rows carry NULL in the
 rolled-up columns and a real NULL driver looks identical, so branch on
@@ -137,25 +123,24 @@ re-groups when someone edits the select list.
 
 **Time mechanics.** `date_trunc` down to the metric's grain and no
 finer — truncating below grain fabricates resolution; `'week'` is ISO
-Monday. `date_bin(stride, d, origin)` for everything calendar months
-cannot say (fiscal periods, offset weeks) — the default origin is the
-epoch and 1970-01-01 was a Thursday, so weekly bins without an origin
-start on Thursday; the declared fiscal calendar goes in that argument.
-`date_part('month', d)` folds years together — the seasonality idiom;
-trends stay with `date_trunc`. `dow` is Sunday=0, `isodow` Monday=1.
-Shifts are `± INTERVAL` arithmetic.
+Monday. `time_bucket(interval, d, origin)` for everything calendar
+months cannot say (fiscal periods, offset weeks); the declared fiscal
+calendar goes in the origin. `date_part('month', d)` folds years
+together — the seasonality idiom; trends stay with `date_trunc`.
+`dow` is Sunday=0, `isodow` Monday=1. Shifts are `± INTERVAL`
+arithmetic.
 
-**Statistics that pay.** `percentile_cont(0.95) WITHIN GROUP (ORDER BY
-v)` is exact, `approx_percentile_cont` scales (t-digest — never diff
-approximate values across refreshes and call it a trend).
-`regr_slope(value, date_part('epoch', period))` per driver is a
-which-segments-are-declining detector in one aggregate: aggregate the
-flow to its grain first, y comes first, and swapping the arguments
-gives a wrong number rather than an error — slopes are per-second, so
-scale before showing. `stddev(value) / nullif(avg(value), 0)` ranks
-volatility; `approx_distinct` is active-count at scale; `corr` needs
+**Statistics that pay.** `quantile_cont(v, 0.95)` is exact,
+`approx_quantile(v, 0.95)` scales (never diff approximate values
+across refreshes and call it a trend). `regr_slope(value,
+epoch(period))` per driver is a which-segments-are-declining detector
+in one aggregate: aggregate the flow to its grain first, y comes
+first, and swapping the arguments gives a wrong number rather than an
+error — slopes are per-second, so scale before showing.
+`stddev(value) / nullif(avg(value), 0)` ranks volatility;
+`approx_count_distinct` is active-count at scale; `corr` needs
 period-aligned series, so densify or join first or the number is
-noise; `array_agg(x ORDER BY period)` — unordered `array_agg` is
+noise; `list(x ORDER BY period)` — an unordered `list` is
 nondeterministic and must never feed a sparkline.
 
 **Record what a read proves.** A composed evaluation you verified may

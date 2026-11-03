@@ -37,14 +37,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && cp target/release/build/libduckdb-sys-*/out/libduckdb.so /out/lib/libduckdb.so
 # The lake extensions DuckDB loads at open — the lake itself, httpfs for
 # the model service and an object-store warehouse, postgres for a
-# catalog on a Postgres server — installed here with DuckDB's own
-# shell, so the image opens without reaching DuckDB's repository.
-RUN --mount=type=cache,target=/src/target \
-    arch="$(uname -m)" && case "$arch" in x86_64) cli=amd64 ;; aarch64) cli=arm64 ;; esac \
-    && curl -fsSL -o /tmp/duckdb_cli.zip \
-       "https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb_cli-linux-${cli}.zip" \
-    && unzip -q /tmp/duckdb_cli.zip -d /tmp/duckdb_cli \
-    && /tmp/duckdb_cli/duckdb -c "SET extension_directory = '/out/share/glossql/extensions'; INSTALL ducklake; INSTALL httpfs; INSTALL postgres;"
+# catalog on a Postgres server — fetched from DuckDB's own repository
+# into the layout INSTALL keeps, so the image opens without reaching
+# it. The platform is DuckDB's name for this build's.
+RUN arch="$(uname -m)" && case "$arch" in x86_64) platform=linux_amd64 ;; aarch64) platform=linux_arm64 ;; esac \
+    && dir="/out/share/glossql/extensions/v2.0.0/${platform}" && mkdir -p "$dir" \
+    && for ext in ducklake httpfs postgres_scanner; do \
+         curl -fsSL "https://extensions.duckdb.org/v2.0.0/${platform}/${ext}.duckdb_extension.gz" \
+         | gunzip > "$dir/${ext}.duckdb_extension"; \
+       done
 
 # What the binary links is glibc, libm, libgcc and the DuckDB library
 # beside it, and what it needs beside them is the root certificates —

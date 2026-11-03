@@ -1,7 +1,7 @@
 # The shipped function library
 
-Declared into every fresh workspace at boot. A function's body rides
-its declaration, so the whole library reads back as worked examples:
+Declared by the kits at every open. A function's body rides its
+declaration, so the whole library reads back as worked examples:
 
 ```sql
 SELECT name, script FROM functions;
@@ -10,211 +10,183 @@ SELECT name, script FROM functions;
 A **measurement** RETURNS an aspect: run it with `SELECT <name>() FROM
 <subject>` and the result lands as a measurement row recording what it
 read — it serves, and stays current, while those inputs are unchanged;
-the full value reads back via `GLOSSARY(<subject>::<aspect>)`. When a measurement cannot speak it
-returns `applicable: false` with a `reason` — an abstention is a
-complete answer, never an error. A **detector** has no RETURNS: it is
-named by a witness's `DETECTOR` clause, sees only the slots written
-under that aspect, and answers a band and a score.
+the full value reads back via `GLOSSARY(<subject>::<aspect>)`. When a
+measurement cannot speak it returns `applicable: false` with a
+`reason` — an abstention is a complete answer, never an error. A
+**detector** has no RETURNS: it is named by a witness's `DETECTOR`
+clause, sees only the slots written under that aspect, and answers a
+band and a score.
 
 Measurements propose; they never verdict. The judge — the agent
 reading them — removes false positives.
 
-The column evidence beyond `profile` is owed by role — `outliers` and
-`behavior_evidence` where `role = 'measure'`, `temporal` where
-`role = 'timestamp'`, `dimension_relevance` where
-`role = 'dimension'` — so a role-less column owes only its profile
-and the `role` judgment, and the backlog counts what is real instead
-of columns × vocabulary. Owed is not gated: any measurement still
-runs on any column on ask, and lands.
+A column's evidence is owed by role: the profile on every column,
+`temporal` where `role = 'timestamp'`. Owed is not gated: any
+measurement still runs on any column on ask, and lands.
 
 ## Column grain
 
-### profile → `column_profile`
+### column_profile → `column_profile`
 
-`SELECT profile() FROM <table>.<column>`. The deterministic profile:
-counts, null ratio, distinct and cardinality ratio, min/max, top
-values, string lengths, and for numeric columns mean, stddev, MAD and
-percentiles. Measures the landed table — the recipe carried the casts,
-so `null_ratio` counts the cells the author's `try_cast`s nulled.
-Extraction serves the summary; the full profile reads back via
-`GLOSSARY(<table>.<column>::column_profile)`.
+`SELECT column_profile() FROM <table>.<column>`. The deterministic
+profile: counts, null ratio, distinct and cardinality ratio, min and
+max, top values, string lengths, and for numeric columns mean, stddev,
+MAD and percentiles. Measures the landed table — the recipe carried
+the casts, so `null_ratio` counts the cells the author's casts nulled.
 
-### outliers → `outlier_profile`
+### outlier_profile → `outlier_profile`
 
-`SELECT outliers() FROM <table>.<column>`. IQR fences (1.5×IQR) and
-the modified Z-score (|0.6745·(x − median)/MAD| > 3.5) — universal
-distribution facts, no domain rules. Composes the profile inline, so
-the first ask computes with nothing pre-landed. Abstains on
-non-numeric columns (`applicable: false`); a MAD of 0 (half the values
-identical) makes every deviation infinite, so the Z-score arm counts
-zero and the IQR fences stand alone.
+`SELECT outlier_profile() FROM <table>.<column>`. IQR fences (1.5×IQR)
+and the modified Z-score (|0.6745·(x − median)/MAD| > 3.5) —
+distribution facts with no domain rule. Abstains on a column that
+does not parse as numbers (`applicable: false`); a MAD of 0 makes
+every deviation infinite, so the Z-score arm counts zero and the IQR
+fences stand alone.
 
 ### temporal → `temporal_profile`
 
-`SELECT temporal() FROM <table>.<column>`. Window, cadence,
+`SELECT temporal() FROM <table>.<column>`, and over a metric's period
+column, `SELECT temporal() FROM <metric>.<column>`. Window, cadence,
 completeness, gaps. Cadence is the named grain nearest the median gap
 between distinct instants; completeness counts calendar buckets over
-the column's own window; gaps are stretches beyond twice the median
-(count exact, sample capped at the 20 largest, largest first with
-earliest-first breaking ties). Abstains when the column is numeric or
-text (the reason names the type; a date landed as text needs typing in
-the recipe) or when no non-null values bound a window. A Boolean or
-nested column is refused by the engine before any row runs, and the
-refusal names both types. The output carries
-no staleness verdict — judgment about now lives in detectors and read
-policy, never in results.
-
-### behavior_evidence → `behavior_evidence`
-
-`SELECT behavior_evidence() FROM <table>.<column>`. The stock/flow
-discriminator: reconciles the measure against every viable anchor
-(event table + alignment), each anchor voting flow or stock with its
-convention, support, and reconciliation scores; the summary aggregates
-the votes. A composite (tuple) endpoint takes part like any other.
-Extraction serves the summary alone; every anchor reads back via
-`GLOSSARY(<table>.<column>::behavior_evidence)`. The cube folds a
-metric by this verdict on the column its value sums, and a grounding
-write runs it over that column when no verdict stands there. Never a
-voice in the behavior slots.
-
-### dimension_relevance → `dimension_relevance`
-
-`SELECT dimension_relevance() FROM <table>.<column>`.
-`relevance = coverage × evenness`: coverage is the fraction of rows in
-a named bucket, evenness is Pielou's index (entropy over its maximum),
-clamped to [0, 1]. No free parameters. Admission gates, each named in
-the abstention reason: a non-empty column, at least two buckets with
-NULL counted as one, `null_ratio ≤ 0.5`, and cardinality ratio < 0.9
-(a near-key is an identifier, not an axis — a label in a dimension
-table is one in its own table, and the cube admits it through a
-declared relationship on the key column's verdict; see
-`metric_axes()`). What the score deliberately does not do:
-prefer few groups to many — which axis a reader wants first is
-business judgment.
+the column's own window; a gap is a stretch beyond twice the median,
+the twenty largest sampled. A point in time bounds a window; a number
+or a text does not, and the reason names the type. The cadence is the
+floor a metric's ladder defaults to ([reads](reads.md),
+`metric_axes()`).
 
 ## Table grain
 
 ### detect_hierarchies → `hierarchy_candidates`
 
-`SELECT detect_hierarchies() FROM <table>`. Pairwise functional-
-dependency screens over one table's dimension-like columns, high
-recall. Candidates ship at g3 ≤ 0.05; a near-copy both ways at
-g3 ≤ 0.01 is served as kind `alias` — whether that is a code↔label
-relabeling or a coincidence is what no statistic settles. λ is
-served beside every candidate, never gated: λ < 0.5 is the recorded
-vacuous-skew signature the judge reads.
+`SELECT detect_hierarchies() FROM <table>`. Functional dependencies
+between a table's columns, one row per screened direction: `g3` the
+share of rows that break from → to, `g3_reverse` the other way,
+`gk_lambda` for predicting `to` from `from`, `rows_per_value` the
+evidence per value. Measures stay out by type; a column distinct on
+every filled row is out, since it determines everything; NULL is a
+category. Candidates ship at g3 ≤ 0.05; a near-copy both ways at
+g3 ≤ 0.01 is kind `alias` — whether that is a code↔label relabeling or
+a coincidence is what no statistic settles. λ rides beside every
+candidate, never gated.
 
 ### detect_derivations → `derivation_candidates`
 
 `SELECT detect_derivations() FROM <table>`. Row-grain arithmetic
 identities among numeric columns — `a = b·c` and `a = b+c` — with
-violation counts. An identity holds at match rate ≥ 0.95 over ≥ 20
-supporting rows. A confirmed identity re-checked per batch is the
-admission instrument for subtle corruption: a scoped artifact violates
-the lineage identity at exactly its row coverage while every marginal
-statistic confuses it with a real business move.
+support, violation count and match rate. An identity holds at match
+rate ≥ 0.95 over ≥ 20 supporting rows. A confirmed identity re-checked
+per landing is the admission instrument for subtle corruption: a
+scoped artifact violates the lineage identity at exactly its row
+coverage while every marginal statistic confuses it with a real
+business move ([derivations](../methods/derivations.md)).
 
 ## Dataset grain
 
 ### detect_relationships → `relationship_candidates`
 
 `SELECT detect_relationships() FROM <dataset>`. Every plausible join
-pair across the landed tables — generous by design; the judge removes
-false positives against the data. Per candidate: endpoints,
-cardinality, overlap, matched/orphan counts, distinct counts; a
-composite endpoint rides `key_columns` (the tuple is the key), and
-`to_unique` and `to_temporal` say whether the target is exactly unique
-in its table and whether it is a Date or Timestamp. Ranked clean keys
-first (unique target, not temporal), then many-to-one, then overlap,
-then key coverage (matched over the key's distinct count); the order
-demotes and never drops. Extraction serves the summary — count
-and top of the ranking — and the full list reads back via
-`GLOSSARY(<dataset>::relationship_candidates)`.
+pair across the landed tables, by value containment — generous by
+design; the judge removes false positives against the data. Per
+candidate: endpoints, cardinality, overlap, matched and orphan counts,
+distinct counts; a composite endpoint rides `key_columns` (the tuple
+is the key). Ranked clean keys first, then many-to-one, then overlap,
+then key coverage; the order demotes and never drops
+([discovery](../methods/discovery.md)).
 
 ### relationship_coherence → `relationship_coherence`
 
 `SELECT relationship_coherence() FROM <dataset>`. What each DECLARED
 join asserts, checked against the rows: filled count, orphan count and
 rate, and child-before-parent date incoherence per temporal column
-pair. The two facts no column-shaped check can see on a
-high-cardinality key. A relationship within one table — a recorded
-nest, finer → coarser — is checked as a dependency: its orphans are
-the rows whose finer value maps to more than one coarser value, and
-it carries no temporal pair.
+pair, the first three date columns of each side. A relationship
+within one table is checked as a dependency: its orphans are the rows
+whose finer value maps to more than one coarser value, and it carries
+no temporal pair ([coherence](../methods/coherence.md)).
 
 ### detect_grounding_collisions → `grounding_collisions`
 
-`SELECT detect_grounding_collisions() FROM <dataset>`. Buckets every
-current grounding by canonical SQL and by served monthly series; a
-bucket holding two or more concepts is a collision — two concepts
-grounding to the same extract make every ratio between them compute
-1.0, silently. Reported, never resolved: deliberate synonyms exist,
-and telling them from errors is the judge's call against the
-definitions.
+`SELECT detect_grounding_collisions() FROM <dataset>`. Metrics that
+are the same thing twice: groundings whose SQL is the same statement
+once parsed, case and spacing aside, under different aspects; and
+groundings whose monthly series agree over every month though their
+SQL differs, each folded by its behaviour. Reported, never resolved:
+deliberate synonyms exist, and telling them from errors is the judge's
+call against the definitions.
 
 ### metric_bands → `metric_bands`
 
-`SELECT metric_bands() FROM <dataset>`. For every grounded metric,
-walks the recent months and asks the forecast service what range each
-month should have landed in given everything before it. Each walked
-point records the band quantiles (p05–p95) and its PIT — the quantile
-at which the actual landed. Per metric, `aggregation` names what one
-month's value is — `sum` for a flow, `latest-sum` for a stock,
-`ratio-of-sums` for a ratio. Where the extract lands finer than
-monthly, the newest month is `partial` while the extract's horizon
-falls inside it: the point serves its bands and its actual so far,
-withholds the PIT, and `withheld` says so. A metric whose series the
-engine refuses at execution is served inapplicable with the reason;
-the others walk. This measurement only reports; the `band_breach`
-detector adjudicates.
+`SELECT metric_bands() FROM <dataset>`. For every applicable metric,
+walks the six most recent complete months and asks the model service
+what range each month should have landed in given everything before
+it. Each walked point records the band quantiles (p05–p95) and its
+PIT, the quantile at which the actual landed; the walk records the
+service's verdict, score, band and threshold, over every metric
+walked. A metric with fewer than seven complete months is inapplicable
+before any call ([bands](../methods/bands.md)).
 
 ### metric_forecast → `metric_forecast`
 
 `SELECT metric_forecast() FROM <dataset>`. For every applicable
-metric, asks the forecast service for the periods ahead from the last
-period with an actual: the band quantiles (p05–p95) per step over a
-horizon fixed per grain — month 12, week 13, day 31, quarter 4 — and
-for a flow the totals of the quarter and the year to go. Each metric
-is read as a whole from the cube at its own resolution. The run lands
-with its origin and `served_by`, and with each point the service's
-held-out share inside the 80% and the 90% band at that grain, step
-and span; no actual and no PIT, since neither is known at the origin. `forecast_points()` joins the actuals as they
+metric, asks the model service for the periods ahead from the last
+period with a value: the band quantiles (p05–p95) per step over a
+horizon fixed per grain — day 31, week 13, month 12, quarter 4 — and
+for a flow the totals of the month, quarter or year to go. The run
+lands with its origin and `served_by`, and with each point the
+service's held-out share inside the 80% and the 90% band at that
+grain, step and span. `forecast_points()` joins the actuals as they
 land and `forecast_coverage()` counts the coverage ([reads](reads.md),
 [forecast](../methods/forecast.md)). A metric finer than day, coarser
 than quarter, or shorter than six periods is inapplicable with the
 reason; one the service cannot forecast is inapplicable in the
-service's words. No detector: the witness `forecast_w` names the
-measurement, so a landing owes it.
+service's words.
+
+### metric_scenario → `metric_scenario`
+
+`SELECT metric_scenario() FROM <dataset>`. For every scenario glossed,
+the estimate of every metric a lever reaches: each lever forecast on
+its own as the planned input, then the what-if route's quantiles
+under the scenario, its sign, confidence and basis, and per lever what
+it alone does by the history. `scenario_points()` and
+`scenario_levers()` read it back ([scenario](../methods/scenario.md)).
+
+## Plan grain
+
+### metric_plan → `metric_plan`
+
+`SELECT metric_plan() FROM <dataset>.<plan>`. The plan judged against
+the actual and the forecast: the rows `plan_points()` serves for it,
+landed with the forecast run they were judged against. Owed on a
+served plan until one stands; the plan goal asks for it again once a
+newer forecast stands ([plan](../methods/plan.md)).
 
 ## Detectors
 
 ### slot_entropy
 
-Bound by the kit to `role_w`, `behavior_w`, `unit_w` (threshold 0.7).
-Score is the fraction of extra distinct values across the aspect's
-slots — 0.0 when every voice agrees. Band: green at 0, yellow up to
-the threshold, red above it.
+Bound by the KPI kit to `role_w`, `behavior_w`, `unit_w` (threshold
+0.7). Score is the fraction of extra distinct values across the
+aspect's slots — 0.0 when every voice agrees. Band: green at 0, yellow
+up to the threshold, red above it.
 
 ### band_breach
 
-Bound by the kit to `bands_w` on `metric_bands` (threshold 0.98).
-Reads each monitored metric's newest complete walked point — a
-`partial` point is skipped for the one before it; displacement is
-|2·PIT − 1| — 0 at the median, 0.8 at a nominal-80 edge. Score is the
-worst displacement raised to the number of metrics scored, so the
-edges keep their base rate at any metric count; band: green ≤ 0.8,
-yellow ≤ 0.9, orange ≤ threshold, red past it. Which metric and which month live in the
-measurement's own output — `band_points()` serves them as rows
-([reads](reads.md)).
+Bound by the futures kit to `bands_w` on `metric_bands` (threshold
+0.98). Repeats the service's verdict over the walk — the worst
+displacement, |2·PIT − 1|, across the newest point of every metric
+walked, raised to the number of metrics scored — as the band and the
+score, so that `ATTEST()` carries it and the checks goal routes on it.
+Which metric and which month live in the measurement's own output;
+`band_points()` serves them as rows ([reads](reads.md)).
 
-### rate_tolerance
+### forecast_stands, scenario_stands
 
-The validation detector. Wire it per validation aspect: the
-expectation gloss carries `tolerance`, the check function's voice
-carries `breach_rate` (the violation share — 0.0 means fully passing).
-The authored tolerance wins; the witness `THRESHOLD` is the fallback
-while no expectation slot carries one (and 0.0 when neither does).
-Green at rate ≤ tolerance, red above, yellow while no check voice has
-spoken. One-sided by design — a known-dirt source that expects its own
-rate wants a custom detector that goes red on both sides, since
-overcleaning is also a failure.
+Bound to `forecast_w` and `scenario_w`: green once a run has landed,
+so that the forecast and the estimate are owed while none has, and
+owed again once stale.
+
+### plan_gap
+
+Bound to `plan_w` on `metric_plan`: red where a banded period of the
+judgement lies below or above the forecast's band, the score the
+share of banded periods that do.

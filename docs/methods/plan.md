@@ -4,7 +4,7 @@ A plan is a set of numbers someone decided for a metric: a budget, a
 reforecast, a target. Its numbers arrive as a landed table, thousands
 of rows and an edition or two, and the glossary holds what they mean:
 which table, which column, which edition counts as the plan, and which
-metric it belongs to. `metric_series(world => 'plan', plan =>
+metric it belongs to. `metric_series(world := 'plan', plan :=
 '<name>')` serves the plan's cells beside the actual, the forecast and
 the scenario worlds, under the metric it plans.
 
@@ -24,16 +24,15 @@ DECLARE ASPECT revised_budget WITH $${
 }$$ AS QUERY;
 
 GLOSS revised_budget ON brla AS $${
-  "sql": "SELECT fiscalmonth, revisedbudget AS value, fund, segment2 FROM expense_budget",
-  "behavior": "flow",
-  "axes": ["fund", "segment2"]
+  "sql": "SELECT fiscalmonth AS date, revisedbudget AS value, fund, segment2 FROM expense_budget"
 }$$;
 ```
 
-The tie is checked when the plan is declared: `x-plan-of` must name a
-declared QUERY aspect that is not itself a plan, a plan is a QUERY
-aspect, and `x-plan-of` rides `x-kind: plan` and nothing else. The
-declaration is refused otherwise, with the road out.
+The tie is judged at read: `x-plan-of` must name a declared QUERY
+aspect of the dataset that is not itself a plan, and the plan must
+serve the columns named as that metric's period and value, or
+`period` and `value`. `metric_axes()` lists the plan with its verdict
+and the road out, `plan_of` naming the metric.
 
 A row covers its own period: a monthly schedule plans each month it
 names, and the plan covers the months it has rows for. Where a row's
@@ -45,32 +44,31 @@ year; a month's cell is what was booked that month. A word that is no
 grain is refused at `DECLARE`.
 
 An edition of a plan is an aspect of its own: the adopted budget and
-the amended budget both stand, each with its own grounding, its own
-`behavior`, `axes` and assumptions, its own slot under the
-supersession key and its own witness if wanted. A re-gloss corrects
-one edition's SQL; a human's gloss retires an agent's.
+the amended budget both stand, each with its own grounding and
+assumptions, its own slot under the supersession key and its own
+witness if wanted. A re-gloss corrects one edition's SQL; a human's
+gloss retires an agent's.
 
 ## The read
 
-The plan's grounding plans as every grounding does: a view in the
-catalog under the plan's name, `read.<plan>()` serving its rows, a
-frame with a judged time axis and a `value` column, a verb. The cube
-builds its head as it builds a metric's and serves it in the plan
-world alone: `metric_series(world => 'plan', plan => 'revised_budget')`
-serves the cells with `metric` the metric the plan names and `world`
-`plan`, at the plan's own resolution or at any coarser grain asked,
-over the plan's own axes. A finer grain serves no rows. The actual
-world never carries a plan's cells, and the walk, the forecast and the
-collision pass do not read it. `metric_axes()` lists the plan with its
-verdict, `plan_of` naming the metric.
+The plan's grounding stands as a view under the plan's name, like a
+metric's. The plan is read through the metric it plans: its period
+and value are the columns named as that metric's, its behaviour the
+metric's, its floor the grain its rows are booked against where the
+declaration says so, else its rows' cadence. Nothing is glossed on a
+plan's own columns. `metric_series(world := 'plan', plan :=
+'revised_budget')` serves the cells with `metric` the metric the plan
+names and `world` `plan`, at the plan's own grain or at any coarser
+grain asked; a flow sums, a stock keeps the last level. A finer grain
+serves no rows. The actual world never carries a plan's cells, and the
+walk and the forecast do not read it.
 
 A variance against the plan is a join of two worlds on metric and
-period: the actual at `grain => 'year'` against the plan at the same
+period: the actual at `grain := 'year'` against the plan at the same
 grain, `a.value - p.value`. A forecast against the plan is the same
-join with `world => 'forecast'` on one side. Original against revised
-is a join of two plan reads. `world => 'plan'` without a name, a name
-that is no plan aspect, and `plan => …` in another world are refused
-with the spelling.
+join with `world := 'forecast'` on one side. Original against revised
+is a join of two plan reads. `world := 'plan'` without a name, and a
+name that is no plan aspect, are refused with the spelling.
 
 `plan_points()` serves the comparison without the join, for every
 plan at once: one row per plan and period at the plan's own grain and
@@ -96,22 +94,33 @@ SELECT plan, label, value, actual, expected, low, high, stands
 FROM plan_points() WHERE grain = 'year' ORDER BY plan, period
 ```
 
+## The judgement
+
+`metric_plan` judges a plan: `SELECT metric_plan() FROM brla.revised_budget`
+lands the rows `plan_points()` serves for it as a measurement on the
+plan, with the forecast run it was judged against. The witness
+`plan_w` reads the gap off the judgement: red where a banded period
+lies below or above the forecast's band, the score the share of banded
+periods that do. The judgement is stale once the data or the record it
+read moves; a newer forecast asks for it again.
+
 ## The planning goal
 
 The next read carries the plan as its own goal, `plan`, beside the
-seven others ([reads](../reference/reads.md), `next`). Its route is the
-plan's preconditions in order: an applicable metric, else blocked; the
-first plan to declare, its form filled with the dataset and the names
-left to the author; a declared plan to ground or stop; a plan the cube
-refuses to re-record; the verdict its time column wants; the forecast
-to run while `owed` names it, never run or run before the last change.
-Then every plan year whose band does not hold the plan is a gap. For a
-gap with nothing recorded on it the act is a scenario on a lever, the
-lever glossed and the scenario declared with its factors, or the gap
-recorded at once; with a scenario standing, the act is the comparison
-read, `plan_points()` for the plan's row beside `scenario_points()` for
-the scenario's cells and the service's word on the lever against
-history, and the decision. Either way what follows is the same
+seven others ([reads](../reference/reads.md), `next`). Every arm reads
+the record, never the data. Its route is the plan's preconditions in
+order: an applicable metric, else blocked; the first plan to declare,
+its form filled with the dataset and the names left to the author; a
+declared plan to ground or stop; a plan the read refuses, to re-record;
+the forecast to run, never run or stale; the plan to judge, never
+judged or judged against an older forecast. Then every plan year whose
+band does not hold the plan is a gap. For a gap with nothing recorded
+on it the act is a scenario on a lever, the lever glossed and the
+scenario declared with its factors, or the gap recorded at once; with
+a scenario standing, the act is the estimate, `metric_scenario`, never
+run or stale, then the comparison read, `plan_points()` for the plan's
+row beside `scenario_points()` for the estimate and the service's word
+on the lever, and the decision. Either way what follows is the same
 statement: the decision as an assumption under the key `plan-<year>` in
 the plan's own grounding body, at confidence 0.7. The docket asks the
 human; while the question stands the goal is blocked, and a ruling
@@ -129,9 +138,8 @@ their bands.
 ## Grain
 
 A budget often comes at a coarser grain than the actual: a year's
-number beside monthly spend. The plan's grounding serves the judged
-date column as it stands, and the cube buckets it as it buckets any
-flow. Where a budget is booked in the month it was authorized, the
+number beside monthly spend. The plan's grounding serves the date
+column as it stands, and the read buckets it as it buckets any flow. Where a budget is booked in the month it was authorized, the
 adoption in January and an amendment in May, the plan's month cells
 are what the ledger booked that month, and the year is where the plan
 means something; the declaration says so, `x-covers: year`, and the
@@ -143,8 +151,8 @@ grain. The engine spreads nothing.
 
 A metric's temporal behaviour is how its number combines over time. A
 flow adds up: spend, revenue. A stock is a level at a moment: headcount,
-inventory; at a coarser grain the cube takes the latest level. A ratio
-is a quotient: margin, win rate; at a coarser grain the cube re-divides
+inventory; at a coarser grain the read keeps the last level. A ratio
+is a quotient: margin, win rate; at a coarser grain the read re-divides
 the summed halves. The forecast runs at the metric's own grain and
 gives a band for every period ahead, whatever the behaviour. It asks
 for a total to go, the quarter or the year, only on a flow: a total of
@@ -183,18 +191,16 @@ and on a stock whose year end the forecast reaches. A margin target is
 landed as one row for the month it is due, and the read compares it to
 that month's band.
 
-The read compares totals. A budget split by department gives the plan
-member cells, and `metric_series(world => 'plan', …)` serves them; a
-department's variance is a join of the plan world and the actual world
-on metric, dimension, member and period.
+The read compares totals. A budget split by department is a plan per
+department, each its own aspect with a filter in its grounding.
 
 ## Limits
 
 - One plan aspect serves one metric's numbers. A budget file of many
   lines is read by one plan aspect per line and edition, each
   grounding a filter on its line.
-- The plan's verb and axes are its own. A plan declared `flow` beside
-  a `stock` metric is served as declared; the join is the reader's.
+- The plan's behaviour is its metric's: a budget for a stock keeps its
+  last level at a coarser grain, like the stock.
 - A metric whose grounding is stopped leaves its plans standing. The
   stop is the metric's own `metric_axes()` row.
 - A plan's table is no edge of the actuals. A flow's empty periods are
@@ -202,6 +208,6 @@ on metric, dimension, member and period.
   groundings serve; a budget landed through the year's end stretches no
   metric, and the forecast's origin stays the last period with an
   actual. The plan's own cells reach its own frame's end.
-- Nothing is recorded: the plan's cells are a cube head under the
-  cache, like a metric's, and move when the plan's table or its
-  grounding does.
+- The plan's cells are read from its view at read and move when the
+  plan's table or its grounding does. The judgement, `metric_plan`, is
+  what the record holds.

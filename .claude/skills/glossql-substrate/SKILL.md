@@ -1,372 +1,113 @@
 ---
 name: glossql-substrate
-description: How to build ON DataFusion rather than around it — the extension points, the rules that come with them, and where each was verified. Use before writing or reviewing any server code that plans, executes, reads the catalog, or runs a function.
+description: How to build ON DuckDB and the gloss extension rather than around them — what each owns, the seams, the rules that come with them, and the laptop's sharp edges. Use before writing or reviewing any server code that opens the engine, runs a statement, reads the record, or adds a read, a measurement or a route.
 ---
 
 # The substrate
 
-glossql is a database. **DataFusion is the query engine, and the data
-plane is its own parquet scan over files a catalog of rows names** —
-it is not a library we call, it is the framework we build inside.
-Every mechanism we wrote that duplicates one of its has cost us:
-thread contention, blocked planner threads, copied instead of passed
-memory, stale caches.
+glossql is a database built on DuckDB. The gloss extension owns the
+language and the record; DuckLake owns the lake; this repository
+owns the doors. A read is SQL the engine plans, a kit is SQL the
+engine runs, a measurement is a SQL body the engine executes. Nothing
+in Rust re-implements what the engine does, and nothing in Rust
+computes what a kit can say in SQL.
 
-The rule this skill exists to enforce: **either use the extension point,
-or write down why it is wrong for us.** "We didn't know" is the failure
+The rule this skill exists to enforce: **either use the seam, or
+write down why it is wrong for us.** "We didn't know" is the failure
 mode; this file is so nobody has to rediscover it.
-
-Extending a high-performance Rust framework is hard. There are few right
-ways and many wrong ones, so the method is small steps and tests, not
-large designs.
 
 ## Where the answers live
 
-Read these before designing, not after. They are prose, not source, and
-they say what the source only implies.
-
 | topic | reference |
 |---|---|
-| table providers, the three layers | `docs/source/library-user-guide/custom-table-providers.md` |
-| same, as a blog | datafusion.apache.org/blog/2026/03/31/writing-table-providers/ |
-| catalogs, schemas, tables | `docs/source/library-user-guide/catalogs.md` |
-| SQL-level extension | `docs/source/library-user-guide/extending-sql.md` |
-| logical plan building | `docs/source/library-user-guide/building-logical-plans.md` |
-| optimizer rules | `docs/source/library-user-guide/query-optimizer.md` |
-| expressions | `docs/source/library-user-guide/working-with-exprs.md` |
-| cancellation and the tokio contract | datafusion.apache.org/blog/2025/06/30/cancellation/ |
-| repartition heuristics | blog 2025-12-15-avoid-consecutive-repartitions |
-| pushdown | blogs 2026-07-20-sort-pushdown, 2026-03-10-limit-pruning, 2025-09-10-dynamic-filters |
+| the extension: grammar, store, subjects, reads, kits, conformance | `../gloss/README.md`, `../gloss/CONFORMANCE.md`, `../gloss/src/` headers |
+| the kits and their suites | `../gloss/kits/<kit>/kit.sql`, `../gloss/test/sql/gloss_kit_<kit>.test` |
+| DuckDB's SQL, the release the lock resolves | `vendor/duckdb/sql/` (served as `doc://vendor/duckdb/sql/…`) |
+| DuckDB's C API through Rust | the `duckdb-neo` crate at the version `Cargo.toml` names |
+| DuckLake: the catalog, snapshots, the data path | ducklake.select, the `ducklake` extension |
+| the engine facade | `crates/duck/src/lib.rs`, the crate header first |
 
-All under `github.com/apache/datafusion/tree/main/docs` and
-`github.com/apache/datafusion-site/tree/main/content/blog`. Both are
-readable with `gh api repos/<repo>/contents/<path> --jq '.content' |
-base64 -d`.
+## What each party owns
 
-## The three layers, and where work belongs
+- **The extension** owns the statements of the language (parsed by
+  its grammar on DuckDB's parser), the store (the relations as tables
+  in the lake's catalog, served as `ws.glossql.*`), the record read
+  (`GLOSSARY()`, `ATTEST()`, the collapse, the witnesses, the stale
+  rule), the subjects (a dataset, a table, a column, a relationship,
+  a source, a view and its columns), the lineage of views, the cells
+  of a dataset (`dataset_cells`), a view kept per store version, the
+  service call (`gloss_service`), and the kit loader (`gloss_kit`).
+- **A kit** owns vocabulary about the data: aspects, functions,
+  witnesses, table macros that read the record and the views, and
+  its routes for the `next` read. A kit is SQL in `../gloss/kits/`,
+  run at every open, with a `.test` suite beside it.
+- **The server** owns the plane (one instance per process, opened
+  once), a channel per call (one connection, the actor and the
+  dataset set on it), the record's own reads (`crates/duck/kits/core.sql`),
+  the door's reads (`crates/duck/kits/door.sql`), the composed `next`
+  read, the doors and the pages.
 
-From `custom-table-providers.md`:
+## The seams, and the rules they impose
 
-1. **`TableProvider`** — describes the table and produces a plan. Logical.
-2. **`ExecutionPlan`** — describes *how*: partitioning, ordering, children. Physical.
-3. **`SendableRecordBatchStream`** — does the work, one `RecordBatch` at a time.
-
-> **`scan()` runs during planning, not execution.** It should return
-> quickly. Best practice is to avoid performing I/O, network calls, or
-> heavy computation here. A common pitfall is to fetch data or open
-> connections in `scan()`. This blocks the planning thread and can cause
-> timeouts or deadlocks.
-
-That paragraph names two bugs we shipped: `MemTable::try_new` built from
-a store read at plan time, and `block_in_place` + `block_on` inside a
-sync planner callback.
-
-**Pick the lightest starting point.** The guide's own table:
-
-| if the data is… | start with |
-|---|---|
-| already `RecordBatch`es in memory | `MemTable` |
-| an async stream of batches | `StreamTable` |
-| **a logical transformation of other tables** | **`ViewTable` wrapping a logical plan** |
-| a custom source needing full control | all three layers |
-
-`ViewTable` is how a grounding serves: the pre-pass plans the
-definition at the statement's pins and holds a `ViewTable` over the
-plan under the metric's name. `LogicalPlanBuilder::scan` inlines a
-source that carries a plan (datafusion-expr `logical_plan/builder.rs`,
-`scan_with_filters_inner`), so the name reads as DataFusion's own
-views do, its columns qualified under it. The mount lists the view
-with its definition and the tag's schema and never plans it.
-
-## Resolve async before planning, never inside it
-
-DataFusion's own `statement_to_plan` walks the statement for table
-references, awaits each through the catalog into a map, and only then
-runs the sync `SqlToRel`
-(`datafusion-session/src/session_state.rs`, `statement_to_plan`).
-
-Copy that shape. An async pre-pass that resolves everything the sync
-planner will need means:
-
-- no `block_in_place`, no `block_on`, no blocked planner thread;
-- no re-entrancy, so no expansion stack and no `thread_local`;
-- the cycle check is the traversal path, which you have for free.
-
-Verified: spike 5, 2026-08-17 — plain, nested, diamond, cycle,
-self-reference and missing-grounding cases all behave, with the closure
-resolved before one planning pass.
-
-**Walk the AST with sqlparser's derive-generated visitors**, never a
-hand-written walker: `visit_relations`, `visit_relations_mut`, and the
-`VisitorMut` trait's `pre_visit_table_factor` / `pre_visit_query` /
-`pre_visit_expr` (`sqlparser/src/ast/visitor.rs`). A hand-written walker
-misses positions — scalar subqueries in the SELECT list, in our case.
-Note `read.x()` parses as a table **function**, so a rename must clear
-`args` too, which only the `TableFactor` carries.
-
-## Concurrency is the engine's, not ours
-
-- CPU work runs **on** the tokio runtime, inline in `poll_next`, bounded
-  to one batch. DataFusion uses `spawn_blocking` only for blocking IO,
-  never for compute (`datafusion/src/lib.rs`, and `block_in_place`
-  appears nowhere in any DataFusion crate).
-- Parallelism comes from **partitions**. `execute()` is called once per
-  partition; each partition is a task the runtime multiplexes. Expose
-  your data's natural partitioning; implement `repartitioned` if the
-  engine should be able to ask for a different count.
-- `target_partitions` defaults to available parallelism
-  (`datafusion-common/src/config.rs`).
-- **Never hand-roll a concurrency governor.** N independent plans run
-  at once each open their own files and buffers, and the process fd
-  budget goes first; one plan the engine schedules over its partitions
-  shares them. Waves, semaphores and batch sizes are the symptom of
-  running N plans where one would do.
-- Cancellation is stream drop. `EnsureCooperative` is in the default
-  physical rule set and wraps leaves that declare nothing, so a plan
-  built from operators cancels correctly without effort.
-
-Verified: spike 1, 2026-08-17 — 21 plans built up front and driven
-concurrently beat 35 re-planned strings in waves of 4 by 2.4×, and
-dropping the stream stopped the work immediately.
-
-**Prefer composed sub-plans over one `UNION ALL`** when the arms are
-independent. Measured 24 ms against 39 ms: concurrent plans run
-concurrently, while a union has to channel its arms through a shuffle to
-build one frame. DataFusion only avoids that shuffle when
-`can_interleave` holds across arms
-(`datafusion-physical-optimizer/src/enforce_distribution.rs`), which
-needs matching hash partitioning — different tables per arm will not
-have it. When a plan-shape question is not this clear, settle it with
-`EXPLAIN` / `EXPLAIN ANALYZE`, not by reasoning.
-
-## Use the SQL DataFusion already has
-
-Before writing a loop that issues one query per candidate, check whether
-one statement expresses it:
-
-- `GROUPING SETS` / `ROLLUP` / `CUBE` — a total plus every slice in one
-  aggregate pass (`datafusion-sql/src/select.rs`).
-- window functions, CTEs, `FILTER (WHERE …)`, `count(DISTINCT …)`.
-- Aggregates we do not need to write: `avg`, `stddev`, `variance`,
-  `median`, `percentile_cont`, `approx_percentile_cont`,
-  `approx_distinct`, `correlation`, `covariance`, `min_max`, `count`.
-
-Two `GROUPING SETS` rules found the hard way (spike 6, 2026-08-17):
-
-- There is **no `GROUPING()` function** in DataFusion, so a NULL in a
-  grouped column is ambiguous between "aggregated away" and "a real NULL
-  member". Filter NULL members in the base, or you cannot tell a total
-  from a slice.
-- **The projected expression must be the grouping expression.** Matching
-  is syntactic, so `CAST("d" AS VARCHAR)` over a grouping key of `"d"`
-  returns NULL in every group — it plans, it runs, and it is wrong. Put
-  the cast in the base subquery.
-
-## Set arithmetic is a plan, never a collection
-
-A door that collects an engine result and then intersects, groups, sorts
-or joins the values in Rust has left the substrate: those values sit
-outside the memory pool, nothing spills them, and the process is the
-bound.
-
-The line to hold: **a Rust structure sized by the schema is a fact
-table; one sized by the rows or the distinct values is a leak.** A dense
-matrix over the column pairs is fine. A `HashSet<String>` of a column's
-values is not, however small the dataset in front of you. Schema-sized
-has its own ceiling: a list of column-pair pairs is the fourth power of
-the width, and a table of a hundred small-integer columns put 35 million
-of them in a `Vec` before the first exact prune — so enumerate under the
-bound the shape scan already gives, never enumerate and then prune.
-
-**What spills in DataFusion 55.1, and what does not.** Spilling is
-per-operator, not a mode — each operator that has a spill path asks the
-disk manager itself (`aggregates/grouped_hash_stream.rs`, the
-`OutOfMemoryMode` match on `disk_manager.tmp_files_enabled()`).
-
-| operator | on pool pressure |
-|---|---|
-| `SortExec`, `SortMergeJoinExec` | spill |
-| grouped aggregate, Final mode | spills |
-| grouped aggregate, Partial mode | cannot spill; emits its groups early. Separately, its probe stops aggregating when the first 100k rows of a partition reduce by under 20% (`aggregates/skip_partial.rs`, `SkipAggregationProbe`) — a wide group space triggers it, not memory |
-| `SortMergeJoinExec` keys | no comparator arm for a zoned timestamp or a time of day (`joins/utils.rs`, `compare_join_arrays`) — refuses at execution; join those as the integer they are stored as |
-| `HashJoinExec` build side | **refuses** — no spill path exists, only a `try_grow` that errors |
-
-So the memory-safe set operation is a **grouped aggregate**, and the
-memory-safe join is a **merge join** — `prefer_hash_join = false` on the
-door's own `SessionState`. A hash join's build reservation is also
-registered *unspillable*, so what it holds shrinks the share every
-spilling operator gets: `FairSpillPool::try_grow` hands each spillable
-consumer `(pool − unspillable) / num_spill`, counting every registered
-consumer in the process. Union arms multiply that count — the engine
-repartitions each arm and runs a partial aggregate per partition — which
-is why an unpivot uses one arm per table, not one per column. Partitions
-multiply it again, and both sides of a self-join plan the union again.
-A final-mode grouped aggregate reserves headroom the size of its state
-before it can spill at all (`grouped_hash_stream.rs`, `update_memory_reservation`),
-and its first state is one unnested input batch — rows times the arm's
-column count — so a wide table's first reservation must fit the share.
-The detector's state runs `target_partitions = 4` with
-`batch_size = 1024`: the batch is what sizes that first reservation,
-and a 115-column table that refused at 8192 answers at 1024 under the
-same four partitions. Fewer partitions widen the share but slow every
-pass in proportion, and at one the planner plans a collect-left hash
-join whatever `prefer_hash_join` says (`physical_planner.rs`, the
-`target_partitions() > 1` arm).
-
-**Dependencies within one table** (`hierarchy_candidates`) has no join
-at all: the row's own values are the pair, so the pair pass unnests
-four lists in step — `(ca, cb, av, bv)`, a cell per pool pair — and
-groups them, a slice of the pairs to a scan because unnest emits rows
-times list length per input batch. The three reductions after the
-cells (pair groups, the per-determinant maxima both ways) are one
-grouping-set aggregate, so the unnest plans once.
-
-**Containment between many columns** (`relationship_candidates`) is the
-worked example. One pass per column type, because arms of different
-types can share nothing and a pass scoped to one type never casts:
-
-```text
-per table: scan → make_array over the arms' columns → unnest → drop nulls
-union → DISTINCT (arm, value…) → self-join on the value, filter a <= b
-      → GROUP BY the arm pair → count(*)
-```
-
-A matched row is one value both arms carry, the input being distinct;
-`(i, i)` is the arm's own distinct count, so one plan answers both the
-matched counts and the distinct counts. What leaves the engine is the
-matrix.
-
-The composite pass wants something else — one from–to pair per
-attempt, not every pair — and has a different shape for it:
-
-```text
-phase A: union → DISTINCT (arm, v0, v1) → GROUP BY arm → count(*)
-         (every combination's own distinct count; an aggregate, no join)
-in Rust: the key test and the exact prunes, over schema-sized numbers
-phase B: DISTINCT from-arms ⋈ DISTINCT to-arms on (v0, v1)
-         → GROUP BY the pair → count(*)
-```
-
-A value carried by `k` from arms and `l` to arms costs `k × l` join rows
-in phase B, the pairs that were asked; a self-join would have cost
-`(k + l)(k + l + 1) / 2`, most of them from–from and to–to pairs nothing
-reads.
-
-Two things this replaced, and why neither comes back:
-
-- **The distinct values in a `HashSet<String>`.** Four row-number
-  columns in one real table are 810k distinct each; that is the whole
-  bug, and it is invisible on a fixture.
-- **A carrier bitset folded with `bit_or` and walked in Rust.** Not
-  because the fan-out is small — it does the same Σk² arithmetic, in
-  Rust, over a pattern table whose size is data-dependent, and pays a
-  64-arm ceiling for it.
-
-**The fan-out is the cost, and it is not bounded.** Two measurements,
-both real: a seven-table set put at most 7 arms on a value and 622k
-rows through the width-1 join; an event dataset's composite pass, when
-it was still a self-join, put ~44 arms on a value and 9.09 billion rows
-through it, 423 GB and 690 s of join time, 990 pairs per value where one
-was wanted. Nothing refused, which is the point — but the shape of a
-pass follows the question it answers, and size it before assuming it is
-free.
-
-**Pruning is exact or it is not there.** At width 1 the door wants the
-whole matrix, so the old prune (a to side under half the from side's
-distinct count) is implied by the acceptance bar and went away with the
-sketch that fed it — a sketch that silently changes which candidates
-are considered is worse than no prune in a door whose contract is
-recall. At width 2 the prunes are implications of the bars, computed
-from counts already in hand: a scoping leg unique on its own is never
-tried (the pair cannot out-identify it), the product of two legs'
-distinct counts bounds the pair's, the to side's distinct count bounds
-the match, and a scope is admitted only where the pair's distinct count
-exceeds the scoping leg's — decided by count, never by a threshold.
-
-**BINDER-style hash-range partitioning is the spilling aggregate.**
-Partition the value space by hash, process partition by partition, merge
-— that is `grouped_hash_stream.rs`'s `SpillState` and the `DiskManager`. Do not
-build it.
-
-**Dynamic filters reach the landed tables and nothing else.**
-`HashJoinExec` builds one in the Post pushdown phase and offers it to
-the probe child; the one Post-phase absorber is `DataSourceExec` over
-a `FileScanConfig`, which is what every landed table's scan is
-(`crates/catalog/src/scan.rs`). A `MemTable` — a door's batch, a
-store relation — takes none; plan a join over those as if the feature
-were off.
-
-**The kernels' seam stays.** A statistical kernel receives a matrix, so
-the last step before one is a hand-off, not a plan. What moves into the
-plan is everything before it: the alignment of two series is a join, a
-constant column is `min(c) <> max(c)`, a fingerprint is `string_agg`
-under `GROUP BY`, time-series features are `lag`, `avg OVER`, `extract`
-and `median OVER`.
-
-## Schema without execution
-
-A logical plan carries its schema. `ctx.state().statement_to_plan(sql)`
-then `plan.schema()` answers column names and types **without reading a
-row** — no `LIMIT 1` probe needed. Verified: spike 6 resolved 11
-groundings in 13 ms with zero rows executed.
-
-## The catalog hierarchy is the shape
-
-`CatalogProviderList` → `CatalogProvider` → `SchemaProvider` →
-`TableProvider` (`catalogs.md`). DDL goes through the catalog API; DML
-(`INSERT INTO`) goes through `TableProvider`.
-
-Do not wrap a `CatalogProvider` in a parallel API of your own. If you
-need table names or columns, the provider chain already answers — the
-mounted catalog (`crates/catalog/src/scan.rs`, `Mount`) *is* a
-`CatalogProvider`; a version is a row of the catalog's own tables.
-
-## The data plane
-
-- **A version is a snapshot row.** Every commit — a landing, a
-  replace, an append, a drop — is one transaction on the catalog's
-  tables (`crates/catalog/src/tables.rs`), in the shapes the DuckLake
-  1.0 specification names, and it appends a snapshot row; a file row
-  carries the snapshot it began at and the one it ended at. A table's
-  version is the snapshot that last changed it, and the pin, the gloss
-  row's `snapshot_id` and the staleness rule all speak that number.
-- **The pin is a query, never a fetch.** A dataset's walk is three
-  queries on the catalog whatever the table count; a table's provider
-  (`FilesTable`, `crates/catalog/src/scan.rs`) holds paths and sizes
-  from the rows and builds a `FileScanConfig` at scan time. Nothing
-  lists or opens a file at plan time.
-- **A replace is one commit and never an empty table.** The new file
-  is written beside the old; the commit ends the old file rows and
-  begins the new. Ended files are deleted by a later commit's sweep
-  once the grace has passed (`Lake::sweep`), so a reader that pinned
-  them finishes its scan.
-- **The record is rows in the same database** (`record.rs`): a row is
-  one insert, a read one query, the order the identity column. A
-  landing's facts are its `imports` row, written beside the commit.
-- **The writer is the parquet crate's own** (`AsyncArrowWriter` over
-  the object store's `BufWriter`), one file per landing under
-  `<dataset>/<table>/`; the type set a landing holds is the one
-  `glossql-import` folds every source type into, spelled in the
-  column rows in the specification's vocabulary.
-- **The `any` driver reads no booleans on SQLite.** A boolean column
-  is read as `CAST(CAST(… AS INTEGER) AS BIGINT)` — Postgres casts a
-  boolean to an integer, never straight to a bigint; a timestamp or a uuid is written as
-  a literal, never bound, so the prepared statement's parameter types
-  agree on both dialects.
+- **Every DuckDB call is synchronous.** It runs on the blocking pool
+  (`spawn_blocking`) and hands its rows back as Arrow batches. Nothing
+  of the engine's runs on the async runtime's threads; nothing of the
+  runtime's is awaited inside an engine call.
+- **One instance, a connection per call.** The instance holds the
+  extension, the lake and the kits. A channel is a connection with
+  the grammar on, the actor as session variables the extension reads,
+  the dataset in use and a search path of the dataset's schema and
+  the store's. No door keeps a cursor.
+- **A read never writes.** The record read and the kept views are
+  computed once per store version — the lake's snapshot and every
+  relation's highest sequence — and served from the object cache; a
+  write moves the version. An arm of `next` reads the record and
+  never the data: what a goal judges is a measurement, read back.
+- **A read is a table macro; a measurement is a function with a
+  body.** A new read, measurement or route is a statement in a kit,
+  never a change to the server. A macro's body is bound at CREATE,
+  so a macro a kit's macro calls must stand before it in the file.
+  A macro's named parameters spell `:=`; a measurement reads its
+  subject as `$subject`.
+- **A view's columns are subjects.** A metric's grounding stands as a
+  view under its name, and the words that make it a series — role,
+  behaviour, the ladder — are glosses on its columns. A re-gloss of
+  the view retires its columns' glosses by the stale rule; the reads
+  serve what the record says and re-mark nothing.
+- **Measurements carry their legs.** A measurement stands while what
+  it read — the data's snapshot and the record legs the function
+  read — is unchanged, and is stale once one moved. A measurement is
+  no leg of a pin: a route that must compare two measurements
+  compares them itself.
+- **A refusal is a value where the kit must stand.** The service
+  call's soft form, `glossql.service_soft`, answers a refusal as
+  `{"error": …}`; DuckDB's `TRY()` refuses volatile functions, so
+  the soft form is the extension's.
+- **The extension is pinned.** `crates/duck/gloss.ref` names the
+  commit the build carries; the DuckDB release is the one `duckdb-neo`
+  links, and the extension is built against the same one. A pin move
+  is both at once, and the vendored guide follows.
 
 ## Before you write a mechanism
 
-Ask, in order:
+1. Can the kit say it in SQL? Then it is a macro, a function body or
+   a route, with its `.test` beside it in the extension's repository.
+2. Does the extension already have the seam — a subject kind, a read,
+   a kept relation, the service call? Then use it; a missing seam is
+   a change in `../gloss`, with its test, before anything here.
+3. Is it the door's — a route composed, a page served, a form, the
+   actor? Then it is the server's, in Rust, thin, over the facade.
 
-1. Does DataFusion already do this? Check the guide above.
-2. If it does and we are not using it, is there a written reason?
-3. If we still build it, does it go through an extension point
-   (`TableProvider`, `ExecutionPlan`, `ScalarUDF`, `AggregateUDF`,
-   `TableFunctionImpl`, `SchemaProvider`, `OptimizerRule`,
-   `ExtensionPlanner`) or beside one?
-4. Is there a test that keeps it that way?
+## The laptop's sharp edges
 
-The greps that must stay at zero in the crates we own — `block_in_place`,
-`block_on`, `thread_local!`, bare `tokio::spawn` — are not style rules.
-They are how we notice we have started building around the framework
-again.
+- Relinking the extension while a server has it mapped makes every
+  later load die with `Code Signature Invalid` (exit 137, a suite
+  that finishes in 0 s): stop the server, remove the dylib, relink.
+- `nohup` strips `DYLD_LIBRARY_PATH`; a release binary carries a run
+  path to `lib` beside its `bin`, and a dev tree's finds the library
+  through cargo's run-time search path (`cargo run`, `cargo test`).
+- The kits are loaded from the sibling checkout at runtime, so a kit
+  edit needs no rebuild; a C++ change does (`GEN=ninja make release`
+  in `../gloss`).
+- The door wraps a DuckDB refusal in `C Data interface error: …`; the
+  text after it is the engine's.

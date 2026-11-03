@@ -54,9 +54,8 @@ path named is not a param — the frame's channel is bound to it, and
 logic — labels, percentages, a CSS class chosen by a verdict — as
 columns; templates place values, they do not decide them. A frame plans through the same path
 as every other read, so every door is available inside one:
-a grounding under its name, `metric_series()` for the cube's
-cells at a grain, `band_points()` for the recorded walk beside the
-real books.
+a grounding under its name, `metric_series()` for the cells at a
+grain, `band_points()` for the recorded walk beside the real books.
 
 **Tiles** are tera macros placing what the frame computed — a value, a
 chart over a spec, a table, or a row surface with an authored

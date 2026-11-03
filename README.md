@@ -3,8 +3,9 @@
 A declarative context language over a SQL host, and a server that speaks
 it. The language describes a dataset — sources, tables, relationships,
 meanings, checks — so that agents and humans work on the same data with
-the same context. The server is one Rust binary with the query engine
-(DataFusion) in-process and its own catalog beside it. An agent
+the same context. The server is one Rust binary with the query engine (DuckDB) in
+process, the gloss extension that owns the language and the record,
+and a DuckLake beside it. An agent
 connects over MCP, lands data, and builds the dataset's glossary;
 questions the data cannot answer go to a human, and the answer is
 stored as part of the record.
@@ -48,12 +49,11 @@ an aspect onto a subject; `GLOSSARY()` is the read.
   subject table's version, so it is always clear which data a claim
   was measured against.
 
-The integration points are standard: sources land by recipe from files
-or over ADBC (the SQL runs at the source), reads are served as Arrow
-IPC over plain HTTP, and the lake is parquet files under a catalog
-of rows in the shapes the DuckLake specification names — on SQLite for
-development, on Postgres in production — readable by any DuckLake
-client.
+The integration points are standard: sources land by recipe from
+files or from a database the engine attaches, reads are served as
+Arrow IPC over plain HTTP, and the lake is a DuckLake — parquet files
+under a catalog of rows, a file for development, Postgres in
+production — readable by any DuckLake client.
 
 ## Why a grammar and JSON Schemas
 
@@ -66,8 +66,7 @@ them. glossql keeps them apart and joins them at read time.
   which detector scores the voices), relationships, sources, and
   recipes are declarative statements. A world model made of statements
   is text: an agent can write one, carry it, and apply it to new data.
-  The vocabulary exists before the dataset does. A fresh workspace
-  starts with one: the shipped measurement library and the KPI kit.
+  The vocabulary exists before the dataset does. A fresh workspace starts with one: the kits.
 - **A posteriori — the measured evidence.** Functions compute what the
   landed rows show: profiles, join evidence, stock/flow behavior,
   hierarchies, metric bands. Measurements are tuned for recall. They
@@ -104,13 +103,14 @@ the typed table and import is a filter, not an ETL step.
 
 ## The server
 
-A Rust workspace (`crates/`) on DataFusion: `parser` (the grammar
-over DataFusion's parser), `glossary` (the store — slots,
-supersession, admission, collapse), `session` (statement routing, a
-channel per call), `catalog` + `import` (the lake — the catalog's
-tables, the files, the record — and recipe execution), `scripts` (the native
-kernels and the reference library), `apps` (server-rendered data
-apps from declarative artifacts), `serverd` (the doors).
+A Rust workspace (`crates/`) on DuckDB: `parser` (the language's
+grammar and its corpus), `glossary` (the actor types), `duck` (the
+engine: the facade over the gloss extension and a DuckLake, a channel
+per call, the record's reads and the door's), `apps` (server-rendered
+data apps from declarative artifacts), `serverd` (the doors). The
+gloss extension owns the language, the store and the kits
+(`glossdb/gloss`), and `crates/duck/gloss.ref` pins the commit a
+build carries.
 
 One listener, three doors, no server-side cursors. A browser stays on
 one dataset, so `/query` and `/app` carry the dataset in the path. An
@@ -145,18 +145,18 @@ functions, witnesses, and glossary are plain tables.
 
 ## The shipped library
 
-The bootstrap declares the reference measurement library in every
-fresh workspace:
+The kits declare the reference measurement library at every open:
 
 | family | functions |
 |---|---|
-| profiling | `profile`, `outliers`, `temporal` |
-| structure | `detect_relationships`, `relationship_coherence`, `detect_hierarchies`, `detect_derivations` |
-| semantics | `behavior_evidence` (stock/flow, sign), `dimension_relevance`, `detect_grounding_collisions`, `slot_entropy` |
-| metrics | `metric_bands`, `band_breach`, `rate_tolerance` |
+| profiling | `column_profile`, `outlier_profile`, `temporal` |
+| structure | `detect_relationships`, `relationship_coherence`, `detect_hierarchies`, `detect_derivations`, `detect_grounding_collisions` |
+| semantics | `slot_entropy` |
+| futures | `metric_bands`, `metric_forecast`, `metric_scenario`, `metric_plan` |
 
 plus the KPI kit: the semantic vocabulary (`meaning`, `role`,
-`behavior`, `unit`, `dimension`, `entity`, …) with its witnesses.
+`behavior`, `unit`, `dimension`, `entity`, …) with its witnesses, and
+the metrics kit's `ladder` on a time column.
 Onboarding starts with a declared world model, not hand-built
 scaffolding. Detection functions over-produce by design. The reading
 agent judges; the false positives stay visible in the measurement.
@@ -164,13 +164,15 @@ agent judges; the false positives stay visible in the measurement.
 ## Building
 
 A Rust workspace. `cargo build -p glossql-serverd` builds the server;
-use `--release` to run it for real. The dependency tree is heavy —
-DataFusion — and the parallel build needs memory:
-measured cold on a 15-core machine, compiler memory peaks at ~6 GB for
-a dev build and ~9 GB for release, with single compile units up to
-~2.6 GB. If the build dies without a compiler error, the OOM killer
-hit — common in memory-capped containers. Bound the parallelism to
-about one job per 2 GB of available memory:
+use `--release` to run it for real. The DuckDB library arrives
+prebuilt at build; the gloss extension is built from the sibling
+checkout `../gloss` (`GEN=ninja make release`, a C++ build of DuckDB
+that takes a while once), or named by `GLOSS_EXTENSION` and
+`GLOSS_KITS` ([install](docs/start/install.md)). The dependency tree
+is heavy and the parallel build needs memory; if the build dies
+without a compiler error, the OOM killer hit — common in
+memory-capped containers. Bound the parallelism to about one job per
+2 GB of available memory:
 
 ```
 cargo build --release -j4    # or CARGO_BUILD_JOBS=4
@@ -184,7 +186,8 @@ largest units.
 
 A working proof-of-concept. `cargo test` at the workspace root is the
 standing invariant: the parser corpus, every fenced example under
-`docs/` and `skills/`, and the store, session, and app suites. The
+`docs/` and `skills/` bound on the engine, and the door suites; the
+kits carry their own suites in the extension's repository. The
 language is a working draft. Grammar changes are corpus-first: a
 construct is only added together with a fixture that was checked
 against a real artifact.

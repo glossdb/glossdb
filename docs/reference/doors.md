@@ -27,8 +27,7 @@ brought into being.
 
 ```
 glossql [--workspace <dir>] [--addr <ip:port>] [--row-cap <n>]
-        [--cube-cache <megabytes>] [--memory-limit <megabytes>]
-        [--spill-limit <megabytes>]
+        [--memory-limit <megabytes>] [--spill-limit <megabytes>]
 ```
 
 Every flag but `--workspace` has a variable named after it
@@ -41,14 +40,10 @@ The doors serve plain http. A deployment terminates TLS at its edge
 and names its https URL in `GLOSSQL_AUDIENCE`; unset, the audience is
 the bind address under http.
 
-Defaults: `127.0.0.1:8080`, row cap 200, cube cache 2048 MB, memory
-limit 4096 MB. The cube cache and the memory limit are two budgets, not
-one: the cache holds its bytes outside the engine, so a deployment is
-sized for their sum — and for the spill space beside them, twice the
-memory limit at the OS temp directory. The workspace directory holds `catalog.sqlite`, the
-`warehouse/` (created at boot), and `apps/`. A fresh workspace receives
-the shipped system, the measurement library and the KPI kit, before any
-door opens.
+Defaults: `127.0.0.1:8080`, row cap 200, the memory ceiling and the
+spill bound the engine's own. The workspace directory holds
+`catalog.ducklake` and `warehouse/`, created at open. A workspace
+receives the kits at every open, before any door opens.
 
 ## The dataset arrives with the call
 

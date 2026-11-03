@@ -76,36 +76,33 @@ judged dimensions as columns.
 **A stock is the exception.** The running level already aggregates the
 events, so the frame must collapse to its own grain — one row per
 period, or one per entity and period with the entity served as a
-column (partition the window by it). Served at event grain, every row
-on a date carries the same correct level, and the cube — which must
-sum same-period rows, because that is how a multi-account balance
-totals — multiplies the level by the day's event count. The number is
-exact on every row and wrong in every sum. Declare that grain in the
-body — `"grain": ["date"]`, or `["date", "account_id"]` — and the
-cube validates the frame against it instead of trusting it: a frame
-that breaks its declared grain abstains, with the counts in the
-reason. An interval table is a stock with two event columns, `+1` at
-the start date and `-1` at the end date, unioned into one served
-date; both columns must be judged for the axis to trace. Mark
-`"behavior": "stock"` — a window sum blocks the verb's trace, and an
-unmarked stock sums as a flow — and declare the grain; a GROUP BY
-keeps the date column's verdict, because group keys trace, and a date
-spine you generate has none and abstains. Both shapes written down:
+column. Served at event grain, every row on a date carries the same
+correct level, and the series read — which sums the rows standing at
+the bucket's last instant, because that is how a multi-account
+balance totals — multiplies the level by the day's event count. The
+number is exact on every row and wrong in every sum. An interval
+table is a stock with two event columns, `+1` at the start date and
+`-1` at the end date, unioned into one served date. Gloss `behavior`
+stock on the value column with its grounds — an unglossed value does
+not combine at all, and a value glossed flow sums. Both shapes
+written down:
 
 ```glossql
 GLOSS payables_outstanding ON fin AS $${
-  "sql": "WITH daily AS (SELECT entry_date, sum(amount) AS delta FROM journal_lines GROUP BY entry_date) SELECT entry_date AS date, sum(delta) OVER (ORDER BY entry_date) AS value FROM daily",
-  "behavior": "stock",
-  "grain": ["date"]
+  "sql": "WITH daily AS (SELECT entry_date, sum(amount) AS delta FROM journal_lines GROUP BY entry_date) SELECT entry_date AS date, sum(delta) OVER (ORDER BY entry_date) AS value FROM daily"
 }$$;
+GLOSS role ON payables_outstanding.date AS $${"value": "timestamp"}$$;
+GLOSS role ON payables_outstanding.value AS $${"value": "measure"}$$;
+GLOSS behavior ON payables_outstanding.value AS $${"value": "stock", "grounds": "the running balance at the day's end"}$$;
 ```
 
 ```glossql
 GLOSS headcount ON hr AS $${
-  "sql": "WITH events AS (SELECT from_date AS date, 1 AS delta FROM stints UNION ALL SELECT to_date AS date, -1 AS delta FROM stints WHERE to_date IS NOT NULL), daily AS (SELECT date, sum(delta) AS delta FROM events GROUP BY date) SELECT date, CAST(sum(delta) OVER (ORDER BY date) AS DOUBLE) AS value FROM daily",
-  "behavior": "stock",
-  "grain": ["date"]
+  "sql": "WITH events AS (SELECT from_date AS date, 1 AS delta FROM stints UNION ALL SELECT to_date AS date, -1 AS delta FROM stints WHERE to_date IS NOT NULL), daily AS (SELECT date, sum(delta) AS delta FROM events GROUP BY date) SELECT date, CAST(sum(delta) OVER (ORDER BY date) AS DOUBLE) AS value FROM daily"
 }$$;
+GLOSS role ON headcount.date AS $${"value": "timestamp"}$$;
+GLOSS role ON headcount.value AS $${"value": "measure"}$$;
+GLOSS behavior ON headcount.value AS $${"value": "stock", "grounds": "open stints at the day's end"}$$;
 ```
 
 A flow, written down, with its judgment disclosed:
@@ -115,7 +112,7 @@ GLOSS throughput ON ops AS $${
   "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, w.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
   "assumptions": [
     {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "behavior_evidence on work_orders.duration_min", "confidence": 1.0}
+    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
   ]
 }$$;
 ```
@@ -137,21 +134,17 @@ head is judgment: write that as the basis and hold the confidence
 below 1.0.
 
 **A composed ratio serves only the axes its composition carries.** The
-cube slices on the dimension columns an extract *serves*, so a ratio
-that groups to `(date, value)` can never be sliced — a cohort
-grounded entirely that way reports "no axes admitted" on every
-metric: headline numbers nobody can cut.
+series slices on the dimension columns an extract *serves*, so a
+ratio that groups to `(date, value)` can never be sliced — a cohort
+grounded entirely that way serves headline numbers nobody can cut.
 
-**Name the axes when the verdicts would get them wrong.** `"axes"` in
-the body lists the served columns the metric is sliced by, in order,
-and closes every other served column. A distinct count sliced by a
+**The axes are the served columns you gloss.** A served column slices
+the metric when it carries `role` dimension; a `dimension` gloss ranks
+it, `primary` first, `none` closes it. A distinct count sliced by a
 column double-counts across members, and a ratio sliced by its own
-discriminator reads one and zero: for those two shapes say
-`"axes": []`, and the write's row says what it closed. On a flow or a
-stock the empty list does not hold — every member adds up to the
-total — so the verdicts decide, the row says `measured over
-authored`, and the axis is yours to serve. Absent, the judged
-verdicts and the `dimension` glosses decide.
+discriminator reads one and zero: serve those two shapes with no
+dimension column. The write's row names the served columns no role
+stands on and the gloss each owes.
 
 A ratio is never drilled from its output rows. Drilling backlog days
 by region means **re-scoping its components per the `formulas` gloss**
@@ -168,18 +161,20 @@ computed from its own numerator and denominator, never averaged), and
 it is not free — an axis you carry must exist on both sides, so pick
 the axes the question actually needs rather than every one available.
 
-**A ratio must serve `num` and `den` beside `value`.** They are how the
-cube and the bands walk total it — `sum(num)/sum(den)` at every grain,
-which is right for the headline and for every member. Without them a
-ratio takes the flow verb and is **summed** — a dozen member ratios
-added into one wrong headline, an order of magnitude off its true
-value. Nothing infers this from the SQL — serve the columns.
+**A ratio must serve its halves beside `value`, and name them.** Gloss
+`behavior` ratio on the value column with `numerator` and
+`denominator` naming the served halves: they are how the series and
+the bands walk total it — `sum(num)/sum(den)` at every grain, which
+is right for the headline and for every member. A value glossed flow
+is **summed** — a dozen member ratios added into one wrong headline,
+an order of magnitude off its true value. Nothing infers this from
+the SQL — serve the columns and gloss the claim.
 
 ```glossql
 GLOSS backlog_days ON ops AS $${"sql": "WITH bl AS (SELECT date_trunc('month', date) AS m, region, sum(value) AS bal FROM backlog GROUP BY 1, 2), th AS (SELECT date_trunc('month', date) AS m, region, sum(value) AS th FROM throughput GROUP BY 1, 2) SELECT CAST(bl.m AS DATE) AS date, bl.bal / nullif(th.th, 0) * date_part('day', bl.m + INTERVAL '1' MONTH - INTERVAL '1' DAY) AS value, bl.bal AS num, th.th * (1.0 / date_part('day', bl.m + INTERVAL '1' MONTH - INTERVAL '1' DAY)) AS den, bl.region FROM bl JOIN th ON th.m = bl.m AND th.region = bl.region"}$$;
 ```
 
-**A distinct count is the same class without halves.** The cube sums
+**A distinct count is the same class without halves.** The series sums
 same-period rows, and distinct customers per (doc type, sales org) do
 not sum to distinct customers per month — a distinct count served with
 dimension columns reports a wrong total, and nothing infers this from
@@ -194,8 +189,8 @@ halves, scaled so their quotient is the metric in its own unit: here
 the day factor rides the denominator, so `sum(num)/sum(den)` is days.
 
 **`sign` and `grain` are settled before recording, at 1.0.** A sign
-convention is read off a `behavior_evidence` anchor and a grain is
-what your frame serves — statistics and declarations are your work,
+convention is the source's `conventions` gloss and a grain is what
+your frame serves — statistics and declarations are your work,
 never a question for the round. Below-1.0 confidence is for judgment
 dimensions: definition, scope, convention. The inverse holds: a
 defensible default does not raise a judgment dimension to 1.0. What
@@ -204,19 +199,14 @@ belong — record the default you chose at the confidence it deserves,
 and the round serves it for confirmation. Judgment recorded at 1.0
 silences the round on exactly what it exists to ask.
 
-**Behavior is measured, not assumed.** Every metric folds as a flow
-unless something detects a ratio or a stock: the SQL's shape (a
-running total), or the `behavior_evidence` verdict on the column the
-value is or sums. The grounding write runs that measurement over the
-column when no verdict stands there, so you never call it for a
-metric's sake — the write's answer says what it found. Mark
-`"behavior": "stock"` as a top-level key only where the write's
-answer shows the door could not decide (`behavior_basis` other than
-`evidence` or `shape`) and you know the column is a carried level;
-that marker is your judgment, and a verdict that later decides
-otherwise overrules it, the basis naming the contest. A `flow` marker
-changes nothing. `metric_axes().behavior_basis` says what decided —
-`shape`, `evidence`, `marked`, `glossed`, or `default`.
+**Behaviour is claimed, never defaulted.** The series combines a
+metric's rows by the `behavior` on its value column — flow, stock or
+ratio — and refuses to combine them while none stands; the write's
+answer says so, and `owed` lists the gloss until it lands. The claim
+is yours, with its grounds: the column's meaning and the table's
+grain, never a name. The witness bands disagreement between voices,
+and `metric_axes().behavior_state` says where the claim stands —
+`current`, `contested`, `none` where nobody spoke.
 
 **After grounding, run `detect_grounding_collisions`.** Two concepts
 grounding to the same extract make every ratio between them compute
@@ -235,11 +225,9 @@ An assumption may carry one:
  "basis": "operations convention", "confidence": 0.7}
 ```
 
-The cube runs the rival monthly and the docket draws both lines, and
-`metric_axes().alternative_divergence` serves the measured gap — the
-breaching periods against an authored `tolerance` on the assumption,
-or the maximum relative gap and its period — so the question carries
-coordinates instead of two lines to eyeball. Start where the families
+Run the rival yourself at the grain the question lives at and record
+what you found in the basis; a second route the corpus carries is a
+check to promote (`references/validate.md`). Start where the families
 diverge hardest.
 
 **Hunt the corpus for a second path.** The strongest rival is often

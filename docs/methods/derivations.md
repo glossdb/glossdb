@@ -25,16 +25,16 @@ changed" answer differently to it.
 
 ## Mechanism
 
-The search door (`derivation_candidates`,
-`crates/session/src/search/derivations.rs`) is generous by design: it counts every
-triple that passes a structural prune, and the prune is cost, not
-judgment — a product or sum whose operand magnitudes cannot land
-within 30× of the target is skipped, with no recall lost at the body's
-bar. One aggregate scan sizes the prune; one aggregate scan counts
-every remaining triple. The measurement body
-(`crates/scripts/functions/derivations.sql`) applies the only two
-arguable constants, in the open: an identity holds at
-`match_rate >= 0.95` over `>= 20` supporting rows. The judge confirms
+The screen `derivation_candidates(table)` in the quality kit is
+generous by design: it counts every triple that passes a structural
+prune, and the prune is cost, not judgment — a product or sum whose
+operand magnitudes cannot land within 30× of the target is skipped,
+with no recall lost at the function's bar. A row supports a triple
+when all three columns are filled and violates it when the target
+misses the form by more than 0.011 or a millionth of itself. The
+measurement, `detect_derivations`, applies the only two arguable
+constants, in the open: an identity holds at `match_rate >= 0.95`
+over `>= 20` supporting rows. The judge confirms
 which candidates are real derivations rather than coincidence.
 
 ## Limits

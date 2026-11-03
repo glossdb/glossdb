@@ -15,27 +15,26 @@ the rest of the backlog derives from it.
   `attribute`, judged from this table alone. Never call a column a
   foreign key here; references are `DECLARE RELATIONSHIP`.
 - **behavior** — measures only. `stock` is a carried point-in-time
-  level that must not be summed across periods; `flow` accumulates. A
-  column's own trajectory cannot decide this — a trending flow and a
-  mean-reverting stock look alike — so run `behavior_evidence`, which
-  reconciles the column against period movements over *declared*
-  edges. Each anchor is served raw and year-scoped: a cumulative that
-  resets abstains at raw grain and reconciles as a stock on the year
-  anchor; read the pair together. Names lie either way — a column
-  called "total" can carry a per-period movement. The gloss is read:
-  a grounding without its own `behavior` marker folds by the
-  `behavior` gloss on the column its value sums, before any evidence.
+  level that must not be summed across periods; `flow` accumulates;
+  `ratio` re-divides its summed halves, `numerator` and `denominator`
+  naming them; `none` does not combine. A column's own trajectory
+  cannot decide this — a trending flow and a mean-reverting stock
+  look alike — so read the column's meaning and the table's grain:
+  what one row is, and whether two rows of one period add up to
+  something. Names lie either way — a column called "total" can
+  carry a per-period movement. Say the grounds in the gloss. The
+  gloss is read: a metric's series combines rows by the `behavior`
+  on its value column and refuses while none stands.
 - **unit** — where a magnitude has one; `source_column` names the
   column carrying it when it rides beside the value.
 
-**When `behavior_evidence` starves** — every anchor abstains, no
-entity persists across periods — climb the ladder: land the missing
-dimension (a fact whose counterparty has no table starves only for
-lack of a declared edge; `SELECT DISTINCT site_id FROM …` is a
-legitimate recipe); then your own data test, cited as the basis; and last, on an
-installation where a whole family of columns needs it, author a
-workspace-scoped function that decides behavior the way *this* dataset
-demands. That function is the installation's recorded thinking —
+**When the meaning does not settle it** — a column whose rows could
+be levels or movements — test it against the data: a related event
+table whose period movements reconcile with the column's deltas says
+stock, with the column's own values says flow; cite that test as the
+basis. On an installation where a whole family of columns needs it,
+author a workspace-scoped function that decides behavior the way
+*this* dataset demands. That function is the installation's recorded thinking —
 versioned, re-runnable, honest about its method. Unwilling to climb?
 Don't gloss: absence shows as an honest `unassessed` row, a guess
 does not.

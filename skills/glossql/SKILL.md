@@ -84,25 +84,26 @@ escaped — and closes as `}$$;`.
 
 ## Reading live state
 
-A fresh workspace is not empty: the measurement library and the KPI
-kit — `meaning`, `role`, `behavior`, `unit`, `dimension`, `entity`,
-and the rest, with their witnesses — are declared at boot; read them
+A fresh workspace is not empty: the kits — the KPI kit's `meaning`,
+`role`, `behavior`, `unit`, `dimension`, `entity` and the rest with
+their witnesses, the quality kit's measurements, the metrics kit's
+`ladder`, the futures kit's worlds — are declared at open; read them
 back before declaring anything.
 
 - The store's relations, as plain tables — these columns and no
   others; a guessed column costs a refusal, and `DESCRIBE <name>`
   serves the columns of any readable name, the shipped reads
-  included: `glossary (dataset, subject, aspect, actor_kind,
-  actor_id, body, written_at, snapshot_id)` · `aspects (name, kind,
-  grains, condition, schema)` · `witnesses (name, aspect, speakers,
-  detector, threshold)` · `functions (name, scope, script, returns)`
-  · `measurements (dataset, function, subject, aspect, pin, value,
-  computed_at, reads)` · `imports (dataset, table_name, source_scans,
-  landed_rows, dropped_rows_count, cast_failures, imported_at, files,
-  version, mode)` ·
-  `recipes (dataset, table_name, source, sql, settings)` ·
-  `relationships (dataset, left_path, op, right_path)` · `sources
-  (name, settings)` · `datasets (name, settings)`. The ones with a
+  included: `glossary (seq, dataset, subject, aspect, actor_kind, actor_id, body,
+  snapshot_id, written_at)` · `aspects (seq, name, kind, grains,
+  condition, schema, declared_at)` · `witnesses (seq, name, aspect,
+  speakers, detector, threshold, declared_at)` · `functions (seq,
+  name, scope, script, returns, declared_at)` · `measurements (seq,
+  dataset, function, subject, aspect, pin, value, computed_at, reads)`
+  · `imports (seq, dataset, table_name, mode, rows, dropped_rows_count,
+  lineage, snapshot_id, imported_at)` · `recipes (seq, dataset,
+  table_name, source, settings, sql, declared_at)` · `relationships`
+  · `sources (seq, name, settings, declared_at)` · `datasets (seq,
+  name, settings, declared_at)`. The ones with a
   `dataset` column serve the whole workspace — the binding does not
   narrow them, so say which dataset you mean.
 - `GLOSSARY(subject)` — the collapsed read, `(subject, aspect, value,
@@ -132,9 +133,9 @@ back before declaring anything.
 
 **Shipped reads** — derived relations selectable like any table,
 filters riding WHERE. `DESCRIBE <read>` serves the columns of any of
-them — `DESCRIBE band_points()`, `DESCRIBE metric_series(grain =>
-'month')` — and every column's meaning is `doc://docs/reference/reads.md`;
-a guessed column costs a refusal.
+them — `DESCRIBE band_points()`, `DESCRIBE metric_series(grain := 'month')` —
+and every column's meaning is `doc://docs/reference/reads.md`; a
+guessed column costs a refusal. A named argument spells `:=`.
 
 | read | serves |
 |---|---|
@@ -144,14 +145,14 @@ a guessed column costs a refusal.
 | `owed` | what waits on an act: a recipe approval, a formula answer, a contested slot, a measurement stale or never made, a ruling awaiting its fold-in |
 | `agent_assumptions` | every assumption you currently disclose |
 | `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — the record; the numbers are `metric_series()` and `metric_axes()` |
-| `metric_series(grain => 'month')` | the cube's cells — `metric`, `world` (`actual` unless asked; `world => 'forecast'` serves the newest forecast's medians ahead; `world => 'scenario', scenario => '<name>'` the named scenario's cells; `world => 'plan', plan => '<name>'` the named plan's cells under the metric it plans — a plan is a QUERY aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, grounded by SQL over the landed budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period |
-| `metric_axes()` | one row per grounding: `metric`, `applicable`, `judged_current`, `reason`, `behavior`, `behavior_basis`, `grain`, `resolution`, `window`, `dims`, `basis`, `admitted_by`, `axes_basis`, `bucketed`, `unadmitted`, `unadmitted_why`, `unadmitted_act`, `wanted`, `wanted_over`, `alternative`, `alternative_divergence`, `alternative_error`, `superseded_divergence`; takes no argument |
-| `band_points()` | the recorded `metric_bands` walk, one row per metric and walked point — `seq`, `metric`, `applicable`, `reason`, `grain`, `aggregation`, `trained_on`, `axis`, `axis_judged`, `served_by`, `point_seq`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `partial`, `displacement`, `computed_at`, `current`; no `band` and no `month` — a red is `WHERE partial = false ORDER BY displacement DESC` |
+| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a QUERY aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, grounded by SQL over the landed budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
+| `metric_axes()` | one row per metric: `metric`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `behavior`, `behavior_state`, `dims`, `unranked`, `unadmitted`, `owed` (the gloss each unadmitted column wants), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
+| `band_points()` | the recorded `metric_bands` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `behavior`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `band_verdict()` is the walk's verdict in one row |
 | `forecast_points()` | the recorded `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `landed`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `landed` fill as the periods land; `held_80` is how often such a band held — this metric's record once 30 of its points landed at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
-| `forecast_coverage()` | over every recorded forecast: `metric` (`''` the dataset as a whole), `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90`, `forecasts` — the rows `held_80` comes from once one reaches 30 points |
-| `scenario_points(scenario => 'name')` | the scenario world cell by cell — `scenario`, `metric`, `grain`, `period`, `step`, `pass` (`replayed`: the grounding replayed over the data with the scenario's factors; `estimated`: the what-if's estimate ahead of the last actual), `value`, `num`, `den`, `low`, `high`, `held_80`, `held_90`, `held_from`, `sign`, `basis`, `served_by`; a lever is declared with `GLOSS lever ON table.column AS $${"value": true, "grounds": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` glossed with `levers` — per lever the column, a factor per period (`"2027-01": 1.15`) and a basis; hand an estimate out with its band and `held_80` |
-| `scenario_levers(scenario => 'name')` | what each lever does alone — `scenario`, `metric`, `lever`, `shift` (the lever's own effect over the periods ahead, the history's mean), `low`, `high` (its 90% interval), `basis`, `served_by`; the parts add up to the joint estimate, so read them beside `scenario_points()` when a scenario moves several levers — two that cancel show as two parts of opposite sign |
-| `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% band and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `stands` (`landed`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; the plan goal judges the year rows — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
+| `forecast_coverage()` | over every recorded forecast where a point has landed: `metric` (`''` the dataset as a whole), `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90` (the counts), `held_80`, `held_90` (the shares) — the rows `held_80` comes from once one reaches 30 points |
+| `scenario_points('name')` | the newest estimate cell by cell, `scenario_points(NULL)` every scenario — `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass` (`estimated`), `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at`; a lever is declared on a metric's column, `GLOSS lever ON metric.column AS $${"value": true, "grounds": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` glossed with `levers` — per lever the column as `metric.column`, a factor per period (`"2027-01": 1.15`) and a basis; `SELECT metric_scenario() FROM <dataset>` runs the estimate; hand an estimate out with its band and `held_80` |
+| `scenario_levers('name')` | what each lever does alone — `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from` (`forecast`, or `held: <why>`), `history_shift`, `history_low`, `history_high` (the lever's own effect over the periods ahead and its 90% interval), `computed_at`; the parts add up to the joint estimate, so read them beside `scenario_points()` when a scenario moves several levers — two that cancel show as two parts of opposite sign |
+| `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% band and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `stands` (`landed`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; `SELECT metric_plan() FROM <dataset>.<plan>` lands the same rows as the plan's judgement, which the plan goal reads — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
 | `metric_sources()` | what feeds each grounding — `metric`, `field`, `source` (`table.column`), `table_name`, `reason`: per served field the column it descends from, and every table it scans |
 | `PROBE erp AS $$SELECT file FROM glob('*')$$` | every file under a source's location, listed at the source; `glob('**')` the subdirectories too |
 | `app_parts` | apps authored as glosses, one row per file (`glossql-apps`) |
@@ -203,6 +204,6 @@ the import — and forms rule the record: standing assumptions to
 confirm or correct.
 
 The engine's refusals are exact and name what was wrong. Its SQL
-guide at this pin is `doc://vendor/datafusion/sql/…` — a function's
-name or signature is a lookup there, never a guess — and what fails
-here that the guide cannot say is `references/sql-here.md`.
+guide at this pin is `doc://vendor/duckdb/sql/…` — a function's name
+or signature is a lookup there, never a guess — and what the guide
+cannot say about this door is `references/sql-here.md`.

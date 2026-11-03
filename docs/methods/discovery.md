@@ -19,14 +19,16 @@ is exactly what a real foreign key is.
 
 ## Mechanism
 
-Every set operation in the door is a plan the engine runs, one pass
-per column type: each table's same-typed columns unpivoted to
-`(column, value)` rows, the distinct of those joined to itself on the
-value, and the count per column pair — the containment numerator, and
-on the diagonal each column's distinct count
-(`crates/session/src/search/relationships.rs`). Values compare as stored; nothing is
-cast. Pairs below 0.5 containment are not served — the one floor in
-the door, placed to bound output, not to judge. Composite keys are
+The screen is SQL over the dataset's cells, `relationship_candidates(dataset)`
+in the quality kit: every cell of every table as `(table, column,
+type, row, value)` rows, the distinct values of two columns joined on
+the value within one stored type, and the count per column pair — the
+containment numerator, and per column its distinct count. Values
+compare as stored; nothing is cast. A target is key-like when nine in
+ten of its filled rows are distinct and it has two values or more; a
+pair is admitted when half the source's distinct values or more appear
+in the target — the one floor in the screen, placed to bound output,
+not to judge. Composite keys are
 tried where the multi-tenant shape suggests them — for each
 overlapping pair whose target is no key alone, the same two tables are
 tried with a scoping leg in overlap order. A scoping leg that is
@@ -50,10 +52,9 @@ before coverage because a large surrogate id range covers a smaller
 one entirely while a fifth of its values resolve nowhere, and that
 decoy outnumbers the small code set that sits inside a dense id space
 at overlap 1.0; the code set ranks above an edge with orphans and
-below one without, and the judge removes it against the data. The
-order demotes and never drops. The body
-(`crates/scripts/functions/relationships.sql`) shapes and summarizes,
-and never filters beyond the door's floor.
+below one without, and the judge removes it against the data. The order demotes and never drops. The measurement,
+`detect_relationships`, shapes and summarizes the screen's rows and
+never filters beyond its floor.
 
 The judged read is half the method by construction: value containment
 cannot see a spelling-mismatched key, and it cannot refuse a
@@ -63,12 +64,11 @@ declaring to the judge.
 
 ## Scale
 
-No column's values are ever held outside the engine's memory pool:
-the sorts, the merge join and the aggregates of a pass spill to disk
-under pressure, and what leaves the engine is a matrix sized by the
-schema. The cost of a pass is its fan-out — a value carried by many
-columns of one type meets itself once per column pair — and the
-composite pass bounds that to the pairs it was asked.
+No column's values are ever held outside the engine: the screen is
+one query, and its joins and aggregates spill to disk under the
+engine's memory ceiling. The cost of a pass is its fan-out — a value
+carried by many columns of one type meets itself once per column
+pair — and the composite pass bounds that to the pairs it was asked.
 
 ## Limits
 

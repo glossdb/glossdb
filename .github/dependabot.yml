@@ -1,8 +1,10 @@
 # What moves on its own: the actions by commit, the image bases by
 # digest, the crates on their lines, and the browser libraries through
 # the manifest beside the vendor table. The engine's lockstep set —
-# arrow, datafusion, parquet, object_store, adbc — moves by hand, at a
-# pin move, with the vendored SQL guide refreshed (Cargo.toml).
+# duckdb-neo with the DuckDB release the extension is built against,
+# and arrow, datafusion, parquet on one arrow line — moves by hand, at
+# a pin move, with the vendored SQL guide refreshed (Cargo.toml,
+# crates/duck/gloss.ref).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -20,9 +22,8 @@ updates:
     ignore:
       - dependency-name: "arrow*"
       - dependency-name: "datafusion*"
-      - dependency-name: "parquet"
-      - dependency-name: "object_store"
-      - dependency-name: "adbc*"
+            - dependency-name: "parquet"
+      - dependency-name: "duckdb-neo"
       # tera stays on its 1 line: the agents write the page snippets
       # in its syntax (Cargo.toml).
       - dependency-name: "tera"

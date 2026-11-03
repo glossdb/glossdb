@@ -188,12 +188,6 @@ async fn every_skill_function_body_compiles() {
     );
 }
 
-/// The served table is the directory. `include_str!` keeps each
-/// embedded body current, but only for the files the table names — a
-/// skill added under `skills/` without a row in
-/// [`glossql_serverd::skills::SKILLS`] would sit on disk unserved,
-/// and this is what refuses that.
-
 /// A missing table is fine: an example may name a customer's data, or a
 /// grounding a fresh workspace has none of. A missing column is not.
 fn missing_table(error: &str) -> bool {
@@ -275,6 +269,11 @@ async fn every_skill_read_names_columns_that_exist() {
     assert!(bound >= 12, "only {bound} skill reads were bound");
 }
 
+/// The served table is the directory. `include_str!` keeps each
+/// embedded body current, but only for the files the table names — a
+/// skill added under `skills/` without a row in
+/// [`glossql_serverd::skills::SKILLS`] would sit on disk unserved,
+/// and this is what refuses that.
 #[test]
 fn the_served_skills_are_the_skills_directory() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));

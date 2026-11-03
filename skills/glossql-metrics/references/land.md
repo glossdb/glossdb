@@ -155,7 +155,7 @@ measure first, decide second, write the decision where the next
 reader looks.
 
 - **Measure.** Which subject, what share of rows, since when. The cast
-  account at landing; `profile()` for nulls, distincts and top values;
+  account at landing; `column_profile()` for nulls, distincts and top values;
   `temporal()` for gaps; `relationship_coherence()` for orphans and
   child-before-parent dates; `detect_derivations()` for an identity
   that breaks. A finding is a number, never an impression.

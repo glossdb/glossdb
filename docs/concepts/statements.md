@@ -56,9 +56,8 @@ actor rides the connection and the engine stamps every statement
 - `<metric>` — a grounded metric as a relation. The serving grounding
   is a view of the dataset's schema under the metric's name; a
   statement plans its definition at the statement's pins and composes
-  it in any FROM position, bare or as `dataset.metric`.
-  `read.<metric>()` names the same view. A reader attached to the
-  catalog sees the definition and its dialect.
+  it in any FROM position, bare or as `dataset.metric`. A reader
+  attached to the lake sees the view and its definition.
   A metric and a landed table of one dataset never share a name.
 - Plain SQL — tables, and the declaration relations (`functions`,
   `aspects`, `witnesses`, `sources`, `relationships`, `glossary`,
@@ -75,7 +74,7 @@ row.
 
 Substrate SQL runs behind an allowlist: queries pass, `DESCRIBE` and
 `EXPLAIN` pass (`DESCRIBE` over any name a read can plan: a landed
-table, a store relation, a shipped read, a cube read with its
+table, a store relation, a shipped read, a metrics read with its
 arguments; `SHOW TABLES` lists the bound
 dataset's tables and its groundings' views, typed), `DROP TABLE` refuses while
 the table holds data or
