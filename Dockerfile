@@ -26,7 +26,12 @@ RUN git clone --filter=blob:none https://github.com/glossdb/gloss /gloss \
     && cp -r kits /out/share/glossql/kits \
     && rm -rf /gloss
 
+# The Rust stage compiles DuckDB too (libduckdb-sys, bundled), so it
+# starts once the extension stage is done: two DuckDB builds at once
+# exhaust a builder's memory. The extension's share rides along and
+# leaves with the binary.
 FROM rust:1.98-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS build
+COPY --from=extension /out/share/glossql /out/share/glossql
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -54,8 +59,7 @@ RUN arch="$(uname -m)" && case "$arch" in x86_64) platform=linux_amd64 ;; aarch6
 # unprivileged user and no shell or package manager.
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:3ee00291cf386ec52a552e6a858d555debd74776eb4bfa53fa3df2cd6677515e
 COPY --from=build /out/bin/glossql /usr/local/bin/glossql
-COPY --from=extension /out/share/glossql /usr/local/share/glossql
-COPY --from=build /out/share/glossql/extensions /usr/local/share/glossql/extensions
+COPY --from=build /out/share/glossql /usr/local/share/glossql
 USER nonroot
 EXPOSE 8080
 # No workspace, no directory, no file: the state is the catalog and the

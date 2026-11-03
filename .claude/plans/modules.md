@@ -33,7 +33,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and `corpus/` move to the language's repository with the corpus check (every ```glossql block parses on the engine, every ```glossql-gap fails: measured, 27 of 28 fixtures do; fixture 17 carries a `driver` key SPEC §3 never lists, the lead's to retag); the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
 | Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
-| Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux build itself is 6a's image gate | | | |
+| Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
 | Step 6f: the issues on the engine — the open issues closed or rescoped (the draft below) | Low; an issue closes on the lead's word. Built: the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine | the issues | With 6b | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
@@ -76,11 +76,14 @@ order after it, its rows independent and listed in risk order.
   call shape (the `USE`, a write, a review) is read off the text, and
   the harness parses every example and SPEC.md through the engine's
   parser, which is the door's.
-  Measured on the laptop: the image built with Apple's `container`
-  (the extension stage about 7 min, the Rust stage about 4 min; a
-  context under the system temp directory reaches the builder VM
-  empty, so it is staged under the repository), the doors answer, a
-  dataset declares through the MCP door with the kits standing. The
+  Measured on the laptop: the image with DuckDB compiled in built
+  with Apple's `container` in about 8 min on 8 CPUs and 12 GB, the
+  Rust stage after the extension stage (two DuckDB compiles at once
+  exhaust the memory; the size goes on the build command, which
+  recreates the builder to it; a context under the system temp
+  directory reaches the builder VM empty, so it is staged under the
+  repository); the doors answer, a dataset declares through the MCP
+  door with the four kits standing. The
   docs and skills harness binds every single read through `EXPLAIN`
   on a fresh workspace; the vendored guide is DuckDB's. SPEC.md names
   the series read where it named the cube; the misfit door (fixture
