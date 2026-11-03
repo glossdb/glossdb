@@ -34,7 +34,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
-| Step 6f: the issues on the engine — the open issues closed or rescoped (the draft below) | Low; an issue closes on the lead's word. Built: the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine | the issues | With 6b | |
+| Step 6f: the house on the engine — the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine, the issues closed or rescoped (#5, #41, #42, #60, #92, #101 and #174 carry their rescope as a comment; their bodies follow) | Built | | | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
@@ -120,18 +120,14 @@ next deploy. Done when: CI green, a tag builds and pushes the image,
 one run of the image against a Postgres catalog and a bucket lands a
 table, the eval's slot serves a lane.
 
-**The issues, for 6f.** Close as built or gone: #19 (the landing path),
-#21 (the cube's stack), #23 (the collapse per witness), #33 (the
-pre-pass), #55 (a DataFusion planner bug), #58 (the file reader),
-#80 (the docs after the data plane change; the dev rig is gone and
-the app door's two writes are stated). Rescope to the engine, the
-text rewritten over the kit's files: #5 (the strike holds on the
-extension; aspect re-declare), #41 (a measure that does not compose
+**The issues, after 6f.** Open: #20 (the docket as a `ui://`
+resource), #24 (`key` in the grounding schema, now the kit's
+contract), #56 (Tera 2), and the seven rescoped to the engine by a
+comment, whose bodies are rewritten next: #5 (aspect re-declare under
+glosses, refused as §3 says), #41 (a measure that does not compose
 from members, on `metric_series`), #42 (metric retirement, on
 `metric_surfaces`), #60 (an infrastructure error's text, on the
 facade's errors), #92 (consumer reads: a DuckLake client with the
 extension loaded), #101 (an Iceberg source: a `type` in §3 and
-DuckDB's `iceberg` extension), #174 (the recommendations read over
-the futures kit's reads). Keep as they are: #20 (the docket as a
-`ui://` resource), #24 (`key` in the grounding schema, now the kit's
-contract), #56 (Tera 2).
+DuckDB's `iceberg` extension), #174 (the recommendations read over the
+futures kit's reads). #27 is a language question for SPEC.md §9.
