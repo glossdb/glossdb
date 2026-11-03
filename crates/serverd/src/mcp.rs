@@ -21,7 +21,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
 
 use crate::engine::Caller;
-use glossql_glossary::{Actor, ActorKind};
+use crate::engine::{Actor, ActorKind};
 
 use crate::engine::{CallShape, Plane, Session, SessionError};
 

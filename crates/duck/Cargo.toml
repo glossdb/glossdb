@@ -10,7 +10,6 @@ description = "The engine on DuckDB: the facade the doors use over the gloss ext
 
 [dependencies]
 # The two actor types the doors stamp a request with.
-glossql-glossary = { path = "../glossary" }
 duckdb-neo = { workspace = true }
 arrow = { workspace = true }
 futures = { workspace = true }

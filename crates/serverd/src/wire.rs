@@ -1,6 +1,6 @@
 //! Outcomes on the wire. The MCP door and the summary path of `/query`
 //! share one JSON shape. A tool result lands verbatim in the agent's
-//! context window, so a data read's rows are capped — by the session,
+//! context window, so a data read's rows are capped — by the engine,
 //! as a limit on the read's plan; this module renders what it is told.
 //! `row_count` counts the rows shipped; a declared `truncated` says the
 //! result held more, so the agent refines (aggregate, LIMIT, WHERE)
@@ -20,7 +20,7 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> Result<Value, String> {
         rendered.push(match outcome {
             Outcome::Done(done) => json!({ "done": done }),
             Outcome::Affected(n) => json!({ "affected": n }),
-            // The session that ran the read cut it and says so.
+            // The engine that ran the read cut it and says so.
             Outcome::Rows { batches, truncated } => {
                 let shipped = batches.iter().map(|b| b.num_rows()).sum();
                 render(

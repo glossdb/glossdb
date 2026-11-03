@@ -47,8 +47,8 @@ never reaches it.
   write: `HX-Trigger: glossql:written` (`rule.rs:59`),
   `glossql:remeasured` beside it (`remeasure.rs:31`); the frame store
   evicts and the tiles refetch (`crates/apps/assets/store.js:124`).
-  The store's version moves on any write
-  (`crates/glossary/src/store.rs:1639`); nothing notifies on it. The
+  The store's version moves on any write (the extension's
+  `gloss_store.cpp`); nothing notifies on it. The
   page's security policy admits a same-origin stream (`pages.rs:32`).
 - The results carry no `structuredContent`; the library in the tree
   has the fields (rmcp 3.5.1).

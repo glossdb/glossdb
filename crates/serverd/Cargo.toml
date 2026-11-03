@@ -16,7 +16,6 @@ path = "src/main.rs"
 
 [dependencies]
 glossql-duck = { path = "../duck" }
-glossql-glossary = { path = "../glossary" }
 glossql-apps = { path = "../apps" }
 arrow = { workspace = true }
 arrow-json = { workspace = true }

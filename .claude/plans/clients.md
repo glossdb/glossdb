@@ -58,11 +58,12 @@ the trial can open at all.
   order on a fresh sign-up is not verified.
 - **Files.** MCP carries no file bytes; in Claude an attached file
   goes to the model's sandbox, never to a tool. A file is a source
-  once it sits under a location a `DECLARE SOURCE` names
-  (`crates/import/src/lib.rs`, `list_source`); the GCP program
-  exports `gs://<bucket>/sources`; the server opens the lake through
-  the object store (`crates/catalog`); on a laptop it reads a
-  directory (`config.rs`, `local_sources`). The app door takes human
+  once it sits under a location a `DECLARE SOURCE` names, and a
+  recipe reads it through the engine's readers (`reader_functions()`
+  in `crates/duck`); the GCP program exports `gs://<bucket>/sources`;
+  the server reaches the object store through httpfs with the
+  warehouse's credential (`crates/serverd/src/config.rs`); on a laptop
+  it reads a directory. The app door takes human
   writes with the cookie's standing (`crates/apps/src/rule.rs`,
   `remeasure.rs`). So the upload page is a page of the docket with a
   drop zone and a PUT on the human door that streams into that

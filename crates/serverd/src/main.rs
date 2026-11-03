@@ -20,8 +20,7 @@ use std::future::IntoFuture;
 use std::sync::Arc;
 
 use config::{Config, usage};
-use glossql_glossary::{Actor, ActorKind};
-use glossql_serverd::engine::{WarehouseCredential, store_kind};
+use glossql_serverd::engine::{Actor, ActorKind, WarehouseCredential, store_kind};
 use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
 fn main() {

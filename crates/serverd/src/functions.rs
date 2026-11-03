@@ -9,8 +9,8 @@
 
 use std::fmt::Write as _;
 
+use crate::engine::{Actor, ActorKind};
 use crate::engine::{DOORS, DoorPage, Plane, Registered, SessionError};
-use glossql_glossary::{Actor, ActorKind};
 
 use crate::wire;
 

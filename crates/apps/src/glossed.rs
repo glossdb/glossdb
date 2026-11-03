@@ -17,11 +17,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::engine::{Actor, ActorKind};
 use arrow::array::{Array, ArrayRef};
 use arrow::record_batch::RecordBatch;
 use arrow::util::display::array_value_to_string;
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 
 use crate::AppDoor;
 
@@ -187,8 +187,8 @@ async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
     while let Some(Ok(batch)) = stream.next().await {
         out.extend(decode(&batch));
     }
-    // The DuckDB record keeps a subject dataset-qualified; the session's
-    // keeps it as spelled. The app's name is the first segment either way.
+    // The record keeps a subject dataset-qualified; the app's name is
+    // the first segment after the dataset.
     for row in &mut out {
         if let Some(rest) = row.subject.strip_prefix(&format!("{dataset}.")) {
             row.subject = rest.to_string();

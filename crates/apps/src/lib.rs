@@ -1,5 +1,5 @@
 //! The app door (`/<dataset>/app`): server-rendered data apps over the
-//! session plane. An app is a named set of parts — tera pages, frame
+//! engine. An app is a named set of parts — tera pages, frame
 //! queries (`frames/*.sql`), vega-lite specs (`specs/*.vl.json`) —
 //! glossed into the record or shipped in the binary, rendered against
 //! module templates and assets embedded in the binary. Pages are hypermedia
@@ -36,9 +36,8 @@ mod pages;
 mod remeasure;
 mod rule;
 
-/// The engine the doors are built on: the session on DataFusion, or,
-/// under the `duck` feature, the facade over DuckDB and the gloss
-/// extension. One name, so a door never says which.
+/// The engine the doors are built on: the facade over DuckDB and the
+/// gloss extension, under the one name a door uses.
 pub use glossql_duck as engine;
 
 pub use app::AppDef;

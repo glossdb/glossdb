@@ -34,11 +34,11 @@ use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::engine::Caller;
+use crate::engine::{Actor, ActorKind};
 use axum::extract::{Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use glossql_glossary::{Actor, ActorKind};
 use jsonwebtoken::jwk::{AlgorithmParameters, EllipticCurve, Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode_header};
 use serde::Deserialize;

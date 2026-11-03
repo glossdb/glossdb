@@ -12,8 +12,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
+use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 
 use crate::AppDoor;
 use crate::app::AppDef;
@@ -59,7 +59,7 @@ pub async fn frame(
     };
     let pairs: Vec<(String, String)> = params.into_iter().collect();
     // No `$dataset` param. The channel above is bound to the URL's
-    // dataset, so the session already knows which one it is on and the
+    // dataset, so the channel already knows which one it is on and the
     // `current_dataset` relation says so inside the SQL — a frame joins
     // it the way any read does. A reserved parameter would be a second
     // spelling of the same fact, and the guard it needed (a query
@@ -156,11 +156,11 @@ pub(crate) async fn one_open_question(
     Ok(None)
 }
 
-/// The frame-class header: `record` when the frame's expansion reads
-/// the glossary anywhere (derived by the session's pre-pass, never
-/// curated), `data` when it provably does not. The browser's frame
-/// store evicts record entries on a ruling and keeps data entries —
-/// the cube survives every glossary write.
+/// The frame-class header: `record` when the frame's text reads the
+/// record anywhere (the engine's own reading of it, never curated),
+/// `data` when it does not. The browser's frame store evicts record
+/// entries on a ruling and keeps data entries, which no glossary write
+/// moves.
 pub const FRAME_CLASS: &str = "glossql-frame-class";
 
 /// Frame errors answer as JSON — the browser components render the

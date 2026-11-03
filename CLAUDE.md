@@ -19,7 +19,7 @@ follow the corpus-first process below.
   acceptance record: ` ```glossql ` must parse, ` ```glossql-gap `
   documents a gap and must fail. It moves to the extension's
   repository with SPEC.md and the grammar, where the parser is.
-- `crates/` — the server, a Cargo workspace: `glossary` · `duck` ·
+- `crates/` — the server, a Cargo workspace: `duck` ·
   `apps` · `serverd`. What each is and how it is built: the crate
   headers and `docs/architecture/`. Directories unprefixed, packages
   `glossql-*`; the engine is the gloss extension (`../gloss`, pinned

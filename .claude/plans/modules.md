@@ -3,10 +3,9 @@
 One binary in one image: MCP, the app, the query door, import and
 export in one process. The engine is ruled: DuckDB with DuckLake, and
 the gloss extension (`../gloss`) owns the language, the store and the
-kits; this repository owns the doors. The design, with the diagrams,
-the seams and the port's steps, is `modules-design.md` (§7); this
-file is the plan. The frame is `kernel.md`; the content tree is
-`kits.md`.
+kits; this repository owns the doors. The seams and their rules are
+`docs/architecture/` and the glossql-substrate skill; this file is
+the plan. The frame is `kernel.md`.
 
 The rules:
 
@@ -35,7 +34,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux build itself is 6a's image gate | | | |
-| Step 6f: the plans and the issues on the engine — the other plan files rewritten or deleted, the open issues closed or rescoped (the draft below); `glossary` folded into `duck`; the cube and the session out of 41 code comments | Low | `.claude/plans/`, the issues, `crates/glossary`, comments | With 6b | |
+| Step 6f: the issues on the engine — the open issues closed or rescoped (the draft below) | Low; an issue closes on the lead's word. Built: the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine | the issues | With 6b | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
@@ -57,8 +56,8 @@ order after it, its rows independent and listed in risk order.
   read planned once and cached under the store's version. The futures
   kit calls the model service through `gloss_service`; the plan is
   judged as a measurement; a lever is a view column, no replay.
-- **The gate, measured.** serverd 53 and 14 unit tests, apps 35, the
-  engine's 6, the parser's 48; clippy, fmt, deny and machete clean.
+- **The gate, measured.** serverd 54 door tests and 16 unit tests,
+  apps 35, the engine's 8; clippy, fmt, deny and machete clean.
   A call's `next` costs about 120 ms on a laptop, `owed` 60 ms, a
   gloss read 20 ms on a fresh connection. Both eval lanes grade three
   seats on DuckDB equal to the session's rows.
@@ -132,8 +131,4 @@ extension loaded), #101 (an Iceberg source: a `type` in §3 and
 DuckDB's `iceberg` extension), #174 (the recommendations read over
 the futures kit's reads). Keep as they are: #20 (the docket as a
 `ui://` resource), #24 (`key` in the grounding schema, now the kit's
-contract), #56 (Tera 2). The plans: `kits.md` is built and goes;
-`lineage.md` and `sources.md` are rewritten on the extension's
-lineage and DuckDB's readers; `kernel.md`, `clients.md` and `chat.md`
-lose their session paths; `modules-design.md`, the port's design,
-goes once this file states what stands.
+contract), #56 (Tera 2).

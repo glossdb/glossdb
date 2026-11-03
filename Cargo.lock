@@ -1087,7 +1087,6 @@ dependencies = [
  "axum",
  "futures",
  "glossql-duck",
- "glossql-glossary",
  "serde",
  "serde_json",
  "tempfile",
@@ -1105,17 +1104,12 @@ dependencies = [
  "arrow",
  "duckdb-neo",
  "futures",
- "glossql-glossary",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
 ]
-
-[[package]]
-name = "glossql-glossary"
-version = "0.3.0"
 
 [[package]]
 name = "glossql-serverd"
@@ -1131,7 +1125,6 @@ dependencies = [
  "futures",
  "glossql-apps",
  "glossql-duck",
- "glossql-glossary",
  "jsonwebtoken",
  "oauth2",
  "opentelemetry",

@@ -146,9 +146,9 @@ pub fn far_future() -> u64 {
 /// The same workspace on DuckDB: the extension and its kits from beside
 /// this checkout, the lake in the directory.
 /// The person the harness speaks as: the bootstrap actor.
-pub fn human() -> glossql_glossary::Actor {
-    glossql_glossary::Actor {
-        kind: glossql_glossary::ActorKind::Human,
+pub fn human() -> glossql_serverd::engine::Actor {
+    glossql_serverd::engine::Actor {
+        kind: glossql_serverd::engine::ActorKind::Human,
         id: glossql_serverd::BOOTSTRAP.into(),
     }
 }

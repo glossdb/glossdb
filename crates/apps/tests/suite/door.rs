@@ -10,8 +10,8 @@ use arrow::array::Float64Array;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
+use glossql_apps::engine::{Actor, ActorKind};
 use glossql_apps::engine::{Caller, Plane};
-use glossql_glossary::{Actor, ActorKind};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
@@ -1977,8 +1977,8 @@ async fn a_table_downloads_as_csv_and_parquet() {
     std::fs::write(&file, &bytes).unwrap();
     let session = plane
         .channel(
-            glossql_glossary::Actor {
-                kind: glossql_glossary::ActorKind::Human,
+            Actor {
+                kind: ActorKind::Human,
                 id: "t".into(),
             },
             Some("perf"),

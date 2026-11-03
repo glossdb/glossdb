@@ -9,7 +9,6 @@ repository.workspace = true
 
 [dependencies]
 glossql-duck = { path = "../duck" }
-glossql-glossary = { path = "../glossary" }
 arrow = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-json = { workspace = true }

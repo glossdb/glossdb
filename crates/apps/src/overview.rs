@@ -3,8 +3,8 @@
 //! frames, no params, one visit — so the rows come through the same
 //! channel a frame would use and land in the template as JSON.
 
+use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 use serde_json::Value;
 
 use crate::AppDoor;

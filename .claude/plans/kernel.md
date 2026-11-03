@@ -7,11 +7,11 @@ and what is not done and why not now. This file is the shared frame;
 the work is in five plans beside it:
 
 - `sources.md` — what comes in: workbooks, documents, search, and
-  the ranking experiments. It touches the import crate and one scalar
-  function on the general service call's seam, which stands.
-- `kits.md` — kits as build-time overlays, a harmonisation kit over
-  the KPI kit, opening the hard side of the table at build time only;
-  the demo that drove them lives in the demo repo beside this one.
+  the ranking experiments. It touches the recipe's readers and the
+  extension's service seam, which stands.
+- `lineage.md` — what a landing records of each column's derivation
+  and how `stale` reads it; built in the extension, one SPEC.md
+  wording the lead's.
 - `clients.md` — the trial's road: a workspace reachable at its own
   name from Claude and ChatGPT, the registration, the file in. Build
   order is risk order. It touches serverd and the apps crate and
@@ -19,9 +19,6 @@ the work is in five plans beside it:
 - `chat.md` — how a result reaches a person inside the chat and how
   a ruling gets back: two roads, one measure. It touches the door's
   result and the docket.
-- `grounding.md` — one SPEC.md §5.2 change: the grounding contract
-  the engine reads and the grounding schema a kit declares. It touches
-  the glossary crate and the KPI kit's script; the corpus decides first.
 - `modules.md` — the server's shape inside one binary: modules along
   the process, one seam each, built and tested alone. It touches every
   crate; build order is risk order, the engine's inner boundary first.
@@ -99,41 +96,43 @@ The project lead's position, in short.
 ## The tests behind the columns
 
 - **Easy**: the element attaches at a seam that exists. A source kind
-  in the import crate, a method on the runtime, a scalar function, a
-  compute door, an arm in the next read.
+  in SPEC §3 over a reader the engine has, a read in a kit, a service
+  call, a compute door, an arm in a kit's routes.
 - **Hard**: the core changes shape first. Bootstrap takes more than
   one pack; the read, page and docket lists open; the next read takes
   arms from outside; somebody other than the core declares a shape.
 - **The phase 1 gate**, for the sources plan: nothing needs a second
-  pack, a change to how the next read is built, or the cube change.
-  An item that needs one of them is not phase 1 work.
+  pack, a change to how the next read is built, or a change to the
+  metrics kit's reads. An item that needs one of them is not phase 1
+  work.
 - **The phase 2 gate**, for work over the worlds (#174): nothing
   needs a second pack, routes as data, or a change to how the next
   read is built. An item that needs more is not phase 2 work.
-- **The kits are core content.** The cube admits a time axis by
-  `temporal_profile` and a dimension by `dimension_relevance`; the
-  library conditions on the kit's `role`; the next read and the docket
-  name the kit's aspects and functions. There is one pack and it is
+- **The kits are core content.** The metrics kit's ladder admits a
+  time axis by the `role` gloss and a slice by the `dimension` gloss;
+  the measurements condition on the kit's `role`; the next read and
+  the docket name the kits' aspects and functions. The kits are the
+  extension's, loaded at open in a fixed order: one pack, and it is
   this. Opening that is the hard side of the table.
 
 ## Not now, and why
 
 - **Packs with functions, more than one pack.** Bootstrap declares
-  one sequence (`crates/serverd/src/bootstrap.rs`); the reads
-  (`crates/session/src/library.rs`), the pages
+  one sequence (`crates/serverd/src/bootstrap.rs`); the kits load in
+  a fixed order at open (`crates/duck`), the pages
   (`crates/serverd/src/skills.rs`) and the docket
-  (`crates/apps/src/builtin.rs`) are fixed lists; the next read is
-  one file. Opening them is the core changing shape. No customer has
-  asked to change the shipped system.
+  (`crates/apps/builtin/`) are fixed lists; the routes compose from
+  each kit's `routes_<kit>()` and the core's. Opening them is the
+  core changing shape. No customer has asked to change the shipped
+  system.
 - **Plugins, and plugins in the next graph.** Everything above, plus
   somebody other than the core declaring shapes, plus tools and goals
   matched by needs and gives in place of the hand-written arms. The
   arms were tuned over eval rounds and work. Not before the planning
   goal runs on the eval.
-- **Reports at a data version, forms.** The catalog deletes replaced
-  files after a grace of one hour (`crates/catalog/src/lib.rs:186`),
-  so a release cannot read an old version. Forms are a second kind of
-  write at the app door. Both wait for a need.
+- **Reports at a data version, forms.** The lake keeps every
+  version, and no door reads at one but the newest. Forms are a
+  second kind of write at the app door. Both wait for a need.
 - **A second build with a closed side, the agent on own hardware,**
   **Iceberg read-only, calibration for customers.** Services are
   replaceable behind a standard interface; the server is the same in

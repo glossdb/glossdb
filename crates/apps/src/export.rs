@@ -13,11 +13,11 @@
 
 use std::path::PathBuf;
 
+use crate::engine::{Actor, ActorKind};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use glossql_glossary::{Actor, ActorKind};
 use tokio::io::AsyncReadExt;
 
 use crate::AppDoor;

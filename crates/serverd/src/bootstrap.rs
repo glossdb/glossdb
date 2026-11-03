@@ -7,7 +7,7 @@
 //! a detector that must already stand. What stays the agent's work is
 //! the company's own vocabulary — metrics, validations, scenarios.
 
-use glossql_glossary::Actor;
+use crate::engine::Actor;
 
 use crate::Plane;
 

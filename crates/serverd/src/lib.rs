@@ -1,6 +1,5 @@
-// The MCP handler's futures reach through the session into the store
-// and the engine; proving them `Send` descends further than the
-// default limit allows.
+// The MCP handler's futures reach through the engine into the store;
+// proving them `Send` descends further than the default limit allows.
 #![recursion_limit = "256"]
 
 //! serverd — the workspace's doors (M5): one axum listener carrying the
@@ -54,9 +53,8 @@ pub mod telemetry;
 pub mod window;
 mod wire;
 
-/// The engine the doors are built on: the session on DataFusion, or,
-/// under the `duck` feature, the facade over DuckDB and the gloss
-/// extension. One name, so a door never says which.
+/// The engine the doors are built on: the facade over DuckDB and the
+/// gloss extension, under the one name a door uses.
 pub use glossql_duck as engine;
 
 pub use crate::engine::Plane;
@@ -70,9 +68,9 @@ pub use wire::DEFAULT_ROW_CAP;
 use std::sync::Arc;
 
 use crate::engine::Caller;
+use crate::engine::{Actor, ActorKind};
 use axum::Router;
 use axum::routing::{get, post};
-use glossql_glossary::{Actor, ActorKind};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tower_http::trace::TraceLayer;
