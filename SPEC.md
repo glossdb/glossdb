@@ -124,7 +124,7 @@ dataset or with its dataset in front.
 Substrate SQL runs behind an allowlist: queries pass, `DESCRIBE` and
 `EXPLAIN` pass as reads about schema and plans (`DESCRIBE` over any
 name a read can plan — a landed table, a store relation, a shipped
-read, a cube read with its arguments; `SHOW TABLES` lists the bound
+read, a metrics read with its arguments; `SHOW TABLES` lists the bound
 dataset's tables and its groundings' views, typed; `EXPLAIN` only
 over a query), `DROP TABLE` routes to the rules
 above, and everything else that would alter schema or data directly is
@@ -605,8 +605,8 @@ switches by a sibling type column has no declarable edge, and the
 skill says declare none. The candidate form is the conditioned edge,
 one declaration per arm: `DECLARE RELATIONSHIP
 stock_movements.source_document -> purchase_orders.id WHEN
-source_type = 'purchase_order'`. It buys per-arm coherence and cube
-admission through an arm; it costs the predicate riding every
+source_type = 'purchase_order'`. It buys per-arm coherence and an
+axis through an arm; it costs the predicate riding every
 relationship consumer — a declared join stops being a plain equijoin.
 And the word shifts: the aspect `WHEN` (§5.1) names a sibling
 aspect's judged value, this one names a data column's row value.
@@ -630,32 +630,28 @@ value is its view — `FROM dso`, or `FROM fin.dso` — the collapsed
 current grounding expanded at plan time, nesting allowed behind a
 cycle guard; running stays the reader's act: one serving door over
 every QUERY gloss, whatever flavor `x-kind` names.
-A scenario is a world on the cube's read (fixture 19): a FACT aspect
+A scenario is a world on the series read (fixture 19): a FACT aspect
 per scenario, `x-kind: scenario`, carrying a factor per period on
-declared levers — a lever a FACT aspect on its column — read as
-`metric_series(world => 'scenario', scenario => '<name>')` beside the
-actual and the forecast worlds; the two passes, the arithmetic
-through the groundings over the data and the estimate ahead, are
-machinery, never statement syntax. A plan is a world on the same read
+declared levers — a lever a FACT aspect on a column of a metric's
+view — read as `metric_series(world := 'scenario', scenario :=
+'<name>')` beside the actual and the forecast worlds; the estimate
+ahead is machinery, never statement syntax. A plan is a world on the same read
 (fixture 27): one QUERY aspect per plan, `x-kind: plan`, tied to its
 metric by `x-plan-of` in the declaration, its body the grounding
 contract — a plan's numbers are a landed table, read by SQL
-as the actual's are — read as `metric_series(world => 'plan', plan =>
-'<name>')` under the metric it names, at the plan's own resolution;
-an edition of a plan is an aspect of its own, and a plan aspect is no
-head of the actual world. Analyses stay operation-named
-doors — `misfit.<frame>()` (fixture 20) ranks a
-declared frame's rows against the frame itself — the frame is an
-ordinary QUERY gloss, the density kernel and its caps machinery;
-`metric_series()` serves the cube's cells —
-every grounded metric at its judged resolution, computed at the read's
-pin from the groundings and the judged verdicts, landed under the
-cache, never recorded, except the forecast world, `world =>
-'forecast'`, which reads the newest `metric_forecast` measurement
-from the record —
-as long rows: metric names become data so a static frame (the built-in
+as the actual's are — read as `metric_series(world := 'plan', plan :=
+'<name>')` under the metric it names, at the plan's own grain; an
+edition of a plan is an aspect of its own, and a plan aspect serves
+no cell of the actual world. Analyses stay operation-named
+reads — `misfit.<frame>()` (fixture 20) ranks a declared frame's
+rows against the frame itself — the frame is an ordinary QUERY gloss,
+the density kernel machinery; `metric_series()` serves the cells —
+every applicable metric at its floor or a coarser grain, computed at
+read from the metric's view and the claims on its columns, never
+recorded, except the forecast, scenario and plan worlds, which read
+the record's measurements and the plan's view — as long rows: metric names become data so a static frame (the built-in
 docket app) slices any metric with plain value filters; `metric_axes()`
-beside it says what the cube admitted.
+beside it says what the record says of each metric's columns.
 
 Deferred, not under discussion: access rights · portability · persistence
 backend and engine mapping.

@@ -23,109 +23,108 @@ The rules:
 
 ## The table
 
-Build order is the port's order: each step needs the one before it,
-and the risk sits in the middle.
+Steps 1 to 5 are the port, built in order; step 6 is the house in
+order after it, its rows independent and listed in risk order.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| Step 1: the three doors on `duckdb-neo` over the extension's record and lake — channels, statements, reads, the row cap, the brief, the question round, rulings, glossed apps | Built; the gate passed (below) | `crates/duck`; `serverd` and `apps` under `duck`; the door suites | | |
-| Step 2: the vocabulary and quality kits as SQL with `.test` suites | Built, on `../gloss` branch `kit-quality` (`kits/quality/kit.sql` over `dataset_cells`) | the extension | | |
-| Step 3: the metrics kit — the ladder fact on time columns, `behavior` with `ratio`, the reads as macros over the view's own slots, the shipped reads, the routes per kit and the composed `next`, the docket's frames in DuckDB SQL | Built; the gate passed (below); glossval's f1 seat on DuckDB equals the session's score, and the tpcds seat grades the weekly stock at month and per warehouse right, `glossval/notes/duckdb-first-run.md` | `../gloss/kits/metrics`, `core.sql`, `door.sql`, `docket/duck/frames` | | |
-| Step 4: the futures kit over the service seam — the walk, the forecast and the plan worlds, the scenario's estimate; the service owns its topic | Built; the four worlds measured and graded on three seats (below) | `../gloss/kits/futures` over `gloss_service`; glossthesi `/forecast` and `/whatif`; `crates/duck`, `serverd`'s config; the docket's futures frames | | |
-| Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below); open: CI and the image on a runner need the extension's commit pushed, the deployment's object-store secret, the eval's own image | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
-| Step 6: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and an object store; glossval's slot image on the engine | Low to medium: the extension's hour on a runner; the secrets DuckDB's httpfs reads | `.github/`, the Dockerfile, `crates/duck` (the secret at open), glossval's `evals/serverd.Dockerfile` | Next | |
+| Steps 1–4: the doors on `duckdb-neo`; the vocabulary, quality, metrics and futures kits; the routes and the docket on the engine | Built; the gates passed (below) | `crates/duck`, `../gloss/kits`, `apps`, `serverd` | | |
+| Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below) | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
+| Step 6a: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and an object store; glossval's slot image on the engine | Low to medium: the extension's hour on a runner; the secret DuckDB's httpfs reads | `.github/`, the Dockerfile, `crates/duck` (the secret at open), glossval's `evals/serverd.Dockerfile` | Next | |
+| Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and the corpus move to the language's repository; the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
+| Step 6c: DataFusion out of the tree — the stream type and the error a plain Arrow stream, the parquet and csv writers their own crates, the SQL parser `sqlparser`; then the parser crate shrinks to the call shape or the extension serves it | Medium: 341 of 546 crates leave (measured by `cargo tree`); the parser's 2k lines sit on `datafusion-sql` | `crates/duck` (`call_shape`, the stream), `apps` (`ipc`, `export`), `serverd` (`wire`), `parser`, `deny.toml` | After 6b | |
+| Step 6d: the validation detector — no kit ships `rate_tolerance`; the checks arm and `validate.md` name a detector the extension refuses as undeclared | Low: 27 lines of SQL in the quality kit, a `.test` case, the skill page | `../gloss/kits/quality`, `door.sql`, `skills/glossql-metrics/references/validate.md` | With 6a | |
+| Step 6e: the duckdb-rs features — the prebuilt library (`download-lib`) against `bundled`; the probing features off | Low: a Cargo line; the decision needs the measured build time and the extension loading into a static host | the workspace `Cargo.toml`, the Dockerfile, the release script | With 6a | |
+| Step 6f: the plans and the issues on the engine — the other plan files rewritten or deleted, the open issues closed or rescoped (the draft below); `glossary` folded into `duck`; the cube and the session out of 41 code comments | Low | `.claude/plans/`, the issues, `crates/glossary`, comments | With 6b | |
 
 ## What stands
 
-- **The DuckDB engine** (`crates/duck`: 1,287 lines of Rust, 139 of
-  SQL, 235 of tests). `Plane::open` loads the extension and
-  `ducklake`, attaches the lake as `ws`, declares `core.sql` and the
-  kits. A channel is one connection: the grammar on, the actor as
-  session variables, the dataset in use, a search path of the
-  dataset's schema, the store's, and the instance's in-memory
-  database that holds the door pages as `pages()`. `execute` splits
-  statements and answers outcomes; `query_page` cuts one row past the
-  cap and never cuts a record read; a named parameter binds only where
-  the statement spells it; the brief's counts are one read;
-  `rulings::land` folds a ruling into the standing body.
-- **Core** (`crates/duck/kits/core.sql`): the record's aspects
-  (`recipe_change`, `ruling`, the app parts) and the derived reads
-  (`current_dataset`, the assumptions, the rulings, the open questions), replaced at every open.
-- **The extension** (`../gloss`, branch `kit-quality`): the quality
-  kit, the temporal profile, a view and its columns as subjects, the
-  metrics kit (the ladder, `metric_axes()`, `metric_series()`, the
-  routes), the lineage of views, the record read planned once (seven
-  witnesses: 4 s to 0.5 s). A QUERY aspect takes no grain clause; the
-  grounding contract is open and the claims are the view's columns'
-  (fixture 28); `behavior` takes `ratio` with its halves.
-- **Step 3's server half.** `door.sql` (after the kits): `owed` and the
-  core routes; `core.sql`: `app_parts`, `app_releases`,
-  `metric_surfaces`, `workspace_next`. The engine composes one `next`
-  view at open from every `routes_<kit>()` macro's CTE and arm text
-  over the relations it reads once (`ds`, `axes`, `owed`, `reds`,
-  `bodies`, `applicable`); a grounding's write answers with the
-  metric's fact row; an extraction runs unwrapped; re-measure runs the
-  stale and the wanted measurements. The docket's 52 frames stand in
-  DuckDB SQL under `builtin/docket/frames`, the pages shared.
-- **The gate, measured.** The workspace suite on the engine: serverd
-  51 and its 14 unit tests (the routes suite: a fresh dataset routes
-  every goal, a metric walks from its claim to its behaviour, the next
-  page carries the forms; the docs and skills harness binding every
-  read), apps 35, the engine's own 6, the parser's 48. The extension keeps a
-  dataset's record read in the instance's object cache under the
-  store's version, shared by every connection, so a call's `next`
-  costs about 120 ms on a laptop, `owed` 60 ms and a gloss read 20 ms
-  on a fresh connection; the first read after a write computes the
-  rows once, about 300 ms. Connections stay per call, as on the session.
-- **Conventions the port fixed.** The extension keeps a subject
-  dataset-qualified (`fin.t.a`); the app door gives the prefix back.
-  `written_at` is a TIMESTAMP, rendered by the door's one formatter. A
-  door decodes a cell by value, never by a downcast. A kit's `$subject`
-  is spelled bare; optional typed keys are `["type", "null"]`.
-
-- **The cut (step 5).** The `duck` feature is gone and the session,
-  catalog, import and scripts crates with it (67k lines); `glossary`
-  keeps the actor types; `duck` links the engine, `apps` and
-  `serverd` build on it alone. The build and the image obtain the
-  extension from its repository at the commit `crates/duck/gloss.ref`
-  names: CI builds it once per pin into the actions cache, the
-  Dockerfile builds it in a stage of its own (`-DGLOSS_LAKE=OFF`, the
-  lake installed from DuckDB's repository into `share/glossql/extensions`),
-  the macOS tarball takes it from the sibling checkout at the pin.
-  The binary carries a run path to `lib` beside its `bin`; the engine
-  finds the extension, the kits and the lake extensions in
-  `share/glossql` beside the binary, else where `GLOSS_EXTENSION`,
+- **The DuckDB engine** (`crates/duck`: 3.4k lines of Rust, 2.5k of
+  SQL under `crates/`, the engine's own tests). `Plane::open` loads
+  the extension and `ducklake`, attaches the lake as `ws`, declares
+  `core.sql`, the kits in order and `door.sql`, and composes one
+  `next` view from every `routes_<kit>()` macro. A channel is one
+  connection: the grammar on, the actor as session variables, the
+  dataset in use. `execute` splits statements and answers outcomes;
+  `query_page` cuts one row past the cap and never cuts a record
+  read; the brief's counts are one read; `rulings::land` folds a
+  ruling into the standing body.
+- **The extension** (`../gloss`, branch `kit-quality`, pinned by
+  `crates/duck/gloss.ref`): the kpi, quality, metrics and futures
+  kits with their `.test` suites; a QUERY aspect's claims are the
+  view's columns' (fixture 28); `behavior` takes `ratio`; the record
+  read planned once and cached under the store's version. The futures
+  kit calls the model service through `gloss_service`; the plan is
+  judged as a measurement; a lever is a view column, no replay.
+- **The gate, measured.** serverd 53 and 14 unit tests, apps 35, the
+  engine's 6, the parser's 48; clippy, fmt, deny and machete clean.
+  A call's `next` costs about 120 ms on a laptop, `owed` 60 ms, a
+  gloss read 20 ms on a fresh connection. Both eval lanes grade three
+  seats on DuckDB equal to the session's rows.
+- **The cut (step 5).** The session, catalog, import and scripts
+  crates are gone (67k lines); `glossary` keeps the actor types. The
+  build and the image obtain the extension at the pinned commit: CI
+  builds it once per pin into the actions cache, the Dockerfile in a
+  stage of its own (`-DGLOSS_LAKE=OFF`, the lake extensions installed
+  from DuckDB's repository), the macOS tarball from the sibling
+  checkout. The binary carries a run path to `lib` beside its `bin`;
+  the engine finds the extension, the kits and the lake extensions in
+  `share/glossql` beside it, else where `GLOSS_EXTENSION`,
   `GLOSS_KITS` and `GLOSS_EXTENSION_DIR` say, else the dev checkout.
-  The memory ceiling and the spill bound are the engine's settings;
-  the cube cache is gone. Measured on the laptop: the image built with
-  Apple's `container` (the extension stage ~7 min native, the Rust
-  stage ~4 min; a context under the system temp directory reaches the
-  builder VM empty — stage it under the repo), the doors answer, a
-  dataset declares through the MCP door with the kits standing (29
-  aspects, 17 functions, 11 witnesses). The docs and skills harness
-  binds every single read through `EXPLAIN` on a fresh workspace; the
-  vendored guide is DuckDB's (`vendor/duckdb`, 73 pages at a pinned
-  duckdb-web commit). Every docs and skills page states the engine:
-  the reads reference from the kits' own words, the methods pages on
-  the kits' screens, the behaviour-evidence page retired.
-
+  Measured on the laptop: the image built with Apple's `container`
+  (the extension stage about 7 min, the Rust stage about 4 min; a
+  context under the system temp directory reaches the builder VM
+  empty, so it is staged under the repository), the doors answer, a
+  dataset declares through the MCP door with the kits standing. The
+  docs and skills harness binds every single read through `EXPLAIN`
+  on a fresh workspace; the vendored guide is DuckDB's. SPEC.md names
+  the series read where it named the cube; the misfit door (fixture
+  20) stays a ruled form, not built.
+- **What the port left out, by name.** `behavior_evidence` (the
+  behaviour is a gloss on the view's value column, the cadence the
+  ladder's), `dimension_relevance` (the axes are the `role` and
+  `dimension` glosses), the scenario's replay through the groundings
+  (the lever's effect is the service's estimate), the misfit door,
+  `source_files()` (a `PROBE` over `glob`), the ADBC relational
+  source (a database DuckDB attaches; not exercised on the engine
+  yet), the per-point service names (one `GLOSSQL_SERVICE_URL`), the
+  cube cache, the live suites against a Postgres catalog.
 
 ## The next row, drafted
 
-**Step 6: the runner's green.** What it buys: the standing invariant
+**Step 6a: the runner's green.** What it buys: the standing invariant
 checked by a machine again, and a release that carries the engine.
 What stands: `ci.yml` builds the extension from `crates/duck/gloss.ref`
-into the actions cache and runs the suites on it; `release.yml` is
-unchanged and the Dockerfile builds the extension in its own stage;
-`release-macos.sh` refuses unless `../gloss` is at the pin. What is
-open: the extension's branch is not pushed, so a runner cannot check
-the commit out — the lead's push comes first; the deployment shape
-(`Config::deployment`, a Postgres catalog and an object-store data
-path) has no secret for the store — DuckDB's httpfs reads a secret
-the plane does not create yet; the deployment's `gs://` warehouse
-needs that and nothing else; glossval's slot image
-(`evals/serverd.Dockerfile`) still builds the binary alone and needs
-the same stage. Done when: CI green on main, a tag builds and pushes
-the image, one run of the image against a Postgres catalog and a
-bucket lands a table, the eval's slot image serves a lane.
+into the actions cache and runs the suites on it; the Dockerfile
+builds the extension in its own stage; `release-macos.sh` refuses
+unless `../gloss` is at the pin. What is open: the extension's branch
+is not pushed, so a runner cannot check the commit out; the
+deployment shape (`Config::deployment`) has no secret for the object
+store, which DuckDB's httpfs reads from `CREATE SECRET`; glossval's
+slot image (`evals/serverd.Dockerfile`) builds the binary alone and
+needs the same stage; glossdeploy names four variables the server no
+longer reads (`GLOSSQL_ALLOWED_HOSTS`, `_ORGANIZATION`, `_TABICL_URL`,
+`_TABICL_AUDIENCE`), which move at the next deploy. Done when: CI
+green, a tag builds and pushes the image, one run of the image against
+a Postgres catalog and a bucket lands a table, the eval's slot image
+serves a lane.
 
+**The issues, for 6f.** Close as built or gone: #19 (the landing path),
+#21 (the cube's stack), #23 (the collapse per witness), #33 (the
+pre-pass), #55 (a DataFusion planner bug), #58 (the file reader),
+#80 (the docs after the data plane change; the dev rig is gone and
+the app door's two writes are stated). Rescope to the engine, the
+text rewritten over the kit's files: #5 (the strike holds on the
+extension; aspect re-declare), #41 (a measure that does not compose
+from members, on `metric_series`), #42 (metric retirement, on
+`metric_surfaces`), #60 (an infrastructure error's text, on the
+facade's errors), #92 (consumer reads: a DuckLake client with the
+extension loaded), #101 (an Iceberg source: a `type` in §3 and
+DuckDB's `iceberg` extension), #174 (the recommendations read over
+the futures kit's reads). Keep as they are: #20 (the docket as a
+`ui://` resource), #24 (`key` in the grounding schema, now the kit's
+contract), #56 (Tera 2). The plans: `kits.md` is built and goes;
+`lineage.md` and `sources.md` are rewritten on the extension's
+lineage and DuckDB's readers; `kernel.md`, `clients.md` and `chat.md`
+lose their session paths; `modules-design.md`, the port's design,
+goes once this file states what stands.
