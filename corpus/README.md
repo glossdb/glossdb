@@ -5,8 +5,9 @@ Each file pairs a **real artifact** — the predecessor production system's
 system's own runs — with its glossql transcription per SPEC.md. These are
 test fixtures, not design docs.
 
-Block tags, enforced by the corpus suite in `crates/parser`
-(`cargo test -p glossql-parser`):
+Block tags. The grammar is the gloss extension's (`../gloss`), and
+the check that enforces the tags goes with the corpus to that
+repository:
 
 - ` ```glossql ` — must parse under `grammar.ebnf`. A failure is a regression.
 - ` ```glossql-gap ` — invented syntax documenting a grammar gap; must **fail**

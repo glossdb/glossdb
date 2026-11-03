@@ -2,8 +2,8 @@
 
 Status: **working draft**. SPEC.md is the only normative prose.
 `grammar.ebnf` is the source of truth for syntax; the corpus
-(`crates/parser/tests/corpus/`) holds the evidence that every construct
-transcribes a real artifact.
+(`corpus/`) holds the evidence that every construct transcribes a
+real artifact.
 
 ## 1. Overview
 

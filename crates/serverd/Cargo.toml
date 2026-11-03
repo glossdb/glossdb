@@ -18,7 +18,7 @@ path = "src/main.rs"
 glossql-duck = { path = "../duck" }
 glossql-glossary = { path = "../glossary" }
 glossql-apps = { path = "../apps" }
-datafusion = { workspace = true }
+arrow = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }
 futures.workspace = true
@@ -55,7 +55,6 @@ serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # The docs and skills suites parse every fenced example.
-glossql-parser = { path = "../parser" }
 arrow-ipc = { workspace = true }
 tower.workspace = true
 tempfile.workspace = true

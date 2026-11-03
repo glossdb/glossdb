@@ -8,7 +8,7 @@ description: How a glossql release is cut — the order of operations across bot
 One release is one version everywhere: `version` in the workspace
 `Cargo.toml` (`[workspace.package]`) is the single bump point, and
 `glossql --version` answers with it. The artifacts: a macOS arm64 tarball behind the brew tap — `bin/`
-with the binary, `lib/` with the DuckDB library, `share/glossql/`
+with the binary, DuckDB compiled in, `share/glossql/`
 with the gloss extension and its kits — and the server image on GHCR
 (`ghcr.io/glossdb/glossql:<version>` and `:latest`, x86_64, built
 from the `Dockerfile` at the tag, the extension built inside it from

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/parser", "crates/glossary", "crates/apps", "crates/serverd", "crates/duck"]
+members = ["crates/glossary", "crates/apps", "crates/serverd", "crates/duck"]
 
 [workspace.package]
 version = "0.3.0"
@@ -15,7 +15,7 @@ license = "Apache-2.0"
 repository = "https://github.com/glossdb/glossql"
 
 [workspace.lints.rust]
-# macOS ld notes that datafusion-sized debug binaries outgrow the compact
+# macOS ld notes that engine-sized debug binaries outgrow the compact
 # unwind table (__eh_frame > 16MB) — an exception-handling performance
 # note, nothing actionable; every crate opts in via [lints] workspace.
 linker_messages = "allow"
@@ -41,7 +41,7 @@ cognitive_complexity = "warn"
 [profile.release]
 strip = true
 
-# Every test binary statically links datafusion + candle — one suite per
+# Every test binary statically links the engine — one suite per
 # crate (tests/suite/main.rs) plus the unit-test binaries; with default
 # full debug info that was ~0.5GB per binary × every test target ×
 # every stale hashed copy — a target/ in the hundreds of GB and an AV scan
@@ -53,29 +53,34 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# The engine is C++ compiled by the build script, at this level: a
+# dev build's suite runs the kits over an engine built for speed, and
+# the compile is paid once per profile either way.
+[profile.dev.package.libduckdb-sys]
+opt-level = 3
+
 [workspace.dependencies]
 futures = "0.3"
-# datafusion at the major its lockstep siblings release for: the
-# planner, the parquet scan and sink, and the function libraries the
-# engine ships by default (the crate's own default set, named here
-# because `default-features = false` keeps the workspace choosing).
-datafusion = { version = "55.1", default-features = false, features = ["parquet", "sql", "compression", "recursive_protection", "nested_expressions", "crypto_expressions", "datetime_expressions", "encoding_expressions", "regex_expressions", "string_expressions", "unicode_expressions"] }
-datafusion-sql = "55.1"
-datafusion-common = "55.1"
-# `preserve_order`: a JSON object keeps its authored key order.
-# datafusion-physical-plan 55 switches it on for every workspace build;
-# named here so a single crate built alone orders the same way.
+# `preserve_order`: a JSON object keeps its authored key order — a
+# gloss body reads back as it was written.
 serde_json = { version = "1", features = ["preserve_order"] }
-# arrow-ipc/arrow-json ride the arrow that datafusion 55 pins (59.2) — the
-# same lockstep rule as above; bumping either alone splits the arrow tree.
+# One arrow line: the three crates move together, or the tree splits
+# (the conformance test fails on a second arrow). arrow's `ffi` feature
+# reads the Arrow C stream DuckDB hands out.
+arrow = { version = "59.2", default-features = false, features = ["ffi"] }
 arrow-ipc = "59.2"
 arrow-json = "59.2"
-# The engine on DuckDB (crates/duck): neo is the v2 C API crate; its
-# libduckdb-sys downloads the prebuilt library of the DuckDB release it
-# pins (DUCKDB_LIB_DIR points it at one instead). arrow's `ffi` feature
-# reads the Arrow C stream DuckDB hands out, on the same arrow line.
-duckdb-neo = "0.20000.1"
-arrow = { version = "59.2", default-features = false, features = ["ffi"] }
+# The engine on DuckDB (crates/duck): neo is the v2 C API crate. DuckDB
+# is compiled into every binary from the sources its libduckdb-sys
+# ships (`bundled`, with the json and parquet extensions built in):
+# about three minutes once per pin and profile, then cached in target/.
+# No library file rides the image or the tarball, and the gloss
+# extension binds through the C API table the host hands it, never a
+# host symbol. The lake, httpfs and postgres extensions stay loadable
+# files (crates/duck, `pieces`). The defaults are off: they would probe
+# pkg-config and vcpkg for a system DuckDB at whatever version stands
+# there, and the extension is built against one release exactly.
+duckdb-neo = { version = "0.20000.1", default-features = false, features = ["bundled-json", "bundled-parquet"] }
 axum = "0.8"
 rmcp = { version = "3.1", features = ["transport-streamable-http-server", "elicitation"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
@@ -111,12 +116,10 @@ opentelemetry_sdk = { version = "0.33", default-features = false, features = ["t
 # The exporter's clients, one per transport OTEL_EXPORTER_OTLP_PROTOCOL
 # names: protobuf over HTTP on reqwest, and gRPC on tonic — what a
 # platform's managed collector speaks (Container Apps' agent takes
-# gRPC alone). reqwest here is 0.13 while object_store 0.13 (the one
-# datafusion 55 pins) and oauth2 5 require 0.12, so
-# the tree carries both. The way back to one: object_store 0.14
-# (reqwest 0.13) reaching datafusion, then the login
-# through a reqwest 0.13 client (oauth2-reqwest, alpha as of
-# 0.1.0-alpha.3, or oauth2's own client trait). The SDK exports from
+# gRPC alone). reqwest here is 0.13 while oauth2 5 requires 0.12, so
+# the tree carries both. The way back to one: the login through a
+# reqwest 0.13 client (oauth2-reqwest, alpha as of 0.1.0-alpha.3, or
+# oauth2's own client trait). The SDK exports from
 # its own thread, which is why the blocking HTTP client fits; the gRPC
 # channel spawns its connection onto the runtime it is built in.
 opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "logs", "http-proto", "reqwest-blocking-client", "grpc-tonic"] }

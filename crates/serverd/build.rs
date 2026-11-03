@@ -8,11 +8,6 @@
 //! the first two trees sit under the docs and skills harnesses, the
 //! third is held to the lock's DuckDB release.
 //!
-//! The binary links libduckdb as a shared library. A released binary
-//! finds it in the `lib` directory beside its own `bin` — the image's
-//! and the tarball's layout — through the run path written here; a dev
-//! tree's binary finds it where libduckdb-sys put it, through the
-//! search path cargo sets for `cargo run` and `cargo test`.
 
 use std::path::{Path, PathBuf};
 
@@ -39,14 +34,6 @@ fn walk(root: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn main() {
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let origin = if target_os == "macos" {
-        "@executable_path"
-    } else {
-        "$ORIGIN"
-    };
-    println!("cargo:rustc-link-arg-bins=-Wl,-rpath,{origin}/../lib");
-    println!("cargo:rustc-link-arg-bins=-Wl,-rpath,{origin}");
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets it"));
     let repo = manifest
         .join("../..")

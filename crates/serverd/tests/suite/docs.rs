@@ -94,11 +94,15 @@ fn blocks() -> Vec<Block> {
     out
 }
 
+/// Every fenced example parses on the engine, the language's grammar
+/// on: the extension's parser is the one the door runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_doc_example_parses() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     for b in blocks() {
-        if let Err(e) = glossql_parser::GlossqlParser::parse_sql(&b.sql) {
+        if let Err(e) = session.parse(&b.sql).await {
             broken.push(format!("{}:{} — {e}", b.page, b.line));
         }
     }
@@ -110,10 +114,12 @@ async fn every_doc_example_parses() {
 }
 
 /// Every `DECLARE FUNCTION … AS $$…$$` body in the docs is one SQL
-/// query — the parser cannot see inside a dollar-quoted body, so a
-/// broken example would parse perfectly and ship as documentation.
+/// query — the engine's parser cannot see inside a dollar-quoted body,
+/// so a broken example would parse perfectly and ship as documentation.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_doc_function_body_compiles() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     for b in blocks() {
         // Anchored on DECLARE FUNCTION, as in `skills.rs`: within a
@@ -130,8 +136,7 @@ async fn every_doc_function_body_compiles() {
             let body = &after[..close];
             // A body is SQL — a measurement over data, a detector over
             // `slots` (§6) — so the check is the session's shape rule.
-            let one_query = glossql_parser::GlossqlParser::parse_sql(body)
-                .is_ok_and(|statements| statements.len() == 1);
+            let one_query = session.parse(body).await.is_ok_and(|n| n == 1);
             if !one_query {
                 broken.push(format!(
                     "{}:{} — a function body is one SQL query",

@@ -120,11 +120,15 @@ fn blocks() -> Vec<Block> {
     out
 }
 
+/// Every fenced example parses on the engine, the language's grammar
+/// on: the extension's parser is the one the door runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_example_parses() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     for b in blocks() {
-        if let Err(e) = glossql_parser::GlossqlParser::parse_sql(&b.sql) {
+        if let Err(e) = session.parse(&b.sql).await {
             broken.push(format!("{}:{} — {e}", b.skill, b.line));
         }
     }
@@ -139,12 +143,14 @@ async fn every_skill_example_parses() {
 /// query.
 ///
 /// Rule 1 cannot see this: a function's body is opaque text to the
-/// glossql parser, so an example whose body the engine would refuse
+/// engine's parser, so an example whose body the engine would refuse
 /// parses perfectly and ships as teaching. A body is SQL — a
 /// measurement over data, a detector over `slots` (§6) — so the check
 /// is the same shape rule the session applies.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_function_body_compiles() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     let mut checked = 0usize;
     for b in blocks() {
@@ -164,8 +170,8 @@ async fn every_skill_function_body_compiles() {
             };
             checked += 1;
             let body = &after[..close];
-            let is_sql = match glossql_parser::GlossqlParser::parse_sql(body) {
-                Ok(statements) => statements.len() == 1,
+            let is_sql = match session.parse(body).await {
+                Ok(n) => n == 1,
                 Err(e) => {
                     broken.push(format!("{}:{} — {e}", b.skill, b.line));
                     continue;

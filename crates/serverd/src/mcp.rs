@@ -587,7 +587,7 @@ impl GlossqlMcp {
 /// the session exactly as frames do.
 async fn read_rows(session: &Session, sql: &str) -> Result<Vec<serde_json::Value>, String> {
     let query = session.query_stream(sql).await.map_err(|e| e.to_string())?;
-    let out = wire::stream_json(query.stream, usize::MAX).await?;
+    let out = wire::stream_json(query, usize::MAX).await?;
     Ok(out["rows"].as_array().cloned().unwrap_or_default())
 }
 
@@ -1040,6 +1040,10 @@ impl ServerHandler for GlossqlMcp {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let shape = crate::engine::call_shape(statements);
+        // The brief as it stood when the call arrived: what the call's
+        // own refresh is compared against, whatever else lands
+        // meanwhile — the boot's refresh included.
+        let before = self.brief.facts.read().ok().and_then(|f| f.clone());
         let probed = match self
             .question_round(&request, &context, &shape, &session, &id)
             .await
@@ -1052,14 +1056,8 @@ impl ServerHandler for GlossqlMcp {
             .await;
         // A write (or a landed ruling) moves the counts; a call before
         // the boot's own refresh has landed composes them too.
-        let unset = self
-            .brief
-            .facts
-            .read()
-            .map(|f| f.is_none())
-            .unwrap_or(false);
         let brief_moved = self
-            .brief_moved(shape.writes || probed.is_some() || unset)
+            .brief_moved(shape.writes || probed.is_some() || before.is_none(), before)
             .await;
         // Where the call left the agent and one act per goal from there,
         // on every call (`window`). It rides the result, never the
@@ -1209,9 +1207,12 @@ impl GlossqlMcp {
     ) -> (Result<serde_json::Value, String>, Option<serde_json::Value>) {
         let mut landed_json: Option<serde_json::Value> = None;
         let rendered = match session.query_page(statements).await {
-            Ok(query) => wire::stream_json(query.stream, query.cap)
-                .await
-                .map(|rows| serde_json::Value::Array(vec![rows])),
+            Ok(query) => {
+                let cap = query.cap;
+                wire::stream_json(query, cap)
+                    .await
+                    .map(|rows| serde_json::Value::Array(vec![rows]))
+            }
             // Statement sequences run at the plane: `USE` moves the
             // statements after it onto another channel for the rest of
             // this call, and never rebinds a session.
@@ -1244,11 +1245,10 @@ impl GlossqlMcp {
     /// keeping per-actor state the run has never asked for. Scoped to
     /// the cause: only a write (or a landed ruling) can move the
     /// counts, so a pure read never pays the recomposition.
-    async fn brief_moved(&self, moved: bool) -> Option<String> {
+    async fn brief_moved(&self, moved: bool, before: Option<BriefFacts>) -> Option<String> {
         if !moved {
             return None;
         }
-        let before = self.brief.facts.read().ok().and_then(|f| f.clone());
         Self::refresh_brief(&self.plane, &self.brief).await;
         let after = self.brief.facts.read().ok().and_then(|f| f.clone());
         (after.is_some() && after != before).then(|| format!("brief: {}", self.brief.line()))

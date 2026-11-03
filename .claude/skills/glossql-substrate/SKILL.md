@@ -103,9 +103,10 @@ mode; this file is so nobody has to rediscover it.
 - Relinking the extension while a server has it mapped makes every
   later load die with `Code Signature Invalid` (exit 137, a suite
   that finishes in 0 s): stop the server, remove the dylib, relink.
-- `nohup` strips `DYLD_LIBRARY_PATH`; a release binary carries a run
-  path to `lib` beside its `bin`, and a dev tree's finds the library
-  through cargo's run-time search path (`cargo run`, `cargo test`).
+- DuckDB is compiled into every binary (libduckdb-sys `bundled`,
+  about three minutes once per profile, cached in `target/`); the
+  extension binds through the C API table the host hands it at load,
+  so no symbol of the host is involved and no library file travels.
 - The kits are loaded from the sibling checkout at runtime, so a kit
   edit needs no rebuild; a C++ change does (`GEN=ninja make release`
   in `../gloss`).

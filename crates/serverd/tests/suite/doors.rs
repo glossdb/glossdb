@@ -16,7 +16,7 @@ use glossql_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login
 use crate::common;
 
 const INT: &str = "Int32";
-type IntArray = datafusion::arrow::array::Int32Array;
+type IntArray = arrow::array::Int32Array;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 

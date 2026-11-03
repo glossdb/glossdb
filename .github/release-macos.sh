@@ -2,8 +2,8 @@
 # The macOS half of a release: Apple Silicon only (ruled — Intel Macs
 # are not a target), built from a laptop rather than a runner. Builds
 # the binary, the extension from the sibling checkout at the commit
-# crates/duck/gloss.ref names, and the tarball — bin/, lib/ with the
-# DuckDB library, share/glossql with the extension and the kits — opens
+# crates/duck/gloss.ref names, and the tarball — bin/ with DuckDB
+# compiled in, share/glossql with the extension and the kits — opens
 # the draft release on the pushed tag, uploads the tarball to it, and
 # rewrites the tap formula with the artifact's checksum — publish the
 # release, then copy that file to
@@ -26,9 +26,8 @@ fi
 
 cargo build --locked --release -j8 -p glossql-serverd
 stage="target/${name}"
-rm -rf "$stage" && mkdir -p "$stage/bin" "$stage/lib" "$stage/share/glossql"
+rm -rf "$stage" && mkdir -p "$stage/bin" "$stage/share/glossql"
 cp target/release/glossql "$stage/bin/"
-cp target/release/build/libduckdb-sys-*/out/libduckdb.dylib "$stage/lib/"
 cp "$gloss/build/release/repository/v2.0.0/osx_arm64/gloss.duckdb_extension" "$stage/share/glossql/"
 cp -R "$gloss/kits" "$stage/share/glossql/kits"
 tar -C target -czf "target/${artifact}" "$name"

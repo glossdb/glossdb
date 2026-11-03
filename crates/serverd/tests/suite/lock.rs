@@ -1,8 +1,8 @@
-//! The lockstep rule as a check: arrow, datafusion and parquet are one
-//! version each in the lock. duckdb-neo's arrow and datafusion's are
-//! the same line by the workspace manifest's rule; a bare `cargo
-//! update` that splits them does not compile at the engine's Arrow
-//! stream, but only on the target that builds it.
+//! The lockstep rule as a check: every arrow crate is one version in
+//! the lock. The engine's Arrow C stream is read by the arrow the
+//! workspace manifest names; a bare `cargo update` that splits the
+//! tree does not compile at that stream, but only on the target that
+//! builds it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ fn crates_dir() -> PathBuf {
 }
 
 #[test]
-fn one_arrow_one_datafusion_one_parquet_in_the_lock() {
+fn one_arrow_in_the_lock() {
     let lock = std::fs::read_to_string(crates_dir().join("../Cargo.lock")).expect("Cargo.lock");
     let mut versions: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     let mut name = None;
@@ -24,12 +24,12 @@ fn one_arrow_one_datafusion_one_parquet_in_the_lock() {
             name = Some(n.trim_matches('"'));
         } else if let Some(v) = line.strip_prefix("version = ")
             && let Some(n) = name.take()
-            && (n.starts_with("arrow") || n.starts_with("datafusion") || n == "parquet")
+            && n.starts_with("arrow")
         {
             versions.entry(n).or_default().push(v.trim_matches('"'));
         }
     }
-    assert!(!versions.is_empty(), "the lock names the engine");
+    assert!(!versions.is_empty(), "the lock names arrow");
     let split: Vec<String> = versions
         .iter()
         .filter(|(_, v)| v.len() > 1)

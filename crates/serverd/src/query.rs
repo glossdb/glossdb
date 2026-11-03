@@ -46,7 +46,7 @@ pub async fn query(
             Some(Err(e)) => fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             first => (
                 [(header::CONTENT_TYPE, glossql_apps::ipc::ARROW_STREAM)],
-                glossql_apps::ipc::body(query.stream, first),
+                glossql_apps::ipc::body(query.schema, query.stream, first),
             )
                 .into_response(),
         },

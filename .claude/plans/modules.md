@@ -31,11 +31,12 @@ order after it, its rows independent and listed in risk order.
 | Steps 1–4: the doors on `duckdb-neo`; the vocabulary, quality, metrics and futures kits; the routes and the docket on the engine | Built; the gates passed (below) | `crates/duck`, `../gloss/kits`, `apps`, `serverd` | | |
 | Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below) | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
 | Step 6a: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and an object store; glossval's slot image on the engine | Low to medium: the extension's hour on a runner; the secret DuckDB's httpfs reads | `.github/`, the Dockerfile, `crates/duck` (the secret at open), glossval's `evals/serverd.Dockerfile` | Next | |
-| Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and the corpus move to the language's repository; the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
-| Step 6c: DataFusion out of the tree — the stream type and the error a plain Arrow stream, the parquet and csv writers their own crates, the SQL parser `sqlparser`; then the parser crate shrinks to the call shape or the extension serves it | Medium: 341 of 546 crates leave (measured by `cargo tree`); the parser's 2k lines sit on `datafusion-sql` | `crates/duck` (`call_shape`, the stream), `apps` (`ipc`, `export`), `serverd` (`wire`), `parser`, `deny.toml` | After 6b | |
+| Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and `corpus/` move to the language's repository with the corpus check (every ```glossql block parses on the engine, every ```glossql-gap fails: measured, 27 of 28 fixtures do; fixture 17 carries a `driver` key SPEC §3 never lists, the lead's to retag); the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
+| Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — no kit ships `rate_tolerance`; the checks arm and `validate.md` name a detector the extension refuses as undeclared | Low: 27 lines of SQL in the quality kit, a `.test` case, the skill page | `../gloss/kits/quality`, `door.sql`, `skills/glossql-metrics/references/validate.md` | With 6a | |
-| Step 6e: the duckdb-rs features — `bundled` with `json` and `parquet` in place of the prebuilt library; the probing features off | Low: a Cargo line. Measured on the laptop: a clean release build of `duck` with `bundled` takes 4 min 23 s, about 3 min of it DuckDB's C++ on 8 jobs, cached in `target/` after; the extension loads into the static host and the engine's suite passes; ducklake and httpfs stay loadable files. Open: the Linux link needs the host's symbols exported (`--export-dynamic`), estimated one linker line, checked in 6a's image build | the workspace `Cargo.toml`, `build.rs`, the Dockerfile, the release script | With 6a | |
+| Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux build itself is 6a's image gate | | | |
 | Step 6f: the plans and the issues on the engine — the other plan files rewritten or deleted, the open issues closed or rescoped (the draft below); `glossary` folded into `duck`; the cube and the session out of 41 code comments | Low | `.claude/plans/`, the issues, `crates/glossary`, comments | With 6b | |
+| Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
 
@@ -67,10 +68,15 @@ order after it, its rows independent and listed in risk order.
   builds it once per pin into the actions cache, the Dockerfile in a
   stage of its own (`-DGLOSS_LAKE=OFF`, the lake extensions installed
   from DuckDB's repository), the macOS tarball from the sibling
-  checkout. The binary carries a run path to `lib` beside its `bin`;
-  the engine finds the extension, the kits and the lake extensions in
-  `share/glossql` beside it, else where `GLOSS_EXTENSION`,
-  `GLOSS_KITS` and `GLOSS_EXTENSION_DIR` say, else the dev checkout.
+  checkout. DuckDB is compiled into every binary; the engine finds
+  the extension, the kits and the lake extensions in `share/glossql`
+  beside it, else where `GLOSS_EXTENSION`, `GLOSS_KITS` and
+  `GLOSS_EXTENSION_DIR` say, else the dev checkout. DataFusion and
+  the server's own parser are gone with 6c: the doors drive the
+  facade's batch stream, the export door is the engine's `COPY`, the
+  call shape (the `USE`, a write, a review) is read off the text, and
+  the harness parses every example and SPEC.md through the engine's
+  parser, which is the door's.
   Measured on the laptop: the image built with Apple's `container`
   (the extension stage about 7 min, the Rust stage about 4 min; a
   context under the system temp directory reaches the builder VM

@@ -17,9 +17,9 @@
 
 use std::collections::BTreeMap;
 
-use datafusion::arrow::array::{Array, ArrayRef};
-use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::arrow::util::display::array_value_to_string;
+use arrow::array::{Array, ArrayRef};
+use arrow::record_batch::RecordBatch;
+use arrow::util::display::array_value_to_string;
 use futures::StreamExt;
 use glossql_glossary::{Actor, ActorKind};
 

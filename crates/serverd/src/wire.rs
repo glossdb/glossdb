@@ -6,9 +6,9 @@
 //! result held more, so the agent refines (aggregate, LIMIT, WHERE)
 //! instead of reading a capped result as complete.
 
-use crate::engine::Outcome;
-use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::execution::SendableRecordBatchStream;
+use crate::engine::{Outcome, QueryStream};
+use arrow::datatypes::SchemaRef;
+use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
 use serde_json::{Value, json};
 
@@ -37,11 +37,10 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> Result<Value, String> {
 
 /// Pull batches until the cap is met, then drop the stream — what the
 /// agent won't see, the engine stops computing.
-pub async fn stream_json(
-    mut stream: SendableRecordBatchStream,
-    cap: usize,
-) -> Result<Value, String> {
-    let schema = stream.schema();
+pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, String> {
+    let QueryStream {
+        schema, mut stream, ..
+    } = query;
     let mut kept: Vec<RecordBatch> = Vec::new();
     let mut shipped = 0usize;
     let mut truncated = false;
@@ -63,7 +62,7 @@ pub async fn stream_json(
 }
 
 fn render(
-    schema: Option<datafusion::arrow::datatypes::SchemaRef>,
+    schema: Option<SchemaRef>,
     kept: &[RecordBatch],
     shipped: usize,
     truncated: bool,

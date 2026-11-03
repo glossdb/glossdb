@@ -81,7 +81,7 @@ pub async fn frame(
                 (header::CONTENT_TYPE.as_str(), crate::ipc::ARROW_STREAM),
                 (FRAME_CLASS, if query.record { "record" } else { "data" }),
             ],
-            crate::ipc::body(query.stream, first),
+            crate::ipc::body(query.schema, query.stream, first),
         )
             .into_response(),
     }
@@ -143,7 +143,7 @@ pub(crate) async fn one_open_question(
                 .column_by_name(name)
                 .and_then(|c| {
                     c.as_any()
-                        .downcast_ref::<datafusion::arrow::array::StringArray>()
+                        .downcast_ref::<arrow::array::StringArray>()
                         .map(|s| s.value(0).to_string())
                 })
                 .unwrap_or_default()

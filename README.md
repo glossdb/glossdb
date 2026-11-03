@@ -12,9 +12,8 @@ stored as part of the record.
 
 The full definition is **[SPEC.md](./SPEC.md)** — the single normative
 document of this repository. `grammar.ebnf` is the machine source of
-truth for syntax. The corpus (`crates/parser/tests/corpus/`) is the
-parser's acceptance suite; each construct is checked against a real
-artifact.
+truth for syntax. The corpus (`corpus/`) is the language's acceptance
+record; each construct is checked against a real artifact.
 
 The name: a *gloss* is a marginal annotation explaining a text's meaning;
 a glossary is a collection of them. `GLOSS` is the write verb — you gloss
@@ -103,14 +102,13 @@ the typed table and import is a filter, not an ETL step.
 
 ## The server
 
-A Rust workspace (`crates/`) on DuckDB: `parser` (the language's
-grammar and its corpus), `glossary` (the actor types), `duck` (the
-engine: the facade over the gloss extension and a DuckLake, a channel
-per call, the record's reads and the door's), `apps` (server-rendered
-data apps from declarative artifacts), `serverd` (the doors). The
-gloss extension owns the language, the store and the kits
-(`glossdb/gloss`), and `crates/duck/gloss.ref` pins the commit a
-build carries.
+A Rust workspace (`crates/`) on DuckDB: `glossary` (the actor
+types), `duck` (the engine: the facade over the gloss extension and a
+DuckLake, a channel per call, the record's reads and the door's),
+`apps` (server-rendered data apps from declarative artifacts),
+`serverd` (the doors). The gloss extension owns the language, its
+parser, the store and the kits (`glossdb/gloss`), and
+`crates/duck/gloss.ref` pins the commit a build carries.
 
 One listener, three doors, no server-side cursors. A browser stays on
 one dataset, so `/query` and `/app` carry the dataset in the path. An
@@ -164,15 +162,15 @@ agent judges; the false positives stay visible in the measurement.
 ## Building
 
 A Rust workspace. `cargo build -p glossql-serverd` builds the server;
-use `--release` to run it for real. The DuckDB library arrives
-prebuilt at build; the gloss extension is built from the sibling
+use `--release` to run it for real. DuckDB is compiled into the
+binary from the sources its Rust crate ships, about three minutes
+once per profile; the gloss extension is built from the sibling
 checkout `../gloss` (`GEN=ninja make release`, a C++ build of DuckDB
 that takes a while once), or named by `GLOSS_EXTENSION` and
-`GLOSS_KITS` ([install](docs/start/install.md)). The dependency tree
-is heavy and the parallel build needs memory; if the build dies
-without a compiler error, the OOM killer hit — common in
-memory-capped containers. Bound the parallelism to about one job per
-2 GB of available memory:
+`GLOSS_KITS` ([install](docs/start/install.md)). The parallel build
+needs memory; if the build dies without a compiler error, the OOM
+killer hit — common in memory-capped containers. Bound the
+parallelism to about one job per 2 GB of available memory:
 
 ```
 cargo build --release -j4    # or CARGO_BUILD_JOBS=4
@@ -180,14 +178,14 @@ cargo build --release -j4    # or CARGO_BUILD_JOBS=4
 
 The dev profile already trims debug info workspace-wide (the workspace
 `Cargo.toml` records why); even a single job needs ~4 GB free for the
-largest units.
+largest units, DuckDB's among them.
 
 ## Status
 
 A working proof-of-concept. `cargo test` at the workspace root is the
-standing invariant: the parser corpus, every fenced example under
-`docs/` and `skills/` bound on the engine, and the door suites; the
-kits carry their own suites in the extension's repository. The
+standing invariant: every fenced example under `docs/` and `skills/`
+parsed and bound on the engine, and the door suites; the kits carry
+their own suites in the extension's repository. The
 language is a working draft. Grammar changes are corpus-first: a
 construct is only added together with a fixture that was checked
 against a real artifact.

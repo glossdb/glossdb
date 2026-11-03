@@ -6,10 +6,10 @@
 
 use std::sync::Arc;
 
+use arrow::array::Float64Array;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use datafusion::arrow::array::Float64Array;
 use glossql_apps::engine::{Caller, Plane};
 use glossql_glossary::{Actor, ActorKind};
 use tower::ServiceExt;
@@ -344,8 +344,7 @@ async fn a_release_gates_what_the_door_serves() {
     let glossql_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
         panic!("a read answers rows")
     };
-    let first_at =
-        datafusion::arrow::util::display::array_value_to_string(batches[0].column(0), 0).unwrap();
+    let first_at = arrow::util::display::array_value_to_string(batches[0].column(0), 0).unwrap();
     session
         .execute(&format!(
             r#"GLOSS app_release ON board AS $${{"at": "{first_at}", "note": "back"}}$$;"#
@@ -361,9 +360,8 @@ async fn a_release_gates_what_the_door_serves() {
     let glossql_apps::engine::Outcome::Rows { batches, .. } = &released[0] else {
         panic!("a read answers rows")
     };
-    let cell = |i: usize| {
-        datafusion::arrow::util::display::array_value_to_string(batches[0].column(i), 0).unwrap()
-    };
+    let cell =
+        |i: usize| arrow::util::display::array_value_to_string(batches[0].column(i), 0).unwrap();
     assert_eq!(
         (cell(0), cell(1), cell(2)),
         ("board".to_string(), "back".to_string(), first_at)
@@ -584,7 +582,7 @@ async fn body_text(response: Response<Body>) -> String {
         let batch = batch.unwrap();
         for column in batch.columns() {
             for i in 0..batch.num_rows() {
-                if let Ok(v) = datafusion::arrow::util::display::array_value_to_string(column, i) {
+                if let Ok(v) = arrow::util::display::array_value_to_string(column, i) {
                     out.push_str(&v);
                     out.push('\n');
                 }
@@ -641,8 +639,8 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
         .unwrap();
 }
 
-fn assert_classic(dt: &datafusion::arrow::datatypes::DataType, frame: &str, field: &str) {
-    use datafusion::arrow::datatypes::DataType;
+fn assert_classic(dt: &arrow::datatypes::DataType, frame: &str, field: &str) {
+    use arrow::datatypes::DataType;
     match dt {
         // The browser's arrow reader speaks only classic types — a view
         // type in a frame schema renders as `Unrecognized type` in every
@@ -708,7 +706,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
     };
     let batch = batches.iter().find(|b| b.num_rows() > 0).unwrap();
     assert_eq!(
-        datafusion::arrow::util::display::array_value_to_string(batch.column(0), 0).unwrap(),
+        arrow::util::display::array_value_to_string(batch.column(0), 0).unwrap(),
         "ada"
     );
 }
@@ -1944,7 +1942,7 @@ async fn the_export_tab_lists_tables_and_reads() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_table_downloads_as_csv_and_parquet() {
-    let (app, _plane, _dir) = workspace().await;
+    let (app, plane, dir) = workspace().await;
 
     let csv = get(&app, "/perf/app/export/ledger.csv").await;
     assert_eq!(csv.status(), StatusCode::OK);
@@ -1973,24 +1971,36 @@ async fn a_table_downloads_as_csv_and_parquet() {
         "attachment; filename=\"ledger.parquet\""
     );
     let bytes = to_bytes(parquet.into_body(), usize::MAX).await.unwrap();
-    let builder =
-        datafusion::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(bytes)
-            .unwrap();
-    // The engine's types survive the file: the cast date and double.
-    let schema = builder.schema().clone();
+    // The engine's types survive the file: the cast date and double,
+    // read back by the engine itself.
+    let file = dir.path().join("ledger-export.parquet");
+    std::fs::write(&file, &bytes).unwrap();
+    let session = plane
+        .channel(
+            glossql_glossary::Actor {
+                kind: glossql_glossary::ActorKind::Human,
+                id: "t".into(),
+            },
+            Some("perf"),
+        )
+        .await
+        .unwrap();
+    let (schema, batches) = session
+        .batches_with_schema(
+            &format!("SELECT * FROM read_parquet('{}')", file.display()),
+            &[],
+        )
+        .await
+        .unwrap();
     assert_eq!(
         schema.field_with_name("month").unwrap().data_type(),
-        &datafusion::arrow::datatypes::DataType::Date32
+        &arrow::datatypes::DataType::Date32
     );
     assert_eq!(
         schema.field_with_name("value").unwrap().data_type(),
-        &datafusion::arrow::datatypes::DataType::Float64
+        &arrow::datatypes::DataType::Float64
     );
-    let rows: usize = builder
-        .build()
-        .unwrap()
-        .map(|batch| batch.unwrap().num_rows())
-        .sum();
+    let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
     assert_eq!(rows, 3);
 }
 
@@ -2106,7 +2116,7 @@ async fn the_lineage_page_draws_the_record() {
             batch
                 .column(batch.schema().index_of(name).unwrap())
                 .as_any()
-                .downcast_ref::<datafusion::arrow::array::StringArray>()
+                .downcast_ref::<arrow::array::StringArray>()
                 .unwrap()
                 .clone()
         };
@@ -2156,7 +2166,7 @@ async fn the_lineage_page_draws_the_record() {
             batch
                 .column(batch.schema().index_of(name).unwrap())
                 .as_any()
-                .downcast_ref::<datafusion::arrow::array::StringArray>()
+                .downcast_ref::<arrow::array::StringArray>()
                 .unwrap()
                 .clone()
         };

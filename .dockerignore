@@ -3,6 +3,7 @@
 # language artifacts. What is left out is named outright — a builder
 # that is not Docker's reads a re-included directory without its files.
 target
+corpus
 .git
 .github
 .claude

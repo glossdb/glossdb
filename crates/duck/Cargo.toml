@@ -9,15 +9,10 @@ repository.workspace = true
 description = "The engine on DuckDB: the facade the doors use over the gloss extension and a DuckLake"
 
 [dependencies]
-# The language's statements, for the call shape the MCP door reads.
-glossql-parser = { path = "../parser" }
 # The two actor types the doors stamp a request with.
 glossql-glossary = { path = "../glossary" }
 duckdb-neo = { workspace = true }
 arrow = { workspace = true }
-# The stream type the doors drive today; the facade row retires it.
-datafusion = { workspace = true }
-datafusion-sql = { workspace = true }
 futures = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

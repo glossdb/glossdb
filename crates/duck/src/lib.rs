@@ -20,20 +20,19 @@
 pub mod rulings;
 
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use arrow::array::{RecordBatch, RecordBatchReader};
 use arrow::datatypes::SchemaRef;
 use arrow::ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream};
-use datafusion::execution::SendableRecordBatchStream;
-use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use duckdb_neo::connection::Connection;
 use duckdb_neo::environment::{Environment, StorageLocation};
 use duckdb_neo::instance::{AttachBuilder, Instance, InstanceBuilder};
 use duckdb_neo::query_result::ResultType;
 use duckdb_neo::{Parameters, QueryParameter};
+use futures::Stream;
 pub use glossql_glossary::{Actor, ActorKind};
-use glossql_parser::{GlossqlParser, Statement};
 
 /// The default row cap on a paging read.
 pub const DEFAULT_ROW_CAP: usize = 200;
@@ -151,14 +150,43 @@ pub enum Outcome {
     Affected(u64),
 }
 
+/// A read's batches as the doors drive them: one item per batch, the
+/// engine's refusal as an item's error.
+pub type BatchStream = Pin<Box<dyn Stream<Item = Result<RecordBatch, SessionError>> + Send>>;
+
 /// A read as the doors drive it.
 pub struct QueryStream {
-    pub stream: SendableRecordBatchStream,
+    pub schema: SchemaRef,
+    pub stream: BatchStream,
     /// Rows a paging caller ships before declaring the answer cut;
     /// `usize::MAX` on a read of the record, which must be whole.
     pub cap: usize,
     /// Whether the statement reads the record anywhere.
     pub record: bool,
+}
+
+/// A file the engine writes a read into, for the app door's downloads:
+/// the engine's own CSV and parquet writers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyFormat {
+    Csv,
+    Parquet,
+}
+
+impl CopyFormat {
+    fn clause(self) -> &'static str {
+        match self {
+            CopyFormat::Csv => "FORMAT CSV, HEADER",
+            CopyFormat::Parquet => "FORMAT PARQUET",
+        }
+    }
+
+    pub fn extension(self) -> &'static str {
+        match self {
+            CopyFormat::Csv => "csv",
+            CopyFormat::Parquet => "parquet",
+        }
+    }
 }
 
 /// A page the door serves as a resource.
@@ -263,46 +291,50 @@ pub struct CallShape {
     pub dataset: Option<String>,
 }
 
-/// A call that does not parse shapes as neither — the engine names the
-/// refusal when it runs. A read of the record alone is a review; any
-/// glossql statement or a substrate write is a write.
+/// The shape, from the statements' text: `USE` names the dataset, the
+/// last one standing; a statement that is not a read, and an
+/// extraction, write; a call of reads alone that names a record
+/// relation is a review. Syntactic, as the doors need it before the
+/// engine runs anything: a statement that is none of these is refused
+/// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
-    let Ok(parsed) = GlossqlParser::parse_sql(statements) else {
-        return CallShape {
-            reviews: false,
-            writes: false,
-            dataset: None,
-        };
-    };
-    let mut reads_record = false;
+    let mut reads_the_record = false;
     let mut writes = false;
     let mut dataset = None;
-    for statement in &parsed {
-        match statement {
-            Statement::Use(u) => dataset = Some(u.dataset.value.clone()),
-            Statement::Substrate(df) => {
-                if reads_only_record(df) {
-                    reads_record = true;
-                } else if !matches!(
-                    df.as_ref(),
-                    datafusion_sql::parser::Statement::Statement(inner)
-                        if matches!(inner.as_ref(), datafusion_sql::sqlparser::ast::Statement::Query(_))
-                ) {
-                    writes = true;
-                }
-            }
-            _ => writes = true,
+    for piece in split_statements(statements) {
+        if let Some(name) = use_target(&piece) {
+            dataset = Some(name);
+        } else if is_read(&piece) && !is_extraction(&piece) {
+            reads_the_record |= reads_record(&piece);
+        } else {
+            writes = true;
         }
     }
     CallShape {
-        reviews: reads_record && !writes,
+        reviews: reads_the_record && !writes,
         writes,
         dataset,
     }
 }
 
+/// `USE <dataset>`: the name, an unquoted one folded to lowercase as
+/// the engine folds it, a quoted one as spelled.
+fn use_target(statement: &str) -> Option<String> {
+    let mut words = statement.trim().trim_end_matches(';').split_whitespace();
+    if !words.next()?.eq_ignore_ascii_case("use") {
+        return None;
+    }
+    let name = words.next()?.trim_end_matches(';');
+    Some(
+        match name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
+            Some(quoted) => quoted.to_string(),
+            None => name.to_ascii_lowercase(),
+        },
+    )
+}
+
 /// The store's relations, as the extension serves them under
-/// `ws.glossql`, and the two reads over the record.
+/// `ws.glossql`, and the reads over the record.
 const RECORD: &[&str] = &[
     "glossary",
     // the door's derived reads, which say what the record holds
@@ -326,41 +358,9 @@ const RECORD: &[&str] = &[
     "relationships",
     "datasets",
     "sources",
-    "recipes",
-    "imports",
     "kits",
     "attest",
 ];
-
-fn reads_only_record(statement: &datafusion_sql::parser::Statement) -> bool {
-    use datafusion_sql::sqlparser::ast::visit_relations;
-    let datafusion_sql::parser::Statement::Statement(inner) = statement else {
-        return false;
-    };
-    let mut any = false;
-    let mut all = true;
-    let _ = visit_relations(inner.as_ref(), |name| {
-        any = true;
-        let parts: Vec<String> = name
-            .0
-            .iter()
-            .filter_map(|p| p.as_ident().map(|i| i.value.to_lowercase()))
-            .collect();
-        let record = match parts.as_slice() {
-            [one] => RECORD.contains(&one.as_str()),
-            [schema, one] => schema == "glossql" && RECORD.contains(&one.as_str()),
-            [lake, schema, one] => {
-                lake == LAKE && schema == "glossql" && RECORD.contains(&one.as_str())
-            }
-            _ => false,
-        };
-        if !record {
-            all = false;
-        }
-        std::ops::ControlFlow::<()>::Continue(())
-    });
-    any && all
-}
 
 /// Whether a read touches the record anywhere: the store's relations by
 /// name, bare or under the store's schema, or the two reads over it.
@@ -445,6 +445,12 @@ pub struct Config {
     /// megabytes; unset, the engine's own defaults.
     pub memory_limit_mb: Option<u64>,
     pub spill_limit_mb: Option<u64>,
+}
+
+/// The engine's spill files, and the files the export door writes:
+/// under the system's temporary directory, never beside the process.
+fn spill_dir() -> PathBuf {
+    std::env::temp_dir().join("glossql")
 }
 
 /// The extension's pieces beside a released binary: `<bin>/../share/glossql`,
@@ -790,11 +796,7 @@ impl Plane {
                     &conn,
                     &format!(
                         "SET temp_directory = '{}'",
-                        std::env::temp_dir()
-                            .join("glossql")
-                            .display()
-                            .to_string()
-                            .replace('\'', "''")
+                        spill_dir().display().to_string().replace('\'', "''")
                     ),
                 )?;
                 if let Some(mb) = config.memory_limit_mb {
@@ -1228,6 +1230,68 @@ impl Session {
         self.stream(sql, params, false).await
     }
 
+    /// The statements the engine's parser finds in `text`, the
+    /// language's grammar on: how many, or the first refusal. Nothing
+    /// is bound or run.
+    pub async fn parse(&self, text: &str) -> Result<usize, SessionError> {
+        let conn = Arc::clone(&self.conn);
+        let text = text.to_string();
+        tokio::task::spawn_blocking(move || -> Result<usize, SessionError> {
+            let conn = conn
+                .lock()
+                .map_err(|e| SessionError::Engine(e.to_string()))?;
+            let mut count = 0;
+            for statement in conn
+                .parse(&text)
+                .map_err(|e| SessionError::Engine(e.to_string()))?
+            {
+                statement.map_err(|e| SessionError::Engine(e.to_string()))?;
+                count += 1;
+            }
+            Ok(count)
+        })
+        .await
+        .map_err(|e| SessionError::Engine(e.to_string()))?
+    }
+
+    /// One read written to a file by the engine's own writer, under
+    /// the spill directory. The caller streams the file out and
+    /// removes it; a read the engine refuses is its refusal, and no
+    /// file.
+    pub async fn copy_to(&self, sql: &str, format: CopyFormat) -> Result<PathBuf, SessionError> {
+        let pieces = split_statements(sql);
+        if pieces.len() != 1 || !is_read(&pieces[0]) {
+            return Err(SessionError::NotOneRead);
+        }
+        let dir = spill_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| SessionError::Engine(e.to_string()))?;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = dir.join(format!(
+            "export-{}-{nanos}.{}",
+            std::process::id(),
+            format.extension()
+        ));
+        let text = format!(
+            "COPY ({}) TO '{}' ({})",
+            pieces[0].trim().trim_end_matches(';'),
+            path.display().to_string().replace('\'', "''"),
+            format.clause()
+        );
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || -> Result<(), SessionError> {
+            let conn = conn
+                .lock()
+                .map_err(|e| SessionError::Engine(e.to_string()))?;
+            run(&conn, &text)
+        })
+        .await
+        .map_err(|e| SessionError::Engine(e.to_string()))??;
+        Ok(path)
+    }
+
     async fn stream(
         &self,
         sql: &str,
@@ -1253,12 +1317,10 @@ impl Session {
             format!("SELECT * FROM ({one}) LIMIT {}", cap + 1)
         };
         let (schema, batches) = self.batches_with_schema(&text, params).await?;
-        let stream = RecordBatchStreamAdapter::new(
-            schema,
-            futures::stream::iter(batches.into_iter().map(Ok)),
-        );
+        let stream: BatchStream = Box::pin(futures::stream::iter(batches.into_iter().map(Ok)));
         Ok(QueryStream {
-            stream: Box::pin(stream),
+            schema,
+            stream,
             cap,
             record,
         })
@@ -1515,6 +1577,21 @@ mod tests {
             }
         );
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
+        assert_eq!(
+            call_shape("USE fin; SELECT * FROM owed").dataset.as_deref(),
+            Some("fin")
+        );
+        assert!(call_shape("SELECT column_profile() FROM ops").writes);
+        let setup = r#"
+        DECLARE DATASET fin SET (purpose: 'brief delivery');
+        USE fin;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
+          "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
+    "#;
+        let shape = call_shape(setup);
+        assert!(shape.writes && !shape.reviews, "{shape:?}");
+        assert_eq!(shape.dataset.as_deref(), Some("fin"));
         assert!(reads_record("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_record("SELECT * FROM fin.orders"));
     }

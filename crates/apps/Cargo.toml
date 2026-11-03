@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 glossql-duck = { path = "../duck" }
 glossql-glossary = { path = "../glossary" }
-datafusion = { workspace = true }
+arrow = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }
@@ -18,12 +18,11 @@ futures.workspace = true
 serde.workspace = true
 serde_json = { workspace = true }
 tera.workspace = true
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util"] }
 toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-glossql-parser = { path = "../parser" }
 tower.workspace = true
 tempfile.workspace = true
 

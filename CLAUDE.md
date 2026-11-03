@@ -15,17 +15,17 @@ follow the corpus-first process below.
   from the record — each kit's `routes_<kit>()` in the extension's
   `kits/`, the core's in `crates/duck/kits/door.sql`, composed at
   open; the door's two lines, `crates/serverd/src/window.rs`.
-- `crates/parser/tests/corpus/` — transcriptions of real artifacts,
-  the parser's acceptance suite: ` ```glossql ` must parse,
-  ` ```glossql-gap ` documents a gap and must fail.
-- `crates/` — the server, a Cargo workspace: `parser` · `glossary` ·
-  `duck` · `apps` · `serverd`. What each is and how it is built: the
-  crate headers and `docs/architecture/`. Directories unprefixed,
-  packages `glossql-*`; the engine is the gloss extension
-  (`../gloss`, pinned by `crates/duck/gloss.ref`) on DuckDB, and its
-  kits are SQL in that repository, loaded at open; datafusion and
-  duckdb-neo share one arrow line (the workspace `Cargo.toml`
-  comment).
+- `corpus/` — transcriptions of real artifacts, the language's
+  acceptance record: ` ```glossql ` must parse, ` ```glossql-gap `
+  documents a gap and must fail. It moves to the extension's
+  repository with SPEC.md and the grammar, where the parser is.
+- `crates/` — the server, a Cargo workspace: `glossary` · `duck` ·
+  `apps` · `serverd`. What each is and how it is built: the crate
+  headers and `docs/architecture/`. Directories unprefixed, packages
+  `glossql-*`; the engine is the gloss extension (`../gloss`, pinned
+  by `crates/duck/gloss.ref`) on DuckDB, compiled into every binary,
+  and its kits are SQL in that repository, loaded at open; the arrow
+  line is one (the workspace `Cargo.toml` comment).
 - `docs/` — the curated statement of the system: what is implemented
   and what is planned (`start/`, `concepts/`, `reference/`,
   `methods/`, `architecture/`, and the concern pages). For agents and
@@ -86,12 +86,12 @@ plan is rewritten, not patched.
 - **Code is the work.** A task on the server ends in changed code and
   a passing suite. The rules under "The language" bind `SPEC.md` and
   `grammar.ebnf`; they do not gate server code.
-- **Standing invariant.** Workspace `cargo test` passes: every ```sql
-  block in SPEC.md parses, every corpus fixture behaves as tagged,
-  every fenced example under `docs/`, `skills/`, and `.claude/skills/`
-  parses and binds on the engine, and the door suites hold the
-  execution semantics; the kits' own suites run in the extension's
-  repository. A change that breaks it doesn't land.
+- **Standing invariant.** Workspace `cargo test` passes: every fenced
+  example under `docs/`, `skills/`, and `.claude/skills/` parses on
+  the engine's grammar and every single read binds, and the door
+  suites hold the execution semantics; the kits' own suites run in
+  the extension's repository, and the corpus runs there once the
+  language's record moves. A change that breaks it doesn't land.
 - **Build on the engine.** A read, a measurement, a route is SQL in a
   kit; the extension owns the language and the record; the server
   owns the doors. Extend DuckDB and the extension at their own seams,
