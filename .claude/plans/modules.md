@@ -15,9 +15,11 @@ The rules:
 - **Engine types stop at the facade**: a door sees batches, a schema,
   a wrapped stream, string parameters; `crate::engine` is the one
   name for the engine.
-- **Kits are DuckDB SQL** and live with the extension, their `.test`
-  suites beside them; the record's own words and the doors' derived
-  reads live in `crates/duck/kits/core.sql` and `door.sql`.
+- **Kits are DuckDB SQL**, a `.test` suite beside each: the
+  language's (kpi, quality, spatial) with the extension, the server's
+  (metrics, futures) in `kits/` here; the record's own words and the
+  doors' derived reads live in `crates/duck/kits/core.sql` and
+  `door.sql`.
 - **The doors stay closed** (`kernel.md`, "Not now").
 
 ## The table
@@ -35,7 +37,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
 | Step 6f: the house on the engine — the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine, the issues closed or rescoped (#5, #41, #42, #60, #92, #101 and #174 carry their rescope as a comment; their bodies follow) | Built | | | |
-| Step 6h: the kits with their wrappers — the extension ships the language and its examples; a wrapper brings the kits whose words depend on it. The futures kit is one idea, glossdb's, and moves whole; the metrics kit's worlds (`world :=`, `world_cells`, `x-plan-of`, eight `plan` exclusions) and routes are glossdb's, the rest of it the reference's | Medium: up to 1,938 lines of SQL and 980 of tests move; their suites need a runner here (they use statement, query, require and `{TEST_DIR}` alone); SPEC's one paragraph on the worlds (§9, lines 633–652) is the lead's cut | `kits/` here, `crates/duck` (two kit roots), the packaging, `../gloss/kits`, SPEC.md | After the ruling | |
+| Step 6h: the kits with their wrappers — the extension ships the language and its examples (kpi, quality, spatial); the metrics and futures kits are the server's and live in `kits/` here with their suites | Built: 1,938 lines of SQL and 980 of tests moved; the suites run under `cargo test` on the engine's own runner (`crates/duck/src/sqllogic.rs`, the four directives they use); one `share/glossql/kits` in the image and the tarball carries both roots; SPEC's paragraph on the worlds (§9, lines 633–654) is the lead's cut | | | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
@@ -51,12 +53,15 @@ order after it, its rows independent and listed in risk order.
   read; the brief's counts are one read; `rulings::land` folds a
   ruling into the standing body.
 - **The extension** (`../gloss`, branch `kit-quality`, pinned by
-  `crates/duck/gloss.ref`): the kpi, quality, metrics and futures
-  kits with their `.test` suites; a QUERY aspect's claims are the
-  view's columns' (fixture 28); `behavior` takes `ratio`; the record
-  read planned once and cached under the store's version. The futures
-  kit calls the model service through `gloss_service`; the plan is
-  judged as a measurement; a lever is a view column, no replay.
+  `crates/duck/gloss.ref`): the language, the store, the kpi, quality
+  and spatial kits with their `.test` suites; a QUERY aspect's claims
+  are the view's columns' (fixture 28); `behavior` takes `ratio`; the
+  record read planned once and cached under the store's version.
+- **The server's kits** (`kits/`): metrics and futures with their
+  suites, run by the engine crate's suite on the facade's own runner.
+  The futures kit calls the model service through `gloss_service`;
+  the plan is judged as a measurement; a lever is a view column, no
+  replay.
 - **The gate, measured.** serverd 54 door tests and 16 unit tests,
   apps 35, the engine's 8; clippy, fmt, deny and machete clean.
   A call's `next` costs about 120 ms on a laptop, `owed` 60 ms, a
@@ -101,34 +106,15 @@ order after it, its rows independent and listed in risk order.
 
 ## The next row, drafted
 
-**Step 6h: the kits with their wrappers.** What it buys: the
-extension depends on nothing of glossdb or glossthesi, and glossdb's
-content is in glossdb. What stands: the extension's C++ (4,794 lines)
-assumes nothing of a kit beyond `gloss_kit(path)`, and its grammar
-adds the language's words alone; `gloss_service` is an HTTP call from
-SQL and stays; the kpi and quality kits name no door, service or
-product. The worlds are not the reference's: SPEC §1–§8 name no
-world, scenario, plan or series read; one paragraph of §9's PoC notes
-(lines 633–652) does, and it leaves with the futures kit. The
-extension's extension points are the language's own and generic: a
-QUERY aspect's `x-kind` flavor (§5, §9), which a wrapper's kit
-declares and serves; the wrapper's kit list, loaded in its order,
-where a later `CREATE OR REPLACE MACRO` replaces an earlier read by
-name. A basic kit publishes its reads under stable names so a wrapper
-composes over them and copies nothing; it carries no stub or hook
-named for a wrapper. The forks for the lead: (A) metrics and futures
-move whole, and the extension keeps kpi, quality and spatial; (B) the
-futures kit moves whole and the metrics kit splits at its measured
-seam: the ladder, the axes, the series over the data, the facts and
-the sources stay and serve the flavors they name; the plan form of
-the axes read (41 lines), the series read's world parameters, its
-filter, its union over the `world_cells` stub, the eight `plan`
-exclusions and `routes_metrics()` move here, where glossdb's kit
-re-declares `metric_series` and `metric_axes` over the basic reads.
-Done when: the kits load from `kits/` here in the dev tree and from
-`share/glossql/kits` in the image and the tarball, their suites run
-here, the extension's suite and README name its kits, SPEC.md carries
-no world, and the eval's lanes grade as before.
+**Step 6a: the runner's green.** What it buys: the standing invariant
+checked by a machine other than the laptop, and the deployment shape
+known to open. What stands: CI builds the extension from the pin into
+its cache and runs the workspace suite with `GLOSS_EXTENSION` and
+`GLOSS_KITS`; the image builds on the laptop in about 8 min; the
+bucket's credential is built; glossval's slot is the server's image.
+Done when: CI is green on the pushed pin, a tag build pushes the
+image, the server opens once against a Postgres catalog and a bucket,
+and glossval's two lanes grade on the image.
 
 **The issues, after 6f.** Open: #20 (the docket as a `ui://`
 resource), #24 (`key` in the grounding schema, now the kit's

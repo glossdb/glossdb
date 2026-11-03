@@ -20,5 +20,6 @@ actor types the doors stamp a call with. `duck` is the engine: the
 facade the doors use over the gloss extension and a DuckLake, the
 record's own reads (`kits/core.sql`) and the door's (`kits/door.sql`).
 `apps` serves the pages; `serverd` is the binary with its doors. The
-language's kits — the vocabulary, the quality screens, the metrics,
-the futures — are SQL in the extension's repository, loaded at open.
+kits are SQL loaded at open: the vocabulary and the quality screens
+from the extension's repository, the metrics and the futures from
+`kits/` here.

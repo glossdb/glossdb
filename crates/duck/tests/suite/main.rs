@@ -253,3 +253,27 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         "an unbound channel serves no row: {unbound:?}"
     );
 }
+
+/// This repository's kits' suites, `kits/<kit>/kit.test`, on the
+/// engine, each on a lake of its own.
+#[test]
+fn the_kits_suites_pass() {
+    if !extension_present() {
+        return;
+    }
+    let kits = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kits");
+    let mut suites: Vec<_> = std::fs::read_dir(&kits)
+        .expect("the kits directory")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("kit.test"))
+        .filter(|suite| suite.exists())
+        .collect();
+    suites.sort();
+    assert!(!suites.is_empty(), "no suite under {}", kits.display());
+    for suite in suites {
+        let dir = tempfile::tempdir().expect("a tempdir");
+        let records = glossql_duck::sqllogic::run_suite(&suite, dir.path())
+            .unwrap_or_else(|report| panic!("{report}"));
+        eprintln!("{}: {records} records", suite.display());
+    }
+}

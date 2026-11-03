@@ -44,20 +44,21 @@ data alone.
 ## The kits
 
 A kit is SQL: declarations and table macros the engine runs at every
-open, in order, from the extension's `kits/` directory. Four ship:
+open, in order. Four ship, two from the extension's `kits/` and two
+from this repository's:
 
-- **The KPI kit** (`kits/kpi`): the vocabulary. What a column means,
+- **The KPI kit** (the extension's `kits/kpi`): the vocabulary. What a column means,
   its role, how a measure behaves, its unit, which columns slice, what
   a table is, the source conventions, the definitions handbook; the
   two column profilers; the detector that scores the vocabulary's
   voices; the witnesses that bind them.
-- **The quality kit** (`kits/quality`): what the data is like and how
+- **The quality kit** (the extension's `kits/quality`): what the data is like and how
   it holds together. The screens over a dataset's cells and the
   measurements that read them: hierarchies, relationships, their
   coherence, derivations, grounding collisions, the temporal profile.
-- **The metrics kit** (`kits/metrics`): the ladder, the fact row, the
+- **The metrics kit** (`kits/metrics` here): the ladder, the fact row, the
   cells, the facts, the lineage; the metrics and slices goals.
-- **The futures kit** (`kits/futures`): the walk's bands, the
+- **The futures kit** (`kits/futures` here): the walk's bands, the
   forecast, the plan's judgement, the scenario's estimate, each a
   measurement; the bands and plan goals.
 

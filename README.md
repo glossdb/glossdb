@@ -107,8 +107,9 @@ types), `duck` (the engine: the facade over the gloss extension and a
 DuckLake, a channel per call, the record's reads and the door's),
 `apps` (server-rendered data apps from declarative artifacts),
 `serverd` (the doors). The gloss extension owns the language, its
-parser, the store and the kits (`glossdb/gloss`), and
-`crates/duck/gloss.ref` pins the commit a build carries.
+parser, the store and the language's kits (`glossdb/gloss`), and
+`crates/duck/gloss.ref` pins the commit a build carries; the server's
+own kits, metrics and futures, are `kits/` here.
 
 One listener, three doors, no server-side cursors. A browser stays on
 one dataset, so `/query` and `/app` carry the dataset in the path. An
@@ -184,8 +185,9 @@ largest units, DuckDB's among them.
 
 A working proof-of-concept. `cargo test` at the workspace root is the
 standing invariant: every fenced example under `docs/` and `skills/`
-parsed and bound on the engine, and the door suites; the kits carry
-their own suites in the extension's repository. The
+parsed and bound on the engine, the door suites, and the suites
+beside the kits under `kits/`; the extension's kits carry theirs in
+its repository. The
 language is a working draft. Grammar changes are corpus-first: a
 construct is only added together with a fixture that was checked
 against a real artifact.

@@ -21,7 +21,7 @@ mode; this file is so nobody has to rediscover it.
 | topic | reference |
 |---|---|
 | the extension: grammar, store, subjects, reads, kits, conformance | `../gloss/README.md`, `../gloss/CONFORMANCE.md`, `../gloss/src/` headers |
-| the kits and their suites | `../gloss/kits/<kit>/kit.sql`, `../gloss/test/sql/gloss_kit_<kit>.test` |
+| the kits and their suites | the language's: `../gloss/kits/<kit>/kit.sql`, `../gloss/test/sql/gloss_kit_<kit>.test`; the server's: `kits/<kit>/kit.sql` and `kit.test` beside it, run by `crates/duck/src/sqllogic.rs` |
 | DuckDB's SQL, the release the lock resolves | `vendor/duckdb/sql/` (served as `doc://vendor/duckdb/sql/…`) |
 | DuckDB's C API through Rust | the `duckdb-neo` crate at the version `Cargo.toml` names |
 | DuckLake: the catalog, snapshots, the data path | ducklake.select, the `ducklake` extension |
@@ -39,8 +39,9 @@ mode; this file is so nobody has to rediscover it.
   service call (`gloss_service`), and the kit loader (`gloss_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   witnesses, table macros that read the record and the views, and
-  its routes for the `next` read. A kit is SQL in `../gloss/kits/`,
-  run at every open, with a `.test` suite beside it.
+  its routes for the `next` read. A kit is SQL, the language's in
+  `../gloss/kits/` and the server's in `kits/`, run at every open,
+  with a `.test` suite beside it.
 - **The server** owns the plane (one instance per process, opened
   once), a channel per call (one connection, the actor and the
   dataset set on it), the record's own reads (`crates/duck/kits/core.sql`),
@@ -107,8 +108,8 @@ mode; this file is so nobody has to rediscover it.
   about three minutes once per profile, cached in `target/`); the
   extension binds through the C API table the host hands it at load,
   so no symbol of the host is involved and no library file travels.
-- The kits are loaded from the sibling checkout at runtime, so a kit
-  edit needs no rebuild; a C++ change does (`GEN=ninja make release`
-  in `../gloss`).
+- The kits are loaded from the sibling checkout and from `kits/` at
+  runtime, so a kit edit needs no rebuild; a C++ change does
+  (`GEN=ninja make release` in `../gloss`).
 - The door wraps a DuckDB refusal in `C Data interface error: …`; the
   text after it is the engine's.

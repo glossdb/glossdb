@@ -12,7 +12,7 @@ follow the corpus-first process below.
   for syntax.
 - The routes the `next` read answers from: per goal, its steps as
   query arms over the record, one act per goal as a statement filled
-  from the record — each kit's `routes_<kit>()` in the extension's
+  from the record — each kit's `routes_<kit>()` in its kit under
   `kits/`, the core's in `crates/duck/kits/door.sql`, composed at
   open; the door's two lines, `crates/serverd/src/window.rs`.
 - `corpus/` — transcriptions of real artifacts, the language's
@@ -23,9 +23,14 @@ follow the corpus-first process below.
   `apps` · `serverd`. What each is and how it is built: the crate
   headers and `docs/architecture/`. Directories unprefixed, packages
   `glossql-*`; the engine is the gloss extension (`../gloss`, pinned
-  by `crates/duck/gloss.ref`) on DuckDB, compiled into every binary,
-  and its kits are SQL in that repository, loaded at open; the arrow
-  line is one (the workspace `Cargo.toml` comment).
+  by `crates/duck/gloss.ref`) on DuckDB, compiled into every binary;
+  the arrow line is one (the workspace `Cargo.toml` comment).
+- `kits/` — the server's kits, metrics and futures: SQL loaded at
+  open after the extension's kpi and quality kits, each with its
+  `kit.test` suite beside it (DuckDB's sqllogictest form, run by the
+  engine crate's suite). The extension ships the language's kits as
+  examples; a kit whose words depend on the server, its doors or the
+  model service lives here.
 - `docs/` — the curated statement of the system: what is implemented
   and what is planned (`start/`, `concepts/`, `reference/`,
   `methods/`, `architecture/`, and the concern pages). For agents and
@@ -90,8 +95,9 @@ plan is rewritten, not patched.
   example under `docs/`, `skills/`, and `.claude/skills/` parses on
   the engine's grammar and every single read binds, the door suites
   hold the execution semantics, and the corpus behaves as tagged
-  (` ```glossql ` parses, ` ```glossql-gap ` does not); the kits' own
-  suites run in the extension's repository. A change that breaks it
+  (` ```glossql ` parses, ` ```glossql-gap ` does not), and the suites
+  beside the kits under `kits/` pass on the engine; the extension's
+  kits' suites run in its repository. A change that breaks it
   doesn't land.
 - **Build on the engine.** A read, a measurement, a route is SQL in a
   kit; the extension owns the language and the record; the server

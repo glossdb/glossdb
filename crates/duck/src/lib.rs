@@ -18,6 +18,7 @@
 )]
 
 pub mod rulings;
+pub mod sqllogic;
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -584,11 +585,23 @@ fn share() -> Option<PathBuf> {
     Some(exe.parent()?.parent()?.join("share/glossql"))
 }
 
+/// The engine's pieces and where they are.
+struct Pieces {
+    extension: PathBuf,
+    /// The extension's kits: the language's examples, kpi and quality.
+    gloss_kits: PathBuf,
+    /// This repository's kits, `kits/`: metrics and futures.
+    kits: PathBuf,
+    extension_dir: Option<PathBuf>,
+}
+
 /// Where the extension, the kits and the lake extensions are: what
-/// `GLOSS_EXTENSION`, `GLOSS_KITS` and `GLOSS_EXTENSION_DIR` name;
-/// else the share directory beside the binary where it holds them;
-/// else the sibling checkout's build, a dev tree's.
-fn pieces() -> (PathBuf, PathBuf, Option<PathBuf>) {
+/// `GLOSS_EXTENSION`, `GLOSS_KITS`, `GLOSSQL_KITS` and
+/// `GLOSS_EXTENSION_DIR` name; else the share directory beside the
+/// binary where it holds them, whose one `kits` directory carries both
+/// roots' kits; else the dev tree: the sibling checkout's build and
+/// its kits, and `kits/` at this workspace's root.
+fn pieces() -> Pieces {
     let gloss = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../gloss");
     let share = share();
     let beside = |name: &str| share.as_ref().map(|s| s.join(name)).filter(|p| p.exists());
@@ -601,30 +614,39 @@ fn pieces() -> (PathBuf, PathBuf, Option<PathBuf>) {
                 platform()
             ))
         });
-    let kits = std::env::var_os("GLOSS_KITS")
+    let gloss_kits = std::env::var_os("GLOSS_KITS")
         .map(PathBuf::from)
         .or_else(|| beside("kits"))
         .unwrap_or_else(|| gloss.join("kits"));
-    let extensions = std::env::var_os("GLOSS_EXTENSION_DIR")
+    let kits = std::env::var_os("GLOSSQL_KITS")
+        .map(PathBuf::from)
+        .or_else(|| beside("kits"))
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kits"));
+    let extension_dir = std::env::var_os("GLOSS_EXTENSION_DIR")
         .map(PathBuf::from)
         .or_else(|| beside("extensions"));
-    (extension, kits, extensions)
+    Pieces {
+        extension,
+        gloss_kits,
+        kits,
+        extension_dir,
+    }
 }
 
 impl Config {
     /// The laptop's shape: the workspace directory holds the lake's
     /// catalog and its files.
     pub fn laptop(workspace: &Path) -> Config {
-        let (extension, kits_dir, extension_dir) = pieces();
+        let pieces = pieces();
         Config {
-            extension,
+            extension: pieces.extension,
             kits: vec![
-                kits_dir.join("kpi/kit.sql"),
-                kits_dir.join("quality/kit.sql"),
-                kits_dir.join("metrics/kit.sql"),
-                kits_dir.join("futures/kit.sql"),
+                pieces.gloss_kits.join("kpi/kit.sql"),
+                pieces.gloss_kits.join("quality/kit.sql"),
+                pieces.kits.join("metrics/kit.sql"),
+                pieces.kits.join("futures/kit.sql"),
             ],
-            extension_dir,
+            extension_dir: pieces.extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
             warehouse_credential: None,
@@ -898,6 +920,41 @@ fn cut(batches: Vec<RecordBatch>, cap: usize) -> (Vec<RecordBatch>, bool) {
     (kept, truncated)
 }
 
+/// The instance before the lake: the options, the spill directory
+/// and the limits, the extension and the lake's own, with the
+/// connection they were set on. The workspace opens on it; the kits'
+/// suites attach their own lake to it.
+fn engine_instance(config: &Config) -> Result<(Environment, Instance, Connection), SessionError> {
+    let environment = Environment::new()?;
+    let mut builder = InstanceBuilder::new().option("allow_unsigned_extensions", "true");
+    if let Some(dir) = &config.extension_dir {
+        builder = builder.option("extension_directory", dir.display().to_string());
+    }
+    let instance = builder.build(&environment)?;
+    instance.attach(AttachBuilder::new(StorageLocation::InMemory).make_default())?;
+    let conn = instance.connect()?;
+    // The engine's spill files under the system's temporary
+    // directory, never beside the process: an in-memory
+    // instance would spill into the working directory.
+    run(
+        &conn,
+        &format!(
+            "SET temp_directory = '{}'",
+            spill_dir().display().to_string().replace('\'', "''")
+        ),
+    )?;
+    if let Some(mb) = config.memory_limit_mb {
+        run(&conn, &format!("SET memory_limit = '{mb}MB'"))?;
+    }
+    if let Some(mb) = config.spill_limit_mb {
+        run(&conn, &format!("SET max_temp_directory_size = '{mb}MB'"))?;
+    }
+    run(&conn, &format!("LOAD '{}'", config.extension.display()))?;
+    run(&conn, "INSTALL ducklake")?;
+    run(&conn, "LOAD ducklake")?;
+    Ok((environment, instance, conn))
+}
+
 impl Plane {
     /// Open the workspace: the instance, the extension, the lake, the
     /// grammar, the store, and the kits in order.
@@ -905,34 +962,7 @@ impl Plane {
         let opened = tokio::task::spawn_blocking({
             let config = config.clone();
             move || -> Result<(Environment, Instance), SessionError> {
-                let environment = Environment::new()?;
-                let mut builder =
-                    InstanceBuilder::new().option("allow_unsigned_extensions", "true");
-                if let Some(dir) = &config.extension_dir {
-                    builder = builder.option("extension_directory", dir.display().to_string());
-                }
-                let instance = builder.build(&environment)?;
-                instance.attach(AttachBuilder::new(StorageLocation::InMemory).make_default())?;
-                let conn = instance.connect()?;
-                // The engine's spill files under the system's temporary
-                // directory, never beside the process: an in-memory
-                // instance would spill into the working directory.
-                run(
-                    &conn,
-                    &format!(
-                        "SET temp_directory = '{}'",
-                        spill_dir().display().to_string().replace('\'', "''")
-                    ),
-                )?;
-                if let Some(mb) = config.memory_limit_mb {
-                    run(&conn, &format!("SET memory_limit = '{mb}MB'"))?;
-                }
-                if let Some(mb) = config.spill_limit_mb {
-                    run(&conn, &format!("SET max_temp_directory_size = '{mb}MB'"))?;
-                }
-                run(&conn, &format!("LOAD '{}'", config.extension.display()))?;
-                run(&conn, "INSTALL ducklake")?;
-                run(&conn, "LOAD ducklake")?;
+                let (environment, instance, conn) = engine_instance(&config)?;
                 // httpfs for the POST a service call makes and for a
                 // warehouse in an object store; the warehouse's credential
                 // held before the lake is attached, since the record's own

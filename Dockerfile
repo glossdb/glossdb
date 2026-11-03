@@ -1,5 +1,6 @@
 # The server image: one Rust binary with DuckDB compiled in, the gloss
-# extension and its kits, and the lake extensions DuckDB loads at open
+# extension, the kits (the extension's and this repository's, in one
+# directory), and the lake extensions DuckDB loads at open
 # — on a distroless base; no model, no weights, no GPU. Built at a
 # release tag by the workflow and pushed to ghcr.io/glossdb/glossql;
 # `docker build .` builds the same image from any checkout. The build
@@ -38,7 +39,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --locked --release -p glossql-serverd \
     && mkdir -p /out/bin \
-    && cp target/release/glossql /out/bin/glossql
+    && cp target/release/glossql /out/bin/glossql \
+    && cp -r kits/. /out/share/glossql/kits/
 # The lake extensions DuckDB loads at open — the lake itself, httpfs for
 # the model service and an object-store warehouse, postgres for a
 # catalog on a Postgres server — fetched from DuckDB's own repository
