@@ -35,7 +35,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
 | Step 6f: the house on the engine — the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine, the issues closed or rescoped (#5, #41, #42, #60, #92, #101 and #174 carry their rescope as a comment; their bodies follow) | Built | | | |
-| Step 6h: the kits with their wrappers — the extension ships the language and its examples (kpi, quality, spatial); a wrapper brings the kits whose words depend on it. The futures kit calls the model service (`/forecast`, `/whatif`) and the metrics kit's series read serves the worlds (`world :=`, `x-plan-of`, `metric_plan`), so both are glossdb's and move here with their suites | Medium: 1,938 lines of SQL and 980 of tests move; their suites need a runner here (they use statement, query, require and `{TEST_DIR}` alone); the SPEC passages that name the series read and the worlds are the lead's | `kits/` here, `crates/duck` (two kit roots), the packaging, `../gloss/kits`, SPEC.md | After the ruling | |
+| Step 6h: the kits with their wrappers — the extension ships the language and its examples; a wrapper brings the kits whose words depend on it. The futures kit is one idea, glossdb's, and moves whole; the metrics kit's worlds (`world :=`, `world_cells`, `x-plan-of`, eight `plan` exclusions) and routes are glossdb's, the rest of it the reference's | Medium: up to 1,938 lines of SQL and 980 of tests move; their suites need a runner here (they use statement, query, require and `{TEST_DIR}` alone); SPEC's one paragraph on the worlds (§9, lines 633–652) is the lead's cut | `kits/` here, `crates/duck` (two kit roots), the packaging, `../gloss/kits`, SPEC.md | After the ruling | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
@@ -107,29 +107,28 @@ content is in glossdb. What stands: the extension's C++ (4,794 lines)
 assumes nothing of a kit beyond `gloss_kit(path)`, and its grammar
 adds the language's words alone; `gloss_service` is an HTTP call from
 SQL and stays; the kpi and quality kits name no door, service or
-product; the metrics kit names the worlds and `metric_plan`, the
-futures kit the service's routes, and both carry a `routes_<kit>()`,
-the door's convention. The forks for the lead: (A) metrics and
-futures move whole, and the extension keeps kpi, quality and spatial;
-(B) metrics stays with its worlds and routes cut out, and glossdb's
-futures kit re-declares the series read with the worlds; (C) each kit
-splits at its measured seam, the basic half in the extension and the
-advanced half here: the metrics kit's ladder, axes, series, facts and
-sources stay, its plan form (41 lines of the axes read), the worlds
-of the series read (the parameters, one filter, one union over
-`world_cells`, a stub the futures kit re-declares today) and its
-routes move; the futures kit's aspects, detectors, witnesses and
-record reads stay as the worlds' ontology, its three service
-measurements, the request builders that spell the service's contract
-and its routes move. The basic half publishes its reads under stable
-names and the advanced half re-declares the SPEC'd names over them.
-SPEC splits the same way: the worlds, the plan form, the scenario and
-the misfit door (about 35 of 657 lines, most in §9) become glossdb's
-SPEC under one layering rule: it adds vocabulary and reads, never
-grammar nor a change to the reference's semantics. Done when: the kits load
-from `kits/` here in the dev tree and from `share/glossql/kits` in the
-image and the tarball, their suites run here, the extension's suite
-and README name three kits, and the eval's lanes grade as before.
+product. The worlds are not the reference's: SPEC §1–§8 name no
+world, scenario, plan or series read; one paragraph of §9's PoC notes
+(lines 633–652) does, and it leaves with the futures kit. The
+extension's extension points are the language's own and generic: a
+QUERY aspect's `x-kind` flavor (§5, §9), which a wrapper's kit
+declares and serves; the wrapper's kit list, loaded in its order,
+where a later `CREATE OR REPLACE MACRO` replaces an earlier read by
+name. A basic kit publishes its reads under stable names so a wrapper
+composes over them and copies nothing; it carries no stub or hook
+named for a wrapper. The forks for the lead: (A) metrics and futures
+move whole, and the extension keeps kpi, quality and spatial; (B) the
+futures kit moves whole and the metrics kit splits at its measured
+seam: the ladder, the axes, the series over the data, the facts and
+the sources stay and serve the flavors they name; the plan form of
+the axes read (41 lines), the series read's world parameters, its
+filter, its union over the `world_cells` stub, the eight `plan`
+exclusions and `routes_metrics()` move here, where glossdb's kit
+re-declares `metric_series` and `metric_axes` over the basic reads.
+Done when: the kits load from `kits/` here in the dev tree and from
+`share/glossql/kits` in the image and the tarball, their suites run
+here, the extension's suite and README name its kits, SPEC.md carries
+no world, and the eval's lanes grade as before.
 
 **The issues, after 6f.** Open: #20 (the docket as a `ui://`
 resource), #24 (`key` in the grounding schema, now the kit's
