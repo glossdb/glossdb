@@ -112,8 +112,21 @@ futures kit the service's routes, and both carry a `routes_<kit>()`,
 the door's convention. The forks for the lead: (A) metrics and
 futures move whole, and the extension keeps kpi, quality and spatial;
 (B) metrics stays with its worlds and routes cut out, and glossdb's
-futures kit re-declares the series read with the worlds, which splits
-one read SPEC names across two repositories. Done when: the kits load
+futures kit re-declares the series read with the worlds; (C) each kit
+splits at its measured seam, the basic half in the extension and the
+advanced half here: the metrics kit's ladder, axes, series, facts and
+sources stay, its plan form (41 lines of the axes read), the worlds
+of the series read (the parameters, one filter, one union over
+`world_cells`, a stub the futures kit re-declares today) and its
+routes move; the futures kit's aspects, detectors, witnesses and
+record reads stay as the worlds' ontology, its three service
+measurements, the request builders that spell the service's contract
+and its routes move. The basic half publishes its reads under stable
+names and the advanced half re-declares the SPEC'd names over them.
+SPEC splits the same way: the worlds, the plan form, the scenario and
+the misfit door (about 35 of 657 lines, most in §9) become glossdb's
+SPEC under one layering rule: it adds vocabulary and reads, never
+grammar nor a change to the reference's semantics. Done when: the kits load
 from `kits/` here in the dev tree and from `share/glossql/kits` in the
 image and the tarball, their suites run here, the extension's suite
 and README name three kits, and the eval's lanes grade as before.
