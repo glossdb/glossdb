@@ -6,20 +6,14 @@ tables, 1,012,948 rows), the first full flow over a relational source
 through the ADBC executor. The spine below is what the
 run spoke, abridged to the columns that carried the findings.
 
-## Declare the source — the driver is the index slug
+## Declare the source
 
 ```glossql
 USE fin2;
 
 DECLARE SOURCE books SET (type: relational_db,
-                          driver: 'sqlite',
                           location: '/Users/x/glossql-data/finance_2/accounting.sqlite');
 ```
-
-The run first spelled `driver: 'adbc_driver_sqlite'` (the skill's old
-example) and got a bare NotFound — the loadable name is the ADBC driver
-index slug the operator installed. The list is hardcoded; the
-load error teaches it.
 
 ## Harvest the source's own catalog — evidence, never declarations
 
@@ -56,7 +50,7 @@ Two dialect facts the run paid for, both now in the add-source skill:
   class so the wire carries a numeric.
 - **The cast trap.** `CAST(date(x) AS DATE)` does not fail — `DATE`
   takes NUMERIC affinity, and `'2010-12-27'` lands as int64 `2010`.
-  Measured through the driver:
+  Measured through the source:
 
 ```glossql
 PROBE books AS $$SELECT date('2010-12-27')              AS iso,

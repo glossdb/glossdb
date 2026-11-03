@@ -88,10 +88,11 @@ plan is rewritten, not patched.
   `grammar.ebnf`; they do not gate server code.
 - **Standing invariant.** Workspace `cargo test` passes: every fenced
   example under `docs/`, `skills/`, and `.claude/skills/` parses on
-  the engine's grammar and every single read binds, and the door
-  suites hold the execution semantics; the kits' own suites run in
-  the extension's repository, and the corpus runs there once the
-  language's record moves. A change that breaks it doesn't land.
+  the engine's grammar and every single read binds, the door suites
+  hold the execution semantics, and the corpus behaves as tagged
+  (` ```glossql ` parses, ` ```glossql-gap ` does not); the kits' own
+  suites run in the extension's repository. A change that breaks it
+  doesn't land.
 - **Build on the engine.** A read, a measurement, a route is SQL in a
   kit; the extension owns the language and the record; the server
   owns the doors. Extend DuckDB and the extension at their own seams,
