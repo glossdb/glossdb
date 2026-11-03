@@ -838,10 +838,14 @@ impl Plane {
                 } else {
                     format!("ducklake:{}", config.catalog)
                 };
+                // The catalog remembers the warehouse it was created
+                // with, as an absolute path; the override makes the
+                // configured one stand, so a workspace directory that
+                // was moved or copied opens where it now is.
                 run(
                     &conn,
                     &format!(
-                        "ATTACH '{catalog}' AS {LAKE} (DATA_PATH '{}/')",
+                        "ATTACH '{catalog}' AS {LAKE} (DATA_PATH '{}/', OVERRIDE_DATA_PATH true)",
                         config.warehouse.trim_end_matches('/')
                     ),
                 )?;
