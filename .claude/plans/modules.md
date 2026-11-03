@@ -35,6 +35,7 @@ order after it, its rows independent and listed in risk order.
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
 | Step 6e: DuckDB compiled in — `bundled` with `json` and `parquet`, the probing features off; no library file in the image or the tarball, no run path | Built. Measured on the laptop: the C++ about 3 min once per profile, cached in `target/`; the extension binds through the C API table and resolves no host symbol (its 287 undefined symbols are libc++'s), so Linux needs no linker flag; the Linux image built and run on the laptop (below) | | | |
 | Step 6f: the house on the engine — the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine, the issues closed or rescoped (#5, #41, #42, #60, #92, #101 and #174 carry their rescope as a comment; their bodies follow) | Built | | | |
+| Step 6h: the kits with their wrappers — the extension ships the language and its examples (kpi, quality, spatial); a wrapper brings the kits whose words depend on it. The futures kit calls the model service (`/forecast`, `/whatif`) and the metrics kit's series read serves the worlds (`world :=`, `x-plan-of`, `metric_plan`), so both are glossdb's and move here with their suites | Medium: 1,938 lines of SQL and 980 of tests move; their suites need a runner here (they use statement, query, require and `{TEST_DIR}` alone); the SPEC passages that name the series read and the worlds are the lead's | `kits/` here, `crates/duck` (two kit roots), the packaging, `../gloss/kits`, SPEC.md | After the ruling | |
 | Step 6g: the substrate allowlist — the docs and skills say DDL, DML and COPY are closed at the doors, and nothing closes them: the extension's conformance leaves the allowlist to the wrapper, and the facade runs every statement | Low to medium: the rule is the lead's (which door, which statements); a text rule in the facade's `execute`, estimated a day with its suite | `crates/duck` (`execute`), the door suites, `docs/concepts/statements.md`, `skills/glossql/references/sql-here.md` | After 6a | |
 
 ## What stands
@@ -100,25 +101,22 @@ order after it, its rows independent and listed in risk order.
 
 ## The next row, drafted
 
-**Step 6a: the runner's green.** What it buys: the standing invariant
-checked by a machine again, and a release that carries the engine.
-What stands: `ci.yml` builds the extension from `crates/duck/gloss.ref`
-into the actions cache and runs the suites on it; the Dockerfile
-builds the extension in its own stage; `release-macos.sh` refuses
-unless `../gloss` is at the pin. The warehouse in an object store is
-reached with the key pair the environment names, or, a `gs://` bucket
-without one, as the account the platform runs the server as: the
-access token minted from the metadata server before the lake opens,
-held in a secret scoped to the warehouse, minted anew before it
-expires. What is open: the extension's branch is not pushed, so a
-runner cannot check the commit out and the Dockerfile's clone fails
-off the laptop; glossval's Rust crate names the deleted crates, so its
-seeder and its goldens capture do not build; glossdeploy names four
-variables the server no longer reads (`GLOSSQL_ALLOWED_HOSTS`,
-`_ORGANIZATION`, `_TABICL_URL`, `_TABICL_AUDIENCE`), which move at the
-next deploy. Done when: CI green, a tag builds and pushes the image,
-one run of the image against a Postgres catalog and a bucket lands a
-table, the eval's slot serves a lane.
+**Step 6h: the kits with their wrappers.** What it buys: the
+extension depends on nothing of glossdb or glossthesi, and glossdb's
+content is in glossdb. What stands: the extension's C++ (4,794 lines)
+assumes nothing of a kit beyond `gloss_kit(path)`, and its grammar
+adds the language's words alone; `gloss_service` is an HTTP call from
+SQL and stays; the kpi and quality kits name no door, service or
+product; the metrics kit names the worlds and `metric_plan`, the
+futures kit the service's routes, and both carry a `routes_<kit>()`,
+the door's convention. The forks for the lead: (A) metrics and
+futures move whole, and the extension keeps kpi, quality and spatial;
+(B) metrics stays with its worlds and routes cut out, and glossdb's
+futures kit re-declares the series read with the worlds, which splits
+one read SPEC names across two repositories. Done when: the kits load
+from `kits/` here in the dev tree and from `share/glossql/kits` in the
+image and the tarball, their suites run here, the extension's suite
+and README name three kits, and the eval's lanes grade as before.
 
 **The issues, after 6f.** Open: #20 (the docket as a `ui://`
 resource), #24 (`key` in the grounding schema, now the kit's
