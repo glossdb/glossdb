@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 
+use glossql_serverd::engine::{WarehouseCredential, store_kind};
 use glossql_serverd::{DEFAULT_ROW_CAP, DoorConfig};
 
 const USAGE_TEXT: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] \
@@ -19,8 +20,10 @@ const USAGE_TEXT: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] 
 --workspace is the laptop's shape: the directory holding the lake's catalog \
 and its files. GLOSSQL_CATALOG_SQL names the catalog on a Postgres server \
 (postgres://…), GLOSSQL_WAREHOUSE the lake's files in an object store \
-(s3://…, gs://…, abfss://…); a deployment names them and runs without a \
-directory.\n\
+(s3://…, gs://…); a deployment names them and runs without a directory. \
+The engine reaches the store with GLOSSQL_WAREHOUSE_KEY_ID and \
+GLOSSQL_WAREHOUSE_SECRET (GLOSSQL_WAREHOUSE_REGION for S3), or, a gs:// \
+bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
 GLOSSQL_ADDR, GLOSSQL_ROW_CAP, GLOSSQL_MEMORY_LIMIT, GLOSSQL_SPILL_LIMIT.\n\
 {service}\
@@ -125,11 +128,16 @@ pub struct Auth {
 /// object store the environment names, or under the directory. A
 /// laptop names a directory and it holds both; a deployment names both
 /// in the environment and has no directory at all. The catalog URI
-/// carries the credentials; the warehouse carries none.
+/// carries its credentials; the warehouse's come beside it, a key
+/// pair, or are the platform's own.
 #[derive(Debug, Clone)]
 pub struct Catalog {
     pub catalog: String,
     pub warehouse: String,
+    /// The key pair the environment names for a warehouse in an object
+    /// store; none, and a Google bucket is reached as the account the
+    /// platform runs this process as.
+    pub credential: Option<WarehouseCredential>,
     /// The directory, on a laptop; a deployment has none.
     pub workspace: Option<PathBuf>,
 }
@@ -257,13 +265,42 @@ impl Catalog {
             (None, Some(dir)) => dir.join("warehouse").display().to_string(),
             (None, None) => return Err(NO_WORKSPACE.into()),
         };
+        let credential = match (
+            var("GLOSSQL_WAREHOUSE_KEY_ID"),
+            var("GLOSSQL_WAREHOUSE_SECRET"),
+        ) {
+            (Some(key_id), Some(secret)) => Some(WarehouseCredential::Keys {
+                key_id,
+                secret,
+                region: var("GLOSSQL_WAREHOUSE_REGION"),
+            }),
+            (None, None) => None,
+            (Some(_), None) => {
+                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSQL_WAREHOUSE_SECRET"));
+            }
+            (None, Some(_)) => {
+                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSQL_WAREHOUSE_KEY_ID"));
+            }
+        };
+        if credential.is_some() && store_kind(&warehouse).is_none() {
+            return Err(format!(
+                "GLOSSQL_WAREHOUSE_KEY_ID names a key pair while the warehouse is a directory \
+                 ({warehouse}): a key pair goes with GLOSSQL_WAREHOUSE in an object store"
+            ));
+        }
         Ok(Catalog {
             catalog,
             warehouse,
+            credential,
             workspace: workspace.map(std::path::Path::to_path_buf),
         })
     }
 }
+
+/// What a run is told when the environment names one half of the key
+/// pair.
+const HALF_A_PAIR: &str = "{missing} is not set — the warehouse's key pair is \
+GLOSSQL_WAREHOUSE_KEY_ID and GLOSSQL_WAREHOUSE_SECRET together";
 
 /// What a run without a workspace directory is told when the
 /// environment does not name the state either.
@@ -386,6 +423,46 @@ mod tests {
         assert!(!super::open(&env(Some("1"))));
         assert!(!super::open(&env(Some("TRUE"))));
         assert!(!super::open(&env(Some("false"))));
+    }
+
+    /// A warehouse in an object store takes its key pair whole, with
+    /// S3's region beside it; half a pair refuses by the missing name,
+    /// and a pair for a directory warehouse refuses too.
+    #[test]
+    fn the_warehouse_key_pair_is_whole_or_absent() {
+        let keyed = read(
+            &[],
+            &[
+                ("GLOSSQL_WAREHOUSE", "s3://lake/warehouse"),
+                ("GLOSSQL_WAREHOUSE_KEY_ID", "AKIA"),
+                ("GLOSSQL_WAREHOUSE_SECRET", "s3cret"),
+                ("GLOSSQL_WAREHOUSE_REGION", "eu-west-1"),
+            ],
+        )
+        .expect("readable");
+        assert!(matches!(
+            keyed.catalog.credential,
+            Some(super::WarehouseCredential::Keys { ref key_id, ref region, .. })
+                if key_id == "AKIA" && region.as_deref() == Some("eu-west-1")
+        ));
+        let bare = read(&[], &[("GLOSSQL_WAREHOUSE", "gs://lake/warehouse")]).expect("readable");
+        assert!(bare.catalog.credential.is_none());
+        let half = refusal(read(
+            &[],
+            &[
+                ("GLOSSQL_WAREHOUSE", "gs://lake/warehouse"),
+                ("GLOSSQL_WAREHOUSE_KEY_ID", "GOOG1E"),
+            ],
+        ));
+        assert!(half.contains("GLOSSQL_WAREHOUSE_SECRET"), "{half}");
+        let misplaced = refusal(read(
+            &[],
+            &[
+                ("GLOSSQL_WAREHOUSE_KEY_ID", "GOOG1E"),
+                ("GLOSSQL_WAREHOUSE_SECRET", "s"),
+            ],
+        ));
+        assert!(misplaced.contains("directory"), "{misplaced}");
     }
 
     /// The two budgets are the engine's own until named, and naming

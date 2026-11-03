@@ -30,7 +30,7 @@ order after it, its rows independent and listed in risk order.
 |---|---|---|---|---|
 | Steps 1–4: the doors on `duckdb-neo`; the vocabulary, quality, metrics and futures kits; the routes and the docket on the engine | Built; the gates passed (below) | `crates/duck`, `../gloss/kits`, `apps`, `serverd` | | |
 | Step 5: the cut-over — DuckDB the only engine, the session crates deleted, the image and the release carrying the extension, the docs and skills on the engine | Built on the laptop (below) | `.github/`, the image, `docs/`, `skills/`, the crates deleted | | |
-| Step 6a: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and an object store; glossval's slot image on the engine | Low to medium: the extension's hour on a runner; the secret DuckDB's httpfs reads | `.github/`, the Dockerfile, `crates/duck` (the secret at open), glossval's `evals/serverd.Dockerfile` | Next | |
+| Step 6a: the runner's green — CI and a tag build on the pushed extension; the deployment shape run once against a Postgres catalog and a bucket; glossval's lanes on the engine | Low to medium: the extension's hour on a runner. Built: the warehouse's credential (a key pair, or the platform's own account for a `gs://` bucket, minted before the lake opens and anew before it expires); glossval's slot is the server's own image | `.github/`, the Dockerfile, glossval's Rust crate (it names the deleted crates) | Next | |
 | Step 6b: the renames — this repository `glossdb`, the extension's `glossql`; SPEC.md, `grammar.ebnf` and `corpus/` move to the language's repository with the corpus check (every ```glossql block parses on the engine, every ```glossql-gap fails: measured, 27 of 28 fixtures do; fixture 17 carries a `driver` key SPEC §3 never lists, the lead's to retag); the binary, the image, the tap, the env names follow the lead's call | Medium: every consumer names the repositories — the tap formula's URL, the image name glossdeploy pins, the clone in CI and the Dockerfile, the sibling paths in glossval, the memory directory keyed by the checkout's path | both repositories, `.github/`, glossdeploy, glossval, `CLAUDE.md`, the skills | After 6a | |
 | Step 6c: DataFusion and the parser crate out — the facade's own batch stream, the export door on the engine's `COPY … TO`, the call shape from the statements' text, the docs, skills and SPEC harness on the engine's parser | Built: 546 crates to 388 (measured by `cargo tree`); `crates/parser` deleted, `corpus/` beside SPEC.md | | | |
 | Step 6d: the validation detector — `rate_tolerance` in the quality kit, bands the authored tolerance against the check voice per subject; the checks arm names it | Built: the kit's test runs the three bands (yellow, green, red); the pin moved | | | |
@@ -103,17 +103,20 @@ checked by a machine again, and a release that carries the engine.
 What stands: `ci.yml` builds the extension from `crates/duck/gloss.ref`
 into the actions cache and runs the suites on it; the Dockerfile
 builds the extension in its own stage; `release-macos.sh` refuses
-unless `../gloss` is at the pin. What is open: the extension's branch
-is not pushed, so a runner cannot check the commit out; the
-deployment shape (`Config::deployment`) has no secret for the object
-store, which DuckDB's httpfs reads from `CREATE SECRET`; glossval's
-slot image (`evals/serverd.Dockerfile`) builds the binary alone and
-needs the same stage; glossdeploy names four variables the server no
-longer reads (`GLOSSQL_ALLOWED_HOSTS`, `_ORGANIZATION`, `_TABICL_URL`,
-`_TABICL_AUDIENCE`), which move at the next deploy. Done when: CI
-green, a tag builds and pushes the image, one run of the image against
-a Postgres catalog and a bucket lands a table, the eval's slot image
-serves a lane.
+unless `../gloss` is at the pin. The warehouse in an object store is
+reached with the key pair the environment names, or, a `gs://` bucket
+without one, as the account the platform runs the server as: the
+access token minted from the metadata server before the lake opens,
+held in a secret scoped to the warehouse, minted anew before it
+expires. What is open: the extension's branch is not pushed, so a
+runner cannot check the commit out and the Dockerfile's clone fails
+off the laptop; glossval's Rust crate names the deleted crates, so its
+seeder and its goldens capture do not build; glossdeploy names four
+variables the server no longer reads (`GLOSSQL_ALLOWED_HOSTS`,
+`_ORGANIZATION`, `_TABICL_URL`, `_TABICL_AUDIENCE`), which move at the
+next deploy. Done when: CI green, a tag builds and pushes the image,
+one run of the image against a Postgres catalog and a bucket lands a
+table, the eval's slot serves a lane.
 
 **The issues, for 6f.** Close as built or gone: #19 (the landing path),
 #21 (the cube's stack), #23 (the collapse per witness), #33 (the

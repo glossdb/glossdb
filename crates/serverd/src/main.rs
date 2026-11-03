@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use config::{Config, usage};
 use glossql_glossary::{Actor, ActorKind};
+use glossql_serverd::engine::{WarehouseCredential, store_kind};
 use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
 fn main() {
@@ -109,13 +110,31 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
     duck.service = config.service.clone();
     duck.memory_limit_mb = config.memory_limit_mb;
     duck.spill_limit_mb = config.spill_limit_mb;
+    let (credential, held) = warehouse_credential(&config.catalog, &duck.warehouse).await?;
+    duck.warehouse_credential = credential;
     tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
     let plane = Plane::open(duck).await?;
+    if let (Some(ttl), Some(sink)) = (held, plane.warehouse_sink()) {
+        service::keep_minting(
+            move |token| sink.set(token),
+            service::Mint::Access,
+            Some(ttl),
+        )
+        .await;
+    }
     match plane.service() {
         Some(service) => {
             tracing::info!(url = %service.url, "model service");
             if let Some(audience) = &service.audience {
-                service::keep_minting(plane.token_sink(), audience.clone()).await;
+                let sink = plane.token_sink();
+                service::keep_minting(
+                    move |token| sink.set(token),
+                    service::Mint::Identity {
+                        audience: audience.clone(),
+                    },
+                    None,
+                )
+                .await;
             }
         }
         None => tracing::info!(
@@ -124,6 +143,31 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
         ),
     }
     Ok(plane)
+}
+
+/// The warehouse's credential: the key pair the environment names, or,
+/// a Google bucket named without one, the access token the platform
+/// mints for the account this process runs as — held before the lake
+/// opens on it, since the record's files are in the warehouse too, and
+/// minted anew from then on (its life comes back beside it). A
+/// directory warehouse needs none.
+async fn warehouse_credential(
+    catalog: &config::Catalog,
+    warehouse: &str,
+) -> Result<(Option<WarehouseCredential>, Option<std::time::Duration>), String> {
+    match (&catalog.credential, store_kind(warehouse)) {
+        (Some(keys), Some(_)) => Ok((Some(keys.clone()), None)),
+        (None, Some("gcs")) => {
+            let (token, ttl) = service::first(&service::Mint::Access).await.map_err(|e| {
+                format!(
+                    "the warehouse {warehouse} needs a key pair (GLOSSQL_WAREHOUSE_KEY_ID, \
+                         GLOSSQL_WAREHOUSE_SECRET) or the platform's own account: {e}"
+                )
+            })?;
+            Ok((Some(WarehouseCredential::Bearer(token)), Some(ttl)))
+        }
+        _ => Ok((None, None)),
+    }
 }
 
 /// A fresh workspace receives the shipped system before any door

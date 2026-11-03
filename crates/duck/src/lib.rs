@@ -236,10 +236,101 @@ pub struct Service {
     pub audience: Option<String>,
 }
 
+/// How the engine reaches a warehouse in an object store: a key pair —
+/// S3's, or the HMAC pair a Google service account holds — or a bearer
+/// the host mints for the account this process runs as, refreshed
+/// through `Plane::warehouse_sink`. The secret is scoped to the
+/// warehouse's location. A warehouse under a directory needs none.
+#[derive(Clone)]
+pub enum WarehouseCredential {
+    Keys {
+        key_id: String,
+        secret: String,
+        /// S3's region; GCS has none.
+        region: Option<String>,
+    },
+    Bearer(String),
+}
+
+/// The secret and the bearer stay out of every log.
+impl std::fmt::Debug for WarehouseCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WarehouseCredential::Keys { key_id, region, .. } => f
+                .debug_struct("Keys")
+                .field("key_id", key_id)
+                .field("region", region)
+                .finish_non_exhaustive(),
+            WarehouseCredential::Bearer(_) => f.write_str("Bearer(..)"),
+        }
+    }
+}
+
+/// The secret type httpfs keeps for a warehouse location's scheme;
+/// none for a path under a directory.
+pub fn store_kind(warehouse: &str) -> Option<&'static str> {
+    let scheme = warehouse.split("://").next()?;
+    if scheme == warehouse {
+        return None;
+    }
+    match scheme {
+        "s3" => Some("s3"),
+        "gs" | "gcs" => Some("gcs"),
+        "r2" => Some("r2"),
+        _ => None,
+    }
+}
+
+/// The statement that holds the warehouse's credential in the engine's
+/// secret manager, replacing the one before it.
+fn secret_sql(kind: &str, credential: &WarehouseCredential, scope: &str) -> String {
+    let quoted = |text: &str| text.replace('\'', "''");
+    let fields = match credential {
+        WarehouseCredential::Keys {
+            key_id,
+            secret,
+            region,
+        } => {
+            let mut fields = format!("KEY_ID '{}', SECRET '{}'", quoted(key_id), quoted(secret));
+            if let Some(region) = region {
+                fields.push_str(&format!(", REGION '{}'", quoted(region)));
+            }
+            fields
+        }
+        WarehouseCredential::Bearer(token) => format!("BEARER_TOKEN '{}'", quoted(token)),
+    };
+    format!(
+        "CREATE OR REPLACE SECRET warehouse (TYPE {kind}, {fields}, SCOPE '{}')",
+        quoted(scope)
+    )
+}
+
 /// Sets the bearer every service call sends, for the host that mints it.
 #[derive(Clone)]
 pub struct TokenSink {
     instance: Arc<Instance>,
+}
+
+/// Replaces the warehouse's bearer, for the host that mints it anew.
+#[derive(Clone)]
+pub struct WarehouseSink {
+    instance: Arc<Instance>,
+    kind: &'static str,
+    scope: String,
+}
+
+impl WarehouseSink {
+    pub fn set(&self, token: &str) -> Result<(), SessionError> {
+        let conn = self.instance.connect()?;
+        run(
+            &conn,
+            &secret_sql(
+                self.kind,
+                &WarehouseCredential::Bearer(token.to_string()),
+                &self.scope,
+            ),
+        )
+    }
 }
 
 impl TokenSink {
@@ -438,6 +529,9 @@ pub struct Config {
     pub catalog: String,
     /// The lake's data path.
     pub warehouse: String,
+    /// How the engine reaches the warehouse when it is in an object
+    /// store; none for a directory.
+    pub warehouse_credential: Option<WarehouseCredential>,
     pub row_cap: usize,
     /// The model service, where the environment names one.
     pub service: Option<Service>,
@@ -503,6 +597,7 @@ impl Config {
             extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
             warehouse: workspace.join("warehouse").display().to_string(),
+            warehouse_credential: None,
             row_cap: DEFAULT_ROW_CAP,
             service: None,
             memory_limit_mb: None,
@@ -808,12 +903,21 @@ impl Plane {
                 run(&conn, &format!("LOAD '{}'", config.extension.display()))?;
                 run(&conn, "INSTALL ducklake")?;
                 run(&conn, "LOAD ducklake")?;
-                // The service named once for the instance, and httpfs
-                // loaded for the POST its calls make; unnamed, a call
-                // refuses by name before any HTTP client is asked.
-                if let Some(service) = &config.service {
+                // httpfs for the POST a service call makes and for a
+                // warehouse in an object store; the warehouse's credential
+                // held before the lake is attached, since the record's own
+                // files are in the warehouse too.
+                let store = store_kind(&config.warehouse);
+                if config.service.is_some() || store.is_some() {
                     run(&conn, "INSTALL httpfs")?;
                     run(&conn, "LOAD httpfs")?;
+                }
+                if let (Some(kind), Some(credential)) = (store, &config.warehouse_credential) {
+                    run(&conn, &secret_sql(kind, credential, &config.warehouse))?;
+                }
+                // The service named once for the instance; unnamed, a
+                // call refuses by name before any HTTP client is asked.
+                if let Some(service) = &config.service {
                     run(
                         &conn,
                         &format!(
@@ -887,6 +991,16 @@ impl Plane {
         TokenSink {
             instance: self.instance.clone(),
         }
+    }
+
+    /// Where the host replaces the warehouse's bearer when it mints one
+    /// anew; none while the warehouse is under a directory.
+    pub fn warehouse_sink(&self) -> Option<WarehouseSink> {
+        store_kind(&self.config.warehouse).map(|kind| WarehouseSink {
+            instance: self.instance.clone(),
+            kind,
+            scope: self.config.warehouse.clone(),
+        })
     }
 
     /// The pages the door serves, held here and published as rows of
@@ -1598,6 +1712,93 @@ mod tests {
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
         assert!(reads_record("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_record("SELECT * FROM fin.orders"));
+    }
+
+    /// A warehouse in an object store is known by its scheme, and its
+    /// credential is one scoped secret, a key pair or a bearer.
+    #[test]
+    fn the_warehouse_credential_is_one_scoped_secret() {
+        assert_eq!(store_kind("gs://lake/warehouse"), Some("gcs"));
+        assert_eq!(store_kind("s3://lake/warehouse/"), Some("s3"));
+        assert_eq!(store_kind("/var/lib/glossql/warehouse"), None);
+        assert_eq!(store_kind("abfss://lake@acct.dfs.core.windows.net/w"), None);
+        let keys = WarehouseCredential::Keys {
+            key_id: "GOOG1E".into(),
+            secret: "s'cret".into(),
+            region: None,
+        };
+        assert_eq!(
+            secret_sql("gcs", &keys, "gs://lake/warehouse"),
+            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, KEY_ID 'GOOG1E', SECRET 's''cret', \
+             SCOPE 'gs://lake/warehouse')"
+        );
+        let keys = WarehouseCredential::Keys {
+            key_id: "AKIA".into(),
+            secret: "x".into(),
+            region: Some("eu-west-1".into()),
+        };
+        assert_eq!(
+            secret_sql("s3", &keys, "s3://lake/warehouse"),
+            "CREATE OR REPLACE SECRET warehouse (TYPE s3, KEY_ID 'AKIA', SECRET 'x', \
+             REGION 'eu-west-1', SCOPE 's3://lake/warehouse')"
+        );
+        assert_eq!(
+            secret_sql(
+                "gcs",
+                &WarehouseCredential::Bearer("t".into()),
+                "gs://lake/w"
+            ),
+            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, BEARER_TOKEN 't', SCOPE 'gs://lake/w')"
+        );
+    }
+
+    /// The sink replaces the warehouse's secret on the instance, where
+    /// httpfs is loaded; a directory warehouse has no sink.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_warehouse_sink_replaces_the_secret() {
+        let dir = tempfile::tempdir().expect("a directory");
+        let mut config = Config::laptop(dir.path());
+        config.service = Some(Service {
+            url: "http://127.0.0.1:1".into(),
+            token: Some("k".into()),
+            audience: None,
+        });
+        let plane = Plane::open(config).await.expect("opens");
+        assert!(plane.warehouse_sink().is_none());
+        let sink = WarehouseSink {
+            instance: plane.instance.clone(),
+            kind: "gcs",
+            scope: "gs://lake/warehouse".into(),
+        };
+        sink.set("t1").expect("set");
+        sink.set("t2").expect("replaced");
+        let channel = plane
+            .channel(
+                Actor {
+                    kind: ActorKind::Agent,
+                    id: "t".into(),
+                },
+                None,
+            )
+            .await
+            .expect("a channel");
+        let rows = rows_as_text(
+            &channel
+                .batches(
+                    "SELECT name, type, scope::VARCHAR FROM duckdb_secrets() ORDER BY name",
+                    &[],
+                )
+                .await
+                .expect("reads"),
+        );
+        assert_eq!(
+            rows,
+            vec![vec![
+                Some("warehouse".to_string()),
+                Some("gcs".to_string()),
+                Some("['gs://lake/warehouse']".to_string())
+            ]]
+        );
     }
 
     /// The service is named once for the instance: the settings every

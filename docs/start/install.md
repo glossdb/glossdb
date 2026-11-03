@@ -67,6 +67,7 @@ docker run --rm -p 8080:8080 \
   -e GLOSSQL_CLIENT_ID=… -e GLOSSQL_CLIENT_SECRET=… \
   -e GLOSSQL_CATALOG_SQL=postgres://glossql:…@db.example:5432/glossql \
   -e GLOSSQL_WAREHOUSE=gs://lake/warehouse \
+  -e GLOSSQL_WAREHOUSE_KEY_ID=… -e GLOSSQL_WAREHOUSE_SECRET=… \
   -e GLOSSQL_SERVICE_URL=https://… -e GLOSSQL_SERVICE_TOKEN=… \
   ghcr.io/glossdb/glossql:0.3.0
 ```
@@ -104,7 +105,9 @@ platform injects the variables, secrets included:
 | `GLOSSQL_CLIENT_SECRET` | that application's secret, used by the browser login on `/app` |
 | `GLOSSQL_INSECURE_OPEN` | `true` (the literal) serves every door without authentication — no issuer needed, no login served, every caller recorded as `insecure_dev_mode` with the door's standing. The name is the warning: a laptop trying the server out, never a deployment |
 | `GLOSSQL_CATALOG_SQL` | the lake's catalog on a Postgres server (`postgres://user:password@host:5432/db`) instead of the workspace directory's own file — the same catalog in a database that outlives a container. Unset, `catalog.ducklake` in the workspace serves |
-| `GLOSSQL_WAREHOUSE` | the lake's files in an object store instead of under `--workspace`: `s3://bucket/prefix` or `gs://bucket/prefix`, reached through the engine's `httpfs` extension with the credentials the engine's secrets hold. With both this and `GLOSSQL_CATALOG_SQL` named the server needs no workspace directory |
+| `GLOSSQL_WAREHOUSE` | the lake's files in an object store instead of under `--workspace`: `s3://bucket/prefix` or `gs://bucket/prefix`, reached through the engine's `httpfs` extension with the key pair below. A `gs://` bucket named without the pair is reached as the service account the platform runs the server as (Cloud Run, GKE, Compute Engine): the access token is minted from the metadata server before the lake opens and minted anew before it expires, no key anywhere. With both this and `GLOSSQL_CATALOG_SQL` named the server needs no workspace directory |
+| `GLOSSQL_WAREHOUSE_KEY_ID`, `GLOSSQL_WAREHOUSE_SECRET` | the store's key pair, together: S3's access key and secret, or the HMAC pair of a Google service account. Held in the engine's secret manager, scoped to the warehouse, never logged |
+| `GLOSSQL_WAREHOUSE_REGION` | the bucket's region, for S3 |
 | `GLOSSQL_SERVICE_URL` | the model service's address; each call's route is appended — the walk, the forecast, the what-if. Unnamed, those measurements refuse by name and everything else serves |
 | `GLOSSQL_SERVICE_TOKEN` | the bearer the service expects: a key it was started with, sent as-is |
 | `GLOSSQL_SERVICE_AUDIENCE` | instead of a token, on GCP: the service's URL. The server mints a Google-signed ID token for it from the metadata server, as the service account it runs as, and refreshes it before it expires — no key anywhere |
