@@ -545,69 +545,39 @@ fn words(statement: &str) -> Vec<String> {
     out
 }
 
-const WRITES: &str = "tables come from recipes, a metric is a QUERY gloss, and `DELETE FROM glossary` retires a word";
-
-/// What a standard actor's statement may be: a read, one of the
-/// language's, `DELETE FROM glossary` (SPEC §5.3), a transaction's
-/// bounds. Everything that alters schema, data, the session or the
-/// instance directly is closed, and the refusal says why: tables come
-/// from recipes, a metric is a QUERY gloss, the actor rides the
-/// transport, the lake is attached at open. A `WITH` is asked of the
-/// parser, since one may end in an `INSERT`. Text the parser refuses
-/// passes here and fails where it runs, with the parser's own words.
-fn admitted(conn: &Connection, sql: &str) -> Result<(), SessionError> {
+/// What a door opens: the workspace, never the engine. A standard
+/// actor lands tables, writes rows, copies files in and out, drops what
+/// it made, declares and glosses, reads. The engine's own knobs are
+/// closed, and the refusal names which: its settings and the session's
+/// variables (`SET`, `RESET`, a `PRAGMA` switch), where the actor and
+/// the workspace ride; what it attaches (`ATTACH`, `DETACH`); its
+/// extensions (`INSTALL`, `LOAD`); the lake's maintenance (`CALL`,
+/// `IMPORT DATABASE`, `EXPORT DATABASE`). A pragma call, with
+/// parentheses, is a read and passes. A root actor ([`Config::root`])
+/// has the knobs.
+fn admitted(sql: &str) -> Result<(), SessionError> {
     let words = words(sql);
     let first = words.first().map(String::as_str).unwrap_or("");
     let second = words.get(1).map(String::as_str).unwrap_or("");
     let (statement, why) = match (first, second) {
-        (
-            "DECLARE" | "GLOSS" | "PROBE" | "USE" | "SELECT" | "FROM" | "VALUES" | "TABLE"
-            | "PIVOT" | "UNPIVOT" | "DESCRIBE" | "EXPLAIN" | "SHOW" | "SUMMARIZE" | "BEGIN"
-            | "COMMIT" | "ROLLBACK" | "ABORT",
-            _,
-        ) => return Ok(()),
-        ("IMPORT", "DATABASE") => ("IMPORT DATABASE".to_string(), WRITES),
-        ("IMPORT", _) => return Ok(()),
-        ("DELETE", "FROM") if deletes_the_glossary(&words) => return Ok(()),
-        ("WITH", _) if is_select(conn, sql)? => return Ok(()),
+        ("PRAGMA", _) if sql.contains('(') => return Ok(()),
         ("SET" | "RESET" | "PRAGMA", _) => (
             first.to_string(),
-            "the actor rides the transport, and the session is the door's",
+            "the engine's settings and the session's variables are the door's, and the actor and the workspace ride them",
         ),
-        ("ATTACH" | "DETACH" | "INSTALL" | "LOAD", _) => (
+        ("ATTACH" | "DETACH", _) => (
             first.to_string(),
-            "the lake and the extensions are attached at open",
+            "what the engine attaches is the deployment's: the lake at open, a relational source by root",
         ),
-        _ => (first.to_string(), WRITES),
+        ("INSTALL" | "LOAD" | "FORCE", _) => (first.to_string(), "the extensions are the build's"),
+        ("CALL", _) => (first.to_string(), "the lake's maintenance is root's"),
+        ("IMPORT" | "EXPORT", "DATABASE") => (
+            format!("{first} DATABASE"),
+            "the lake is the workspace, whole",
+        ),
+        _ => return Ok(()),
     };
     Err(SessionError::Closed { statement, why })
-}
-
-/// `DELETE FROM glossary`, the table bare or qualified, with or
-/// without a `WHERE`.
-fn deletes_the_glossary(words: &[String]) -> bool {
-    words
-        .iter()
-        .skip(2)
-        .take_while(|w| !matches!(w.as_str(), "WHERE" | "USING" | "RETURNING"))
-        .last()
-        .is_some_and(|w| w == "GLOSSARY")
-}
-
-/// Whether the engine reads `sql` as a `SELECT`: a `WITH` that ends in
-/// an `INSERT` is a write.
-fn is_select(conn: &Connection, sql: &str) -> Result<bool, SessionError> {
-    let (_, _, batches) = arrow_batches(
-        conn,
-        "SELECT coalesce(json_extract_string(json_serialize_sql($statement), '$.error_type'), '') AS kind",
-        &[("statement".to_string(), sql.to_string())],
-    )?;
-    let kind = rows_as_text(&batches)
-        .into_iter()
-        .next()
-        .and_then(|row| row.into_iter().next().flatten())
-        .unwrap_or_default();
-    Ok(kind != "not implemented")
 }
 
 fn is_read(statement: &str) -> bool {
@@ -660,10 +630,9 @@ pub struct Config {
     /// megabytes; unset, the engine's own defaults.
     pub memory_limit_mb: Option<u64>,
     pub spill_limit_mb: Option<u64>,
-    /// The actors that run every statement at the doors: DDL, DML,
-    /// `COPY`, `SET`, `ATTACH`, the lot. Everyone else runs the
-    /// language, the reads and `DELETE FROM glossary` ([`admitted`]).
-    /// Actor ids; none by default.
+    /// The actors that have the engine's own knobs at the doors:
+    /// `SET`, `ATTACH`, `INSTALL`, `LOAD`, `CALL`. Everyone else has
+    /// the workspace ([`admitted`]). Actor ids; none by default.
     pub root: Vec<String>,
 }
 
@@ -1415,8 +1384,8 @@ pub struct Session {
     actor: Actor,
     dataset: Option<String>,
     row_cap: usize,
-    /// Whether the actor is one of [`Config::root`]: every statement
-    /// runs; else [`admitted`] judges each one first.
+    /// Whether the actor is one of [`Config::root`]: the engine's knobs
+    /// are theirs; else [`admitted`] judges each statement first.
     root: bool,
 }
 
@@ -1484,7 +1453,7 @@ impl Session {
                 let ran = if root {
                     execute_one(&conn, sql, cap)
                 } else {
-                    admitted(&conn, sql).and_then(|()| execute_one(&conn, sql, cap))
+                    admitted(sql).and_then(|()| execute_one(&conn, sql, cap))
                 };
                 match ran {
                     Ok(outcome) => {
@@ -1528,20 +1497,8 @@ impl Session {
 
     /// The gate a standard actor's text passes before it runs
     /// ([`admitted`]); a root actor's passes untouched.
-    async fn admit(&self, sql: &str) -> Result<(), SessionError> {
-        if self.root {
-            return Ok(());
-        }
-        let conn = Arc::clone(&self.conn);
-        let sql = sql.to_string();
-        tokio::task::spawn_blocking(move || -> Result<(), SessionError> {
-            let conn = conn
-                .lock()
-                .map_err(|e| SessionError::Engine(e.to_string()))?;
-            admitted(&conn, &sql)
-        })
-        .await
-        .map_err(|e| SessionError::Engine(e.to_string()))?
+    fn admit(&self, sql: &str) -> Result<(), SessionError> {
+        if self.root { Ok(()) } else { admitted(sql) }
     }
 
     /// One read with named parameters, `$name` in the SQL.
@@ -1586,7 +1543,7 @@ impl Session {
         if pieces.len() != 1 || !is_read(&pieces[0]) {
             return Err(SessionError::NotOneRead);
         }
-        self.admit(&pieces[0]).await?;
+        self.admit(&pieces[0])?;
         let dir = spill_dir();
         std::fs::create_dir_all(&dir).map_err(|e| SessionError::Engine(e.to_string()))?;
         let nanos = std::time::SystemTime::now()
@@ -1627,7 +1584,7 @@ impl Session {
             return Err(SessionError::NotOneRead);
         }
         let one = pieces[0].clone();
-        self.admit(&one).await?;
+        self.admit(&one)?;
         let record = reads_record(&one);
         // an extraction is the language's, not a SELECT to page: it runs
         // as written, and lands one row per function

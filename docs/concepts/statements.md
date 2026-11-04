@@ -72,21 +72,22 @@ row.
 
 ## What the door closes
 
-Every statement at a door passes an allowlist first. A read passes:
-`SELECT`, `FROM`, `WITH`, `VALUES`, `DESCRIBE`, `EXPLAIN`, `SHOW`,
-`SUMMARIZE` (`DESCRIBE` over any name a read can plan: a landed
-table, a store relation, a shipped read, a metrics read with its
-arguments; `SHOW TABLES` lists the bound dataset's tables and its
-groundings' views, typed). The language's statements pass, `DELETE
-FROM glossary` passes, and so do `BEGIN`, `COMMIT` and `ROLLBACK`.
-Everything that alters schema, data, the session or the instance
-directly is closed, with the reason in the refusal: `CREATE`, `ALTER`,
-`DROP`, `INSERT`, `UPDATE`, `DELETE` elsewhere, `COPY`, `SET`,
-`RESET`, `PRAGMA`, `ATTACH`, `INSTALL`, `LOAD`. Tables come from
-recipes, a metric is a QUERY gloss, a word is retired with `DELETE
-FROM glossary`, and the actor rides the transport. A `WITH` is asked
-of the parser, since one may end in an `INSERT`. An actor the
-deployment names in `GLOSSDB_ROOT` runs everything.
+A door opens the workspace, never the engine. Every actor lands
+tables, writes rows, copies files in and out, drops what it made,
+declares and glosses, and reads (`DESCRIBE` over any name a read can
+plan: a landed table, a store relation, a shipped read, a metrics read
+with its arguments; `SHOW TABLES` lists the bound dataset's tables and
+its groundings' views, typed). The language's statements do the same
+by name: a recipe lands a table, a grounding is a view, a stop ends
+it. Closed is the engine itself, and the refusal names the knob: its
+settings and the session's variables (`SET`, `RESET`, a `PRAGMA`
+switch), where the actor and the workspace ride; what it attaches
+(`ATTACH`, `DETACH`); its extensions (`INSTALL`, `LOAD`); the lake's
+maintenance (`CALL`, `IMPORT DATABASE`, `EXPORT DATABASE`). A pragma
+call with parentheses is a read. An actor the deployment names in
+`GLOSSDB_ROOT` has the knobs: the operator who attaches a relational
+source or expires the lake's snapshots. `DELETE FROM glossary` (SPEC
+§5.3) passes the door; whether the store takes it is the extension's.
 
 Statement identity is content: an unchanged re-declaration is a no-op;
 a changed recipe supersedes and re-lands its table.

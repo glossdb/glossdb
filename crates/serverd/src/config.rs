@@ -106,9 +106,9 @@ pub struct Config {
     /// The model service, named once, where the environment names it.
     pub service: Option<glossdb_serverd::engine::Service>,
     pub catalog: Catalog,
-    /// `GLOSSDB_ROOT`: the actor ids that run every statement at the
-    /// doors; everyone else runs the language, the reads and `DELETE
-    /// FROM glossary`. Comma-separated; nobody by default.
+    /// `GLOSSDB_ROOT`: the actor ids that have the engine's own knobs
+    /// at the doors; everyone else has the workspace. Comma-separated;
+    /// nobody by default.
     pub root: Vec<String>,
 }
 

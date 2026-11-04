@@ -14,7 +14,7 @@ use tower::ServiceExt;
 
 use crate::common;
 
-async fn app() -> (Router, tempfile::TempDir, Arc<glossdb_serverd::Plane>) {
+async fn app() -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
         plane.with_pages(
@@ -23,13 +23,8 @@ async fn app() -> (Router, tempfile::TempDir, Arc<glossdb_serverd::Plane>) {
         ),
     );
     (
-        router(
-            Arc::clone(&plane),
-            DoorConfig::default(),
-            Access::Gated(common::login()),
-        ),
+        router(plane, DoorConfig::default(), Access::Gated(common::login())),
         dir,
-        plane,
     )
 }
 
@@ -120,7 +115,7 @@ fn text(row: &Value, key: &str) -> String {
 
 /// A workspace with the dataset `fin` and a daily ledger landed.
 async fn fin() -> (Router, tempfile::TempDir) {
-    let (app, dir, plane) = app().await;
+    let (app, dir) = app().await;
     let body = expect_ok(
         mcp_on(
             app.clone(),
@@ -131,18 +126,13 @@ async fn fin() -> (Router, tempfile::TempDir) {
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    // the table lands as the harness's root actor: at the agent's door a
-    // CREATE is closed, and these tests are about the routes over it
-    plane
-        .execute(
-            common::human(),
-            Some("fin"),
-            "CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, \
-             (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund \
-             FROM range(120) r(i)",
-        )
-        .await
-        .expect("the ledger lands");
+    say(
+        &app,
+        "CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, \
+         (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund \
+         FROM range(120) r(i)",
+    )
+    .await;
     (app, dir)
 }
 

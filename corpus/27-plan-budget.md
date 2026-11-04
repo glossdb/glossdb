@@ -197,9 +197,8 @@ grain asked, as the actual does; it spreads nothing.
 - **A second SQL inside the metric's grounding** — one body carrying
   `sql` and `plan`, superseding as one. Dies on the slot and the
   schema. The standard grounding schema would grow a key, in SPEC
-  §5.2 and the extension's grounding contract, and every QUERY body —
-  fixture 20's sample frames included — could carry a plan where it
-  means nothing. One actor kind would carry both: an agent's actual
+  §5.2 and the extension's grounding contract, and every QUERY body
+  could carry a plan where it means nothing. One actor kind would carry both: an agent's actual
   beside a human's plan is not a state one slot holds, and whoever
   corrects the plan re-glosses the actual's SQL with it. One plan per
   metric: the adopted budget would be the superseded body, in the

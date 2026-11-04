@@ -6,9 +6,9 @@ query syntax, the expressions, the functions by family, the data
 types. A function's name, signature or absence is a lookup there,
 not a guess. This page is what the guide cannot say.
 
-The door serves reads. DDL, DML, `COPY` and `SET` are closed: tables
-come from recipes, a grounding is the view, a word is retired with
-`DELETE FROM glossary`, and the actor rides the transport. A named argument to the door's
+The door opens the workspace: tables, rows, files, views, the
+language, the reads. Closed is the engine: `SET` (the actor rides the
+transport), `ATTACH`, `INSTALL`, `LOAD`, `CALL`. A named argument to the door's
 own table macros spells `:=` (`metric_series(grain := 'month')`); the
 engine's functions take their own arguments as the guide spells them.
 

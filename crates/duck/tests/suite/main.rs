@@ -34,8 +34,8 @@ fn extension_present() -> bool {
     present
 }
 
-/// A workspace whose two test actors are root: the setup lands tables
-/// outright. The door's gate has a test of its own below.
+/// A workspace whose two test actors are root. The door's gate has a
+/// test of its own below.
 async fn plane() -> (tempfile::TempDir, Plane) {
     let dir = tempfile::tempdir().expect("a tempdir");
     let mut config = Config::laptop(dir.path());
@@ -44,12 +44,12 @@ async fn plane() -> (tempfile::TempDir, Plane) {
     (dir, plane)
 }
 
-/// A standard actor runs the language, the reads, `DELETE FROM
-/// glossary` and a transaction's bounds; what alters the workspace,
-/// the session or the instance directly is closed with a reason, in a
-/// sequence as its refused statement; a root actor runs it.
+/// A door opens the workspace, never the engine: a standard actor
+/// lands, writes, copies, drops, declares, glosses and reads; the
+/// engine's knobs are closed with a reason, in a sequence as the
+/// refused statement; a root actor has them.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_door_closes_what_a_standard_actor_may_not_run() {
+async fn the_door_opens_the_workspace_and_closes_the_engine() {
     if !extension_present() {
         return;
     }
@@ -63,17 +63,17 @@ async fn the_door_closes_what_a_standard_actor_may_not_run() {
         .await
         .unwrap();
     for (statement, word) in [
-        ("CREATE TABLE fin.t AS SELECT 1 AS x", "CREATE"),
         ("SET VARIABLE glossql_actor = 'human'", "SET"),
-        ("COPY (SELECT 1) TO 'nowhere.csv'", "COPY"),
+        ("RESET memory_limit", "RESET"),
+        ("PRAGMA enable_profiling", "PRAGMA"),
         ("ATTACH ':memory:' AS other", "ATTACH"),
         ("INSTALL spatial", "INSTALL"),
+        ("LOAD spatial", "LOAD"),
+        ("CALL ducklake_expire_snapshots('ws')", "CALL"),
         ("IMPORT DATABASE 'nowhere'", "IMPORT DATABASE"),
-        ("DELETE FROM glossql.aspects", "DELETE"),
-        ("-- a comment first\nDROP TABLE fin.t", "DROP"),
         (
-            "WITH t AS (SELECT 1 AS x) INSERT INTO glossql.aspects SELECT * FROM t",
-            "WITH",
+            "-- a comment first\nEXPORT DATABASE 'nowhere'",
+            "EXPORT DATABASE",
         ),
     ] {
         match agent.execute(statement).await {
@@ -87,16 +87,23 @@ async fn the_door_closes_what_a_standard_actor_may_not_run() {
         .unwrap_err()
         .to_string();
     assert!(
-        text.contains("`SET` is closed at this door: the actor rides the transport"),
+        text.contains("`SET` is closed at this door: the engine's settings"),
         "{text}"
     );
+    let csv = dir.path().join("t.csv").display().to_string();
     for statement in [
-        "SELECT 1 AS x",
-        "(SELECT 1 AS x)",
-        "WITH t AS (SELECT 1 AS x) SELECT x FROM t",
+        "CREATE TABLE fin.t AS SELECT 1 AS x",
+        "INSERT INTO fin.t VALUES (2)",
+        "UPDATE fin.t SET x = 3 WHERE x = 2",
+        "WITH more AS (SELECT 4 AS x) INSERT INTO fin.t SELECT x FROM more",
+        &format!("COPY fin.t TO '{csv}'"),
+        &format!("CREATE TABLE fin.back AS SELECT * FROM read_csv('{csv}')"),
+        "PRAGMA table_info('fin.t')",
         "DESCRIBE SELECT 1 AS x",
         "BEGIN TRANSACTION",
         "ROLLBACK",
+        "DROP TABLE fin.back",
+        "DROP TABLE fin.t",
     ] {
         agent
             .execute(statement)
@@ -118,7 +125,7 @@ async fn the_door_closes_what_a_standard_actor_may_not_run() {
         }
     }
     match agent
-        .execute("SELECT 1 AS x; CREATE TABLE fin.t AS SELECT 1 AS x; SELECT 2 AS y;")
+        .execute("SELECT 1 AS x; SET VARIABLE glossql_actor = 'human'; SELECT 2 AS y;")
         .await
     {
         Err(SessionError::Sequence {
@@ -133,7 +140,7 @@ async fn the_door_closes_what_a_standard_actor_may_not_run() {
         other => panic!("{other:?}"),
     }
     let root = plane.channel(human(), Some("fin")).await.unwrap();
-    root.execute("CREATE TABLE fin.t AS SELECT 1 AS x; SET VARIABLE glossql_actor = 'human';")
+    root.execute("SET VARIABLE glossql_actor = 'human'; PRAGMA enable_profiling;")
         .await
         .unwrap();
 }
