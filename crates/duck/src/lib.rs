@@ -545,6 +545,85 @@ fn words(statement: &str) -> Vec<String> {
     out
 }
 
+/// The store's table behind a `glossql.<relation>` view, as the
+/// extension's view text names it: the lake's metadata catalog holds
+/// the store, and the engine deletes through a table, never a view.
+fn store_table(conn: &Connection, relation: &str) -> Result<String, SessionError> {
+    let (_, _, batches) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT sql FROM duckdb_views() WHERE database_name = '{LAKE}' \
+             AND schema_name = 'glossql' AND view_name = '{relation}'"
+        ),
+        &[],
+    )?;
+    let text = one_cell(&batches).ok_or_else(|| {
+        SessionError::Engine(format!("the store has no `glossql.{relation}` view"))
+    })?;
+    let at = text.to_ascii_lowercase().rfind(" from ").ok_or_else(|| {
+        SessionError::Engine(format!("the `glossql.{relation}` view names no table"))
+    })?;
+    Ok(text[at + " from ".len()..]
+        .trim()
+        .trim_end_matches(';')
+        .trim()
+        .to_string())
+}
+
+/// SPEC §5.3's removal, `DELETE FROM glossary WHERE …`, pointed at the
+/// store's table: `glossql.glossary` is the extension's view over it,
+/// and the engine deletes through a table only. The name may be bare,
+/// `glossql.glossary` or the lake's full name, each part quoted or
+/// not; what follows the name rides unchanged. Any other statement is
+/// `None`.
+fn glossary_delete(sql: &str, table: &str) -> Option<String> {
+    let mut cursor = after_comments(sql);
+    for word in ["DELETE", "FROM"] {
+        let head = cursor.get(..word.len())?;
+        if !head.eq_ignore_ascii_case(word) {
+            return None;
+        }
+        let after = &cursor[word.len()..];
+        if !after.starts_with(char::is_whitespace) {
+            return None;
+        }
+        cursor = after.trim_start();
+    }
+    let mut parts: Vec<String> = Vec::new();
+    loop {
+        let (part, after) = match cursor.strip_prefix('"') {
+            Some(quoted) => {
+                let end = quoted.find('"')?;
+                (quoted[..end].to_ascii_lowercase(), &quoted[end + 1..])
+            }
+            None => {
+                let end = cursor
+                    .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                    .unwrap_or(cursor.len());
+                if end == 0 {
+                    return None;
+                }
+                (cursor[..end].to_ascii_lowercase(), &cursor[end..])
+            }
+        };
+        parts.push(part);
+        match after.strip_prefix('.') {
+            Some(more) => cursor = more,
+            None => {
+                cursor = after;
+                break;
+            }
+        }
+    }
+    let name: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let glossary = matches!(
+        name.as_slice(),
+        ["glossary"] | ["glossql", "glossary"] | [LAKE, "glossql", "glossary"]
+    );
+    let whole = cursor.is_empty() || cursor.starts_with(|c: char| c.is_whitespace() || c == ';');
+    (glossary && whole).then(|| format!("DELETE FROM {table}{cursor}"))
+}
+
 /// What a door opens: the workspace, never the engine. A standard
 /// actor lands tables, writes rows, copies files in and out, drops what
 /// it made, declares and glosses, reads. The engine's own knobs are
@@ -769,6 +848,9 @@ pub struct Plane {
     instance: Arc<Instance>,
     config: Config,
     pages: Arc<[DoorPage]>,
+    /// The store's table behind `glossql.glossary`, as the extension's
+    /// view names it: where `DELETE FROM glossary` runs.
+    glossary_table: Arc<str>,
 }
 
 impl std::fmt::Debug for Plane {
@@ -1040,7 +1122,7 @@ impl Plane {
     pub async fn open(config: Config) -> Result<Plane, SessionError> {
         let opened = tokio::task::spawn_blocking({
             let config = config.clone();
-            move || -> Result<(Environment, Instance), SessionError> {
+            move || -> Result<(Environment, Instance, String), SessionError> {
                 let (environment, instance, conn) = engine_instance(&config)?;
                 // httpfs for the POST a service call makes and for a
                 // warehouse in an object store; the warehouse's credential
@@ -1095,6 +1177,7 @@ impl Plane {
                 run(&conn, &format!("USE {LAKE}"))?;
                 run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(&conn, "PRAGMA glossql")?;
+                let glossary_table = store_table(&conn, "glossary")?;
                 for statement in split_statements(CORE) {
                     run(&conn, &statement)?;
                 }
@@ -1106,17 +1189,18 @@ impl Plane {
                     run(&conn, &statement)?;
                 }
                 run(&conn, &next_view(&conn)?)?;
-                Ok((environment, instance))
+                Ok((environment, instance, glossary_table))
             }
         })
         .await
         .map_err(|e| SessionError::Engine(e.to_string()))??;
-        let (environment, instance) = opened;
+        let (environment, instance, glossary_table) = opened;
         Ok(Plane {
             _environment: environment,
             instance: Arc::new(instance),
             config,
             pages: Arc::from(Vec::new()),
+            glossary_table: Arc::from(glossary_table),
         })
     }
 
@@ -1246,6 +1330,7 @@ impl Plane {
             dataset,
             root,
             row_cap: self.config.row_cap,
+            glossary_table: Arc::clone(&self.glossary_table),
         }))
     }
 
@@ -1387,6 +1472,8 @@ pub struct Session {
     /// Whether the actor is one of [`Config::root`]: the engine's knobs
     /// are theirs; else [`admitted`] judges each statement first.
     root: bool,
+    /// [`Plane::glossary_table`], for [`glossary_delete`].
+    glossary_table: Arc<str>,
 }
 
 impl std::fmt::Debug for Session {
@@ -1442,6 +1529,7 @@ impl Session {
         let text = text.to_string();
         let cap = self.row_cap;
         let root = self.root;
+        let glossary_table = Arc::clone(&self.glossary_table);
         tokio::task::spawn_blocking(move || -> Result<Vec<Outcome>, SessionError> {
             let conn = conn
                 .lock()
@@ -1449,7 +1537,9 @@ impl Session {
             let pieces: Vec<String> = split_statements(&text);
             let total = pieces.len();
             let mut outcomes = Vec::with_capacity(total);
-            for (i, sql) in pieces.iter().enumerate() {
+            for (i, piece) in pieces.iter().enumerate() {
+                let rewritten = glossary_delete(piece, &glossary_table);
+                let sql: &str = rewritten.as_deref().unwrap_or(piece);
                 let ran = if root {
                     execute_one(&conn, sql, cap)
                 } else {

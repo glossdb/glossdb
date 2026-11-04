@@ -110,20 +110,43 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
             .await
             .unwrap_or_else(|e| panic!("{statement}: {e}"));
     }
-    // SPEC §5.3's `DELETE FROM glossary` passes the gate; whether the
-    // store takes it is the extension's: here `glossql.glossary` is the
-    // lake-backed view, and the binder says so, never the gate
-    for statement in [
-        "DELETE FROM glossary WHERE aspect = 'none'",
-        "DELETE FROM glossql.glossary WHERE aspect = 'none'",
+    // SPEC §5.3's removal is a standard actor's too: the door runs
+    // `DELETE FROM glossary` on the store's table, since the engine
+    // deletes through a table and `glossql.glossary` is the view over it
+    agent
+        .execute(
+            "CREATE TABLE fin.orders AS SELECT 1 AS id, 2.5 AS amount;
+             GLOSS role ON orders.amount AS $${\"value\": \"measure\"}$$;",
+        )
+        .await
+        .unwrap();
+    let count = |outcomes: Vec<Outcome>| match outcomes.as_slice() {
+        [Outcome::Rows { batches, .. }] => rows_as_text(batches)[0][0].clone().unwrap(),
+        other => panic!("{other:?}"),
+    };
+    let glossed = agent
+        .execute("SELECT count(*) FROM glossary WHERE aspect = 'role'")
+        .await
+        .unwrap();
+    assert_eq!(count(glossed), "1");
+    for (statement, affected) in [
+        ("DELETE FROM glossary WHERE aspect = 'role'", 1),
+        ("delete from glossql.glossary where aspect = 'role'", 0),
+        (
+            "-- the lake's full name, quoted\nDELETE FROM ws.\"glossql\".\"glossary\" g WHERE g.aspect = 'role';",
+            0,
+        ),
     ] {
-        if let Err(e) = agent.execute(statement).await {
-            assert!(
-                !matches!(e, SessionError::Closed { .. }),
-                "{statement}: {e}"
-            );
+        match agent.execute(statement).await.unwrap().as_slice() {
+            [Outcome::Affected(n)] => assert_eq!(*n, affected, "{statement}"),
+            other => panic!("{statement}: {other:?}"),
         }
     }
+    let gone = agent
+        .execute("SELECT count(*) FROM glossary WHERE aspect = 'role'")
+        .await
+        .unwrap();
+    assert_eq!(count(gone), "0");
     match agent
         .execute("SELECT 1 AS x; SET VARIABLE glossql_actor = 'human'; SELECT 2 AS y;")
         .await

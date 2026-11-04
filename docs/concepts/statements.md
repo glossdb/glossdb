@@ -62,9 +62,12 @@ actor rides the connection and the engine stamps every statement
 - Plain SQL — tables, and the declaration relations (`functions`,
   `aspects`, `witnesses`, `sources`, `relationships`, `glossary`,
   `measurements`, `imports`) read as ordinary tables. Removal is
-  spelled as SQL — `DELETE FROM glossary WHERE …` — and currently
-  refuses: rows cannot yet be removed from the lake, so a slot is
-  superseded, never deleted.
+  spelled as SQL, `DELETE FROM glossary WHERE …`: the door runs it on
+  the store's table behind the view, for every actor. The glossary
+  spans the workspace's datasets; name the dataset in the `WHERE` to
+  stay in one. A deleted slot stops serving and the slot under it
+  serves again; a grounding's view stands until a gloss or a stop
+  replaces it, so retiring a metric is a stop.
 
 `subject::aspect` narrows a read to one declared aspect:
 `GLOSSARY(fin::dso)` is a metric's declaration and grounding in one
@@ -87,7 +90,7 @@ maintenance (`CALL`, `IMPORT DATABASE`, `EXPORT DATABASE`). A pragma
 call with parentheses is a read. An actor the deployment names in
 `GLOSSDB_ROOT` has the knobs: the operator who attaches a relational
 source or expires the lake's snapshots. `DELETE FROM glossary` (SPEC
-§5.3) passes the door; whether the store takes it is the extension's.
+§5.3) is open: the door runs it on the store's table.
 
 Statement identity is content: an unchanged re-declaration is a no-op;
 a changed recipe supersedes and re-lands its table.

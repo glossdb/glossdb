@@ -139,7 +139,7 @@ never adjudicated for you. Read the slots
 and re-gloss only if the evidence moved you: your new gloss supersedes
 your old one, and converged voices turn the band green. If the evidence
 still says you were right, leave the slot contested — a human closes
-it by conceding in their own slot. (Closure by striking a slot —
-`DELETE FROM glossary WHERE …` — is parked until the substrate can
-remove rows; the statement refuses and names this.)
+it by conceding in their own slot. (Striking a slot with
+`DELETE FROM glossary WHERE …` removes it from the record for good;
+concede in your own slot instead, which keeps the history.)
 Never change a gloss just to end a contest.
