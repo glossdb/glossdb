@@ -70,16 +70,23 @@ actor rides the connection and the engine stamps every statement
 `GLOSSARY(fin::dso)` is a metric's declaration and grounding in one
 row.
 
-## What the host refuses
+## What the door closes
 
-Substrate SQL runs behind an allowlist: queries pass, `DESCRIBE` and
-`EXPLAIN` pass (`DESCRIBE` over any name a read can plan: a landed
+Every statement at a door passes an allowlist first. A read passes:
+`SELECT`, `FROM`, `WITH`, `VALUES`, `DESCRIBE`, `EXPLAIN`, `SHOW`,
+`SUMMARIZE` (`DESCRIBE` over any name a read can plan: a landed
 table, a store relation, a shipped read, a metrics read with its
-arguments; `SHOW TABLES` lists the bound
-dataset's tables and its groundings' views, typed), `DROP TABLE` refuses while
-the table holds data or
-glosses, and everything else that would alter schema or data directly
-is refused. Tables come from recipes.
+arguments; `SHOW TABLES` lists the bound dataset's tables and its
+groundings' views, typed). The language's statements pass, `DELETE
+FROM glossary` passes, and so do `BEGIN`, `COMMIT` and `ROLLBACK`.
+Everything that alters schema, data, the session or the instance
+directly is closed, with the reason in the refusal: `CREATE`, `ALTER`,
+`DROP`, `INSERT`, `UPDATE`, `DELETE` elsewhere, `COPY`, `SET`,
+`RESET`, `PRAGMA`, `ATTACH`, `INSTALL`, `LOAD`. Tables come from
+recipes, a metric is a QUERY gloss, a word is retired with `DELETE
+FROM glossary`, and the actor rides the transport. A `WITH` is asked
+of the parser, since one may end in an `INSERT`. An actor the
+deployment names in `GLOSSDB_ROOT` runs everything.
 
 Statement identity is content: an unchanged re-declaration is a no-op;
 a changed recipe supersedes and re-lands its table.

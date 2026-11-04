@@ -106,6 +106,7 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
         ),
     };
     duck.row_cap = config.row_cap;
+    duck.root = config.root.clone();
     duck.service = config.service.clone();
     duck.memory_limit_mb = config.memory_limit_mb;
     duck.spill_limit_mb = config.spill_limit_mb;

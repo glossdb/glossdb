@@ -25,7 +25,7 @@ The engine reaches the store with GLOSSDB_WAREHOUSE_KEY_ID and \
 GLOSSDB_WAREHOUSE_SECRET (GLOSSDB_WAREHOUSE_REGION for S3), or, a gs:// \
 bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
-GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT.\n\
+GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT, GLOSSDB_ROOT.\n\
 {service}\
 the authorization arrangement is read from .env or the environment: \
 GLOSSDB_ISSUER, GLOSSDB_CLIENT_ID, GLOSSDB_CLIENT_SECRET, [GLOSSDB_AUDIENCE] \
@@ -106,6 +106,10 @@ pub struct Config {
     /// The model service, named once, where the environment names it.
     pub service: Option<glossdb_serverd::engine::Service>,
     pub catalog: Catalog,
+    /// `GLOSSDB_ROOT`: the actor ids that run every statement at the
+    /// doors; everyone else runs the language, the reads and `DELETE
+    /// FROM glossary`. Comma-separated; nobody by default.
+    pub root: Vec<String>,
 }
 
 /// The authorization arrangement: one issuer and one registered
@@ -188,6 +192,15 @@ impl Config {
                 }
             }),
             catalog: Catalog::from(&var, flags.workspace.as_deref())?,
+            root: var("GLOSSDB_ROOT")
+                .map(|ids| {
+                    ids.split(',')
+                        .map(str::trim)
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
             addr,
             doors,
             row_cap,

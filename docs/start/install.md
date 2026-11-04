@@ -92,6 +92,7 @@ flag wins where both are set.
 | `--row-cap <n>` | `GLOSSDB_ROW_CAP` | `200` | rows an MCP tool result ships before declaring `truncated` (data reads only; the record's reads arrive whole) |
 | `--memory-limit <megabytes>` | `GLOSSDB_MEMORY_LIMIT` | the engine's own, most of the box | the engine's memory ceiling. A sort or a hash aggregate that outgrows it spills to the temporary directory, up to `--spill-limit` |
 | `--spill-limit <megabytes>` | `GLOSSDB_SPILL_LIMIT` | the engine's own | how much of the disk the engine may spill onto, under the system's temporary directory. The disk's own number, set from the box |
+| — | `GLOSSDB_ROOT` | nobody | the actor ids, comma-separated, that run every statement at the doors. Everyone else runs the language, the reads and `DELETE FROM glossary`; DDL, DML, `COPY`, `SET`, `ATTACH`, `INSTALL` and `LOAD` are closed to them |
 
 Authorization is not a flag. A run with a workspace reads `.env` in
 the working directory, and the environment on top of it (a set

@@ -208,6 +208,40 @@ async fn the_query_door_refuses_a_read_the_engine_cannot_start() {
     assert!(error.contains("'x'"), "{error}");
 }
 
+/// The door's gate: a human at the query door is a standard actor
+/// unless the deployment names them root, so a `SET` that would take
+/// another standing is closed with its reason, and a `WITH` that ends
+/// in an `INSERT` is closed too, by the parser's verdict.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_query_door_closes_what_a_standard_actor_may_not_run() {
+    let (app, _dir) = app_on_fin().await;
+    for (statement, word) in [
+        (
+            "SET VARIABLE glossql_actor = 'human'",
+            "`SET` is closed at this door",
+        ),
+        (
+            "WITH t AS (SELECT 1 AS x) INSERT INTO glossql.aspects SELECT * FROM t",
+            "`WITH` is closed at this door",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/fin/query")
+                    .header(header::AUTHORIZATION, common::bearer("dev-human"))
+                    .body(Body::from(statement))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_client_error(), "{statement}");
+        let body = body_json(response).await;
+        let error = body["error"].as_str().unwrap();
+        assert!(error.contains(word), "{statement}: {error}");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_door_answers_a_statement_sequence_in_json() {
     let (app, _dir) = app_on_fin().await;

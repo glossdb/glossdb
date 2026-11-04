@@ -34,12 +34,108 @@ fn extension_present() -> bool {
     present
 }
 
+/// A workspace whose two test actors are root: the setup lands tables
+/// outright. The door's gate has a test of its own below.
 async fn plane() -> (tempfile::TempDir, Plane) {
     let dir = tempfile::tempdir().expect("a tempdir");
-    let plane = Plane::open(Config::laptop(dir.path()))
-        .await
-        .expect("the workspace opens");
+    let mut config = Config::laptop(dir.path());
+    config.root = vec![agent().id, human().id];
+    let plane = Plane::open(config).await.expect("the workspace opens");
     (dir, plane)
+}
+
+/// A standard actor runs the language, the reads, `DELETE FROM
+/// glossary` and a transaction's bounds; what alters the workspace,
+/// the session or the instance directly is closed with a reason, in a
+/// sequence as its refused statement; a root actor runs it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_door_closes_what_a_standard_actor_may_not_run() {
+    if !extension_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("a tempdir");
+    let mut config = Config::laptop(dir.path());
+    config.root = vec![human().id];
+    let plane = Plane::open(config).await.expect("the workspace opens");
+    let agent = plane.channel(agent(), None).await.unwrap();
+    agent
+        .execute("DECLARE DATASET fin SET (purpose: 'the gate'); USE fin;")
+        .await
+        .unwrap();
+    for (statement, word) in [
+        ("CREATE TABLE fin.t AS SELECT 1 AS x", "CREATE"),
+        ("SET VARIABLE glossql_actor = 'human'", "SET"),
+        ("COPY (SELECT 1) TO 'nowhere.csv'", "COPY"),
+        ("ATTACH ':memory:' AS other", "ATTACH"),
+        ("INSTALL spatial", "INSTALL"),
+        ("IMPORT DATABASE 'nowhere'", "IMPORT DATABASE"),
+        ("DELETE FROM glossql.aspects", "DELETE"),
+        ("-- a comment first\nDROP TABLE fin.t", "DROP"),
+        (
+            "WITH t AS (SELECT 1 AS x) INSERT INTO glossql.aspects SELECT * FROM t",
+            "WITH",
+        ),
+    ] {
+        match agent.execute(statement).await {
+            Err(SessionError::Closed { statement: s, .. }) => assert_eq!(s, word, "{statement}"),
+            other => panic!("{statement}: {other:?}"),
+        }
+    }
+    let text = agent
+        .execute("SET VARIABLE glossql_actor = 'human'")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        text.contains("`SET` is closed at this door: the actor rides the transport"),
+        "{text}"
+    );
+    for statement in [
+        "SELECT 1 AS x",
+        "(SELECT 1 AS x)",
+        "WITH t AS (SELECT 1 AS x) SELECT x FROM t",
+        "DESCRIBE SELECT 1 AS x",
+        "BEGIN TRANSACTION",
+        "ROLLBACK",
+    ] {
+        agent
+            .execute(statement)
+            .await
+            .unwrap_or_else(|e| panic!("{statement}: {e}"));
+    }
+    // SPEC §5.3's `DELETE FROM glossary` passes the gate; whether the
+    // store takes it is the extension's: here `glossql.glossary` is the
+    // lake-backed view, and the binder says so, never the gate
+    for statement in [
+        "DELETE FROM glossary WHERE aspect = 'none'",
+        "DELETE FROM glossql.glossary WHERE aspect = 'none'",
+    ] {
+        if let Err(e) = agent.execute(statement).await {
+            assert!(
+                !matches!(e, SessionError::Closed { .. }),
+                "{statement}: {e}"
+            );
+        }
+    }
+    match agent
+        .execute("SELECT 1 AS x; CREATE TABLE fin.t AS SELECT 1 AS x; SELECT 2 AS y;")
+        .await
+    {
+        Err(SessionError::Sequence {
+            index: 2,
+            source,
+            landed,
+            ..
+        }) => {
+            assert!(matches!(*source, SessionError::Closed { .. }), "{source}");
+            assert_eq!(landed.len(), 1);
+        }
+        other => panic!("{other:?}"),
+    }
+    let root = plane.channel(human(), Some("fin")).await.unwrap();
+    root.execute("CREATE TABLE fin.t AS SELECT 1 AS x; SET VARIABLE glossql_actor = 'human';")
+        .await
+        .unwrap();
 }
 
 fn text(outcomes: &[Outcome]) -> Vec<Vec<Option<String>>> {
