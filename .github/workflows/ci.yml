@@ -2,9 +2,10 @@
 # and every pull request: the format, clippy with warnings denied, the
 # suite, the dependency rules (deny.toml) and the unused dependencies —
 # on the target the image is built for, which the laptop is not. The
-# suite runs on the glossql extension built from its repository at the
-# commit crates/duck/glossql.ref names, kept in the actions cache by that
-# commit so a pin move builds it once. Nothing here publishes:
+# suite runs on the glossql extension at the commit crates/duck/glossql.ref
+# names: from the actions cache, else the artifact the extension's own
+# pipeline built for that commit, else built from its repository; the
+# cache then holds it by the commit. Nothing here publishes:
 # release.yml does, at a tag, from a commit this ran green on.
 name: ci
 
@@ -42,27 +43,21 @@ jobs:
       - run: cargo deny check
       - run: cargo machete
       - run: cargo clippy --workspace --all-targets --locked
-      - name: The glossql extension, from the cache or its repository
+      - name: The glossql extension, from the cache, its pipeline's artifact or its repository
         id: gloss
         run: echo "ref=$(cat crates/duck/glossql.ref)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         id: gloss-cache
         with:
           path: glossql-out
-          key: glossql-${{ steps.gloss.outputs.ref }}-linux_amd64
+          key: extension-${{ steps.gloss.outputs.ref }}-linux_amd64
+      # The script beside the pin: the kits and the two documents from the
+      # pinned tree, the loadable from the artifact the extension's own
+      # pipeline built for the commit, else built here.
       - if: steps.gloss-cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
-          git clone --filter=blob:none https://github.com/glossdb/glossql glossql-src
-          cd glossql-src
-          git checkout "${{ steps.gloss.outputs.ref }}"
-          git submodule update --init --depth 1 duckdb extension-ci-tools
-          GEN=ninja EXT_FLAGS=-DGLOSSQL_LAKE=OFF make release
-          mkdir -p ../glossql-out
-          cp build/release/repository/v2.0.0/*/glossql.duckdb_extension ../glossql-out/
-          cp -r kits ../glossql-out/kits
-          cp SPEC.md grammar.ebnf ../glossql-out/
-          cd .. && rm -rf glossql-src
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sh crates/duck/extension-at-pin.sh "${{ steps.gloss.outputs.ref }}" glossql-out
       - run: cargo nextest run --workspace --locked
         env:
           GLOSSQL_EXTENSION: ${{ github.workspace }}/glossql-out/glossql.duckdb_extension

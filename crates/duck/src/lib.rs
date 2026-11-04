@@ -76,12 +76,6 @@ pub const LAKE: &str = "ws";
 /// the record does not, the door's pages.
 const PAGES_DB: &str = "memory";
 
-/// The record's own words, declared at every open before any kit:
-/// the ruling channel, a recipe's approval, the apps as glosses.
-pub const CORE: &str = include_str!("../kits/core.sql");
-/// The door's reads that stand on the kits', declared after them.
-pub const DOOR: &str = include_str!("../kits/door.sql");
-
 // -- the refusal -------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
@@ -719,10 +713,12 @@ impl Config {
         Config {
             extension: pieces.extension,
             kits: vec![
+                pieces.kits.join("core/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("metrics/kit.sql"),
                 pieces.kits.join("futures/kit.sql"),
+                pieces.kits.join("door/kit.sql"),
             ],
             extension_dir: pieces.extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
@@ -856,6 +852,38 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
                 surface, step, state, act, say, why, statement, \"then\" \
          FROM first WHERE rn = 1"
     ))
+}
+
+/// The `next` view, written when its text is new. The hash of the
+/// composed text rides the view as its comment, which a replace
+/// clears; a view whose comment is the hash stands, and the open
+/// skips the bind of the whole text. A kit that changed changes the
+/// text through its routes.
+fn write_next(conn: &Connection) -> Result<(), SessionError> {
+    let view = next_view(conn)?;
+    let (_, _, hashed) = arrow_batches(
+        conn,
+        &format!("SELECT md5('{}')", view.replace('\'', "''")),
+        &[],
+    )?;
+    let hash = one_cell(&hashed).unwrap_or_default();
+    let (_, _, standing) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT comment FROM duckdb_views() WHERE database_name = '{LAKE}' \
+             AND schema_name = 'glossql' AND view_name = 'next'"
+        ),
+        &[],
+    )?;
+    if one_cell(&standing).as_deref() == Some(hash.as_str()) {
+        return Ok(());
+    }
+    run(conn, &view)?;
+    run(
+        conn,
+        &format!("COMMENT ON VIEW {LAKE}.glossql.next IS '{hash}'"),
+    )?;
+    Ok(())
 }
 
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
@@ -1036,7 +1064,10 @@ fn engine_instance(config: &Config) -> Result<(Environment, Instance, Connection
 
 impl Plane {
     /// Open the workspace: the instance, the extension, the lake, the
-    /// grammar, the store, and the kits in order.
+    /// grammar, the store, the kits in order and the `next` view. A kit
+    /// whose text the lake recorded stands and runs nothing; the view is
+    /// written when its text is new. An existing workspace opens in the
+    /// time of the attach.
     pub async fn open(config: Config) -> Result<Plane, SessionError> {
         let opened = tokio::task::spawn_blocking({
             let config = config.clone();
@@ -1095,17 +1126,11 @@ impl Plane {
                 run(&conn, &format!("USE {LAKE}"))?;
                 run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(&conn, "PRAGMA glossql")?;
-                for statement in split_statements(CORE) {
-                    run(&conn, &statement)?;
-                }
                 for kit in &config.kits {
                     run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
-                for statement in split_statements(DOOR) {
-                    run(&conn, &statement)?;
-                }
-                run(&conn, &next_view(&conn)?)?;
+                write_next(&conn)?;
                 Ok((environment, instance))
             }
         })
@@ -2024,5 +2049,87 @@ mod tests {
                 .expect("reads"),
         );
         assert_eq!(rows[0][0].as_deref(), Some(""));
+    }
+}
+
+/// For the suites: a workspace copied from a golden one, so a test
+/// opens in the time of the attach instead of paying the kits. The
+/// golden copy is built once per content, keyed by the extension
+/// artifact and the kits' texts, under the system's temporary
+/// directory. A build that loses the race to another process yields to
+/// the one that landed: the rename is atomic, so a copy sees a whole
+/// workspace or none.
+pub mod testing {
+    use super::{Config, Plane, SessionError};
+    use std::hash::{Hash, Hasher};
+    use std::path::{Path, PathBuf};
+
+    /// The laptop config for `into`, holding a copy of the golden
+    /// workspace: every kit's row stands, so the open is the attach. A
+    /// directory that holds a workspace already is left as it is.
+    pub async fn golden(into: &Path) -> Result<Config, SessionError> {
+        let config = Config::laptop(into);
+        if into.join("catalog.ducklake").exists() {
+            return Ok(config);
+        }
+        let golden = golden_dir(&config).await?;
+        copy_dir(&golden, into)
+            .map_err(|e| SessionError::Engine(format!("the golden copy: {e}")))?;
+        Ok(config)
+    }
+
+    async fn golden_dir(config: &Config) -> Result<PathBuf, SessionError> {
+        let io = |e: std::io::Error| SessionError::Engine(format!("the golden workspace: {e}"));
+        let root = std::env::temp_dir().join("glossdb-golden");
+        std::fs::create_dir_all(&root).map_err(io)?;
+        let dir = root.join(key(config).map_err(io)?);
+        if dir.is_dir() {
+            return Ok(dir);
+        }
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let scratch = root.join(format!("build-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&scratch).map_err(io)?;
+        let built = Plane::open(Config::laptop(&scratch)).await?;
+        drop(built);
+        match std::fs::rename(&scratch, &dir) {
+            Ok(()) => {}
+            Err(_) if dir.is_dir() => {
+                let _ = std::fs::remove_dir_all(&scratch);
+            }
+            Err(e) => return Err(io(e)),
+        }
+        Ok(dir)
+    }
+
+    /// What the golden workspace is made of: the extension artifact (by
+    /// size and time, a rebuild being a new one), the kits' texts and
+    /// this crate's version.
+    fn key(config: &Config) -> std::io::Result<String> {
+        let mut h = std::hash::DefaultHasher::new();
+        env!("CARGO_PKG_VERSION").hash(&mut h);
+        let artifact = std::fs::metadata(&config.extension)?;
+        artifact.len().hash(&mut h);
+        artifact.modified()?.hash(&mut h);
+        for kit in &config.kits {
+            std::fs::read(kit)?.hash(&mut h);
+        }
+        Ok(format!("{:016x}", h.finish()))
+    }
+
+    fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            let target = to.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_dir(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), &target)?;
+            }
+        }
+        Ok(())
     }
 }

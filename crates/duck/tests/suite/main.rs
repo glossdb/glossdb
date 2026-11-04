@@ -38,7 +38,7 @@ fn extension_present() -> bool {
 /// test of its own below.
 async fn plane() -> (tempfile::TempDir, Plane) {
     let dir = tempfile::tempdir().expect("a tempdir");
-    let mut config = Config::laptop(dir.path());
+    let mut config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
     config.root = vec![agent().id, human().id];
     let plane = Plane::open(config).await.expect("the workspace opens");
     (dir, plane)
@@ -54,7 +54,7 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
         return;
     }
     let dir = tempfile::tempdir().expect("a tempdir");
-    let mut config = Config::laptop(dir.path());
+    let mut config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
     config.root = vec![human().id];
     let plane = Plane::open(config).await.expect("the workspace opens");
     let agent = plane.channel(agent(), None).await.unwrap();
@@ -323,7 +323,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         );
         rows[0][0].clone().unwrap()
     }
-    let first = Plane::open(Config::laptop(dir.path()))
+    let first = Plane::open(glossdb_duck::testing::golden(dir.path()).await.unwrap())
         .await
         .expect("the workspace opens");
     let session = first.channel(agent(), None).await.unwrap();
@@ -364,6 +364,33 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         count(&second).await,
         declared,
         "a second open declares nothing twice"
+    );
+    let kits = text(
+        &second
+            .execute(agent(), None, "SELECT count(*) FROM glossql.kits")
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        kits,
+        vec![vec![Some("6".to_string())]],
+        "every kit landed once at the first open and stood at the second"
+    );
+    let next = text(
+        &second
+            .execute(
+                agent(),
+                None,
+                "SELECT length(comment) FROM duckdb_views() WHERE database_name = 'ws' \
+                 AND schema_name = 'glossql' AND view_name = 'next'",
+            )
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        next,
+        vec![vec![Some("32".to_string())]],
+        "the next view carries its text's hash"
     );
     let unbound = text(
         &second

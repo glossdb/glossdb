@@ -18,7 +18,7 @@ use tower::ServiceExt;
 const ORIGIN: &str = "https://glossql.example";
 
 async fn open_plane(dir: &std::path::Path) -> Plane {
-    Plane::open(glossdb_apps::engine::Config::laptop(dir))
+    Plane::open(glossdb_apps::engine::testing::golden(dir).await.unwrap())
         .await
         .unwrap()
 }
@@ -93,11 +93,17 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     (router, plane, dir)
 }
 
-/// The same aspect as the DuckDB engine declares it at every open,
-/// cut from its core: re-declared here, it is a no-op, and the tests
-/// keep one shape on both engines.
+/// The core kit, whose declarations the workspace carries from its
+/// first open.
+const CORE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../kits/core/kit.sql"
+));
+
+/// The same aspect as the core kit declares it, cut from its text:
+/// re-declared here, it is a no-op, and the tests keep one shape.
 fn shipped_ruling_declaration() -> &'static str {
-    let kit = glossdb_apps::engine::CORE;
+    let kit = CORE;
     let start = kit
         .find("DECLARE ASPECT ruling")
         .expect("the kit ships the ruling aspect");
@@ -112,7 +118,7 @@ fn shipped_ruling_declaration() -> &'static str {
 /// `app_spec` — cut from the core the same way, so the door serves the
 /// parts a real workspace writes.
 fn shipped_app_declarations() -> &'static str {
-    let kit = glossdb_apps::engine::CORE;
+    let kit = CORE;
     let start = kit
         .find("DECLARE ASPECT app WITH")
         .expect("the kit ships the app aspects");

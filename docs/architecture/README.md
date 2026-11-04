@@ -14,12 +14,13 @@ How the server is built.
 ## The crates
 
 The server is a Cargo workspace. `duck` is the engine: the facade the
-doors use over the glossql extension and a DuckLake, the record's own
-reads (`kits/core.sql`) and the door's (`kits/door.sql`), and the
-actor types the doors stamp a call with. `apps` serves the pages;
+doors use over the glossql extension and a DuckLake, and the actor
+types the doors stamp a call with; the record's own reads and the
+door's are the core and door kits under `kits/`. `apps` serves the pages;
 `serverd` is the binary with its doors. The language is the
 extension's: SPEC.md, `grammar.ebnf` and the corpus live in its
 repository, and the door serves the two documents from its share. The
-kits are SQL loaded at open: the vocabulary and the quality screens
-from the extension's repository, the metrics and the futures from
-`kits/` here; `kits/README.md` says what they add.
+kits are SQL loaded at open, each standing when its text is the one
+the lake recorded: core, metrics, futures and door from `kits/` here
+around the vocabulary and the quality screens from the extension's
+repository; `kits/README.md` says what they add.
