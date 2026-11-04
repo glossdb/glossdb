@@ -10,24 +10,21 @@
 # toolchain rust-toolchain.toml names. The registry and the target are
 # cache mounts, so a rebuild compiles the workspace alone.
 
-# The extension, built from its own repository at the commit
-# crates/duck/glossql.ref names, against the DuckDB release the Rust side
-# compiles in; the lake is not built beside it (it is installed below).
-# One RUN, so the layer holds the loadable and the kits, not the build.
+# The extension at the commit crates/duck/glossql.ref names, by the
+# script beside the pin: its kits and the language's two documents from
+# the pinned tree; the loadable from the artifact its own pipeline built
+# for this platform, when a GitHub token rides as GH_TOKEN (the
+# workflow's own; `--build-arg GH_TOKEN=…` at a checkout), else built
+# here against the DuckDB release the Rust side compiles in, the lake
+# not beside it (it is installed below). One RUN, so the layer holds
+# the loadable and the kits, not the build.
 FROM rust:1.98-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS extension
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake ninja-build python3 \
+ARG GH_TOKEN=
+RUN apt-get update && apt-get install -y --no-install-recommends python3 \
     && rm -rf /var/lib/apt/lists/*
 COPY crates/duck/glossql.ref /glossql.ref
-RUN git clone --filter=blob:none https://github.com/glossdb/glossql /glossql \
-    && cd /glossql && git checkout "$(cat /glossql.ref)" \
-    && git submodule update --init --depth 1 duckdb extension-ci-tools \
-    && GEN=ninja EXT_FLAGS=-DGLOSSQL_LAKE=OFF make release \
-    && mkdir -p /out/share/glossdb \
-    && cp build/release/repository/v2.0.0/*/glossql.duckdb_extension /out/share/glossdb/ \
-    && cp -r kits /out/share/glossdb/kits \
-    && cp SPEC.md grammar.ebnf /out/share/glossdb/ \
-    && rm -rf /glossql
+COPY crates/duck/extension-at-pin.sh /extension-at-pin.sh
+RUN GH_TOKEN="$GH_TOKEN" sh /extension-at-pin.sh "$(cat /glossql.ref)" /out/share/glossdb
 
 # The Rust stage compiles DuckDB too (libduckdb-sys, bundled), so it
 # starts once the extension stage is done: two DuckDB builds at once

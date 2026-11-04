@@ -45,7 +45,8 @@ prints its doors and listens:
 
 The same binary as an x86_64 image: `ghcr.io/glossdb/glossdb:<version>`,
 pushed at each release tag. `docker build .` at a checkout builds the
-same. A distroless base — glibc, the C runtime libraries, the root
+same; with `--build-arg GH_TOKEN=<a GitHub token>` the extension
+comes from its pipeline's build instead of a compile. A distroless base — glibc, the C runtime libraries, the root
 certificates, no shell and no package manager — the binary, the
 DuckDB library beside it, the extension, the kits and the lake's
 extensions; no model, no weights, no GPU. It listens on 8080 and runs

@@ -11,8 +11,8 @@ One release is one version everywhere: `version` in the workspace
 with the binary, DuckDB compiled in, `share/glossdb/`
 with the glossql extension, its SPEC.md and `grammar.ebnf`, and the kits of both repositories — and the server image on GHCR
 (`ghcr.io/glossdb/glossdb:<version>` and `:latest`, x86_64, built
-from the `Dockerfile` at the tag, the extension built inside it from
-the commit `crates/duck/glossql.ref` names). No model rides either: the
+from the `Dockerfile` at the tag, the extension at the commit
+`crates/duck/glossql.ref` names from its pipeline's artifact). No model rides either: the
 model service is glossthesi, released from its own repository on its
 own cadence. **Never built**: macOS x86_64, ARM Linux, Jetson,
 a cuda flavor, a Linux package (the image is the Linux artifact) —
@@ -56,9 +56,13 @@ nowhere else.
 
 ## Sharp edges (each one has already fired)
 
-- The image build compiles DuckDB to build the extension — an hour
-  on a runner the first time; the layer is cached by the pinned
-  commit, so a tag without a pin move reuses it.
+- The image takes the extension from its pipeline's linux artifact
+  at the pin when a GitHub token rides as the build argument
+  `GH_TOKEN`, as the workflow passes its own (`crates/duck/
+  extension-at-pin.sh`); without one, or for a platform the
+  extension's matrix does not build, it compiles DuckDB to build the
+  extension — an hour on a runner. The layer is cached by the pinned
+  commit either way, so a tag without a pin move reuses it.
 - A tag-push run uses the workflow file **at the tag's commit**. A
   workflow fix after tagging needs the tag re-pointed:
   `git tag -f v<version> && git push -f origin v<version>`.

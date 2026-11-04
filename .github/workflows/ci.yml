@@ -51,41 +51,13 @@ jobs:
         with:
           path: glossql-out
           key: extension-${{ steps.gloss.outputs.ref }}-linux_amd64
-      # The kits and the language's two documents from the pinned tree; the
-      # extension from the linux artifact its own pipeline uploads on every
-      # run and keeps ninety days, looked up by the commit.
+      # The script beside the pin: the kits and the two documents from the
+      # pinned tree, the loadable from the artifact the extension's own
+      # pipeline built for the commit, else built here.
       - if: steps.gloss-cache.outputs.cache-hit != 'true'
-        id: gloss-artifact
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          ref="${{ steps.gloss.outputs.ref }}"
-          git clone --filter=blob:none https://github.com/glossdb/glossql glossql-src
-          git -C glossql-src checkout "$ref"
-          mkdir -p glossql-out
-          cp -r glossql-src/kits glossql-out/kits
-          cp glossql-src/SPEC.md glossql-src/grammar.ebnf glossql-out/
-          for run in $(gh api "repos/glossdb/glossql/actions/runs?head_sha=$ref&per_page=20" \
-                         --jq '.workflow_runs[] | select(.name == "Main Extension Distribution Pipeline") | .id'); do
-            name=$(gh api "repos/glossdb/glossql/actions/runs/$run/artifacts" \
-                     --jq '.artifacts[] | select(.name | endswith("-extension-linux_amd64")) | .name' | head -1)
-            [ -n "$name" ] || continue
-            if gh run download "$run" -R glossdb/glossql -n "$name" -D glossql-artifact; then
-              cp glossql-artifact/glossql.duckdb_extension glossql-out/
-              rm -rf glossql-artifact
-              echo "fetched=true" >> "$GITHUB_OUTPUT"
-              echo "the extension at $ref from run $run, $name"
-              break
-            fi
-          done
-      # A pin without an artifact: built here, as the pipeline builds it.
-      - if: steps.gloss-cache.outputs.cache-hit != 'true' && steps.gloss-artifact.outputs.fetched != 'true'
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
-          cd glossql-src
-          git submodule update --init --depth 1 duckdb extension-ci-tools
-          GEN=ninja EXT_FLAGS=-DGLOSSQL_LAKE=OFF make release
-          cp build/release/repository/v2.0.0/*/glossql.duckdb_extension ../glossql-out/
+        run: sh crates/duck/extension-at-pin.sh "${{ steps.gloss.outputs.ref }}" glossql-out
       - run: cargo nextest run --workspace --locked
         env:
           GLOSSQL_EXTENSION: ${{ github.workspace }}/glossql-out/glossql.duckdb_extension
