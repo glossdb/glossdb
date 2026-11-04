@@ -13,7 +13,7 @@ body the engine executes.
   `IMPORT`, `PROBE`, the reads `GLOSSARY()` and `ATTEST()`, a
   measurement over a subject.
 - **The store and the record read.** The relations as tables in the
-  lake's catalog, served as `ws.glossql.*`; the collapse of slots, the
+  lake's catalog, served as views in `ws.main`; the collapse of slots, the
   witnesses and detectors, the stale rule, the record read kept per
   store version ([store](store.md)).
 - **Subjects.** A dataset, a table, a column, a relationship, a source,
@@ -35,9 +35,9 @@ body the engine executes.
   the record's reads, runs the kits, declares the door's reads and
   composes the `next` read from every kit's routes.
 - **A channel per call.** One connection: the grammar on, the actor
-  set as session variables the extension reads, the dataset in use,
-  a search path of the dataset's schema and the store's. No door keeps
-  a cursor.
+  set as session variables the extension reads, the dataset in use.
+  The record reads bare from any dataset, since the lake's `main`
+  schema is on every search path. No door keeps a cursor.
 - **The doors.** The MCP door, the Arrow door, the app door and the
   docket, the pages.
 

@@ -57,7 +57,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
     let standing = human
         .batches(
             &format!(
-                "SELECT body::VARCHAR FROM {}.glossql.glossary \
+                "SELECT body::VARCHAR FROM {}.main.glossary \
                  WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'ruling' AND actor_kind = 'human' \
                  ORDER BY seq DESC LIMIT 1",
                 crate::LAKE

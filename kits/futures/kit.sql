@@ -5,7 +5,7 @@
 -- never computes over the data. Loaded after the metrics kit, whose
 -- series the requests are built from. The service is named once for the instance
 -- (glossql_service_url, glossql_service_token); every call goes through
--- glossql.service, one macro over glossql_service, so a suite stands in for
+-- main.service, one macro over glossql_service, so a suite stands in for
 -- the service by re-declaring the macro. The service owns its topic: the
 -- bands, the PIT and why it is withheld, the walk's verdict; the kit owns
 -- the calendar, and sends complete periods only.
@@ -15,9 +15,9 @@
 --   FROM glossql_kit('kits/metrics/kit.sql');
 --   FROM glossql_kit('kits/futures/kit.sql');
 
-CREATE OR REPLACE MACRO glossql.service(route, body) AS glossql_service(route, body);
+CREATE OR REPLACE MACRO main.service(route, body) AS glossql_service(route, body);
 -- the soft form: a refusal or an absent service comes back as {"error": "…"}, for a call the kit can stand without
-CREATE OR REPLACE MACRO glossql.service_soft(route, body) AS glossql_service(route, body, true);
+CREATE OR REPLACE MACRO main.service_soft(route, body) AS glossql_service(route, body, true);
 
 --===------------------------------------------------------------------===--
 -- The walk. band_series(): every applicable metric's total at month grain
@@ -31,8 +31,8 @@ CREATE OR REPLACE MACRO glossql.service_soft(route, body) AS glossql_service(rou
 -- specification, with the witness's threshold as the walk's red line.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.band_series() AS TABLE
-WITH axes AS (SELECT * FROM glossql.metric_axes() WHERE applicable),
+CREATE OR REPLACE MACRO main.band_series() AS TABLE
+WITH axes AS (SELECT * FROM main.metric_axes() WHERE applicable),
 edges AS (
   SELECT c."table" AS metric, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
          count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP))) > count(DISTINCT date_trunc('month', TRY_CAST(c.val AS TIMESTAMP))) AS finer
@@ -42,26 +42,26 @@ partials AS (
   SELECT metric, date_trunc('month', edge) AS period FROM edges
   WHERE finer AND edge::DATE < (date_trunc('month', edge) + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE)
 SELECT s.metric, s.period, s.value, s.behavior
-FROM glossql.metric_series(grain := 'month', unclaimed := 'skip') s
+FROM main.metric_series(grain := 'month', unclaimed := 'skip') s
 WHERE s.dimension = '' AND s.world = 'actual' AND s.value IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM partials p WHERE p.metric = s.metric AND p.period = s.period)
 ORDER BY s.metric, s.period;
 
-CREATE OR REPLACE MACRO glossql.band_request() AS TABLE
-WITH counted AS (SELECT metric, count(*) AS months FROM glossql.band_series() GROUP BY metric)
+CREATE OR REPLACE MACRO main.band_request() AS TABLE
+WITH counted AS (SELECT metric, count(*) AS months FROM main.band_series() GROUP BY metric)
 SELECT a.metric, a.behavior, coalesce(c.months, 0) AS months,
        a.applicable AND coalesce(c.months, 0) >= 7 AS walkable,
        CASE WHEN NOT a.applicable THEN a.reason
             WHEN c.metric IS NULL THEN 'the month read serves no cell: ' || coalesce(a.reason,
               'no behaviour stands on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
             WHEN c.months < 7 THEN 'the walk needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
-FROM glossql.metric_axes() a LEFT JOIN counted c USING (metric)
+FROM main.metric_axes() a LEFT JOIN counted c USING (metric)
 WHERE coalesce(a.kind, '') NOT IN ('fact', 'plan', 'scenario')
 ORDER BY a.metric;
 
-CREATE OR REPLACE MACRO glossql.band_body() AS TABLE
-WITH s AS (SELECT * FROM glossql.band_series() WHERE metric IN (SELECT metric FROM glossql.band_request() WHERE walkable)),
-t AS (SELECT coalesce((SELECT threshold FROM glossql.witnesses WHERE aspect = 'metric_bands' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
+CREATE OR REPLACE MACRO main.band_body() AS TABLE
+WITH s AS (SELECT * FROM main.band_series() WHERE metric IN (SELECT metric FROM main.band_request() WHERE walkable)),
+t AS (SELECT coalesce((SELECT threshold FROM main.witnesses WHERE aspect = 'metric_bands' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
 SELECT CASE WHEN count(s.metric) > 0 THEN json_object(
          'spec', json_object('targets', ['value'], 'origins', 6, 'horizon', 1,
                              'levels', [0.05, 0.1, 0.5, 0.9, 0.95], 'grain', 'month', 'threshold', t.threshold),
@@ -97,9 +97,9 @@ DECLARE ASPECT metric_bands WITH $${
 }$$ AS MEASUREMENT ON DATASET;
 
 DECLARE FUNCTION metric_bands FOR GLOBAL AS $$
-  WITH req AS (SELECT * FROM glossql.band_request()),
-  b AS (SELECT body, threshold FROM glossql.band_body()),
-  a AS (SELECT CASE WHEN body IS NOT NULL THEN glossql.service('/forecast', body) END AS a, threshold FROM b),
+  WITH req AS (SELECT * FROM main.band_request()),
+  b AS (SELECT body, threshold FROM main.band_body()),
+  a AS (SELECT CASE WHEN body IS NOT NULL THEN main.service('/forecast', body) END AS a, threshold FROM b),
   rows_ AS (
     SELECT unnest(json_extract(a, '$.table.member')::VARCHAR[]) AS metric,
            unnest(json_extract(a, '$.table.period')::VARCHAR[]) AS period,
@@ -170,17 +170,17 @@ DECLARE WITNESS bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
 -- metric not walked serves one row with its reason and no numbers.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.band_verdict() AS TABLE
+CREATE OR REPLACE MACRO main.band_verdict() AS TABLE
 SELECT json_extract_string(value, '$.served_by') AS served_by, json_extract_string(value, '$.grain') AS grain,
        json_extract(value, '$.score')::DOUBLE AS score, json_extract_string(value, '$.band') AS band,
        json_extract(value, '$.threshold')::DOUBLE AS threshold, computed_at
-FROM glossql.measurements
+FROM main.measurements
 WHERE dataset = current_schema() AND function = 'metric_bands'
 ORDER BY seq DESC LIMIT 1;
 
-CREATE OR REPLACE MACRO glossql.band_points() AS TABLE
+CREATE OR REPLACE MACRO main.band_points() AS TABLE
 WITH newest_walk AS (
-  SELECT value, computed_at FROM glossql.measurements
+  SELECT value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_bands' ORDER BY seq DESC LIMIT 1),
 metrics AS (
   SELECT unnest(from_json(json_extract(value, '$.metrics'),
@@ -223,11 +223,11 @@ ORDER BY metric, point_seq NULLS FIRST;
 -- carries their labels.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.forecast_request() AS TABLE
+CREATE OR REPLACE MACRO main.forecast_request() AS TABLE
 WITH axes AS (
-  SELECT * FROM glossql.metric_axes() WHERE coalesce(kind, '') NOT IN ('fact', 'relation', 'plan', 'scenario')),
+  SELECT * FROM main.metric_axes() WHERE coalesce(kind, '') NOT IN ('fact', 'relation', 'plan', 'scenario')),
 series AS (
-  SELECT metric, period, value FROM glossql.metric_series(unclaimed := 'skip')
+  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
 hist AS (
   SELECT metric, count(*) AS n, max(period) AS origin, list({'period': period, 'value': value} ORDER BY period) AS history
@@ -245,16 +245,16 @@ judged AS (
   FROM axes a LEFT JOIN hist h USING (metric)),
 ahead AS (
   SELECT j.metric, list(g.period ORDER BY g.period) AS periods
-  FROM judged j, unnest(generate_series(j.origin + glossql.grain_step(j.grain),
-                                        j.origin + glossql.grain_step(j.grain) * (j.horizon + 1),
-                                        glossql.grain_step(j.grain))) AS g(period)
+  FROM judged j, unnest(generate_series(j.origin + main.grain_step(j.grain),
+                                        j.origin + main.grain_step(j.grain) * (j.horizon + 1),
+                                        main.grain_step(j.grain))) AS g(period)
   WHERE j.reason IS NULL GROUP BY j.metric),
 spans AS (
   SELECT metric, list({'span': n, 'to_go': to_go} ORDER BY n, to_go) AS spans
   FROM (
     SELECT j.metric, s.to_go, j.horizon,
-           count(*) FILTER (WHERE u.p < date_trunc(s.to_go, ah.periods[1]) + glossql.grain_step(s.to_go)) AS reached,
-           least(count(*) FILTER (WHERE u.p < date_trunc(s.to_go, ah.periods[1]) + glossql.grain_step(s.to_go)), j.horizon) AS n
+           count(*) FILTER (WHERE u.p < date_trunc(s.to_go, ah.periods[1]) + main.grain_step(s.to_go)) AS reached,
+           least(count(*) FILTER (WHERE u.p < date_trunc(s.to_go, ah.periods[1]) + main.grain_step(s.to_go)), j.horizon) AS n
     FROM judged j JOIN ahead ah USING (metric),
          unnest(CASE j.grain WHEN 'day' THEN ['month'] WHEN 'week' THEN ['quarter'] WHEN 'month' THEN ['quarter', 'year']
                              WHEN 'quarter' THEN ['year'] ELSE []::VARCHAR[] END) AS s(to_go),
@@ -269,8 +269,8 @@ SELECT j.metric, j.behavior, j.grain, j.horizon, j.origin, j.reason, j.reason IS
 FROM judged j LEFT JOIN ahead ah USING (metric) LEFT JOIN spans s USING (metric)
 ORDER BY j.metric;
 
-CREATE OR REPLACE MACRO glossql.forecast_bodies() AS TABLE
-WITH r AS (SELECT * FROM glossql.forecast_request() WHERE applicable),
+CREATE OR REPLACE MACRO main.forecast_bodies() AS TABLE
+WITH r AS (SELECT * FROM main.forecast_request() WHERE applicable),
 rows_ AS (
   SELECT r.metric, r.grain, r.horizon, list_sort(list_distinct(list_transform(r.spans, lambda s: s.span))) AS totals,
          cell.period AS period, cell.value AS value, 'actual' AS status
@@ -308,8 +308,8 @@ DECLARE ASPECT metric_forecast WITH $${
 }$$ AS MEASUREMENT ON DATASET;
 
 DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
-  WITH req AS (SELECT * FROM glossql.forecast_request()),
-  b AS (SELECT grain, totals, body, glossql.service('/forecast', body) AS a FROM glossql.forecast_bodies()),
+  WITH req AS (SELECT * FROM main.forecast_request()),
+  b AS (SELECT grain, totals, body, main.service('/forecast', body) AS a FROM main.forecast_bodies()),
   rows_ AS (
     SELECT unnest(json_extract(a, '$.table.member')::VARCHAR[]) AS metric,
            unnest(json_extract(a, '$.table.step')::BIGINT[]) AS step,
@@ -386,9 +386,9 @@ DECLARE WITNESS forecast_w ON metric_forecast DETECTOR forecast_stands;
 -- metric the forecast found inapplicable is one row with its reason.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.forecast_record() AS TABLE
+CREATE OR REPLACE MACRO main.forecast_record() AS TABLE
 WITH runs AS (
-  SELECT seq AS run, value, computed_at FROM glossql.measurements
+  SELECT seq AS run, value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_forecast'),
 metrics AS (
   SELECT run, computed_at, json_extract_string(value, '$.served_by') AS served_by,
@@ -409,23 +409,23 @@ SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.behavior
        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 FROM metrics WHERE cardinality(m.points) = 0;
 
-CREATE OR REPLACE MACRO glossql.forecast_runs() AS TABLE
+CREATE OR REPLACE MACRO main.forecast_runs() AS TABLE
 WITH actuals AS (
-  SELECT metric, period, value FROM glossql.metric_series(unclaimed := 'skip') WHERE dimension = '' AND world = 'actual')
+  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip') WHERE dimension = '' AND world = 'actual')
 SELECT r.*,
        CASE WHEN r.step IS NULL THEN NULL
             WHEN r.span IS NULL THEN a.value
             ELSE (SELECT CASE WHEN count(*) = r.span THEN sum(a2.value) END FROM actuals a2
                   WHERE a2.metric = r.metric AND a2.period > r.origin AND a2.period <= r.period) END AS actual
-FROM glossql.forecast_record() r
+FROM main.forecast_record() r
 LEFT JOIN actuals a ON a.metric = r.metric AND a.period = r.period AND r.span IS NULL;
 
-CREATE OR REPLACE MACRO glossql.forecast_coverage() AS TABLE
+CREATE OR REPLACE MACRO main.forecast_coverage() AS TABLE
 WITH tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points,
          count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80,
          count(*) FILTER (WHERE actual BETWEEN p05 AND p95) AS inside_90
-  FROM glossql.forecast_runs() WHERE applicable AND step IS NOT NULL
+  FROM main.forecast_runs() WHERE applicable AND step IS NOT NULL
   GROUP BY metric, grain, step, span, to_go
   HAVING count(actual) > 0),
 whole AS (
@@ -437,8 +437,8 @@ SELECT metric, grain, step, span, to_go, points, inside_80, inside_90,
 FROM (SELECT * FROM tally UNION ALL SELECT * FROM whole)
 ORDER BY metric, grain, step, span NULLS FIRST, to_go NULLS FIRST;
 
-CREATE OR REPLACE MACRO glossql.forecast_points() AS TABLE
-WITH runs AS MATERIALIZED (SELECT * FROM glossql.forecast_runs()),
+CREATE OR REPLACE MACRO main.forecast_points() AS TABLE
+WITH runs AS MATERIALIZED (SELECT * FROM main.forecast_runs()),
 newest AS (SELECT max(run) AS run FROM runs),
 current_ AS (
   SELECT coalesce(bool_and(current), true) AS current
@@ -511,9 +511,9 @@ DECLARE ASPECT lever WITH $${
   "properties": {"value": {"type": "boolean"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON COLUMN;
 
-CREATE OR REPLACE MACRO glossql.scenarios() AS TABLE
+CREATE OR REPLACE MACRO main.scenarios() AS TABLE
 WITH declared AS (
-  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM glossql.aspects)
+  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
   WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
 bodies AS (
   SELECT d.name AS scenario, g.value AS body
@@ -531,7 +531,7 @@ judged AS (
                                WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
                 THEN l.lever || ' carries no lever gloss: a lever is a column someone sets, glossed lever true on the metric''s view'
-              WHEN NOT EXISTS (SELECT 1 FROM glossql.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'fact', 'relation'))
+              WHEN NOT EXISTS (SELECT 1 FROM main.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'fact', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
               WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
                 THEN l.metric || ' serves no column named ' || l.col
@@ -549,13 +549,13 @@ folded AS (
   GROUP BY b.scenario, b.body)
 SELECT scenario, glossed, reason IS NULL AS applicable, reason, levers FROM folded ORDER BY scenario;
 
-CREATE OR REPLACE MACRO glossql.scenario_request() AS TABLE
+CREATE OR REPLACE MACRO main.scenario_request() AS TABLE
 WITH lv AS (
   SELECT s.scenario, u.l.lever AS lever, u.l.metric AS metric, u.l."column" AS col, u.l.factor AS factor
-  FROM glossql.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
-axes AS (SELECT metric, floor, period_column, behavior FROM glossql.metric_axes() WHERE applicable),
+  FROM main.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
+axes AS (SELECT metric, floor, period_column, behavior FROM main.metric_axes() WHERE applicable),
 series AS (
-  SELECT metric, period, value FROM glossql.metric_series(unclaimed := 'skip')
+  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
 origins AS (SELECT metric, max(period) AS origin, count(*) AS history FROM series GROUP BY metric),
 -- the lever's series: the mean of the column per period at the metric's floor
@@ -585,13 +585,13 @@ reach AS (
 judged AS (
   SELECT r.*,
          CASE WHEN r.origin IS NULL THEN 'the series read serves no cell for ' || r.metric
-              WHEN r.until <= r.origin + glossql.grain_step(r.grain)
+              WHEN r.until <= r.origin + main.grain_step(r.grain)
                 THEN 'the scenario names no period after ' || strftime(r.origin, '%Y-%m-%d') || ', the last actual of ' || r.metric
               WHEN r.history < 26 THEN r.history || ' ' || r.grain || 's of history: the estimate needs 26' END AS reason
   FROM reach r),
 ahead AS (
   SELECT j.scenario, j.metric, list(g.p ORDER BY g.p) AS periods
-  FROM judged j, unnest(generate_series(j.origin + glossql.grain_step(j.grain), j.until - glossql.grain_step(j.grain), glossql.grain_step(j.grain))) AS g(p)
+  FROM judged j, unnest(generate_series(j.origin + main.grain_step(j.grain), j.until - main.grain_step(j.grain), main.grain_step(j.grain))) AS g(p)
   WHERE j.reason IS NULL GROUP BY j.scenario, j.metric),
 held AS (
   SELECT l.scenario, l.metric, l.lever, l.factor,
@@ -624,8 +624,8 @@ SELECT j.scenario, j.metric, j.grain, j.behavior, j.origin, j.history,
 FROM judged j LEFT JOIN ahead a USING (scenario, metric) JOIN inputs i USING (scenario, metric)
 ORDER BY j.scenario, j.metric;
 
-CREATE OR REPLACE MACRO glossql.lever_bodies() AS TABLE
-WITH r AS (SELECT * FROM glossql.scenario_request() WHERE applicable),
+CREATE OR REPLACE MACRO main.lever_bodies() AS TABLE
+WITH r AS (SELECT * FROM main.scenario_request() WHERE applicable),
 lv AS (
   SELECT r.scenario, r.metric, r.grain, r.ahead, u.l.lever AS lever, u.l.series AS series,
          CASE r.grain WHEN 'day' THEN 31 WHEN 'week' THEN 13 WHEN 'month' THEN 12 WHEN 'quarter' THEN 4 ELSE 0 END AS reach
@@ -645,11 +645,11 @@ WHERE l.reach > 0 AND len(l.series) >= 6
 GROUP BY l.scenario, l.metric, l.lever, l.grain, l.ahead, l.reach
 ORDER BY l.scenario, l.metric, l.lever;
 
-CREATE OR REPLACE MACRO glossql.scenario_bodies(paths := NULL) AS TABLE
-WITH r AS (SELECT * FROM glossql.scenario_request() WHERE applicable),
+CREATE OR REPLACE MACRO main.scenario_bodies(paths := NULL) AS TABLE
+WITH r AS (SELECT * FROM main.scenario_request() WHERE applicable),
 hist AS (
   SELECT r.scenario, r.metric, s.period, 'actual' AS status, s.value, 0 AS ord
-  FROM r JOIN (SELECT metric, period, value FROM glossql.metric_series(unclaimed := 'skip')
+  FROM r JOIN (SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
                WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL) s USING (metric)),
 ahead AS (
   SELECT r.scenario, r.metric, u.p AS period, st.status, NULL::DOUBLE AS value, st.ord
@@ -730,10 +730,10 @@ DECLARE ASPECT metric_scenario WITH $${
 }$$ AS MEASUREMENT ON DATASET;
 
 DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
-  WITH sc AS (SELECT * FROM glossql.scenarios()),
-  req AS (SELECT * FROM glossql.scenario_request()),
+  WITH sc AS (SELECT * FROM main.scenarios()),
+  req AS (SELECT * FROM main.scenario_request()),
   -- each lever's own forecast, soft: a refusal holds the lever instead
-  lf AS (SELECT lb.scenario, lb.metric, lb.lever, glossql.service_soft('/forecast', lb.body) AS fa FROM glossql.lever_bodies() lb),
+  lf AS (SELECT lb.scenario, lb.metric, lb.lever, main.service_soft('/forecast', lb.body) AS fa FROM main.lever_bodies() lb),
   medians AS (
     SELECT scenario, metric, lever,
            unnest(json_extract(fa, '$.table.period')::VARCHAR[]) AS period,
@@ -753,8 +753,8 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
     LEFT JOIN lf ON lf.scenario = r.scenario AND lf.metric = r.metric AND lf.lever = u.l.lever
     LEFT JOIN paths p ON p.scenario = r.scenario AND p.metric = r.metric AND p.lever = u.l.lever),
   -- a body stands only where an input moves; a NULL body makes no call
-  b AS (SELECT scenario, metric, grain, unmoved, CASE WHEN body IS NOT NULL THEN glossql.service('/whatif', body) END AS a
-        FROM glossql.scenario_bodies(paths := (SELECT j FROM planned_json))),
+  b AS (SELECT scenario, metric, grain, unmoved, CASE WHEN body IS NOT NULL THEN main.service('/whatif', body) END AS a
+        FROM main.scenario_bodies(paths := (SELECT j FROM planned_json))),
   rows_ AS (
     SELECT b.scenario, b.metric,
            unnest(json_extract(a, '$.table.member')::VARCHAR[]) AS member,
@@ -831,9 +831,9 @@ $$;
 
 DECLARE WITNESS scenario_w ON metric_scenario DETECTOR scenario_stands;
 
-CREATE OR REPLACE MACRO glossql.scenario_points(s) AS TABLE
+CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH newest AS (
-  SELECT value, computed_at FROM glossql.measurements
+  SELECT value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY seq DESC LIMIT 1),
 scn AS (
   SELECT computed_at, json_extract_string(value, '$.served_by') AS served_by,
@@ -855,7 +855,7 @@ stepped AS (
 -- tally reads the series, which reads the worlds, which read this)
 held AS (
   SELECT r.metric, r.grain, r.step, r.service_80 AS held_80, CASE WHEN r.service_80 IS NOT NULL THEN 'service' END AS held_from
-  FROM glossql.forecast_record() r JOIN (SELECT max(run) AS run FROM glossql.forecast_record()) n ON n.run = r.run
+  FROM main.forecast_record() r JOIN (SELECT max(run) AS run FROM main.forecast_record()) n ON n.run = r.run
   WHERE r.applicable AND r.span IS NULL AND r.step IS NOT NULL)
 SELECT s.scenario, s.metric, s.grain, s.origin, s.applicable, s.reason, list_transform(s.levers, lambda l: l.lever) AS levers, 'estimated' AS pass, s.step::BIGINT AS step,
        s.p.period::TIMESTAMP AS period, s.p.low AS low, s.p.value AS value, s.p.high AS high,
@@ -868,9 +868,9 @@ SELECT scenario, m.metric, m.grain, m.origin, m.applicable, m.reason, list_trans
 FROM mets WHERE coalesce(cardinality(m.points), 0) = 0
 ORDER BY scenario, metric, step NULLS FIRST;
 
-CREATE OR REPLACE MACRO glossql.scenario_levers(s) AS TABLE
+CREATE OR REPLACE MACRO main.scenario_levers(s) AS TABLE
 WITH newest AS (
-  SELECT value, computed_at FROM glossql.measurements
+  SELECT value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY seq DESC LIMIT 1),
 scn AS (
   SELECT computed_at, unnest(from_json(json_extract(value, '$.scenarios'),
@@ -901,10 +901,10 @@ ORDER BY l.scenario, metric, lever;
 -- medians ahead) under the metric, for metric_series(world := …).
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.plan_rows() AS TABLE
+CREATE OR REPLACE MACRO main.plan_rows() AS TABLE
 WITH p AS (
   SELECT a.metric AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.behavior
-  FROM glossql.metric_axes() a WHERE a.kind = 'plan' AND a.applicable),
+  FROM main.metric_axes() a WHERE a.kind = 'plan' AND a.applicable),
 rows_ AS (
   SELECT p.plan, p.metric, p.behavior, p.covers,
          max(CASE WHEN c."column" = p.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -921,29 +921,29 @@ SELECT r.plan, r.metric, r.behavior, r.covers, r.instant, r.value,
                                WHEN g.gap >= 28 THEN 'month' WHEN g.gap >= 7 THEN 'week' ELSE 'day' END) AS grain
 FROM rows_ r LEFT JOIN gaps g USING (plan);
 
-CREATE OR REPLACE MACRO glossql.plan_grains() AS TABLE
-SELECT DISTINCT plan, metric, behavior, grain FROM glossql.plan_rows();
+CREATE OR REPLACE MACRO main.plan_grains() AS TABLE
+SELECT DISTINCT plan, metric, behavior, grain FROM main.plan_rows();
 
-CREATE OR REPLACE MACRO glossql.plan_cells(at_grain) AS TABLE
+CREATE OR REPLACE MACRO main.plan_cells(at_grain) AS TABLE
 SELECT r.plan, r.metric, coalesce(at_grain, r.grain) AS grain, date_trunc(coalesce(at_grain, r.grain), r.instant) AS period,
        CASE r.behavior WHEN 'stock' THEN arg_max(r.value, r.instant) WHEN 'flow' THEN sum(r.value) ELSE avg(r.value) END AS value,
        coalesce(r.behavior, 'none') AS behavior
-FROM glossql.plan_rows() r
+FROM main.plan_rows() r
 WHERE r.instant IS NOT NULL AND r.value IS NOT NULL
-  AND (at_grain IS NULL OR glossql.grain_rank(at_grain) >= glossql.grain_rank(r.grain))
+  AND (at_grain IS NULL OR main.grain_rank(at_grain) >= main.grain_rank(r.grain))
 GROUP BY r.plan, r.metric, coalesce(at_grain, r.grain), date_trunc(coalesce(at_grain, r.grain), r.instant), r.behavior;
 
-CREATE OR REPLACE MACRO glossql.world_cells(w, p, s, g) AS TABLE
+CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 WITH named AS (
-  SELECT a.metric AS plan, a.applicable, a.reason FROM glossql.metric_axes() a WHERE a.kind = 'plan' AND a.metric = p),
+  SELECT a.metric AS plan, a.applicable, a.reason FROM main.metric_axes() a WHERE a.kind = 'plan' AND a.metric = p),
 refusal AS (
   SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
               WHEN w = 'scenario' AND s IS NULL THEN error('metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
-              WHEN w = 'scenario' AND NOT EXISTS (SELECT 1 FROM glossql.scenarios() WHERE scenario = s) THEN error(
+              WHEN w = 'scenario' AND NOT EXISTS (SELECT 1 FROM main.scenarios() WHERE scenario = s) THEN error(
                 'metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario')
               WHEN w = 'plan' AND p IS NULL THEN error('metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>')
               WHEN w = 'plan' AND NOT EXISTS (SELECT 1 FROM named) THEN error(
-                CASE WHEN NOT EXISTS (SELECT 1 FROM glossql.aspects WHERE name = p)
+                CASE WHEN NOT EXISTS (SELECT 1 FROM main.aspects WHERE name = p)
                      THEN 'metric_series(plan := ''' || p || '''): no aspect of that name is declared — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>'
                      ELSE 'metric_series(plan := ''' || p || '''): ' || p || ' is no plan — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>' END)
               WHEN w = 'plan' AND EXISTS (SELECT 1 FROM named WHERE NOT applicable) THEN error(
@@ -951,17 +951,17 @@ refusal AS (
          END AS r),
 plan_world AS (
   SELECT c.metric, 'plan' AS world, '' AS dimension, '' AS member, c.period, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.behavior
-  FROM glossql.plan_cells(g) c WHERE w = 'plan' AND c.plan = p),
-newest AS (SELECT max(run) AS run FROM glossql.forecast_record()),
+  FROM main.plan_cells(g) c WHERE w = 'plan' AND c.plan = p),
+newest AS (SELECT max(run) AS run FROM main.forecast_record()),
 forecast_world AS (
   SELECT f.metric, 'forecast' AS world, '' AS dimension, '' AS member, f.period, f.p50 AS value,
          NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(f.behavior, 'none') AS behavior
-  FROM glossql.forecast_record() f JOIN newest n ON n.run = f.run
+  FROM main.forecast_record() f JOIN newest n ON n.run = f.run
   WHERE w = 'forecast' AND f.applicable AND f.span IS NULL AND f.period IS NOT NULL AND (g IS NULL OR g = f.grain)),
 scenario_world AS (
   SELECT sp.metric, 'scenario' AS world, '' AS dimension, '' AS member, sp.period, sp.value,
          NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(a.behavior, 'none') AS behavior
-  FROM glossql.scenario_points(s) sp LEFT JOIN glossql.metric_axes() a ON a.metric = sp.metric
+  FROM main.scenario_points(s) sp LEFT JOIN main.metric_axes() a ON a.metric = sp.metric
   WHERE w = 'scenario' AND sp.applicable AND sp.value IS NOT NULL AND (g IS NULL OR g = sp.grain))
 SELECT * FROM plan_world
 UNION ALL SELECT * FROM forecast_world
@@ -986,14 +986,14 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 -- forecast's). Computed at read; metric_plan lands it per plan.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.plan_points() AS TABLE
-WITH prow AS MATERIALIZED (SELECT * FROM glossql.plan_rows()),
+CREATE OR REPLACE MACRO main.plan_points() AS TABLE
+WITH prow AS MATERIALIZED (SELECT * FROM main.plan_rows()),
 g AS (
   SELECT pg.plan, pg.metric, pg.behavior, pg.grain, m.floor AS metric_floor
   FROM (SELECT DISTINCT plan, metric, behavior, grain FROM prow) pg
-  JOIN glossql.metric_axes() m ON m.metric = pg.metric WHERE m.applicable),
+  JOIN main.metric_axes() m ON m.metric = pg.metric WHERE m.applicable),
 floor_cells AS MATERIALIZED (
-  SELECT metric, period, value, num, den, behavior FROM glossql.metric_series(unclaimed := 'skip')
+  SELECT metric, period, value, num, den, behavior FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual'),
 origins AS (SELECT metric, max(period) AS origin FROM floor_cells WHERE value IS NOT NULL GROUP BY metric),
 cells AS (
@@ -1007,7 +1007,7 @@ own AS (SELECT c.* FROM cells c JOIN g USING (plan) WHERE c.grain = g.grain),
 rows_ AS (SELECT * FROM cells),
 cover AS (
   SELECT o.plan, date_trunc('year', o.period) AS year, g.grain AS own_grain, count(*) AS covered,
-         min(o.period) AS first, max(o.period + glossql.grain_step(g.grain)) AS last_end,
+         min(o.period) AS first, max(o.period + main.grain_step(g.grain)) AS last_end,
          CASE g.grain WHEN 'month' THEN 12 WHEN 'quarter' THEN 4
               WHEN 'day' THEN date_diff('day', date_trunc('year', o.period), date_trunc('year', o.period) + INTERVAL 1 YEAR)
               WHEN 'week' THEN cardinality(generate_series(date_trunc('week', date_trunc('year', o.period) + INTERVAL 6 DAY),
@@ -1021,9 +1021,9 @@ actuals AS (
   GROUP BY f.metric, r.grain, date_trunc(r.grain, f.period), f.behavior),
 judged AS (
   SELECT r.plan, r.metric, r.grain, r.period, r.value, g.behavior, g.metric_floor, g.grain AS own_grain, o.origin,
-         o.origin + glossql.grain_step(g.metric_floor) AS origin_end,
-         r.period + glossql.grain_step(r.grain) AS period_end,
-         date_trunc(g.metric_floor, r.period + glossql.grain_step(r.grain) - INTERVAL 1 MICROSECOND) AS last_inside,
+         o.origin + main.grain_step(g.metric_floor) AS origin_end,
+         r.period + main.grain_step(r.grain) AS period_end,
+         date_trunc(g.metric_floor, r.period + main.grain_step(r.grain) - INTERVAL 1 MICROSECOND) AS last_inside,
          r.period <= o.origin AS begun,
          a.value AS actual_cell,
          c.covered, c.of_, c.first, c.last_end,
@@ -1051,7 +1051,7 @@ runs AS MATERIALIZED (
          CASE WHEN r.span IS NULL THEN a.value
               ELSE (SELECT CASE WHEN count(*) = r.span THEN sum(a2.value) END FROM floor_cells a2
                     WHERE a2.metric = r.metric AND a2.period > r.origin AND a2.period <= r.period) END AS actual
-  FROM glossql.forecast_record() r
+  FROM main.forecast_record() r
   LEFT JOIN floor_cells a ON a.metric = r.metric AND a.period = r.period AND r.span IS NULL
   WHERE r.applicable AND r.step IS NOT NULL),
 tally AS (
@@ -1127,9 +1127,9 @@ DECLARE ASPECT metric_plan WITH $${
 }$$ AS MEASUREMENT ON TABLE;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
-  WITH pts AS (SELECT * FROM glossql.plan_points() WHERE plan = split_part($subject, '.', 2)),
-  own AS (SELECT metric, grain FROM glossql.plan_grains() WHERE plan = split_part($subject, '.', 2)),
-  run AS (SELECT max(seq) AS seq FROM glossql.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')
+  WITH pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
+  own AS (SELECT metric, grain FROM main.plan_grains() WHERE plan = split_part($subject, '.', 2)),
+  run AS (SELECT max(seq) AS seq FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')
   SELECT split_part($subject, '.', 2) AS plan,
          (SELECT any_value(metric) FROM own) AS metric,
          (SELECT any_value(grain) FROM own) AS grain,
@@ -1160,9 +1160,9 @@ $$;
 
 DECLARE WITNESS plan_w ON metric_plan DETECTOR plan_gap;
 
-CREATE OR REPLACE MACRO glossql.plan_record() AS TABLE
+CREATE OR REPLACE MACRO main.plan_record() AS TABLE
 WITH newest AS (
-  SELECT subject, value, computed_at FROM glossql.measurements
+  SELECT subject, value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_plan'
   QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
 judged AS (
@@ -1200,38 +1200,38 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- the newest estimate says per scenario and metric.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.routes_futures() AS TABLE
+CREATE OR REPLACE MACRO main.routes_futures() AS TABLE
 SELECT $ctes$
-futures_walk AS (SELECT * FROM glossql.band_verdict()),
+futures_walk AS (SELECT * FROM main.band_verdict()),
 futures_red AS (
-  SELECT metric, period FROM glossql.band_points()
+  SELECT metric, period FROM main.band_points()
   WHERE newest AND displacement > 0.9 AND EXISTS (SELECT 1 FROM futures_walk w WHERE w.band = 'red')),
 futures_plans AS (
   SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.reason, x.stopped
-  FROM (SELECT name, kind, schema FROM glossql.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
   LEFT JOIN axes x ON x.metric = a.name
   WHERE a.kind = 'QUERY' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
 futures_forecast AS (
-  SELECT max(seq) AS run FROM glossql.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
+  SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
 futures_judged AS (
   SELECT json_extract_string(m.value, '$.plan') AS plan, json_extract(m.value, '$.forecast_run')::BIGINT AS forecast_run,
          coalesce(g.current, true) AS current
-  FROM (SELECT subject, value FROM glossql.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
+  FROM (SELECT subject, value FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
         QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1) m
   LEFT JOIN (SELECT subject, current FROM glossql_glossary(current_schema(), NULL, true)
              WHERE actor = 'function' AND aspect = 'metric_plan') g ON g.subject = m.subject),
 futures_gaps AS (
-  SELECT plan, metric, label, value, low, high, stands FROM glossql.plan_record()
+  SELECT plan, metric, label, value, low, high, stands FROM main.plan_record()
   WHERE grain = 'year' AND stands IN ('below', 'above')),
 futures_scenarios AS (
-  SELECT a.name FROM (SELECT name, kind, schema FROM glossql.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  SELECT a.name FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
   WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
     AND EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g WHERE g.aspect = a.name AND g.state = 'current')),
 futures_levers AS (
   SELECT string_agg(subject, ', ' ORDER BY subject) AS columns
   FROM glossql_glossary(current_schema(), NULL, false) WHERE aspect = 'lever' AND state = 'current' AND (value->>'value') = 'true'),
 futures_estimate AS (
-  SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM glossql.scenario_points(NULL))
+  SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM main.scenario_points(NULL))
 $ctes$ AS ctes, $arms$
 SELECT 'bands' AS surface, 1 AS step, 'blocked' AS state, '' AS act, '' AS say, 'no applicable metric stands' AS why, '' AS statement, '' AS "then"
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind, '') <> 'plan')
@@ -1247,12 +1247,12 @@ UNION ALL
 SELECT 'bands', 4, 'done', '', '',
        'the walk stands; the red on ' || red.metric || ' at ' || red.period || ' carries the human''s ruling', '', ''
 FROM futures_red red CROSS JOIN ds
-WHERE EXISTS (SELECT 1 FROM glossql.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = red.metric AND r.key = 'band-' || red.period)
+WHERE EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = red.metric AND r.key = 'band-' || red.period)
 UNION ALL
 SELECT 'bands', 5, 'blocked', '', '',
        red.metric || ' is red at ' || red.period || ' and the question stands for the human', '', ''
 FROM futures_red red CROSS JOIN ds
-WHERE EXISTS (SELECT 1 FROM glossql.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = red.metric AND q.key = 'band-' || red.period)
+WHERE EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = red.metric AND q.key = 'band-' || red.period)
 UNION ALL
 SELECT 'bands', 6, 'next', 'band_points',
        'judge ' || red.metric || ', red at ' || red.period,
@@ -1271,8 +1271,8 @@ FROM reds CROSS JOIN ds WHERE reds.witness = 'bands_w' AND NOT EXISTS (SELECT 1 
 UNION ALL
 SELECT 'bands', 8, 'blocked', '', '',
        'the walk stands and took no metric: ' || string_agg(p.metric || ' — ' || p.reason, '; ' ORDER BY p.metric), '', ''
-FROM glossql.band_points() p
-WHERE NOT EXISTS (SELECT 1 FROM glossql.band_points() WHERE applicable)
+FROM main.band_points() p
+WHERE NOT EXISTS (SELECT 1 FROM main.band_points() WHERE applicable)
 HAVING count(*) > 0
 UNION ALL
 SELECT 'bands', 9, 'done', '', '', 'the walk stands and no band is red, or the red carries a question or a ruling', '', ''
@@ -1295,7 +1295,7 @@ SELECT 'plan', 3, 'next', 'GLOSS plan',
        'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;' || chr(10)
          || '-- or, where no number should be served: GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;',
        ''
-FROM futures_plans p LEFT JOIN glossql.metric_surfaces s ON s.name = p.plan CROSS JOIN ds
+FROM futures_plans p LEFT JOIN main.metric_surfaces s ON s.name = p.plan CROSS JOIN ds
 WHERE NOT coalesce(s.grounded, false) AND coalesce(s.stopped, '') = ''
 UNION ALL
 SELECT 'plan', 4, 'next', 'GLOSS plan',
@@ -1304,7 +1304,7 @@ SELECT 'plan', 4, 'next', 'GLOSS plan',
        'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;' || chr(10)
          || '-- or, where no number should be served: GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;',
        ''
-FROM futures_plans p JOIN glossql.metric_surfaces s ON s.name = p.plan LEFT JOIN bodies b ON b.metric = p.plan CROSS JOIN ds
+FROM futures_plans p JOIN main.metric_surfaces s ON s.name = p.plan LEFT JOIN bodies b ON b.metric = p.plan CROSS JOIN ds
 WHERE NOT p.applicable AND p.stopped IS NULL AND s.grounded AND coalesce(p.reason, '') <> ''
 UNION ALL
 SELECT 'plan', 5, 'next', 'metric_forecast', 'run the forecast', o.why,
@@ -1345,8 +1345,8 @@ SELECT 'plan', 9, 'next', 'GLOSS scenario',
          || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;'
 FROM futures_gaps g LEFT JOIN bodies b ON b.metric = g.plan CROSS JOIN futures_levers l CROSS JOIN ds
 WHERE NOT EXISTS (SELECT 1 FROM futures_scenarios)
-  AND NOT EXISTS (SELECT 1 FROM glossql.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
-  AND NOT EXISTS (SELECT 1 FROM glossql.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
+  AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
+  AND NOT EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 10, 'next', 'metric_scenario', 'run the estimate', o.why,
        'SELECT metric_scenario() FROM ' || ds.dataset, ''
@@ -1370,18 +1370,18 @@ SELECT 'plan', 12, 'next', 'GLOSS plan',
 FROM futures_gaps g CROSS JOIN futures_scenarios s LEFT JOIN futures_estimate e ON e.scenario = s.name AND e.metric = g.metric
 LEFT JOIN bodies b ON b.metric = g.plan CROSS JOIN ds
 WHERE NOT EXISTS (SELECT 1 FROM owed o WHERE o.subject = 'metric_scenario')
-  AND NOT EXISTS (SELECT 1 FROM glossql.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
-  AND NOT EXISTS (SELECT 1 FROM glossql.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
+  AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
+  AND NOT EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 13, 'blocked', '', '',
        g.plan || ' at ' || g.label || ' lies ' || g.stands || ' the forecast''s band and the question stands for the human', '', ''
 FROM futures_gaps g CROSS JOIN ds
-WHERE EXISTS (SELECT 1 FROM glossql.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
+WHERE EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 14, 'done', '', '',
        'the plan stands; the gap on ' || g.plan || ' at ' || g.label || ' carries the human''s ruling', '', ''
 FROM futures_gaps g CROSS JOIN ds
-WHERE EXISTS (SELECT 1 FROM glossql.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
+WHERE EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 15, 'done', '', '', 'every plan is served and judged, no plan period lies outside the forecast''s band, or the gap carries a question or a ruling', '', ''
 FROM ds

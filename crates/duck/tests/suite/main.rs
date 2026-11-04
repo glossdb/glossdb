@@ -317,7 +317,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     async fn count(plane: &Plane) -> String {
         let rows = text(
             &plane
-                .execute(agent(), None, "SELECT count(*) FROM glossql.aspects")
+                .execute(agent(), None, "SELECT count(*) FROM aspects")
                 .await
                 .unwrap(),
         );
@@ -367,7 +367,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     );
     let kits = text(
         &second
-            .execute(agent(), None, "SELECT count(*) FROM glossql.kits")
+            .execute(agent(), None, "SELECT count(*) FROM kits")
             .await
             .unwrap(),
     );
@@ -382,7 +382,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
                 agent(),
                 None,
                 "SELECT length(comment) FROM duckdb_views() WHERE database_name = 'ws' \
-                 AND schema_name = 'glossql' AND view_name = 'next'",
+                 AND schema_name = 'main' AND view_name = 'next'",
             )
             .await
             .unwrap(),

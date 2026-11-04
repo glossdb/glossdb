@@ -35,8 +35,10 @@ reader attaches to the same catalog and reads the same files.
 
 A statement reads the lake at its snapshot through the engine's own
 parquet scan, with the engine's pruning. A dataset-qualified name
-resolves through the attached lake; a bound channel's search path puts
-the dataset's schema first.
+resolves through the attached lake; a bound channel's `USE` puts the
+dataset's schema first, and the record's views in the lake's `main`
+schema are on every search path, so `FROM glossary` reads bare from
+any dataset in use.
 
 ## The warehouse
 

@@ -69,7 +69,8 @@ pub struct Actor {
 pub const DEFAULT_ROW_CAP: usize = 200;
 
 /// The lake's name in the catalog; every store relation reads as
-/// `ws.glossql.<relation>`.
+/// `ws.main.<relation>`, bare from any dataset in use, since the
+/// lake's `main` schema is on every search path.
 pub const LAKE: &str = "ws";
 
 /// The instance's own in-memory database: what the build carries and
@@ -454,8 +455,8 @@ fn use_target(statement: &str) -> Option<String> {
     )
 }
 
-/// The store's relations, as the extension serves them under
-/// `ws.glossql`, and the reads over the record.
+/// The store's relations, as the extension serves them in the
+/// lake's `main` schema, and the reads over the record.
 const RECORD: &[&str] = &[
     "glossary",
     // the door's derived reads, which say what the record holds
@@ -788,7 +789,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         conn,
         &format!(
             "SELECT function_name FROM duckdb_functions() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'glossql' AND function_name LIKE 'routes\\_%' ESCAPE '\\' \
+             AND schema_name = 'main' AND function_name LIKE 'routes\\_%' ESCAPE '\\' \
              AND function_type = 'table_macro' ORDER BY function_name"
         ),
         &[],
@@ -802,7 +803,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
     for route in &routes {
         let (_, _, batches) = arrow_batches(
             conn,
-            &format!("SELECT ctes, arms FROM {LAKE}.glossql.{route}()"),
+            &format!("SELECT ctes, arms FROM {LAKE}.main.{route}()"),
             &[],
         )?;
         for row in rows_as_text(&batches) {
@@ -827,13 +828,13 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         arms.join("\nUNION ALL\n")
     };
     let shared = format!(
-        "ds AS (SELECT dataset FROM {LAKE}.glossql.current_dataset), \
-         axes AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.metric_axes()), \
-         owed AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.owed), \
+        "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
+         axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_axes()), \
+         owed AS MATERIALIZED (SELECT * FROM {LAKE}.main.owed), \
          reds AS MATERIALIZED (SELECT subject, witness FROM glossql_attest(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
            SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
-           FROM {LAKE}.glossql.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
+           FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
          applicable AS (SELECT count(*) AS n, string_agg(metric, ', ' ORDER BY metric) AS metrics, \
            string_agg(chr(39) || metric || chr(39), ', ' ORDER BY metric) AS metric_list FROM axes WHERE applicable)"
     );
@@ -843,7 +844,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         format!(", {}", ctes.join(", "))
     };
     Ok(format!(
-        "CREATE OR REPLACE VIEW {LAKE}.glossql.next AS WITH {shared}{kit_ctes}, \
+        "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
          steps AS ({steps}), \
          first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
          SELECT CASE surface WHEN 'structure' THEN 1 WHEN 'metrics' THEN 2 WHEN 'slices' THEN 3 \
@@ -871,7 +872,7 @@ fn write_next(conn: &Connection) -> Result<(), SessionError> {
         conn,
         &format!(
             "SELECT comment FROM duckdb_views() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'glossql' AND view_name = 'next'"
+             AND schema_name = 'main' AND view_name = 'next'"
         ),
         &[],
     )?;
@@ -881,7 +882,7 @@ fn write_next(conn: &Connection) -> Result<(), SessionError> {
     run(conn, &view)?;
     run(
         conn,
-        &format!("COMMENT ON VIEW {LAKE}.glossql.next IS '{hash}'"),
+        &format!("COMMENT ON VIEW {LAKE}.main.next IS '{hash}'"),
     )?;
     Ok(())
 }
@@ -942,18 +943,6 @@ fn names_parameter(sql: &str, name: &str) -> bool {
             .next()
             .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
     })
-}
-
-/// The search path after a `USE`: the dataset's schema first, the
-/// store's schema behind it, so a statement spells a relation of the
-/// record bare, `FROM glossary`, as the doors and the skills do.
-fn set_search_path(conn: &Connection) -> Result<(), SessionError> {
-    let (_, _, batches) = arrow_batches(conn, "SELECT current_schema()", &[])?;
-    let schema = one_cell(&batches).unwrap_or_else(|| "main".to_string());
-    run(
-        conn,
-        &format!("SET search_path = '{LAKE}.{schema},{LAKE}.glossql,{LAKE}.main,{PAGES_DB}.main'"),
-    )
 }
 
 /// An extraction, `SELECT <function>() FROM <subject>`: the language's
@@ -1126,6 +1115,15 @@ impl Plane {
                 run(&conn, &format!("USE {LAKE}"))?;
                 run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(&conn, "PRAGMA glossql")?;
+                // the door's pages: a table of the instance's own in-memory
+                // database, empty until a door publishes them
+                run(
+                    &conn,
+                    &format!(
+                        "CREATE TABLE IF NOT EXISTS {PAGES_DB}.main.door_pages \
+                         (uri VARCHAR, title VARCHAR, body VARCHAR)"
+                    ),
+                )?;
                 for kit in &config.kits {
                     run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
@@ -1168,8 +1166,9 @@ impl Plane {
     }
 
     /// The pages the door serves, held here and published as rows of
-    /// `pages()`: a table in the instance's own in-memory database,
-    /// never the lake, since a page is the build's and not the record's.
+    /// `pages()`, a temp macro of every channel over a table in the
+    /// instance's own in-memory database, never the lake, since a page
+    /// is the build's and not the record's.
     pub fn with_pages(mut self, pages: Arc<[DoorPage]>) -> Self {
         if let Err(e) = self.publish_pages(&pages) {
             tracing::warn!(error = %e, "the door pages are not rows of pages()");
@@ -1197,13 +1196,7 @@ impl Plane {
                 ],
             )?;
         }
-        run(
-            &conn,
-            &format!(
-                "CREATE OR REPLACE MACRO {PAGES_DB}.main.pages() AS TABLE \
-                 SELECT uri, title, body FROM {PAGES_DB}.main.door_pages"
-            ),
-        )
+        Ok(())
     }
 
     pub fn pages(&self) -> Arc<[DoorPage]> {
@@ -1259,7 +1252,15 @@ impl Plane {
                         }
                     })?;
                 }
-                set_search_path(&conn)?;
+                // `pages()` for this connection: `temp.main` is first on every
+                // search path, whatever dataset the session puts in use
+                run(
+                    &conn,
+                    &format!(
+                        "CREATE OR REPLACE TEMP MACRO pages() AS TABLE \
+                         SELECT uri, title, body FROM {PAGES_DB}.main.door_pages"
+                    ),
+                )?;
                 Ok(conn)
             }
         })
@@ -1290,7 +1291,7 @@ impl Plane {
         let session = self.channel(bootstrap_actor(), None).await?;
         let batches = session
             .batches(
-                &format!("SELECT name FROM {LAKE}.glossql.datasets ORDER BY name"),
+                &format!("SELECT name FROM {LAKE}.main.datasets ORDER BY name"),
                 &[],
             )
             .await?;
@@ -1305,7 +1306,7 @@ impl Plane {
     pub async fn brief_counts(&self) -> Result<BriefCounts, SessionError> {
         let session = self.channel(bootstrap_actor(), None).await?;
         let sql = format!(
-            "WITH g AS (SELECT * FROM {LAKE}.glossql.glossary),
+            "WITH g AS (SELECT * FROM {LAKE}.main.glossary),
              humans AS (SELECT count(*) AS n, max(written_at)::VARCHAR AS latest FROM g WHERE actor_kind = 'human'),
              latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn FROM g) WHERE rn = 1),
              approvals AS (
@@ -1313,7 +1314,7 @@ impl Plane {
                WHERE actor_kind = 'human' AND aspect = 'recipe_change' AND json_extract_string(body, '$.table') IS NOT NULL),
              pending AS (
                SELECT count(*) AS n FROM approvals a
-               WHERE NOT EXISTS (SELECT 1 FROM {LAKE}.glossql.imports i
+               WHERE NOT EXISTS (SELECT 1 FROM {LAKE}.main.imports i
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
              rulings AS (
                SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
@@ -1481,16 +1482,7 @@ impl Session {
                     admitted(piece).and_then(|()| execute_one(&conn, piece, cap))
                 };
                 match ran {
-                    Ok(outcome) => {
-                        if piece
-                            .trim_start()
-                            .get(..3)
-                            .is_some_and(|h| h.eq_ignore_ascii_case("use"))
-                        {
-                            set_search_path(&conn)?;
-                        }
-                        outcomes.push(outcome);
-                    }
+                    Ok(outcome) => outcomes.push(outcome),
                     Err(e) if total == 1 => return Err(e),
                     Err(e) => {
                         return Err(SessionError::Sequence {
@@ -1649,14 +1641,14 @@ impl Session {
                 &format!(
                     "SELECT DISTINCT m.function, m.subject \
                      FROM glossql_glossary(current_schema(), NULL, true) r \
-                     JOIN {LAKE}.glossql.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
+                     JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
                      WHERE r.actor = 'function' AND NOT r.current \
                      UNION \
                      SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.glossql.metric_axes()) \
+                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_axes()) \
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
-                     FROM {LAKE}.glossql.owed o \
+                     FROM {LAKE}.main.owed o \
                      WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
                      ORDER BY 1, 2"
                 ),
@@ -1699,7 +1691,7 @@ impl Session {
             .collect();
         let declared = self
             .batches(
-                &format!("SELECT name FROM {LAKE}.glossql.functions ORDER BY name"),
+                &format!("SELECT name FROM {LAKE}.main.functions ORDER BY name"),
                 &[],
             )
             .await?;
@@ -1766,7 +1758,7 @@ fn grounding_row(
     let (_, _, kind) = arrow_batches(
         conn,
         &format!(
-            "SELECT kind FROM {LAKE}.glossql.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
+            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
         ),
         &[],
     )?;
@@ -1775,7 +1767,7 @@ fn grounding_row(
     }
     let (_, _, row) = arrow_batches(
         conn,
-        &format!("SELECT * FROM {LAKE}.glossql.metric_axes() WHERE metric = '{quoted}'"),
+        &format!("SELECT * FROM {LAKE}.main.metric_axes() WHERE metric = '{quoted}'"),
         &[],
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
