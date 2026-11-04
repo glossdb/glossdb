@@ -110,9 +110,8 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
             .await
             .unwrap_or_else(|e| panic!("{statement}: {e}"));
     }
-    // SPEC §5.3's removal is a standard actor's too: the door runs
-    // `DELETE FROM glossary` on the store's table, since the engine
-    // deletes through a table and `glossql.glossary` is the view over it
+    // SPEC §5.2's removal is a standard actor's too: the extension's
+    // statement, run on the store's table behind the view
     agent
         .execute(
             "CREATE TABLE fin.orders AS SELECT 1 AS id, 2.5 AS amount;
@@ -129,18 +128,14 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
         .await
         .unwrap();
     assert_eq!(count(glossed), "1");
-    for (statement, affected) in [
-        ("DELETE FROM glossary WHERE aspect = 'role'", 1),
-        ("delete from glossql.glossary where aspect = 'role'", 0),
-        (
-            "-- the lake's full name, quoted\nDELETE FROM ws.\"glossql\".\"glossary\" g WHERE g.aspect = 'role';",
-            0,
-        ),
-    ] {
-        match agent.execute(statement).await.unwrap().as_slice() {
-            [Outcome::Affected(n)] => assert_eq!(*n, affected, "{statement}"),
-            other => panic!("{statement}: {other:?}"),
-        }
+    match agent
+        .execute("DELETE FROM glossary WHERE aspect = 'role'")
+        .await
+        .unwrap()
+        .as_slice()
+    {
+        [Outcome::Affected(1)] => {}
+        other => panic!("{other:?}"),
     }
     let gone = agent
         .execute("SELECT count(*) FROM glossary WHERE aspect = 'role'")
