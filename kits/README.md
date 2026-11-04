@@ -5,15 +5,19 @@ corpus live in its repository, and the door serves the two documents
 as `doc://SPEC.md` and `doc://grammar.ebnf`. The kits here add
 vocabulary and reads on that language, never grammar; a form they
 would need goes through the extension's corpus first. Each kit is SQL
-loaded at open after the extension's kpi and quality kits, with a
-`SKILL.md` that teaches it and a `kit.test` suite beside it, run by
-the engine crate's suite on its own runner
-(`crates/duck/src/sqllogic.rs`).
+loaded at open, in order: core, the extension's kpi and quality
+kits, metrics, futures, door. A kit whose text the lake recorded
+stands at open and runs nothing. Each has a `kit.test` suite beside
+it, run by the engine crate's suite on its own runner
+(`crates/duck/src/sqllogic.rs`); metrics and futures carry a
+`SKILL.md` that teaches them.
 
 | Kit | Adds | Record |
 |---|---|---|
+| `core` | the workspace's own vocabulary, the ruling channel, a recipe's approval and the apps as glosses, and the record's own reads: `open_questions`, `ruling_entries`, `current_dataset` | `core/kit.test` |
 | `metrics` | the actual world: every applicable metric's cells at its floor or a coarser grain, read as `metric_series()` and described by `metric_axes()`; the ladder over the view's time column | `metrics/kit.test`; fixtures 26 and 28 of the extension's corpus |
 | `futures` | the forecast, scenario and plan worlds on the same read, answered by the model service: the walk's bands, the forecast, the scenario's estimate, the plan's judgement | `futures/kit.test`; `corpus/` here, fixtures 19 and 27 |
+| `door` | what stands waiting on an act in the bound dataset, `owed`, and the core routes of `next` | `door/kit.test` |
 
 ## The worlds on the series read
 

@@ -76,12 +76,6 @@ pub const LAKE: &str = "ws";
 /// the record does not, the door's pages.
 const PAGES_DB: &str = "memory";
 
-/// The record's own words, declared at every open before any kit:
-/// the ruling channel, a recipe's approval, the apps as glosses.
-pub const CORE: &str = include_str!("../kits/core.sql");
-/// The door's reads that stand on the kits', declared after them.
-pub const DOOR: &str = include_str!("../kits/door.sql");
-
 // -- the refusal -------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
@@ -719,10 +713,12 @@ impl Config {
         Config {
             extension: pieces.extension,
             kits: vec![
+                pieces.kits.join("core/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("metrics/kit.sql"),
                 pieces.kits.join("futures/kit.sql"),
+                pieces.kits.join("door/kit.sql"),
             ],
             extension_dir: pieces.extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
@@ -856,6 +852,38 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
                 surface, step, state, act, say, why, statement, \"then\" \
          FROM first WHERE rn = 1"
     ))
+}
+
+/// The `next` view, written when its text is new. The hash of the
+/// composed text rides the view as its comment, which a replace
+/// clears; a view whose comment is the hash stands, and the open
+/// skips the bind of the whole text. A kit that changed changes the
+/// text through its routes.
+fn write_next(conn: &Connection) -> Result<(), SessionError> {
+    let view = next_view(conn)?;
+    let (_, _, hashed) = arrow_batches(
+        conn,
+        &format!("SELECT md5('{}')", view.replace('\'', "''")),
+        &[],
+    )?;
+    let hash = one_cell(&hashed).unwrap_or_default();
+    let (_, _, standing) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT comment FROM duckdb_views() WHERE database_name = '{LAKE}' \
+             AND schema_name = 'glossql' AND view_name = 'next'"
+        ),
+        &[],
+    )?;
+    if one_cell(&standing).as_deref() == Some(hash.as_str()) {
+        return Ok(());
+    }
+    run(conn, &view)?;
+    run(
+        conn,
+        &format!("COMMENT ON VIEW {LAKE}.glossql.next IS '{hash}'"),
+    )?;
+    Ok(())
 }
 
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
@@ -1036,7 +1064,10 @@ fn engine_instance(config: &Config) -> Result<(Environment, Instance, Connection
 
 impl Plane {
     /// Open the workspace: the instance, the extension, the lake, the
-    /// grammar, the store, and the kits in order.
+    /// grammar, the store, the kits in order and the `next` view. A kit
+    /// whose text the lake recorded stands and runs nothing; the view is
+    /// written when its text is new. An existing workspace opens in the
+    /// time of the attach.
     pub async fn open(config: Config) -> Result<Plane, SessionError> {
         let opened = tokio::task::spawn_blocking({
             let config = config.clone();
@@ -1095,17 +1126,11 @@ impl Plane {
                 run(&conn, &format!("USE {LAKE}"))?;
                 run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(&conn, "PRAGMA glossql")?;
-                for statement in split_statements(CORE) {
-                    run(&conn, &statement)?;
-                }
                 for kit in &config.kits {
                     run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
-                for statement in split_statements(DOOR) {
-                    run(&conn, &statement)?;
-                }
-                run(&conn, &next_view(&conn)?)?;
+                write_next(&conn)?;
                 Ok((environment, instance))
             }
         })

@@ -17,9 +17,7 @@ The rules:
   name for the engine.
 - **Kits are DuckDB SQL**, a `.test` suite beside each: the
   language's (kpi, quality, spatial) with the extension, the server's
-  (metrics, futures) in `kits/` here; the record's own words and the
-  doors' derived reads live in `crates/duck/kits/core.sql` and
-  `door.sql`.
+  (core, metrics, futures, door) in `kits/` here.
 - **The doors stay closed** (`kernel.md`, "Not now").
 
 ## The table
@@ -40,14 +38,16 @@ order after it, its rows independent and listed in risk order.
 | Step 6f: the house on the engine — the plans rewritten or deleted, `glossary` folded into `duck`, the code comments on the engine, the issues closed or rescoped (#5, #41, #42, #60, #92, #101 and #174 carry their rescope as a comment; their bodies follow) | Built | | | |
 | Step 6h: the kits with their wrappers — the extension ships the language and its examples (kpi, quality, spatial); the metrics and futures kits are the server's and live in `kits/` here with their suites | Built: 1,938 lines of SQL and 980 of tests moved; the suites run under `cargo test` on the engine's own runner (`crates/duck/src/sqllogic.rs`, the four directives they use); one `share/glossdb/kits` in the image and the tarball carries both roots; SPEC's paragraph on the worlds (§9, lines 633–654) is the lead's cut | | | |
 | Step 6g: the door's gate — a door opens the workspace, never the engine: everyone lands, writes, copies, drops, declares, glosses and reads; `SET`, `RESET`, a `PRAGMA` switch, `ATTACH`, `DETACH`, `INSTALL`, `LOAD`, `CALL`, `IMPORT` and `EXPORT DATABASE` are the actors' `GLOSSDB_ROOT` names | Built: `admitted` in `crates/duck/src/lib.rs`, before each statement of `execute`, a streamed read and an export; the engine suite holds it; `DELETE FROM glossary` is the extension's statement, run on the store's table. Next: the gate in the engine, `gate.md` | | | |
+| Step 6j: the open stands — a kit whose text the lake recorded runs nothing (`glossql_kit` lands a kits row per text hash; a standing kit runs its LOAD lines only), core and door are kits under `kits/`, the `next` view is written when its text is new (its hash as the view's comment) | Built: `Plane::open`, `write_next`; measured on the laptop, an existing workspace opens in 0.135 s where it took 9.1 s, a fresh one in 9.7 s. Next: the bind per read — `next` 0.34 s on a small record, two thirds of it bind, not reusable through PREPARE on DuckLake; shallower chains or Rust for the composition, after a measurement in the deployment | | | |
 
 ## What stands
 
 - **The DuckDB engine** (`crates/duck`: 3.4k lines of Rust, 2.5k of
   SQL under `crates/`, the engine's own tests). `Plane::open` loads
-  the extension and `ducklake`, attaches the lake as `ws`, declares
-  `core.sql`, the kits in order and `door.sql`, and composes one
-  `next` view from every `routes_<kit>()` macro. A channel is one
+  the extension and `ducklake`, attaches the lake as `ws`, loads
+  the kits in order, each standing when its text is the one the lake
+  recorded, and writes one `next` view from every `routes_<kit>()`
+  macro when its text is new. A channel is one
   connection: the grammar on, the actor as session variables, the
   dataset in use. `execute` splits statements and answers outcomes;
   `query_page` cuts one row past the cap and never cuts a record

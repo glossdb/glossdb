@@ -645,7 +645,7 @@ struct RulingEntry<'a> {
 /// derivation — unassessed witnessed claims (behavior, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
 /// shipped functions settle them. The derivation itself is the core's
-/// `open_questions` read (`crates/duck/kits/core.sql`), which carries
+/// `open_questions` read (`kits/core/kit.sql`), which carries
 /// the gates and the reasons; the door only orders and serves it, and
 /// the app's docket renders the same read. Least-confident first, and
 /// the ordering rides here because an inner ORDER BY does not survive

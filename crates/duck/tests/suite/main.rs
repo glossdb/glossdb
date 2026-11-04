@@ -365,6 +365,33 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         declared,
         "a second open declares nothing twice"
     );
+    let kits = text(
+        &second
+            .execute(agent(), None, "SELECT count(*) FROM glossql.kits")
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        kits,
+        vec![vec![Some("6".to_string())]],
+        "every kit landed once at the first open and stood at the second"
+    );
+    let next = text(
+        &second
+            .execute(
+                agent(),
+                None,
+                "SELECT length(comment) FROM duckdb_views() WHERE database_name = 'ws' \
+                 AND schema_name = 'glossql' AND view_name = 'next'",
+            )
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        next,
+        vec![vec![Some("32".to_string())]],
+        "the next view carries its text's hash"
+    );
     let unbound = text(
         &second
             .execute(agent(), None, "SELECT dataset FROM current_dataset")

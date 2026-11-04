@@ -44,9 +44,8 @@ mode; this file is so nobody has to rediscover it.
   with a `.test` suite beside it.
 - **The server** owns the plane (one instance per process, opened
   once), a channel per call (one connection, the actor and the
-  dataset set on it), the record's own reads (`crates/duck/kits/core.sql`),
-  the door's reads (`crates/duck/kits/door.sql`), the composed `next`
-  read, the doors and the pages.
+  dataset set on it), the core and door kits (`kits/core`, `kits/door`),
+  the composed `next` read, the doors and the pages.
 
 ## The seams, and the rules they impose
 

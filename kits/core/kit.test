@@ -1,0 +1,49 @@
+# name: kits/core/kit.test
+# description: the core kit — the workspace's own vocabulary, the ruling and the app aspects, and the door's reads over the record; run again, it stands
+# group: [sql]
+
+require glossql
+
+require json
+
+require parquet
+
+require ducklake
+
+statement ok
+ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/glossql_kit_core_lake/');
+
+statement ok
+USE ws;
+
+statement ok
+PRAGMA glossql;
+
+statement ok
+FROM glossql_kit('{KITS}/core/kit.sql');
+
+query I
+SELECT count(*) FROM glossql.aspects WHERE name IN ('recipe_change', 'ruling', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
+----
+7
+
+query I
+SELECT count(*) FROM glossql.open_questions;
+----
+0
+
+query I
+SELECT count(*) FROM glossql.ruling_entries;
+----
+0
+
+# the same text again, as the opener runs it at every start-up: the kit stands, nothing runs
+query TT
+FROM glossql_kit('{KITS}/core/kit.sql');
+----
+core	stands
+
+query I
+SELECT count(*) FROM glossql.kits WHERE name = 'core';
+----
+1
