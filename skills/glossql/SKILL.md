@@ -63,7 +63,7 @@ is what `SELECT * FROM datasets` wants; a qualified
 | `DECLARE DATASET ops SET (…);` | create a dataset |
 | `DECLARE SOURCE erp SET (type: parquet, location: 'root');` | register a source; the location is a root — a directory on the server's machine, or an object-store URL it may read — and globs belong in recipe SQL; `type` describes the export, the recipe's `read_parquet`/`read_csv`/`read_json` picks the reader |
 | `PROBE erp AS $$sql$$;` | run recipe-shaped SQL at the source, landing nothing |
-| `DECLARE RECIPE work_orders ON ops FROM erp [SET (key: id)] AS $$sql$$;` | land the table the SQL produces — the landed table is the typed table; a key, a column of the result, makes every import merge by it |
+| `DECLARE RECIPE work_orders ON ops FROM erp [SET (key: id)] AS $$sql$$;` | land the table the SQL produces — the landed table is the typed table; a key, a column of the result, makes every import merge by it, and the result carries each key once or the landing refuses by name |
 | `IMPORT work_orders;` | a data update: the table becomes its recipe's result as the source stands now, in one commit — new files appended where that is the result, the table replaced whole otherwise, the rows merged by the key where the recipe names one; `unchanged` when there is nothing new |
 | `DROP TABLE work_orders;` | remove a table — refused while it holds data |
 | `DECLARE RELATIONSHIP a.col -> b.col;` | declare a join edge (`<->` both ways); a composite endpoint is a tuple, `a.(x, y) -> b.(x, y)`; both endpoints must be landed columns |
