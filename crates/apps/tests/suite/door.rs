@@ -18,7 +18,7 @@ use tower::ServiceExt;
 const ORIGIN: &str = "https://glossql.example";
 
 async fn open_plane(dir: &std::path::Path) -> Plane {
-    Plane::open(glossdb_apps::engine::Config::laptop(dir))
+    Plane::open(glossdb_apps::engine::testing::golden(dir).await.unwrap())
         .await
         .unwrap()
 }

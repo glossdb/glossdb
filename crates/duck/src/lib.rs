@@ -2051,3 +2051,85 @@ mod tests {
         assert_eq!(rows[0][0].as_deref(), Some(""));
     }
 }
+
+/// For the suites: a workspace copied from a golden one, so a test
+/// opens in the time of the attach instead of paying the kits. The
+/// golden copy is built once per content, keyed by the extension
+/// artifact and the kits' texts, under the system's temporary
+/// directory. A build that loses the race to another process yields to
+/// the one that landed: the rename is atomic, so a copy sees a whole
+/// workspace or none.
+pub mod testing {
+    use super::{Config, Plane, SessionError};
+    use std::hash::{Hash, Hasher};
+    use std::path::{Path, PathBuf};
+
+    /// The laptop config for `into`, holding a copy of the golden
+    /// workspace: every kit's row stands, so the open is the attach. A
+    /// directory that holds a workspace already is left as it is.
+    pub async fn golden(into: &Path) -> Result<Config, SessionError> {
+        let config = Config::laptop(into);
+        if into.join("catalog.ducklake").exists() {
+            return Ok(config);
+        }
+        let golden = golden_dir(&config).await?;
+        copy_dir(&golden, into)
+            .map_err(|e| SessionError::Engine(format!("the golden copy: {e}")))?;
+        Ok(config)
+    }
+
+    async fn golden_dir(config: &Config) -> Result<PathBuf, SessionError> {
+        let io = |e: std::io::Error| SessionError::Engine(format!("the golden workspace: {e}"));
+        let root = std::env::temp_dir().join("glossdb-golden");
+        std::fs::create_dir_all(&root).map_err(io)?;
+        let dir = root.join(key(config).map_err(io)?);
+        if dir.is_dir() {
+            return Ok(dir);
+        }
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let scratch = root.join(format!("build-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&scratch).map_err(io)?;
+        let built = Plane::open(Config::laptop(&scratch)).await?;
+        drop(built);
+        match std::fs::rename(&scratch, &dir) {
+            Ok(()) => {}
+            Err(_) if dir.is_dir() => {
+                let _ = std::fs::remove_dir_all(&scratch);
+            }
+            Err(e) => return Err(io(e)),
+        }
+        Ok(dir)
+    }
+
+    /// What the golden workspace is made of: the extension artifact (by
+    /// size and time, a rebuild being a new one), the kits' texts and
+    /// this crate's version.
+    fn key(config: &Config) -> std::io::Result<String> {
+        let mut h = std::hash::DefaultHasher::new();
+        env!("CARGO_PKG_VERSION").hash(&mut h);
+        let artifact = std::fs::metadata(&config.extension)?;
+        artifact.len().hash(&mut h);
+        artifact.modified()?.hash(&mut h);
+        for kit in &config.kits {
+            std::fs::read(kit)?.hash(&mut h);
+        }
+        Ok(format!("{:016x}", h.finish()))
+    }
+
+    fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            let target = to.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_dir(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), &target)?;
+            }
+        }
+        Ok(())
+    }
+}

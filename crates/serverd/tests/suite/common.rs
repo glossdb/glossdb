@@ -155,7 +155,9 @@ pub fn human() -> glossdb_serverd::engine::Actor {
 
 pub async fn scratch_plane() -> (tempfile::TempDir, glossdb_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
+    let mut config = glossdb_serverd::engine::testing::golden(dir.path())
+        .await
+        .unwrap();
     config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
     let plane = glossdb_serverd::Plane::open(config).await.unwrap();
     (dir, plane)
