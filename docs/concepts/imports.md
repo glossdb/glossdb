@@ -73,8 +73,12 @@ default recipe is `SELECT *`.
 A recipe may name its table's key, `SET (key: order_id)` before `AS`
 — a column of its result, or a comma-separated list of them. A keyed
 recipe's result merges into the table by that key on every import
-(below); an unkeyed recipe's result is the table. A key the recipe
-does not produce is refused at the declaration.
+(below); an unkeyed recipe's result is the table. A keyed recipe's
+result carries each key once, at every landing: a result that carries
+a key twice is refused, naming the key, and which row stands is the
+recipe's to say. A glob over a base file and a changes file says it
+with a `QUALIFY` over the file name. A key the recipe does not
+produce is refused at the declaration.
 
 **A landing streams.** The recipe's rows are written as they arrive,
 one batch in memory, and join the table as one commit — so the size of
