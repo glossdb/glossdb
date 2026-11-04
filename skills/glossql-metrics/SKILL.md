@@ -33,12 +33,12 @@ order, and the line is never one.
 | goal | done when | the judgment |
 |---|---|---|
 | `structure` | the edges are declared and the coherence check ran | `references/structure.md` |
-| `metrics` | every metric the dataset claims is served by the cube, or stopped with the reason | `references/ground.md`, and below |
-| `slices` | every applicable metric admits an axis, or its grounding names its own — `"axes": []` holds for a distinct count or a ratio, which no column slices whole | `references/cube.md` |
-| `bands` | the walk ran and no band is red, or the red carries your question or a ruling | `references/cube.md` |
+| `metrics` | every metric the dataset claims is served, or stopped with the reason | `references/ground.md`, and below |
+| `slices` | every applicable metric slices by its dimension columns, each served column carrying its `role` — a distinct count or a ratio serves no dimension column, since no column slices it whole | `references/ladder.md` |
+| `bands` | the walk ran and no band is red, or the red carries your question or a ruling | `references/ladder.md` |
 | `checks` | a check of your own stands, every check ran, none is red | `references/validate.md` |
 | `app` | a page stands over the grounded metrics | the `glossql-apps` skill |
-| `plan` | every plan is served, the forecast stands at the current origin, and no plan year lies outside the forecast's band — or the gap carries your question or a ruling | `references/cube.md`, the plan world |
+| `plan` | every plan is served and judged against the forecast at the current origin, and no plan year lies outside the forecast's band — or the gap carries your question or a ruling | `references/ladder.md`, the plan world |
 | `rulings` | every ruling is folded in and nothing is owed | `skill://glossql/references/rulings.md` |
 
 **When every goal is done or blocked, offer one next step of each
@@ -58,40 +58,38 @@ stands, what is open — when you want the counts.
 
 Four things look alike here and are not. Decide which one you mean
 before you write it: the workspace accepts all four under the same
-`GLOSS` statement and reads each differently afterwards. Whichever it
-is, the serving grounding is a view of the dataset under the aspect's
-name: `SELECT … FROM <name>` reads it, filters it and joins it as any
-view, and `information_schema` lists it. `read.<name>()` names the
-same view.
+`GLOSS` statement and reads each differently afterwards. Whichever it is, the serving grounding is a view of the dataset under
+the aspect's name: `SELECT … FROM <name>` reads it, filters it and
+joins it as any view, and `information_schema` lists it. Its columns
+are subjects: the words that make it a series are glosses on them.
 
 - **A metric** — a QUERY aspect whose grounding serves a row-grain
-  relation with a `value` column and a date column. The cube turns it
-  into a series at its judged cadence, the docket charts it, the
-  bands walk watches it. It is a series only when the date column
-  traces to a table column that `temporal()` has profiled: serve the
-  table's own date column, and the cube buckets it at every grain; a
-  date computed inside the SQL has no verdict behind it. **A level
-  with an as-of definition is a stock, not a fact** — payables
-  outstanding, inventory on hand, headcount, anything you could state
-  as of any date: collapse the events to the frame's grain, one row
-  per entity per period, mark `"behavior": "stock"` and declare the
-  `grain`. `references/ground.md` carries both shapes written down,
-  the interval table included.
+  relation with a value column and a period column. Gloss `role`
+  timestamp on the period column and `role` measure on the value
+  column, run `temporal()` over the period column, and gloss the
+  value's `behavior`: the series read then serves it at the measured
+  cadence or the ladder's floor, the docket charts it, the bands walk
+  watches it. **A level with an as-of definition is a stock, not a
+  fact** — payables outstanding, inventory on hand, headcount,
+  anything you could state as of any date: collapse the events to the
+  frame's grain, one row per entity per period, and gloss `behavior`
+  stock on the value. `references/ground.md` carries both shapes
+  written down, the interval table included.
 - **A current fact** — a value with no as-of definition: a balance
   the source hands over already summed, a count from a snapshot
   table. Ground it as a QUERY aspect that serves `value` and no date,
   with `"x-kind": "fact"` in the aspect's blob — the declaration is
-  what makes it a fact. `FROM <name>` serves it, `fact_values()`
-  serves every declared fact's number, and the docket lists it under
-  facts: one number, as of the newest landing of the tables it
-  reads. The cube abstains on it, and that is the right answer. A fact
-  given a date becomes a one-point series — a chart of nothing.
+  what makes it a fact. `FROM <name>` serves it, `fact_values()` serves every declared fact's
+  number, and the docket lists it under facts: one number, as of the
+  newest landing of the tables it reads. The fact row abstains on it,
+  and that is the right answer. A fact given a date becomes a
+  one-point series — a chart of nothing.
 - **A derived relation** — governed SQL other groundings build on: a
   snapshot boundary, a cleaned join, a scoped subset. Ground it with
   `"x-kind": "relation"`; every other grounding composes `FROM
-  <name>`, so a ruled change propagates. It serves any columns,
-  needs no `value`, and the cube abstains on it by design. There is
-  no `CREATE VIEW` here; a grounding is the view.
+  <name>`, so a ruled change propagates. It serves any columns, needs no `value`, and the fact row abstains
+  on it by design. There is no `CREATE VIEW` here; a grounding is the
+  view.
 - **A validation** — an authored expectation (a FACT gloss) with a
   function voice that measures it and a detector that bands the two;
   `ATTEST()` is where it shows. Never a metric.
@@ -101,13 +99,13 @@ follows.
 
 **The write answers — read it.** A `GLOSS` on a QUERY aspect returns
 the metric's fact row, the `metric_axes()` shape at the pin the write
-moved to: `applicable` and `reason`, `behavior` and `behavior_basis`,
-`grain`, `dims` and `axes_basis`, `unadmitted` with `unadmitted_why`
-and the act that admits each, `wanted` (what the row reads and
-nobody measured; `owed` lists it until it lands), and at a re-record
-`superseded_divergence` — what changed against the writing it
-supersedes. A ratio summed, a stock summed, a series nobody can slice
-shows there first, and the `next:` line under it names the act. For a
+moved to: `applicable` and `reason`, `period_column` and
+`value_column`, `behavior` and `behavior_state`, `cadence`, `floor`
+and `rung`, `dims`, `unadmitted` with the gloss each column `owed`,
+`wanted` (the measurement the row reads and nobody ran; `owed` lists
+it until it lands). A column with no role, a value with no behaviour,
+a series nobody can slice shows there first, and the `next:` line
+under it names the act. For a
 fact or a relation the row abstains, and you move on; for a grounding
 you stopped (`stopped` in place of `sql`, `references/ground.md`) it
 abstains with your own text.
@@ -118,12 +116,12 @@ abstains with your own text.
 |---|---|
 | `references/land.md` | before the first `PROBE`: the topic, the cohort, landing what the topic needs and nothing more, and what to do with the dirt you find |
 | `references/structure.md` | once tables stand: what each table is, the join structure, the slice axes |
-| `references/vocabulary.md` | before glossing a column: role first, behavior by evidence, unit |
+| `references/vocabulary.md` | before glossing a column: role first, behavior with its grounds, unit |
 | `references/ground.md` | before writing a grounding: the two registries, the row-grain shape, ratios and stocks, keys on assumptions, the rival, what a basis must be, serve or stop |
 | `references/read-sql.md` | before any read over a metric: flows, stocks and ratios, what this engine has that postgres lacks, and the three refusals that cost most calls |
 | `references/validate.md` | when a number needs a check that says why it holds, and at the close — a reconciliation run by hand becomes a standing check |
-| `references/cube.md` | when a metric's axes, resolution or window are not what you expected, and after every ruling |
-| `references/doors.md` | for a which-rows question, a bespoke function or an app |
+| `references/ladder.md` | when a metric's floor, window or axes are not what you expected, and after every ruling; the worlds beside the actual |
+| `references/doors.md` | for a bespoke function or an app |
 | `references/close.md` | before the read-back: the three lists and the question round |
 
 Each is served beside this page as `skill://glossql-metrics/<reference>`.

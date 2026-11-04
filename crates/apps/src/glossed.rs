@@ -17,10 +17,11 @@
 
 use std::collections::BTreeMap;
 
-use datafusion::arrow::array::{Array, StringArray};
-use datafusion::arrow::record_batch::RecordBatch;
+use crate::engine::{Actor, ActorKind};
+use arrow::array::{Array, ArrayRef};
+use arrow::record_batch::RecordBatch;
+use arrow::util::display::array_value_to_string;
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 
 use crate::AppDoor;
 
@@ -173,7 +174,8 @@ async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
         .join(", ");
     let Ok(query) = session
         .query_stream(&format!(
-            "SELECT g.subject, g.aspect, g.actor_kind, g.body, g.written_at FROM glossary g \
+            "SELECT g.subject, g.aspect, g.actor_kind, CAST(g.body AS VARCHAR) AS body, \
+             g.written_at FROM glossary g \
              JOIN current_dataset d ON d.dataset = g.dataset WHERE g.aspect IN ({aspects})"
         ))
         .await
@@ -184,6 +186,13 @@ async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
     let mut out = Vec::new();
     while let Some(Ok(batch)) = stream.next().await {
         out.extend(decode(&batch));
+    }
+    // The record keeps a subject dataset-qualified; the app's name is
+    // the first segment after the dataset.
+    for row in &mut out {
+        if let Some(rest) = row.subject.strip_prefix(&format!("{dataset}.")) {
+            row.subject = rest.to_string();
+        }
     }
     out
 }
@@ -199,9 +208,7 @@ pub(crate) fn files_of(parts: &[Part], app: &str) -> BTreeMap<String, String> {
 }
 
 fn decode(batch: &RecordBatch) -> Vec<Row> {
-    let column = |name: &str| -> Option<&StringArray> {
-        batch.column_by_name(name)?.as_any().downcast_ref()
-    };
+    let column = |name: &str| batch.column_by_name(name);
     let (Some(subject), Some(aspect), Some(kind), Some(body), Some(at)) = (
         column("subject"),
         column("aspect"),
@@ -211,20 +218,24 @@ fn decode(batch: &RecordBatch) -> Vec<Row> {
     ) else {
         return Vec::new();
     };
+    // Each cell as every read of the door spells it, whatever array the
+    // engine hands over: a release naming a time read back through the
+    // door then cuts where it says.
     (0..batch.num_rows())
         .filter(|&i| {
-            !subject.is_null(i)
-                && !aspect.is_null(i)
-                && !kind.is_null(i)
-                && !body.is_null(i)
-                && !at.is_null(i)
+            [subject, aspect, kind, body, at]
+                .iter()
+                .all(|c| !c.is_null(i))
         })
-        .map(|i| Row {
-            subject: subject.value(i).to_string(),
-            aspect: aspect.value(i).to_string(),
-            actor_kind: kind.value(i).to_string(),
-            body: body.value(i).to_string(),
-            written_at: at.value(i).to_string(),
+        .filter_map(|i| {
+            let cell = |c: &ArrayRef| array_value_to_string(c.as_ref(), i).ok();
+            Some(Row {
+                subject: cell(subject)?,
+                aspect: cell(aspect)?,
+                actor_kind: cell(kind)?,
+                body: cell(body)?,
+                written_at: cell(at)?,
+            })
         })
         .collect()
 }

@@ -6,14 +6,15 @@
 -- recorded walk, no re-run; the metric is a page param the finding's
 -- frame fills in.
 SELECT * FROM (
-  SELECT to_timestamp(p.period || '-01') AS period,
-         arrow_cast(coalesce(json_get_str(a.schema, 'title'), p.metric), 'Utf8') AS series,
+  SELECT (p.period || '-01')::TIMESTAMP AS period,
+         coalesce(a.title, p.metric) AS series,
          p.actual AS value,
          p.p10 AS low,
          p.p90 AS high,
          coalesce(p.displacement >= 0.95, false) AS outside
   FROM band_points() p
-  LEFT JOIN aspects a ON a.name = p.metric
+  LEFT JOIN (SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
+             QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = p.metric
   WHERE p.metric = CAST($metric AS VARCHAR) AND p.applicable AND p.period IS NOT NULL
 )
 ORDER BY period

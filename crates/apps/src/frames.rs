@@ -7,16 +7,13 @@
 //! recipes take. A placeholder nobody bound fails at execution: the
 //! read tells the author what the URL owed it.
 
-use std::collections::HashMap;
-
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 
-use datafusion::common::{ParamValues, ScalarValue};
+use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 
 use crate::AppDoor;
 use crate::app::AppDef;
@@ -60,12 +57,9 @@ pub async fn frame(
         Ok(session) => session,
         Err(e) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
     };
-    let values: HashMap<String, ScalarValue> = params
-        .into_iter()
-        .map(|(k, v)| (k, ScalarValue::Utf8(Some(v))))
-        .collect();
+    let pairs: Vec<(String, String)> = params.into_iter().collect();
     // No `$dataset` param. The channel above is bound to the URL's
-    // dataset, so the session already knows which one it is on and the
+    // dataset, so the channel already knows which one it is on and the
     // `current_dataset` relation says so inside the SQL — a frame joins
     // it the way any read does. A reserved parameter would be a second
     // spelling of the same fact, and the guard it needed (a query
@@ -73,10 +67,7 @@ pub async fn frame(
     // something to override. Frames must still never scan the
     // `datasets` relation for it: in a multi-dataset workspace that
     // fans every joined row out.
-    let mut query = match session
-        .query_stream_with_params(&sql, Some(ParamValues::from(values)))
-        .await
-    {
+    let mut query = match crate::query_with(&session, &sql, pairs).await {
         Ok(query) => query,
         Err(e) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
     };
@@ -90,7 +81,7 @@ pub async fn frame(
                 (header::CONTENT_TYPE.as_str(), crate::ipc::ARROW_STREAM),
                 (FRAME_CLASS, if query.record { "record" } else { "data" }),
             ],
-            crate::ipc::body(query.stream, first),
+            crate::ipc::body(query.schema, query.stream, first),
         )
             .into_response(),
     }
@@ -109,32 +100,33 @@ pub(crate) struct OpenQuestion {
 }
 
 pub(crate) async fn one_open_question(
-    session: &glossql_session::Session,
+    session: &crate::engine::Session,
     subject: &str,
     aspect: &str,
     key: &str,
 ) -> Result<Option<OpenQuestion>, String> {
-    let mut values: HashMap<String, ScalarValue> = HashMap::new();
-    values.insert("subject".into(), ScalarValue::Utf8(Some(subject.into())));
-    values.insert("aspect".into(), ScalarValue::Utf8(Some(aspect.into())));
-    values.insert("key".into(), ScalarValue::Utf8(Some(key.into())));
-    let query = session
-        .query_stream_with_params(
-            // `open_questions` answers for the whole workspace and the
-            // gate is a write's, so the join is not tidiness: two
-            // datasets may hold the same subject under the same key,
-            // and without it another dataset's open question admits a
-            // ruling into this one — carrying that dataset's prose,
-            // since the words recorded are this read's.
-            "SELECT coalesce(o.dimension, '-') AS dimension, o.assumption \
+    let pairs = vec![
+        ("subject".to_string(), subject.to_string()),
+        ("aspect".to_string(), aspect.to_string()),
+        ("key".to_string(), key.to_string()),
+    ];
+    let query = crate::query_with(
+        session,
+        // `open_questions` answers for the whole workspace and the
+        // gate is a write's, so the join is not tidiness: two
+        // datasets may hold the same subject under the same key,
+        // and without it another dataset's open question admits a
+        // ruling into this one — carrying that dataset's prose,
+        // since the words recorded are this read's.
+        "SELECT coalesce(o.dimension, '-') AS dimension, o.assumption \
              FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset \
              WHERE o.subject = CAST($subject AS VARCHAR) \
                AND o.aspect = CAST($aspect AS VARCHAR) \
                AND o.key = CAST($key AS VARCHAR) LIMIT 1",
-            Some(ParamValues::from(values)),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+        pairs,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     let batches: Vec<_> = query
         .stream
         .collect::<Vec<_>>()
@@ -151,7 +143,7 @@ pub(crate) async fn one_open_question(
                 .column_by_name(name)
                 .and_then(|c| {
                     c.as_any()
-                        .downcast_ref::<datafusion::arrow::array::StringArray>()
+                        .downcast_ref::<arrow::array::StringArray>()
                         .map(|s| s.value(0).to_string())
                 })
                 .unwrap_or_default()
@@ -164,11 +156,11 @@ pub(crate) async fn one_open_question(
     Ok(None)
 }
 
-/// The frame-class header: `record` when the frame's expansion reads
-/// the glossary anywhere (derived by the session's pre-pass, never
-/// curated), `data` when it provably does not. The browser's frame
-/// store evicts record entries on a ruling and keeps data entries —
-/// the cube survives every glossary write.
+/// The frame-class header: `record` when the frame's text reads the
+/// record anywhere (the engine's own reading of it, never curated),
+/// `data` when it does not. The browser's frame store evicts record
+/// entries on a ruling and keeps data entries, which no glossary write
+/// moves.
 pub const FRAME_CLASS: &str = "glossql-frame-class";
 
 /// Frame errors answer as JSON — the browser components render the

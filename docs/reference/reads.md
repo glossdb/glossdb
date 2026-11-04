@@ -1,549 +1,400 @@
 # The shipped reads
 
-Eight relations every workspace serves, and beside them the cube's
-two table functions, the bands' one and the sources' one (the last
-sections). Seven are one `.sql` file
-each, shipped in the binary; the same file answers the doors, the
-built-in app's frames, and the skills' examples. Those seven names are
-reserved — a read shadows both a table and a CTE of the same name,
-which is what keeps the set small. `current_dataset` is the eighth and
-is not a file: it serves session state, which no `.sql` file can reach,
-so it is built in Rust and a CTE of that name shadows it the ordinary
-way round.
+Every workspace serves these reads. The record's reads are views the
+engine declares at open. The kits' reads are table macros, loaded
+with the kits. `owed` and `next` are the door's own. Every one is SQL
+over the record and the lake; the same SQL answers the doors, the
+docket's frames and the skills' examples.
 
-A read expands as a derived relation: filter with `WHERE`, order at
-the call site (an inner ordering does not survive planning — none of
-the reads carries one). Formatting, glyphs, and links are always the
-caller's business.
+A read is a derived relation. Filter with `WHERE`. Order at the call
+site: no read carries an ordering of its own. A table macro's named
+arguments spell `:=` and come in any order. Formatting, glyphs and
+links are the caller's business.
 
-So is scope, on the reads that have one. `open_questions`,
-`agent_assumptions`, `ruling_entries` and `app_parts` answer for the
-whole workspace and carry `dataset` on every row, because which dataset
-a caller means is the caller's to say — and the two callers of one read
-often differ: the MCP question round asks across every dataset from an
-unbound channel and routes each answer back by the row's own `dataset`,
-while the docket asks about the one it is bound to. `current_dataset`
-names the bound one. `owed` narrows itself, because what waits on an
-act waits on someone working in a single dataset. The rest read
-workspace vocabulary and have no dataset to narrow to.
+Scope is the caller's too. `open_questions`, `agent_assumptions`,
+`ruling_entries`, `app_parts`, `app_releases` and `workspace_next`
+answer for the whole workspace and carry `dataset` on every row: the
+question round asks across every dataset from an unbound channel, the
+docket asks about the one it is bound to. `current_dataset` names the
+bound one. The kits' reads and `owed` answer for the bound dataset and
+refuse an unbound call.
+
+## The record's reads
 
 ### current_dataset
 
-The session's bound dataset, as a relation: one row, column `dataset`,
-and no rows at all while nothing is bound. It is the name SQL cannot
-otherwise reach — a read written as a `.sql` file has no way to say
-which session it is answering for — so a read over a workspace-wide
-relation narrows itself by joining this. The empty case carries its
-own meaning: nothing bound, nothing to answer, without a read having
-to test for it.
+The bound dataset as a relation: one row, column `dataset`, and no row
+on an unbound channel. A read over a workspace-wide relation narrows
+itself by joining this.
 
 ### workspace_next
 
-The map of surfaces: what kind of thing can be declared or written
-here, how much of it stands, what is open on it. Not a task queue and
-not an order — judgment about what to do next stays the agent's.
-Columns: `surface` (sources, tables, relationships, aspects, claims,
-functions, metrics, scenarios, samples, plans, rulings, apps) · `how` (the
-statement that extends the surface) · `stands` (what exists) · `open`
-(what is unfinished; 0 where nothing can be owed — a function is never
-"open", it computes when a read needs it). A table is open while its
-landing's casts nulled cells.
+What this workspace can be extended through, and where it stands on
+each surface. Not a task queue. Columns: `surface` (`sources`,
+`tables`, `relationships`, `aspects`, `claims`, `functions`,
+`metrics`, `validations`, `scenarios`, `plans`, `rulings`, `apps`),
+`how` (the statement that extends the surface), `stands` (what
+exists), `open` (what is unfinished; 0 where nothing can be owed). A
+table is open while its landing dropped rows. Every count spans the
+workspace: the orienting read, run from a channel bound to nothing.
 
 ### open_questions
 
-What still stands open for a human to judge — the one derivation the
-door's question round serves and the docket renders. Derived from
-`agent_assumptions` (the agent's current body, never a frozen copy):
-only rows below full confidence, with four gates beyond that — the
-aspect is a grounding (query kind); the assumption carries a `key` (an
-unkeyed assumption cannot be closed, so it is never asked — a known,
-accepted gap); the dimension is not one the function map owns
-(`behavior`, `sign`, `grain` are statistics — no human is asked for a
-number); and no standing ruling names the same (subject, aspect, key). Columns: `dataset`, `subject`, `aspect`, `idx`,
-`dimension`, `key`, `assumption`, `basis`, `conf`, plus `sibling` /
-`sibling_stance` / `sibling_note` — what the human already ruled on
-the same key under a different aspect, so the form can offer it back
-(`unclear` is not a judgment and is never offered).
+What still stands open for a human to judge. Derived from
+`agent_assumptions`, the agent's current body: a keyed assumption
+below full confidence, on a grounding, in a dimension no function owns
+(`behavior`, `sign` and `grain` are statistics), with no standing
+ruling on its (dataset, subject, aspect, key). Columns: `dataset`,
+`subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`,
+`alternative`, `conf`, and `sibling`, `sibling_stance`,
+`sibling_note`: a ruling the human gave on the same key under another
+aspect, so the form can offer it back. An `unclear` stance is never
+offered.
 
 ### agent_assumptions
 
-Every assumption the agent currently discloses: the winning agent slot
-per (subject, aspect) — any writing that carries an `assumptions`
-array, one row per entry (the grounding gate lives in
-`open_questions`). Columns: `dataset`,
-`subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`,
-`conf`, and `body` — the whole writing the assumption sits inside, for
-re-issuing as a statement. Read the extracted columns rather than
-reaching into `body`. No gates: `open_questions` decides what a human
-is asked; `ruling_entries` uses the same rows to compute fold-in.
+Every assumption the agent currently discloses: the latest agent gloss
+per slot, its `assumptions` array one row per entry, `idx` from 0.
+Columns: `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`,
+`assumption`, `basis`, `alternative`, `conf`, and `body`, the whole
+writing the assumption sits inside. Read the extracted columns rather
+than reaching into `body`. An answered question drops out when the
+fold-in raises its confidence.
 
 ### ruling_entries
 
-The human's standing judgments, one row per ruling entry, newest
-writing per subject. Columns: `dataset`, `subject`, `idx`, `aspect`,
-`key`, `stance` (`confirmed` / `corrected` / `unclear`), `dimension`,
-`assumption` (the prose snapshot — never a join column), `note`,
+The human's standing rulings, one row per entry of the latest ruling
+body on a subject. Columns: `dataset`, `subject`, `idx`, `aspect`,
+`key`, `stance` (`confirmed`, `corrected`, `unclear`), `dimension`,
+`assumption` (the prose snapshot, never a join column), `note`,
 `written_at`, `folded_in`. `key` names the claim and is the only join
-column anywhere — prose is never matched against prose. `folded_in`
-is the debt answered: false exactly while the ruled key is still
-disclosed below full confidence in the agent's body, clearing when the
-re-record lands; nothing is marked done by hand.
-
-### owed
-
-What stands waiting on an act, derived from the data alone — each row
-is a mismatch the act itself resolves, so nothing is marked done.
-Columns: `kind`, `subject`, `what`, `why`, `since`. Six kinds:
-`recipe` (an approved recipe change with no import of that table since
-the approval) · `formula` (a human formula answer newer than the
-metric's recorded materialization) · `contest` (a slot withheld at
-read — voices differ or a detector crossed) · `re-measure` (a function
-voice standing from before the last change it read — served and marked
-until the function runs again; one row per function. A measurement
-names what it read: the bands walk and the collision and source
-walkers read the groundings as one leg — of each serving grounding
-the SQL, a stop, the grain and the verb marker — so a definitions
-entry, an app page, a declared check or a re-record that names its
-axes owes them nothing, and a re-record that changes the series does) · `never measured` (a
-measurement the cube's fact rows read over a served column and no
-function has landed — `metric_axes().wanted` — or a witnessed
-measurement at dataset grain with no voice while a grounding stands,
-the bands walk that never ran; one row per function, naming the
-subjects) · `fold-in` (a ruling whose key still stands below full
-confidence). All six answer for the session's dataset: this is the
-read that narrows itself, because what is owed is owed by someone
-working in one dataset — and it refuses an unbound call rather than
-answering empty, so a workspace before its first dataset reads
-`workspace_next` instead.
-
-### metric_surfaces
-
-Every metric of the bound dataset with where it stands — the record
-only; the pulse list and the dossier header both render this. The
-vocabulary is workspace-wide, so what makes a metric this dataset's is
-the record: a grounding stands here, or the `definitions` or
-`formulas` registry names it. A metric declared and neither glossed
-nor defined shows in no dataset's list; `workspace_next` counts it. Columns: `name`,
-`title`, `kind` (the `x-kind` tooling flag), `unit` and `meaning`
-(from the `definitions` registry — the aspect blob keeps only display
-label and flag), `formula` (from the `formulas` registry, or the
-stated base-concept default), `grounded` (a grounding with `sql` is
-recorded), `stopped` (the current grounding's `stopped` text, empty
-otherwise — a human `sql` over an agent `stopped` serves). The numbers — a metric's
-latest period, its move, the axes the cube admitted — are the cube's
-reads below, joined on `name` against their `metric`; keeping them apart is what lets a
-ruling refresh this read without touching the cube. Open counts and
-ruled-at live in workspace-wide relations — callers join
-`open_questions` and `ruling_entries` narrowed to a dataset, which
-`current_dataset` names.
+column. `folded_in` is true once no agent assumption below full
+confidence carries the ruled key under the ruled aspect; nothing is
+marked done by hand.
 
 ### app_parts
 
-Apps authored as glosses, one row per file — the draft. Columns:
-`dataset`, `app`, `path` (where the part goes: `index.html`,
-`frames/open.sql`, `specs/series.vl.json`, or `app` for the
-manifest), `text` (the file content as the gloss spelled it),
-`actor_kind`. Two collapses in order: newest writing per (dataset,
-subject, aspect, actor kind), then the human's over the agent's. What
-the door serves is the app at its release (`app_releases`), cut from
-the same rows by the release's time. Workspace-wide, like the three above —
-`workspace_next` counts every app the workspace holds, the app door
-serves one dataset's.
-
-## The cube's reads
-
-Two table functions over the cube — every grounded metric's cells, a
-query result computed at the read's pin from the grounding and the
-judged verdicts, landed in the catalog under the engine's cache,
-never recorded. The forecast world is the exception: it is read from
-the record, the newest `metric_forecast` run, at the metric's own
-resolution. One head per metric: its cells at the `cube` aspect's
-floor grain over the longest window of the aspect's ladder, built
-once and landed. Every grain a read serves is a plan over the head —
-a flow sums, a ratio re-divides its summed halves, a stock takes the
-bucket's latest cell — windowed to the ladder's rung for that grain,
-cached beside the head in memory. Both reads build what is not
-built; a cache entry is never stale, it is a hit or a miss — keyed by
-the tables the metric's frame scans and everything its build reads
-(the grounding, the verdicts and glosses on the columns it serves,
-the edges on those tables, the cube settings), so a write that
-reaches no build (a ruling, a note, a check's landing, a gloss on
-another metric's column, a landing on a table no judged time column
-sits on) keeps the entry hot, and a moved input misses the metrics it
-reaches and no other. A
-metric's resolution is its judged cadence (`temporal_profile`), never
-finer than the floor; its own series is served over the rung for that
-resolution, measured back from the data's own edge (see the KPI kit).
-A served date that unions several columns of one table — an interval
-table's start and end dates, `+1` and `−1` — is the axis when every
-one of them is judged, at the coarsest of their cadences.
-
-A flow's empty period is a zero cell. A sum over no rows is zero, so
-a flow's total carries a cell for every period at its resolution,
-from its first to the data's edge: the latest period any metric's
-grounding serves at the pin, measured on the groundings' frames and
-never on a column of a table, so a calendar dimension running decades
-ahead moves nothing, and nor does a plan's table. A forecast for that period is checked
-against the zero. The rival's total carries them too. A member's
-empty period is no cell, and so is a stock's or a ratio's: nothing
-stands, nothing divides. Every flow's series therefore reaches the
-same edge, and its window is measured back from there: a flow whose
-rows stopped early shows its zeros, not an older window.
+Apps authored as glosses, one row per file. Columns: `dataset`, `app`,
+`path` (`app` for the manifest, `index.html`, `frames/open.sql`,
+`specs/series.vl.json`), `text` (the file as the gloss spelled it),
+`actor_kind`. Two collapses in order: the newest writing per (dataset,
+subject, aspect, actor kind), then the human's over the agent's. This
+is the draft; the door serves the app at its release.
 
 ### app_releases
 
 What is released of each glossed app, one row per app that carries a
 release. Columns: `dataset`, `app`, `at` (the time the served parts
-are cut at: the release's own, or the earlier release its body's `at`
-names), `note`, `actor_kind`, `released_at` (when the serving release
-was written — what a later release names in `at` to return to it).
-The same two collapses as `app_parts`. Workspace-wide.
+are cut at: the release's own, or the earlier release its body names),
+`note`, `actor_kind`, `released_at` (when the serving release was
+written; a later release names it in `at` to return to it). The same
+two collapses as `app_parts`. `at` is a reserved word in SQL: quote it,
+`"at"`.
 
-### metric_series(grain => …, world => …)
+### metric_surfaces
 
-The cells: `metric`, `world` (which set of numbers the row belongs
-to: `actual`, `forecast`, `scenario` or `plan`), `dimension` (`''` the total,
-`'alternative'` the disclosed rival, anything else a judged dimension
-column), `member`, `period` (a typed timestamp, the bucket's start),
-`value`, `num` / `den` (a ratio's summed halves, NULL elsewhere),
-`behavior` (the verb that made the row — `flow`, `stock` or `ratio`; a
-rival's may differ from the metric's). Without a grain each metric
-serves its cells at its own resolution over its own rung. With one
-(`minute` … `year`) each metric at or below that resolution serves its
-cells at the asked grain over that grain's rung — a plan over its
-head, the same grounding, verb and axes — so a day metric's months
-span the month rung; a metric coarser than the asked grain serves no
-rows. A rung of `n` periods serves `n` whole buckets, the edge's
-bucket the last: the window cuts on the bucket, never on a cell's own
-date. Without a world, the actual world: what the groundings compute
-from the data. `world => 'forecast'` serves the newest
-`metric_forecast` run per metric as cells — one row per step, the
-median as `value`, `dimension` and `member` `''`, `num` and `den` NULL
-— at the metric's own resolution only; another grain serves no
-forecast rows, and a dataset never forecast serves none. The totals
-are not cells; `forecast_points()` has them. The two worlds' periods
-do not overlap, so a variance of forecast against actual is a join on
-metric and period once the actuals land. `world => 'scenario',
-scenario => '<name>'` serves the named scenario's cells ([the scenario
-world](../methods/scenario.md)): the grounding replayed with the
-scenario's factors over the data where a lever's table is scanned,
-and the what-if's estimated medians ahead of the last actual, at the
-metric's own resolution only; `scenario_points()` has the detail.
-`world => 'plan', plan => '<name>'` serves the named plan's cells
-under the metric it plans ([the plan world](../methods/plan.md)): a
-plan is its own QUERY aspect, `x-kind: plan` with `x-plan-of` naming
-the metric, grounded by SQL over a landed table; its cells are read at
-the plan's own resolution or any coarser grain asked, over its own
-axes, and appear in no other world. An edition of a plan is an aspect
-of its own, so a variance against the plan and a comparison of two
-editions are both joins on metric and period; `plan_points()` serves
-every plan against the actual and the forecast without the join. The
-arguments are named and come in any order; filters ride `WHERE`.
+Every metric the bound dataset claims, with where it stands: one row
+per QUERY aspect a grounding stands on here, served or stopped, or
+whose `definitions` entry names it. Columns: `name`, `title`, `kind`
+(the aspect's `x-kind`), `unit` and `meaning` (from the `definitions`
+handbook), `formula` (from the `formulas` registry, or the stated
+base-concept default), `grounded` (a grounding with `sql` was
+written), `stopped` (the collapsed grounding's own text, empty where
+it serves). The numbers are `metric_axes()` and `metric_series()`;
+join on `name`.
+
+## The metrics kit's reads
+
+A grounding's view is a table of its dataset. The column that carries
+role `timestamp` is the metric's period, the column that carries role
+`measure` its value (the one named `value` where several do), the
+columns that carry role `dimension` its slices. The `behavior` on the
+value column says how a number combines over periods and members: a
+flow sums, a stock keeps its last level, a ratio re-divides its summed
+halves, the halves named as `numerator` and `denominator`. The ladder
+on the period column says how its periods are walked: `floor`, the
+grain the series is served at, by default the measured cadence;
+`windows`, the rung per grain, how many whole buckets a read serves,
+measured back from the data's edge. Nothing is re-marked at read: a
+claim older than its data is stale by the record's rule, and the reads
+serve it as the record does.
 
 ### metric_axes()
 
-One row per current grounding, a metric's or a plan's — what the cube
-admitted and why not; a plan's row names the metric it plans in
-`plan_of`, the last column, NULL on a metric's row:
-`metric`, `applicable`, `judged_current`, `reason` (the road out when
-it abstains — no judged time column, no value column, a grounding the
-engine refused, a frame that breaks its declared grain — or, for a
-grounding its author stopped, `stopped: ` and the author's own text),
-`behavior`
-and `behavior_basis` (the verb and where
-it came from: `ratio` when the frame serves `num` and `den`, `shape`
-when the value is a running total, `evidence` when the
-`behavior_evidence` verdict on the column the value is or sums decided
-— `evidence over marker` or `evidence over gloss` when the agent's word
-said otherwise — `marked` when the grounding's `stock` marker did,
-`glossed` when a `stock` gloss on that column did, `default` when
-nothing detected a stock and it reads as a flow), `grain` (the grounding's
-declared row identity as served — the build refuses a frame that
-breaks it, and the empty list is an undeclared shape, taken as
-served), `resolution`, `window`, `outside` (the periods of data at the
-resolution before the window — what the data holds and the metric's
-own series leaves out; zero when the data fits the rung, and a `cube`
-gloss widening the rung is what moves it), `dims`, `basis`
-and `admitted_by` (per admitted dimension, in `dims` order: the column
-subject whose verdict admitted it, and what decided — `measurement`,
-or `human` / `agent` where a `dimension` gloss or the grounding's
-`axes` did), `axes_basis` (`authored` when the grounding lists its
-axes, `measured` when the verdicts and the column glosses decide,
-`measured over authored` when the grounding's empty list did not hold
-— it closes a distinct count, written as `count(DISTINCT …)` or as
-one row per distinct key with a constant value, or a ratio, and on any
-other shape the verdicts decide),
-`bucketed` (the
-dimensions wider than 24 members, served as their top 23 by weight
-plus `'other'`), `unadmitted` and `unadmitted_why` (every served
-column that is neither the value, a ratio's half nor time-typed and
-is not an axis, and at the same index what kept it out with the road
-back in: no verdict on its subject — run `dimension_relevance()` over
-it or gloss `dimension`; a verdict that abstained with no declared
-relationship reaching a judged key; a `dimension` gloss of `none`; an
-expression no verdict can reach; one member across the frame; a rank
-below the cap of four), `unadmitted_act` (the act behind each, at the
-same index, as a tag: `verdict` — no verdict yet; `abstained`; `none`
-— closed by a gloss; `closed` — by the grounding's `axes`, `closed
-over verdict` or `closed over gloss` where a verdict or a gloss admits
-the column the author closed; `unserved`
-— listed in `axes` and not a column the cube can slice on;
-`expression`, `single`, `cap` — terminal),
-`wanted` and `wanted_over` (the measurements
-the row reads and no function has landed — the function to run, and
-at the same index the column subject to run it over: the function
-returning `temporal_profile` over each source column of a served date
-without a verdict, the one returning `dimension_relevance` over each
-candidate column with neither a verdict nor a `dimension` gloss;
-`owed` lists them as `never measured`, and the docket's re-measure
-runs them), `unserved` (where the frame serves nothing the cube can
-slice on and the grounding lists no axes: the columns of the tables it
-scans that a `dimension` gloss or an applicable relevance verdict
-admits and the frame does not serve — the axis is judged, the road
-is to serve the column; empty elsewhere), `alternative`,
-`alternative_divergence` (the
-measured disagreement between the metric's total and the rival's over
-their shared periods — with an authored `tolerance` on the disclosing
-assumption the count of breaching periods, otherwise the maximum
-relative gap and its period; null when no rival is served),
-`alternative_error`, `superseded_divergence` (at a grounding write
-only, in the row the write answers with: the gap between the serving
-frame's totals and the newest other writing on the slot over their
-shared periods, and the periods one serves and the other does not —
-what the re-record changed; null on a read and on a first grounding).
-Record-class: it says what the judged verdicts admitted.
+One row per metric of the bound dataset: what the record says its
+columns are, and whether a series can be served. Columns: `metric`,
+`kind` (the aspect's `x-kind`), `plan_of` and `covers` (a plan's
+metric, and the grain its rows are booked against), `stopped` (the
+author's text), `applicable`, `reason` (the road out when it is not),
+`period_column`, `value_column`, `numerator`, `denominator`, `cadence`
+(the period column's measured granularity), `floor` (the ladder's,
+else the cadence), `rung` (how many buckets the floor serves),
+`behavior` and `behavior_state` (the collapsed claim on the value
+column: NULL and `none` where nobody spoke, `contested` where the
+witness withholds it), `dims` (the slicing columns, primary first),
+`unranked` (the dimension columns no `dimension` gloss ranks),
+`unadmitted` (the served columns no role stands on), `owed` (the gloss
+each of those wants), `wanted` (the measurement the row reads and
+nobody ran), `judged_current` (the profile stands at the data's own
+version).
 
-The same row is what a grounding's write answers with: `GLOSS` on a
-QUERY aspect returns the metric's fact at the pin the write moved to,
-in this shape, in place of `{"done"}` — the plan stage alone, so
-`bucketed` is empty, the member floor is not yet applied and no rival
-is run; everything else is what this read will say. A grounding whose
-SQL does not plan, at either of the engine's two planning stages,
-abstains there with the engine's refusal; the gloss has landed either
-way. The row judges the grounding that serves, so
-after a human's own grounding on the aspect it is theirs the row
-describes, and a call bound to another dataset, or to none, abstains
-naming the `USE` that judges it.
+A plan (`x-kind: plan`) is read through the metric it names. Its
+period and value are the columns named as that metric's, or `period`
+and `value`; its behaviour is the metric's; its floor is the grain its
+rows are booked against where the declaration says so (`x-covers`).
+Nothing is glossed on a plan's own columns. A served plan's row wants
+the judgement the futures kit measures on it, `metric_plan`, until one
+stands, as a metric's row wants the profile over its period column.
 
-A served column is an axis when a verdict admits it: its own
-`dimension_relevance`, or — for a label in a dimension table, a
-near-key there by construction — the verdict on the key column that
-reaches it through a declared relationship from a table the grounding
-scans; `basis` names that key. The collapsed `dimension` gloss on the
-column is the read policy over that, human over agent: `none` closes
-the axis whatever was measured, `primary` admits it and ranks it
-first, `supporting` admits it. The verdicts themselves are untouched —
-a measurement is never glossed — and `admitted_by` says whose word the
-axis stands on.
+```sql
+SELECT metric, applicable, reason, behavior, floor, rung, dims, owed, wanted
+FROM metric_axes() ORDER BY metric
+```
 
-The verdicts are the newest landed per served column, whatever pin
-they were judged at — served and marked, as every function voice is,
-and every write moves the pin. After a ruling or an import the cube
-still builds — the numbers are current — and `judged_current` is
-false until the profilers run again: `temporal()` over the served
-date columns, `dimension_relevance()` over the rest, or the docket's
-re-measure, which re-runs every measurement standing from before the
-last change and runs every one the fact rows want.
+### metric_series(grain := …, world := …, plan := …, scenario := …, unclaimed := …)
+
+The cells of every applicable metric of the bound dataset. Columns:
+`metric`, `world`, `dimension` (`''` the total, else a slicing
+column), `member`, `period` (a typed timestamp, the bucket's start),
+`value`, `num` and `den` (a ratio's summed halves), `behavior`.
+Without a grain, each metric at its own floor. With one (`minute` …
+`year`), each metric at or below it at that grain; a metric coarser
+than the asked grain serves no rows. A rung of `n` buckets is served,
+the edge's bucket the last.
+
+A flow sums, and fills its total's empty periods with zero up to the
+data's edge, the last instant any served metric reaches, so a flow
+whose rows stopped early shows its zeros, not an older window. A stock
+keeps the bucket's last level, summed over what stands at that
+instant. A ratio re-divides its summed halves. A dimension wider than
+24 members serves its top 23 by weight and `other`.
+
+The no-claim rule: where rows have to be combined and no behaviour
+stands on the value column, the read refuses and names the gloss. It
+defaults nothing. A list over every metric asks `unclaimed := 'skip'`:
+such a metric serves no cell, and its fact row says what it owes.
+
+`world := 'actual'` is the default, what the groundings compute from
+the data. `world := 'forecast'` serves the newest forecast's medians
+at the metric's own grain, one row per step; the totals are
+`forecast_points()`'s. `world := 'scenario', scenario := '<name>'`
+serves the named scenario's estimate ahead of the last actual ([the
+scenario world](../methods/scenario.md)). `world := 'plan', plan :=
+'<name>'` serves the named plan's cells under the metric it plans
+([the plan world](../methods/plan.md)), at the plan's own grain or any
+coarser grain asked. The worlds' periods do not overlap, so a variance
+is a join on metric and period once the actuals land; `plan_points()`
+serves every plan against the actual and the forecast without the
+join.
+
+```sql
+SELECT metric, period, value FROM metric_series(grain := 'month')
+WHERE dimension = '' ORDER BY metric, period
+```
 
 ### fact_values()
 
-The declared facts, served whole: one row per current QUERY grounding
-whose aspect declares `x-kind: fact` — `metric`, `value` where the
-frame is one row with a `value` column, and `reason` where it is not:
-a derived relation (no `value`), a frame of many rows, an empty one,
-or SQL the engine refused. The declaration is what makes a fact: a
-grounding that serves no date and declares no kind is charted by
-nothing, and `metric_axes()` carries the cube's reason. The data at
-read, like the cells: nothing is recorded. The docket's value tile and
-its list read the fact's number from here. Requires a bound dataset.
+The declared facts of the bound dataset, served whole: one row per
+metric whose aspect declares `x-kind: fact`. Columns: `metric`,
+`value` where the view is one row with a `value` column, `reason`
+where it is not. The data at read; nothing is recorded.
 
-### metric_sources()
+### metric_sources(for_metric := …)
 
-What feeds each grounding: one row per served field and the dataset
-table column it descends from — `metric`, `field`, `source`
-(`table.column`) and its `table_name`. A union descends from every
-arm's column, one row each. A computed field (an aggregate, an
-expression) descends from no column and has no row. Beside those, one
-row per table the grounding scans, `table_name` alone and no field:
-the tables a metric reads, whether or not a served field traces to a
-column — a fact's whole frame is computed and still reads its tables.
-A grounding its author stopped, or one the engine cannot plan, serves
-one row with `reason` and no field. The walk is the cube's own — the
-same provenance `metric_axes()` admits axes from — served as rows so
-a page can draw what a metric reads without building the cube; the
-docket's lineage tab draws it beside the declared relationships, and
-the metrics done row counts the tables no grounding scans. Requires a
-bound dataset.
+What feeds each metric of the bound dataset, or one, through the
+views' lineage: one row per served field and the landed column it
+descends from. Columns: `metric`, `field`, `source` (`table.column`),
+`table_name`, `reason`. A computed field (an aggregate, an expression)
+descends from no column and has no row. Beside those, one row per
+table the view reads, `table_name` alone. A view that does not plan
+serves one row with `reason`. The docket's lineage tab draws this
+beside the declared relationships.
+
+## The futures kit's reads
+
+The worlds beside the actual: the walk's bands and the forecast, each
+what the model service answers; the plan, judged against them; the
+scenario, the service's estimate. Each lands as a measurement with its
+pin and is read back as SQL, so that the door's `next` read judges
+from the record and never computes over the data. The service is named
+once for the instance (`GLOSSDB_SERVICE_URL`); without one, these
+measurements refuse by name and everything else serves. The service
+owns its topic: the bands, the PIT and why it is withheld, the walk's
+verdict, the forecast's quantiles, the estimate's sign. The kit owns
+the calendar and sends complete periods only.
+
+### band_verdict()
+
+The newest walk's verdict, one row, none before a walk: `served_by`
+(the service and its version), `grain`, `score`, `band`, `threshold`
+(the red line the walk was asked with), `computed_at`.
 
 ### band_points()
 
-The recorded walk, flattened: what `metric_bands` last landed for the
-bound dataset, one row per metric per walked point — `metric`,
-`applicable`, `reason`, `grain`, `aggregation`, `trained_on`, `axis`,
-`axis_judged`, `served_by` (the service that answered and its
-version), `point_seq`, `period`, `actual`, `p05`…`p95`, `pit`,
-`withheld`, `partial`, `displacement` (|2·pit − 1|, what the detector
-scores; none where the PIT is withheld), `computed_at` and `current`
-(whether the measurement stands at this pin). A metric the walk found
-inapplicable is one row with its reason and no point; a dataset never
-walked serves no rows. The record itself, never a re-run —
-`metric_band_walk()` walks again and calls the model — so a red
-`metric_bands` verdict is diagnosable to its metric and month in one
-read: `SELECT metric, period, displacement FROM band_points() WHERE
-partial = false ORDER BY displacement DESC`. Requires a bound dataset.
+The newest walk, one row per metric and walked month. Columns:
+`metric`, `applicable`, `reason`, `behavior`, `walked`, `held_80` and
+`held_90` (the share of walked points inside the 10–90 and the 5–95
+band), `period`, `actual`, `p05` … `p95`, `pit`, `withheld`,
+`displacement` (|2·pit − 1|, what the detector scores), `newest` (the
+latest walked point, the one the verdict scores), `point_seq`,
+`computed_at`. A metric not walked serves one row with its reason and
+no numbers. The record itself, never a re-run: `metric_bands` walks
+again and calls the service.
+
+```sql
+SELECT metric, period, displacement FROM band_points()
+WHERE newest ORDER BY displacement DESC
+```
 
 ### forecast_points()
 
-The recorded forecast, flattened: what `metric_forecast` last landed
-for the bound dataset, one row per metric and point — `seq`, `metric`,
-`applicable`, `reason`, `grain` (the metric's own resolution), `origin`
-(the last period with an actual, as the bucket's first day),
-`served_by`, `point_seq`, `step` (periods past the origin; for a total,
-the span), `span` (set on a total: the steps it sums), `to_go` (what a
-total runs to: `quarter`, `year` or `month`), `period` (the period
-forecast; for a total, the one it ends at), `p05`…`p95`, `actual`
-(joined from the cube at read, where the period has landed; a total's
-is the sum of its periods, where every one is known), `landed`
-(`below`, `low`, `inside`, `high` or `above` against p05, p10, p90 and
-p95), `service_80` and `service_90` (the service's held-out share of
-actuals inside the 80% and the 90% band at this grain, step and span),
-`held_80`, `held_90` and `held_from` (how often such a band held, and
-whose count: this metric's own record where 30 of its points have
-landed at that grain, step and span, else the dataset's where it
-reaches 30, else the service's; `metric`, `dataset` or `service`),
-`computed_at` and `current`. A metric the door found inapplicable is
-one row with its reason and no point; a dataset never forecast serves
-no rows. The record itself, never a re-run
-([forecast](../methods/forecast.md)). Requires a bound dataset.
+The newest forecast, one row per metric and point. Columns: `seq`,
+`metric`, `applicable`, `reason`, `behavior`, `grain` (the metric's
+floor), `origin` (the last period with a value), `served_by`,
+`computed_at`, `current` (whether the measurement stands at this pin),
+`point_seq`, `step` (periods past the origin), `span` (set on a total:
+the steps it sums), `to_go` (what a total runs to: `month`, `quarter`
+or `year`), `period` (the period forecast; for a total, the one it
+ends at), `p05` … `p95`, `service_80` and `service_90` (the service's
+held-out share of actuals inside the 80 % and the 90 % band at that
+grain, step and span), `actual` (joined from the actual world at read,
+where the period has landed; a total's is the sum of its periods,
+where every one has), `landed` (`below`, `low`, `inside`, `high` or
+`above` against p05, p10, p90 and p95), `held_80`, `held_90` and
+`held_from` (how often such a band held, and whose count: this
+metric's own record where 30 of its points have landed at that grain,
+step and span, else the dataset's where it reaches 30, else the
+service's). A metric the forecast found inapplicable is one row with
+its reason. The horizon is 31 days, 13 weeks, 12 months or 4 quarters;
+an hour or a minute is finer than the grains the service measured, a
+year has too few periods. A flow also asks the totals to the end of
+the month (a day), the quarter (a week), the quarter and the year (a
+month), the year (a quarter) that the first period ahead falls in,
+where the horizon reaches the span's end ([forecast](../methods/forecast.md)).
 
 ### forecast_coverage()
 
-Over every forecast the record holds for the bound dataset, one
-forecast per metric and origin: `metric` (`''` the dataset as a whole),
-`grain`, `step`, `span`, `to_go`, `points` (whose actual has landed),
-`inside_80` and `inside_90` (the shares inside p10–p90 and p05–p95),
-`forecasts` (the distinct origins the points come from). The table
-`forecast_points()` serves a point's `held_80` and `held_90` from once
-a row reaches 30 points. Requires a bound dataset.
+The record's tally over every forecast the bound dataset holds: per
+metric and for the dataset (`''` the metric), per `grain`, `step`,
+`span` and `to_go`, where a point has landed. Columns beside those:
+`points`, `inside_80` and `inside_90` (the counts inside p10–p90 and
+p05–p95), `held_80` and `held_90` (the shares). `forecast_points()`
+serves a point's `held_80` from here once a row reaches 30 points.
 
-### scenario_points(scenario => '<name>')
+### scenario_points(scenario)
 
-The scenario world cell by cell ([the scenario
-world](../methods/scenario.md)): `scenario`, `metric`, `grain`,
-`period`, `step` (periods past the last actual; NULL on a replayed
-cell), `pass` (`replayed`: the grounding replayed over the data with
-the scenario's factors; `estimated`: the what-if's estimate ahead),
-`value` (the replayed value, or the estimate's median), `num` / `den`
-(a replayed ratio's halves), `low` / `high` (the model's 80% band on
-an estimate), `held_80`, `held_90` and `held_from` (how often such a
-band held at that grain and step, and whose count — `metric`,
-`dataset` or `service` — by `forecast_points()`'s rule), `sign` and
-`basis` (the service's word on the estimate, or why there is none),
-`served_by`. The one argument is the scenario's name. Computed at
-read, nothing recorded: the service is called at each read. Requires
-a bound dataset.
+The newest estimate, one row per scenario, metric and period ahead;
+`scenario_points(NULL)` serves every scenario. Columns: `scenario`,
+`metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`
+(`estimated`), `step`, `period`, `low`, `value`, `high` (the 10, 50
+and 90 levels), `history_value`, `history_low`, `history_high` (the
+history's own reading with its 90 % interval), `held_80` and
+`held_from` (the forecast service's share at that grain and step),
+`sign`, `confidence`, `basis` (the service's word on the estimate, or
+why there is none), `explains`, `error`, `served_by`, `computed_at`. A
+metric not estimated is one row with its reason ([the scenario
+world](../methods/scenario.md)).
 
-### scenario_levers(scenario => '<name>')
+### scenario_levers(scenario)
 
-What each lever of the scenario does alone, by the service's reading
-of the history ([the scenario world](../methods/scenario.md)): one row
-per estimated metric and lever — `scenario`, `metric`, `lever` (the
-declared `table.column`), `shift` (the lever's own effect on the
-metric over the periods ahead, the mean), `low` and `high` (its 90%
-interval, from the same regression as the joint estimate, so the
-parts add up to it), `basis` (why there is no part, where there is
-none: no service, a lever with no series, the service's word on the
-member), `served_by`. A scenario of one lever serves its one part per
-metric; two levers that cancel show as two parts of opposite sign.
-Computed at read beside `scenario_points()`, nothing recorded.
-Requires a bound dataset.
+What each lever of the newest estimate does alone, by the history: one
+row per scenario, metric and lever. Columns: `scenario`, `metric`,
+`applicable`, `reason`, `sign`, `basis`, `lever` (`<metric>.<column>`),
+`planned_from` (`forecast`: the lever's own forecast was the planned
+input; `held: <refusal>`: its last value was, and why),
+`history_shift`, `history_low`, `history_high` (the lever's own effect
+over the periods ahead and its 90 % interval), `computed_at`. Two
+levers that cancel show as two parts of opposite sign.
 
 ### plan_points()
 
-Every served plan against the actual and the forecast ([the plan
-world](../methods/plan.md)), one row per plan and period at the plan's
-own grain — its rows' resolution, or the grain they are booked against
-where the declaration says so, `x-covers` — and, where that is finer,
-at the year — a budget booked by the month means something at the
-year: `plan`, `metric` (the metric
-it plans), `grain`, `period` (a typed timestamp, the bucket's start),
-`label` (the period as text at its grain: `2026`, `2026-Q3`, `2026-07`,
-`2026-07-13`), `value` (the plan's cell), `actual` (the actual world's
-cell at that grain where the period has begun; for the current period,
-the actual to date), `variance` (actual minus plan, on a complete
-period), `low`, `expected` and `high` (the newest forecast's 80% band
-and median for the period: at the metric's own resolution the step's;
-at a coarser grain, for a flow the actual to date plus the total that
-runs to the period's end, where the forecast asked one, for a stock
-the band of the last period of the metric's own resolution inside it,
-where the horizon reaches it), `stands` (`landed`: the
-periods the plan covers are complete and the actual stands; `inside`,
+Every served plan against the actual and the forecast, one row per
+plan and period at the plan's own grain and, where that is finer, at
+the year ([the plan world](../methods/plan.md)). Columns: `plan`,
+`metric`, `grain`, `period`, `label` (the period as text at its grain:
+`2026`, `2026-Q3`, `2026-07`, `2026-07-13`), `value` (the plan's
+cell), `actual` (the actual world's cell where the period has begun;
+for the current period, to date), `variance` (actual minus plan, on a
+complete period), `low`, `expected`, `high` (the newest forecast's
+80 % band and median: the step's at the metric's own grain; at a
+coarser grain, for a flow the actual to date plus the total that runs
+to the period's end, for a stock the band of the last period of the
+metric's grain inside it), `stands` (`landed`: complete; `inside`,
 `below`, `above`: where the plan lies against the band; `partial`:
-begun, and the plan's rows cover part of the period, so no band is
-read; `open`: begun, and no band covers the rest; `ahead`: not begun,
-no band), `covers` (on the year row of a plan whose rows cover part of
-the year, how much they cover — `9 of 12 months`; NULL where they
-cover it whole), `held_80` and `held_from` (how often such a band held
-and whose count, by `forecast_points()`'s rule), `origin` (the
-forecast's, where one was read). Where the rows cover part of the
-year, the plan's number and the actual are over the periods the rows
-cover. A plan finer than its metric compares to nothing. Computed at
-read from the cube and the forecast record, nothing recorded. The
-next read's plan goal reads the year rows; the docket's plan tile
-reads them all. Requires a bound dataset.
+begun, and the rows cover part of the period, so no band; `open`:
+begun, no band covers the rest; `ahead`: not begun), `covers` (on the
+year row of a plan whose rows cover part of the year, how much: `9 of
+12 months`), `held_80`, `held_from`, `origin` (the forecast's).
+Computed at read. `metric_plan` lands the same rows per plan as a
+measurement, the judgement the plan goal reads.
 
-## The sources' read
+### plan_record()
 
-### source_files('source')
+The newest judgement per plan from the measurements alone, one row
+per point, the read the door's plan arms take; `plan_points()` stays
+the live read. The columns of `plan_points()` with `plan_grain`,
+`forecast_run` (the forecast measurement it was judged against) and
+`forecast_origin` beside them.
 
-One row per file under a declared file source's location,
-subdirectories included: `path` (relative to the location — what a
-`read_*` call names), `size`, `modified`. Listed through the engine's
-object store, the same walk a `read_*` glob resolves through, so what
-it serves is what a recipe path reaches. Workspace-scoped: sources are
-workspace rows, and the read needs no dataset. A relational source has
-no files and refuses the read by name.
+## The sources' files
 
-## The door's read
+A file source's files are listed at the source, where a recipe's paths
+resolve: `PROBE erp_export AS $$SELECT file FROM glob('*')$$` serves
+one row per file under the source's location, `glob('**')` the
+subdirectories too. A probe runs at the source and lands nothing, so
+the listing is the same walk a recipe's `read_*` glob resolves through.
+
+## The door's reads
+
+### owed
+
+What stands waiting on an act in the bound dataset, from the data
+alone. Columns: `kind`, `subject`, `what`, `why`, `since`. Six kinds:
+`recipe` (an approved recipe change with no landing of that table
+since), `formula` (a human formula answer newer than the metric's
+recorded grounding), `contest` (a slot withheld at read: a detector
+crossed or voices differ), `re-measure` (a function voice landed
+before the last change it read), `never measured` (a measurement a
+metric's row reads and nobody ran, or a witnessed measurement on the
+dataset with no voice while a metric is grounded), `fold-in` (a ruling
+whose key still stands below full confidence). Each row resolves by
+the act it names, never by a flag. The read refuses an unbound call;
+a workspace before its first dataset reads `workspace_next` instead.
 
 ### pages()
 
 Every page the door serves, as rows: `uri` (`skill://<skill>/SKILL.md`,
 `skill://<skill>/references/<page>.md`, `doc://SPEC.md`,
-`doc://grammar.ebnf`, `doc://docs/…`, `doc://vendor/datafusion/sql/…`),
+`doc://grammar.ebnf`, `doc://docs/…`, `doc://vendor/duckdb/sql/…`),
 `title` (the page's first heading), `body` (the page, verbatim). The
-same pages are the door's MCP resources under the same URIs; `pages()`
-is the read for a client that has the statement tool and nothing
-else. `SELECT uri, title FROM pages()` lists them, `WHERE uri = '…'`
-reads one. Needs no dataset.
+same pages are the door's MCP resources under the same URIs. `SELECT
+uri, title FROM pages()` lists them, `WHERE uri = '…'` reads one.
+Needs no dataset.
 
 ### next
 
 Where the record stands toward each goal on the bound dataset, and
-the one act that moves it. One row per goal — `structure`,
-`metrics`, `slices`, `bands`, `checks`, `app`, `plan`, `rulings` — or
-the one named by `WHERE surface = '…'`: `goal` (the goal's place in that
-order, to `ORDER BY`), `surface`, `step`, `state` (`next`,
+the one act that moves it. One row per goal, `structure`, `metrics`,
+`slices`, `bands`, `checks`, `app`, `plan`, `rulings`, or the one named
+by `WHERE surface = '…'`. Columns: `surface`, `step`, `state` (`next`,
 `blocked`, `done`), `act` (the statement kind, function or read),
 `say` (the act in a clause), `why` (what on the record decided),
-`statement` (the act as a statement, filled from the record — the
-dataset, the metric, the table its value comes from, the standing
-body, the unserved columns a verdict or a `dimension` gloss admits,
-the metric and period a red band names, the plan and year the
-forecast's band does not hold; `<…>` marks what only the
-author can fill, and a step the record cannot fill hands none) and
-`then` (what follows it). A goal's route is its steps in order, one
-query arm each in the shipped read: an arm serves a row when its
-condition holds on the record, one row per thing the step may act
-on, and the lowest step that serves decides the goal. A route is the
-goal's preconditions and nothing more. A statement is a proposal:
-edit it, send it, or do not. A done row's why names what the record
-left unused where that is a fact the record can state: the metrics
-row lists the tables no grounding reads and the judged columns none
-serves. Needs a bound dataset.
+`statement` (the act as a statement, filled from the record; `<…>`
+marks what only the author can fill) and `then` (what follows it).
+
+A goal's route is its steps in order, one query arm each: an arm
+serves a row when its condition holds on the record, and the lowest
+step that serves decides the goal. The engine composes the read at
+open from every kit's routes: the core's answer `structure`, `checks`,
+`app` and `rulings`, the metrics kit's `metrics` and `slices`, the
+futures kit's `bands` and `plan`. Every arm reads the record and never
+the data: the futures' judgements are measurements, read back. A
+statement is a proposal: edit it, send it, or do not.
+
+```sql
+SELECT surface, step, state, say FROM next ORDER BY surface
+```
+
 The MCP door serves the same rows as the resource template
 `next://<dataset>/<surface>`, and carries a one-line `next:` on every
 tool result.
-The read runs once per version of the record and pin of the dataset
-and is served from memory until either moves: a write of the record
-or a landing runs it again, a read never does.

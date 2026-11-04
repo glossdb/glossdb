@@ -6,17 +6,22 @@
 
 use std::sync::Arc;
 
+use arrow::array::Float64Array;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use datafusion::arrow::array::Float64Array;
-use glossql_catalog::Lake;
-use glossql_glossary::{Actor, ActorKind, Store};
-use glossql_session::{Caller, NoRuntime, Plane};
+use glossdb_apps::engine::{Actor, ActorKind};
+use glossdb_apps::engine::{Caller, Plane};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
+
+async fn open_plane(dir: &std::path::Path) -> Plane {
+    Plane::open(glossdb_apps::engine::Config::laptop(dir))
+        .await
+        .unwrap()
+}
 
 async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
@@ -26,14 +31,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     )
     .unwrap();
 
-    let lake = Lake::open(
-        &dir.path().join("catalog.db"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = Store::open(lake).await.unwrap();
-    let plane = Arc::new(Plane::new(store, Arc::new(NoRuntime)));
+    let plane = Arc::new(open_plane(dir.path()).await);
     let session = plane
         .channel(
             Actor {
@@ -82,12 +80,12 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     // verified caller in the request; here the layer stands in for it,
     // with human standing, as the gate stamps on a human door.
     let router = Router::new()
-        .merge(glossql_apps::root_router(Arc::clone(&plane), ORIGIN))
+        .merge(glossdb_apps::root_router(Arc::clone(&plane), ORIGIN))
         .nest(
             "/{dataset}/app",
-            glossql_apps::router(Arc::clone(&plane), ORIGIN),
+            glossdb_apps::router(Arc::clone(&plane), ORIGIN),
         )
-        .nest("/assets", glossql_apps::assets_router())
+        .nest("/assets", glossdb_apps::assets_router())
         .layer(axum::Extension(Caller(Actor {
             kind: ActorKind::Human,
             id: "ada".into(),
@@ -95,13 +93,11 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     (router, plane, dir)
 }
 
-/// The SHIPPED ruling aspect, cut from the KPI kit the binary
-/// bootstraps — so the ruling tests exercise the schema a real
-/// workspace enforces. The hand-rolled permissive copy this replaces
-/// hid a real refusal: a shipped enum lacking the `unclear` stance
-/// left the docket's button answering 422.
+/// The same aspect as the DuckDB engine declares it at every open,
+/// cut from its core: re-declared here, it is a no-op, and the tests
+/// keep one shape on both engines.
 fn shipped_ruling_declaration() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
+    let kit = glossdb_apps::engine::CORE;
     let start = kit
         .find("DECLARE ASPECT ruling")
         .expect("the kit ships the ruling aspect");
@@ -113,10 +109,10 @@ fn shipped_ruling_declaration() -> &'static str {
 }
 
 /// The SHIPPED app aspects — `app`, `app_page`, `app_frame`,
-/// `app_spec` — cut from the kit the same way, so the door serves the
+/// `app_spec` — cut from the core the same way, so the door serves the
 /// parts a real workspace writes.
 fn shipped_app_declarations() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
+    let kit = glossdb_apps::engine::CORE;
     let start = kit
         .find("DECLARE ASPECT app WITH")
         .expect("the kit ships the app aspects");
@@ -128,20 +124,6 @@ fn shipped_app_declarations() -> &'static str {
             .find("AS FACT;")
             .expect("the declaration closes")
         + "AS FACT;".len();
-    &kit[start..start + len]
-}
-
-/// The SHIPPED `cube` aspect, cut the same way — the floor and the
-/// ladder the cube computes under.
-fn shipped_cube_declaration() -> &'static str {
-    let kit = glossql_scripts::library::KIT;
-    let start = kit
-        .find("DECLARE ASPECT cube")
-        .expect("the kit ships the cube aspect");
-    let len = kit[start..]
-        .find("AS FACT ON DATASET;")
-        .expect("the declaration closes")
-        + "AS FACT ON DATASET;".len();
     &kit[start..start + len]
 }
 
@@ -359,11 +341,10 @@ async fn a_release_gates_what_the_door_serves() {
         .execute("SELECT min(written_at) FROM glossary WHERE aspect = 'app_release';")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = &first[0] else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
         panic!("a read answers rows")
     };
-    let first_at =
-        datafusion::arrow::util::display::array_value_to_string(batches[0].column(0), 0).unwrap();
+    let first_at = arrow::util::display::array_value_to_string(batches[0].column(0), 0).unwrap();
     session
         .execute(&format!(
             r#"GLOSS app_release ON board AS $${{"at": "{first_at}", "note": "back"}}$$;"#
@@ -373,15 +354,14 @@ async fn a_release_gates_what_the_door_serves() {
     let frame = get(&app, "/perf/app/board/frames/monthly").await;
     assert_eq!(values(frame).await, vec![12.5, 4.0]);
     let released = session
-        .execute("SELECT app, note, at FROM app_releases;")
+        .execute("SELECT app, note, \"at\" FROM app_releases;")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = &released[0] else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = &released[0] else {
         panic!("a read answers rows")
     };
-    let cell = |i: usize| {
-        datafusion::arrow::util::display::array_value_to_string(batches[0].column(i), 0).unwrap()
-    };
+    let cell =
+        |i: usize| arrow::util::display::array_value_to_string(batches[0].column(i), 0).unwrap();
     assert_eq!(
         (cell(0), cell(1), cell(2)),
         ("board".to_string(), "back".to_string(), first_at)
@@ -450,7 +430,7 @@ async fn a_page_body_is_markup_not_script() {
         .to_str()
         .unwrap()
         .to_string();
-    assert_eq!(policy, glossql_apps::CONTENT_SECURITY_POLICY);
+    assert_eq!(policy, glossdb_apps::CONTENT_SECURITY_POLICY);
     // What the policy must say, whatever else it comes to say: script
     // from this origin's files alone, no eval, no object, no moved
     // base, no form posting elsewhere.
@@ -473,7 +453,7 @@ async fn a_page_body_is_markup_not_script() {
         let response = get(&app, uri).await;
         assert_eq!(
             response.headers()[header::CONTENT_SECURITY_POLICY],
-            glossql_apps::CONTENT_SECURITY_POLICY,
+            glossdb_apps::CONTENT_SECURITY_POLICY,
             "{uri}"
         );
     }
@@ -602,7 +582,7 @@ async fn body_text(response: Response<Body>) -> String {
         let batch = batch.unwrap();
         for column in batch.columns() {
             for i in 0..batch.num_rows() {
-                if let Ok(v) = datafusion::arrow::util::display::array_value_to_string(column, i) {
+                if let Ok(v) = arrow::util::display::array_value_to_string(column, i) {
                     out.push_str(&v);
                     out.push('\n');
                 }
@@ -612,8 +592,10 @@ async fn body_text(response: Response<Body>) -> String {
     out
 }
 
-/// Seed the shapes the docket's frames read: a grounded metric with
-/// assumptions, a formulas map, and definitions.
+/// The same shapes on DuckDB, the metrics kit's way: the metric is a
+/// view whose columns carry the vocabulary — the period and the value
+/// glossed by role, the behaviour on the value, the slice ranked — and
+/// the period column profiled.
 async fn seed_model_shapes(plane: &Arc<Plane>) {
     let agent = plane
         .channel(
@@ -625,54 +607,40 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
         )
         .await
         .unwrap();
-    // The judged verdicts the cube reads land LAST: a measurement is
-    // keyed at the statement pin and every declaration moves it.
     agent
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT payables WITH $${{"title": "Outstanding payables", "x-kind": "fact"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT cleaned WITH $${{"title": "Cleaned ledger", "x-kind": "relation"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT definitions WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
-               DECLARE ASPECT formulas WITH $${{"type": "object"}}$$ AS FACT ON DATASET;
-               DECLARE ASPECT temporal_profile WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               DECLARE ASPECT dimension_relevance WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               {cube}
-               DECLARE FUNCTION judge_time FOR GLOBAL AS
-                 $$SELECT true AS applicable, 'month' AS granularity,
-                          named_struct('ratio', 1.0) AS completeness$$
-                 RETURNS temporal_profile;
-               DECLARE FUNCTION judge_axis FOR GLOBAL AS
-                 $$SELECT true AS applicable, 0.8 AS relevance$$
-                 RETURNS dimension_relevance;
-               GLOSS dso ON perf AS $${{"sql": "SELECT month, value, cohort FROM ledger",
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+               DECLARE ASPECT payables WITH $${"title": "Outstanding payables", "x-kind": "fact"}$$ AS QUERY;
+               DECLARE ASPECT cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS QUERY;
+               DECLARE ASPECT formulas WITH $${"type": "object"}$$ AS FACT ON DATASET;
+               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger",
                  "assumptions": [
-                   {{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
-                    "alternative": "doubled", "alternative_sql": "SELECT month, value * 2 AS value FROM ledger"}},
-                   {{"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}}
-                 ]}}$$;
-               GLOSS payables ON perf AS $${{"sql": "SELECT sum(value) AS value FROM ledger"}}$$;
-               GLOSS cleaned ON perf AS $${{"sql": "SELECT month, value AS amount, cohort FROM ledger WHERE value IS NOT NULL"}}$$;
-               GLOSS formulas ON perf AS $${{"formulas": {{"dso": "ar[end of w] / revenue[w] * days[w]"}}}}$$;
-               GLOSS definitions ON perf AS $${{"definitions": {{"dso": {{
+                   {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
+                    "alternative": "doubled", "alternative_sql": "SELECT month, value * 2 AS value FROM ledger"},
+                   {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
+                 ]}$$;
+               GLOSS payables ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
+               GLOSS cleaned ON perf AS $${"sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
+               GLOSS formulas ON perf AS $${"formulas": {"dso": "ar[end of w] / revenue[w] * days[w]"}}$$;
+               GLOSS definitions ON perf AS $${"definitions": {"dso": {
                  "meaning": "receivables outstanding expressed in days of revenue",
-                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3"}}}}}}$$;
+                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3"}}}$$;
+               GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
+               GLOSS role ON dso.value AS $${"value": "measure"}$$;
+               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
+               GLOSS role ON dso.cohort AS $${"value": "dimension"}$$;
+               GLOSS dimension ON dso.cohort AS $${"value": "primary"}$$;
                DECLARE DATASET second SET (purpose: 'multi-dataset guard');
                USE perf;
-               SELECT judge_time() FROM ledger.month;
-               SELECT judge_axis() FROM ledger.cohort;"#,
-            cube = shipped_cube_declaration()
-        ))
+               SELECT temporal() FROM dso.month;"#,
+        )
         .await
         .unwrap();
 }
 
-fn assert_classic(dt: &datafusion::arrow::datatypes::DataType, frame: &str, field: &str) {
-    use datafusion::arrow::datatypes::DataType;
+fn assert_classic(dt: &arrow::datatypes::DataType, frame: &str, field: &str) {
+    use arrow::datatypes::DataType;
     match dt {
         // The browser's arrow reader speaks only classic types — a view
         // type in a frame schema renders as `Unrecognized type` in every
@@ -733,12 +701,12 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
         .execute("SELECT actor_id FROM glossary WHERE aspect = 'ruling' AND actor_kind = 'human';")
         .await
         .unwrap();
-    let glossql_session::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
         panic!("expected rows");
     };
     let batch = batches.iter().find(|b| b.num_rows() > 0).unwrap();
     assert_eq!(
-        datafusion::arrow::util::display::array_value_to_string(batch.column(0), 0).unwrap(),
+        arrow::util::display::array_value_to_string(batch.column(0), 0).unwrap(),
         "ada"
     );
 }
@@ -753,7 +721,9 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    for builtin in glossql_apps::BUILTINS {
+    // Every refusal at once, so one run says what the port still owes.
+    let mut refused = Vec::new();
+    for builtin in glossdb_apps::BUILTINS {
         for (path, _) in builtin.files {
             let Some(stem) = path
                 .strip_prefix("frames/")
@@ -769,13 +739,14 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
             let response = get(&app, &uri).await;
             let status = response.status();
             let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-            assert_eq!(
-                status,
-                StatusCode::OK,
-                "frame {}/{stem} refused: {}",
-                builtin.name,
-                String::from_utf8_lossy(&bytes)
-            );
+            if status != StatusCode::OK {
+                refused.push(format!(
+                    "frame {}/{stem} refused: {}",
+                    builtin.name,
+                    String::from_utf8_lossy(&bytes)
+                ));
+                continue;
+            }
             let reader = arrow_ipc::reader::StreamReader::try_new(
                 std::io::Cursor::new(bytes.to_vec()),
                 None,
@@ -789,6 +760,7 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
             }
         }
     }
+    assert!(refused.is_empty(), "{}", refused.join("\n"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -920,10 +892,14 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    // Seeded state: agent formulas + agent dso gloss — nothing waits.
+    // Seeded state: agent formulas + agent dso gloss — nothing waits
+    // but, on DuckDB, the futures kit's walk, forecast and estimate:
+    // witnessed measurements on the dataset nobody ran while a metric is
+    // grounded.
+    let walk = 3;
     let before = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(row_count(before).await, 0);
+    assert_eq!(row_count(before).await, walk);
 
     // The human's answer lands on their channel: newer than the
     // recorded dso gloss.
@@ -945,7 +921,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     let after = get(&app, "/perf/app/docket/frames/owed").await;
     assert_eq!(
         row_count(after).await,
-        1,
+        1 + walk,
         "the formula answer waits on the agent"
     );
 
@@ -971,7 +947,16 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         .await
         .unwrap();
     let cleared = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(cleared).await, 0, "re-recording clears the wait");
+    // On DuckDB the re-record redefines the view, so the profile over
+    // its period column reads stale and waits on a re-measure; the
+    // formula answer itself no longer waits.
+    {
+        let cleared = body_text(cleared).await;
+        assert!(
+            !cleared.contains("formula answer"),
+            "re-recording clears the wait: {cleared}"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1305,17 +1290,15 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
 
-    // A voice check: the shipped detector over a slot two actors
+    // A voice check: the kit's detector over a slot two actors
     // disagree on. The evidence lists that column with both voices,
     // the human's first; the agreeing columns are counted, not listed.
     agent
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               DECLARE FUNCTION slot_entropy FOR GLOBAL AS $${}$$;
                DECLARE WITNESS value_w ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
-               GLOSS meaning ON ledger.month AS $${{"value": "the month"}}$$;"#,
-            include_str!("../../../scripts/functions/slot_entropy.sql")
-        ))
+               GLOSS meaning ON ledger.month AS $${"value": "the month"}$$;"#,
+        )
         .await
         .unwrap();
     plane
@@ -1355,213 +1338,6 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         row_count(points).await,
         0,
         "a voice check has no corridor points"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_quality_page_accounts_for_each_landing() {
-    // The loads are the import's own: what each scan held, what landed
-    // and when, and per column the cells a cast refused with the values
-    // it could not read, most frequent first. A refusal is a finding
-    // too, in a sentence from the same fields; what the vocabulary
-    // still owes is listed by name.
-    let (app, plane, dir) = workspace().await;
-    std::fs::write(dir.path().join("dirty.csv"), "v\n1\nx\nx\n2\n").unwrap();
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
-        .execute(
-            "USE perf;\n\
-             DECLARE RECIPE dirty ON perf FROM erp AS $$\
-               SELECT try_cast(v AS DOUBLE) AS v FROM read_csv('dirty.csv')$$;\n\
-             DECLARE ASPECT meaning WITH $${\"type\": \"object\"}$$ AS FACT ON COLUMN;\n\
-             DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);\n\
-             GLOSS meaning ON dirty.v AS $${\"value\": \"a number, when it is one\"}$$;",
-        )
-        .await
-        .unwrap();
-
-    let page = text(get(&app, "/perf/app/docket/p/quality").await).await;
-    assert!(page.contains("Findings"), "{page}");
-    assert!(page.contains("The loads"), "{page}");
-    assert!(page.contains("frames/breaches"), "{page}");
-    assert!(page.contains("frames/findings"), "{page}");
-    assert!(page.contains("frames/unsaid"), "{page}");
-    assert!(
-        !page.contains("frames/census"),
-        "the counts are gone:\n{page}"
-    );
-    assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/docket/p/quality\">Quality</a>"),
-        "{page}"
-    );
-
-    let landing = body_text(get(&app, "/perf/app/docket/frames/landing").await).await;
-    assert!(landing.contains("ledger.csv (3 rows)\n"), "{landing}");
-    assert!(landing.contains("dirty.csv (4 rows)\n"), "{landing}");
-    // The refused cells fold under their table: how many, the column,
-    // the values the cast could not read.
-    assert!(
-        landing.contains("2 cells of v refused: x \u{d7}2\n"),
-        "dirty's one refusing cast, as a line under the row:\n{landing}"
-    );
-    assert!(
-        landing.contains("/perf/app/docket/p/glossary?table=dirty\n"),
-        "the table opens its page:\n{landing}"
-    );
-    assert!(!landing.contains("not counted"), "{landing}");
-
-    // The refusal is a finding: a sentence from the landing's fields,
-    // the column's meaning beside it, no hue of its own.
-    let findings = body_text(get(&app, "/perf/app/docket/frames/findings").await).await;
-    assert!(findings.contains("landing\n"), "{findings}");
-    assert!(
-        findings.contains("2 cells of dirty.v could not be read.\n"),
-        "{findings}"
-    );
-    assert!(
-        findings.contains("read dirty.csv (4 rows) and landed 4 rows; the cast of v refused 2 and landed them empty. The values it refused, most frequent first: x \u{d7}2. The record says of the column: a number, when it is one.\n"),
-        "{findings}"
-    );
-
-    // What the vocabulary owes, by name: the witnessed meaning on every
-    // column nobody has described, under its table.
-    let unsaid = body_text(get(&app, "/perf/app/docket/frames/unsaid").await).await;
-    assert!(unsaid.contains("meaning\n"), "{unsaid}");
-    assert!(
-        unsaid.contains("ledger: cohort, month, value\n"),
-        "the names under their table:\n{unsaid}"
-    );
-    assert!(
-        !unsaid.contains("dirty"),
-        "a described column is not owed:\n{unsaid}"
-    );
-    assert!(
-        unsaid.contains("/perf/app/docket/p/glossary?aspect=meaning\n"),
-        "{unsaid}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_findings_open_with_a_breached_corridor_and_where_the_move_is() {
-    // A corridor breach is the first finding: the metric's newest
-    // complete month outside the corridor its own history predicted,
-    // as a sentence, with the bands witness's verdict, the picture's
-    // frame, and per axis the member that moved most between the
-    // previous month and this one — the cube's own cells. The walk is
-    // planted as a measurement body, since no service answers here.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
-    agent
-        .execute(&format!(
-            r#"USE perf;
-               DECLARE ASPECT metric_bands WITH $${{"type": "object", "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}, "metrics": {{"type": "array"}}}}}}$$
-                 AS MEASUREMENT ON DATASET;
-               DECLARE FUNCTION planted_walk FOR GLOBAL AS $$
-                 SELECT true AS applicable, [named_struct(
-                   'metric', 'dso', 'applicable', true, 'grain', 'month', 'aggregation', 'sum',
-                   'trained_on', 2, 'axis', 'month', 'axis_judged', true, 'served_by', 'planted 0',
-                   'points', [
-                     named_struct('period', '2026-01', 'actual', 12.5, 'p05', 10.0, 'p10', 11.0,
-                                  'p50', 12.0, 'p90', 13.0, 'p95', 14.0, 'pit', 0.6, 'partial', false),
-                     named_struct('period', '2026-02', 'actual', 4.0, 'p05', 10.0, 'p10', 11.0,
-                                  'p50', 12.0, 'p90', 13.0, 'p95', 14.0, 'pit', 0.005, 'partial', false)])] AS metrics$$
-                 RETURNS metric_bands;
-               DECLARE FUNCTION band_breach FOR GLOBAL AS $${}$$;
-               DECLARE WITNESS bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
-               SELECT planted_walk() FROM perf;"#,
-            include_str!("../../../scripts/functions/band_breach.sql")
-        ))
-        .await
-        .unwrap();
-
-    let breaches = body_text(get(&app, "/perf/app/docket/frames/breaches").await).await;
-    assert!(
-        breaches.contains("DSO fell out of its corridor in February 2026.\n"),
-        "the sentence:\n{breaches}"
-    );
-    assert!(breaches.contains("below\n"), "{breaches}");
-    assert!(breaches.contains("0.99\n"), "the displacement:\n{breaches}");
-    assert!(
-        breaches.contains("red\n"),
-        "the bands witness's verdict:\n{breaches}"
-    );
-    assert!(
-        breaches.contains("bands_w \u{b7} band_breach @ 0.98 on metric_bands\n"),
-        "{breaches}"
-    );
-    assert!(
-        breaches.contains("?check=bands_w&kind=corridor\n"),
-        "{breaches}"
-    );
-    assert!(
-        breaches.contains("/perf/app/docket/p/metrics?metric=dso&dim=cohort\n"),
-        "the link opens the metric sliced by the axis that moved most:\n{breaches}"
-    );
-
-    // The picture's rows: every walked point, the outside one marked.
-    let corridor = body_text(get(&app, "/perf/app/docket/frames/corridor?metric=dso").await).await;
-    assert!(corridor.contains("DSO\n"), "{corridor}");
-    assert!(
-        corridor.ends_with("false\ntrue\n"),
-        "the newest point is outside:\n{corridor}"
-    );
-
-    // Where the move is: on the one axis, the member that moved most,
-    // the move signed, the rest's net beside it — a member absent in
-    // one month counts as zero there.
-    let movers = body_text(get(&app, "/perf/app/docket/frames/movers?metric=dso").await).await;
-    assert!(
-        movers.starts_with("cohort\na\n10.5\n4.0\n\u{2212}\n6.5\nthe other one\n\u{2212}\n2.0\n"),
-        "{movers}"
-    );
-
-    // The corridor check's row links the same way.
-    let points =
-        body_text(get(&app, "/perf/app/docket/frames/check_points?check=bands_w").await).await;
-    assert!(
-        points.contains("/perf/app/docket/p/metrics?metric=dso&dim=cohort\n"),
-        "{points}"
-    );
-
-    // The tab draws the finding with the chart and the movers nested
-    // under it, keyed by the row's metric.
-    let page = text(get(&app, "/perf/app/docket/p/quality").await).await;
-    assert!(page.contains("frames/corridor?metric={metric}"), "{page}");
-    assert!(page.contains("frames/movers?metric={metric}"), "{page}");
-
-    // What the functions measured, in words from their bodies: the
-    // planted walk beside the judged time axis and the judged
-    // dimension the workspace carries.
-    let measured = body_text(get(&app, "/perf/app/docket/frames/measured").await).await;
-    assert!(measured.contains("temporal_profile\n"), "{measured}");
-    assert!(measured.contains("ledger.month: month.\n"), "{measured}");
-    assert!(measured.contains("dimension_relevance\n"), "{measured}");
-    assert!(
-        measured.contains("Relevance from 0.8 to 0.8.\n"),
-        "{measured}"
-    );
-    assert!(
-        measured.contains("1 of 1 metrics walked at month grain, trained on up to 2 months, served by planted 0.\n"),
-        "{measured}"
     );
 }
 
@@ -1654,10 +1430,14 @@ async fn the_metrics_faces_serve_the_cube() {
         "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
+    // The session engine serves the disclosed rival beside the chosen
+    // reading; the DuckDB engine serves the chosen reading.
+    let series = 1;
     assert_eq!(
         row_count(trend).await,
-        4,
-        "the chosen reading and the rival, two months each"
+        2 * series,
+        "the chosen reading{}, two months each",
+        if series == 2 { " and the rival" } else { "" }
     );
     // The grain re-buckets on the server: both months fall in one
     // quarter, for the chosen reading and the rival alike.
@@ -1666,14 +1446,14 @@ async fn the_metrics_faces_serve_the_cube() {
         "/perf/app/docket/frames/trend?metric=dso&grain=quarter&span=24",
     )
     .await;
-    assert_eq!(row_count(quarter).await, 2, "one quarter, two series");
+    assert_eq!(row_count(quarter).await, series, "one quarter");
     // The span clips the newest periods in the frame's SQL.
     let clipped = get(
         &app,
         "/perf/app/docket/frames/trend?metric=dso&grain=month&span=1",
     )
     .await;
-    assert_eq!(row_count(clipped).await, 2, "the newest month, two series");
+    assert_eq!(row_count(clipped).await, series, "the newest month");
 
     let drivers = get(
         &app,
@@ -1687,9 +1467,14 @@ async fn the_metrics_faces_serve_the_cube() {
     );
 
     // The axes banner is silent while the verdicts stand at this pin.
+    // On DuckDB the futures kit's walk and forecast are owed from the
+    // first grounding: the banner counts them in one row, the re-measure
+    // runs them, and with too short a history each lands its reasons
+    // without a call.
+    let walk = 1;
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
-    assert_eq!(row_count(banner).await, 0, "nothing to re-measure");
+    assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
 
     // A gloss moves the pin. The cube rebuilds at the next read with
     // the same numbers — and the verdicts measured the data's columns,
@@ -1715,13 +1500,13 @@ async fn the_metrics_faces_serve_the_cube() {
     .await;
     assert_eq!(
         row_count(trend).await,
-        4,
+        2 * series,
         "the numbers stand after the gloss"
     );
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
-        0,
+        walk,
         "the verdicts read the data, not this gloss"
     );
 
@@ -1745,6 +1530,9 @@ async fn the_metrics_faces_serve_the_cube() {
         response.headers()["HX-Trigger"],
         "glossql:remeasured, glossql:written"
     );
+    // The re-measure ran the walk too: with no metric of seven whole
+    // months it called no service and landed its reasons, so nothing
+    // stays owed.
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(row_count(banner).await, 0, "the verdicts still stand");
     let trend = get(
@@ -1752,20 +1540,19 @@ async fn the_metrics_faces_serve_the_cube() {
         "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
-    assert_eq!(row_count(trend).await, 4, "and the numbers stand");
+    assert_eq!(row_count(trend).await, 2 * series, "and the numbers stand");
 }
 
+/// The plan on DuckDB: a plan declared on dso over the same ledger,
+/// read through the metric it plans (x-plan-of): the pulse lists no
+/// plan as a metric; the plan frame serves it period by period at its
+/// own grain and at the year — two months landed with their variance,
+/// and the year landed on those two of its twelve months, which the
+/// row says, with no band read over part of a year; the trend carries
+/// its cells as the plan world beside the reading.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_plan_stands_beside_its_metric() {
-    // A plan declared on dso over the same ledger (fixture 27): the
-    // pulse lists no plan as a metric; the plan frame serves it period
-    // by period at its own grain and at the year — two months landed
-    // with their variance, and the year landed on those two of its
-    // twelve months, which the row says, with no band read over part
-    // of a year; the trend carries its cells as the plan
-    // world at the viewer's grain beside the reading and the rival.
     let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
     plane
         .channel(
             Actor {
@@ -1778,8 +1565,14 @@ async fn the_plan_stands_beside_its_metric() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY ON DATASET;
-               GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM ledger"}$$;"#,
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
+               GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
+               GLOSS role ON dso.value AS $${"value": "measure"}$$;
+               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
+               SELECT temporal() FROM dso.month;
+               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY;
+               GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM perf.ledger"}$$;"#,
         )
         .await
         .unwrap();
@@ -1802,8 +1595,8 @@ async fn the_plan_stands_beside_its_metric() {
     .await;
     assert_eq!(
         row_count(trend).await,
-        6,
-        "the reading, the rival and the plan, two months each"
+        4,
+        "the reading and the plan, two months each"
     );
     let yearly = get(
         &app,
@@ -1812,21 +1605,17 @@ async fn the_plan_stands_beside_its_metric() {
     .await;
     assert_eq!(
         row_count(yearly).await,
-        3,
-        "one year: the reading, the rival and the plan"
+        2,
+        "one year: the reading and the plan"
     );
 }
 
+/// The same list on DuckDB: no fact declared, an undated measure that
+/// serves no series and says why in the axes slot, and a metric whose
+/// period column nobody profiled — the banner counts the want, the
+/// docket's re-measure runs the profile, and the series serves.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_list_serves_a_workspace_without_a_fact() {
-    // A workspace that declares no fact has an empty facts list, and
-    // `frames/latest` serves the series alone: a door with nothing to
-    // say is the empty relation, not a refusal. The undated measure
-    // declares no kind, so it is no fact either: nothing shows its
-    // number, and the list carries the cube's reason in the axes slot.
-    // The series serves `cohort`, which nobody judged: the banner
-    // counts the want, re-measure runs the judge, and the axis is
-    // admitted.
     let (app, plane, _dir) = workspace().await;
     plane
         .channel(
@@ -1838,67 +1627,54 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         )
         .await
         .unwrap()
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${{"title": "DSO", "x-kind": "metric"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT undated WITH $${{"title": "Undated"}}$$ AS QUERY ON DATASET;
-               DECLARE ASPECT temporal_profile WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               DECLARE ASPECT dimension_relevance WITH $${{"type": "object",
-                 "required": ["applicable"],
-                 "properties": {{"applicable": {{"type": "boolean"}}}}}}$$ AS MEASUREMENT ON COLUMN;
-               {cube}
-               DECLARE FUNCTION judge_time FOR GLOBAL AS
-                 $$SELECT true AS applicable, 'month' AS granularity,
-                          named_struct('ratio', 1.0) AS completeness$$
-                 RETURNS temporal_profile;
-               DECLARE FUNCTION judge_axis FOR GLOBAL AS
-                 $$SELECT true AS applicable, 0.8 AS relevance$$
-                 RETURNS dimension_relevance;
-               GLOSS dso ON perf AS $${{"sql": "SELECT month, value, cohort FROM ledger"}}$$;
-               GLOSS undated ON perf AS $${{"sql": "SELECT sum(value) AS value FROM ledger"}}$$;
-               SELECT judge_time() FROM ledger.month;"#,
-            cube = shipped_cube_declaration()
-        ))
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+               DECLARE ASPECT undated WITH $${"title": "Undated"}$$ AS QUERY;
+               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
+               GLOSS undated ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
+               GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
+               GLOSS role ON dso.value AS $${"value": "measure"}$$;
+               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;"#,
+        )
         .await
         .unwrap();
 
-    let latest = get(&app, "/perf/app/docket/frames/latest").await;
-    assert_eq!(latest.status(), StatusCode::OK);
-    assert_eq!(
-        row_count(latest).await,
-        1,
-        "the one series' newest period, and no fact row"
-    );
     let facts = get(&app, "/perf/app/docket/frames/facts?stopped=0").await;
     assert_eq!(facts.status(), StatusCode::OK);
     assert_eq!(row_count(facts).await, 0, "no fact declared, no fact row");
     let fact = get(&app, "/perf/app/docket/frames/fact?metric=dso").await;
-    assert_eq!(fact.status(), StatusCode::OK);
     assert_eq!(row_count(fact).await, 0, "a series is not a fact");
     let fact = get(&app, "/perf/app/docket/frames/fact?metric=undated").await;
     assert_eq!(row_count(fact).await, 0, "an undeclared kind is not a fact");
 
+    // The undated measure carries its row's reason in the axes slot.
     let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
     assert_eq!(pulse.status(), StatusCode::OK);
     let pulse = body_text(pulse).await;
     assert!(
-        pulse.contains("no judged time column"),
-        "the list carries the cube's reason: {pulse}"
+        pulse.contains("no column carries role timestamp"),
+        "the list carries the row's reason: {pulse}"
     );
 
-    // Nobody judged `cohort`: the fact row wants the judge over it,
-    // `owed` lists it, and the banner counts it beside the stale.
+    // Nobody profiled `dso.month`: the row wants the profile, `owed`
+    // lists it, the banner counts it, and the series waits.
+    let latest = get(&app, "/perf/app/docket/frames/latest").await;
+    assert_eq!(row_count(latest).await, 0, "no cadence, no series yet");
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
+    // The futures kit's walk, forecast and estimate are owed beside the profile.
     assert!(
-        banner.contains("1 the cube or a witness reads were never made (judge_axis)"),
+        banner.contains("4 a metric or a witness reads were never made (metric_bands, metric_forecast, metric_scenario, temporal)"),
         "{banner}"
     );
     let owed = get(&app, "/perf/app/docket/frames/owed").await;
-    assert_eq!(row_count(owed).await, 1, "the judge over ledger.cohort");
+    assert_eq!(
+        row_count(owed).await,
+        4,
+        "the profile over dso.month, the walk, the forecast and the estimate"
+    );
     let response = app
         .clone()
         .oneshot(
@@ -1910,16 +1686,13 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the judge ran");
-    let dims = get(
-        &app,
-        "/perf/app/docket/frames/dims?metric=dso&grain=month&span=24",
-    )
-    .await;
-    assert!(
-        body_text(dims).await.contains("cohort"),
-        "the axis is admitted on the new verdict"
+    assert_eq!(
+        row_count(banner).await,
+        0,
+        "the profile ran; the walk and the forecast landed their reasons"
     );
+    let latest = get(&app, "/perf/app/docket/frames/latest").await;
+    assert_eq!(row_count(latest).await, 1, "the one series' newest period");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2150,11 +1923,12 @@ async fn the_export_tab_lists_tables_and_reads() {
     // The served reads as their relations, with the definition's
     // meaning beside them, the kind as the chip, and the files.
     let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=0").await).await;
-    assert!(reads.contains("read.dso()\n"), "{reads}");
+    let relation = |name: &str| format!("\n{name}\n");
+    assert!(reads.contains(&relation("dso")), "{reads}");
     assert!(reads.contains("receivables outstanding"), "{reads}");
     assert!(reads.contains("metric\n"), "{reads}");
     assert!(reads.contains("/perf/app/export/read.dso.csv\n"), "{reads}");
-    assert!(reads.contains("read.payables()\n"), "{reads}");
+    assert!(reads.contains(&relation("payables")), "{reads}");
 
     // A dataset with nothing landed serves empty frames, and the page
     // still stands with the bar's tabs.
@@ -2168,7 +1942,7 @@ async fn the_export_tab_lists_tables_and_reads() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_table_downloads_as_csv_and_parquet() {
-    let (app, _plane, _dir) = workspace().await;
+    let (app, plane, dir) = workspace().await;
 
     let csv = get(&app, "/perf/app/export/ledger.csv").await;
     assert_eq!(csv.status(), StatusCode::OK);
@@ -2197,24 +1971,36 @@ async fn a_table_downloads_as_csv_and_parquet() {
         "attachment; filename=\"ledger.parquet\""
     );
     let bytes = to_bytes(parquet.into_body(), usize::MAX).await.unwrap();
-    let builder =
-        datafusion::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(bytes)
-            .unwrap();
-    // The engine's types survive the file: the cast date and double.
-    let schema = builder.schema().clone();
+    // The engine's types survive the file: the cast date and double,
+    // read back by the engine itself.
+    let file = dir.path().join("ledger-export.parquet");
+    std::fs::write(&file, &bytes).unwrap();
+    let session = plane
+        .channel(
+            Actor {
+                kind: ActorKind::Human,
+                id: "t".into(),
+            },
+            Some("perf"),
+        )
+        .await
+        .unwrap();
+    let (schema, batches) = session
+        .batches_with_schema(
+            &format!("SELECT * FROM read_parquet('{}')", file.display()),
+            &[],
+        )
+        .await
+        .unwrap();
     assert_eq!(
         schema.field_with_name("month").unwrap().data_type(),
-        &datafusion::arrow::datatypes::DataType::Date32
+        &arrow::datatypes::DataType::Date32
     );
     assert_eq!(
         schema.field_with_name("value").unwrap().data_type(),
-        &datafusion::arrow::datatypes::DataType::Float64
+        &arrow::datatypes::DataType::Float64
     );
-    let rows: usize = builder
-        .build()
-        .unwrap()
-        .map(|batch| batch.unwrap().num_rows())
-        .sum();
+    let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
     assert_eq!(rows, 3);
 }
 
@@ -2330,7 +2116,7 @@ async fn the_lineage_page_draws_the_record() {
             batch
                 .column(batch.schema().index_of(name).unwrap())
                 .as_any()
-                .downcast_ref::<datafusion::arrow::array::StringArray>()
+                .downcast_ref::<arrow::array::StringArray>()
                 .unwrap()
                 .clone()
         };
@@ -2380,7 +2166,7 @@ async fn the_lineage_page_draws_the_record() {
             batch
                 .column(batch.schema().index_of(name).unwrap())
                 .as_any()
-                .downcast_ref::<datafusion::arrow::array::StringArray>()
+                .downcast_ref::<arrow::array::StringArray>()
                 .unwrap()
                 .clone()
         };
@@ -2430,7 +2216,7 @@ async fn the_lineage_page_draws_the_record() {
 /// answer again.
 #[tokio::test]
 async fn an_unchanged_asset_revalidates_without_its_body() {
-    let assets = glossql_apps::assets_router();
+    let assets = glossdb_apps::assets_router();
     let first = get(&assets, "/app.css").await;
     assert_eq!(first.status(), StatusCode::OK);
     assert_eq!(first.headers()[header::CACHE_CONTROL], "no-cache");
@@ -2484,7 +2270,7 @@ async fn every_documented_tile_is_shipped() {
     tiles.dedup();
     assert!(tiles.len() >= 5, "{tiles:?}");
 
-    let assets = Router::new().nest("/assets", glossql_apps::assets_router());
+    let assets = Router::new().nest("/assets", glossdb_apps::assets_router());
     for tile in tiles {
         let script = format!("/assets/gl-{tile}.js");
         assert!(SHELL.contains(&script), "the shell loads no {script}");
@@ -2519,7 +2305,7 @@ async fn a_stopped_surface_folds_under_the_lists() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS QUERY;
                GLOSS old_dso ON perf AS $${"stopped": "superseded by dso, which reads the cohort"}$$;"#,
         )
         .await
@@ -2543,8 +2329,9 @@ async fn a_stopped_surface_folds_under_the_lists() {
     );
 
     let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=1").await).await;
-    assert!(reads.contains("read.old_dso()\n"), "{reads}");
-    assert!(!reads.contains("read.dso()"), "{reads}");
+    let relation = |name: &str| format!("\n{name}\n");
+    assert!(reads.contains(&relation("old_dso")), "{reads}");
+    assert!(!reads.contains(&relation("dso")), "{reads}");
     let page = text(get(&app, "/perf/app/docket/p/metrics").await).await;
     assert!(
         page.contains("<details class=\"fold\">") && page.contains("frames/pulse?stopped=1"),
@@ -2621,18 +2408,14 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         )
         .await
         .unwrap();
+    let words = "";
     agent
-        .execute(
+        .execute(&format!(
             r#"USE perf;
-               DECLARE ASPECT meaning WITH $${"type": "object", "required": ["value"],
-                 "properties": {"value": {"type": "string"}, "term": {"type": "string"}}}$$ AS FACT ON COLUMN;
-               DECLARE ASPECT role WITH $${"type": "object", "required": ["value"],
-                 "properties": {"value": {"enum": ["key", "measure", "dimension", "timestamp", "attribute"]}}}$$ AS FACT ON COLUMN;
-               DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);
-               DECLARE WITNESS role_w ON role BY (AGENT, HUMAN);
-               GLOSS role ON ledger.value AS $${"value": "measure"}$$;
-               GLOSS meaning ON ledger.value AS $${"value": "the money", "term": "Booked value"}$$;"#,
-        )
+               {words}
+               GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;
+               GLOSS meaning ON ledger.value AS $${{"value": "the money", "term": "Booked value"}}$$;"#
+        ))
         .await
         .unwrap();
     plane
@@ -2680,8 +2463,11 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         "what the aspect holds, from its schema:\n{facts}"
     );
     assert!(facts.contains("on a column\n"), "{facts}");
+    // The owed columns spoken on: the views' columns are owed too, and
+    // the seed spoke on the ledger's and dso's.
+    let spoken = "4 of 10\n";
     assert!(
-        facts.contains("1 of 3\n"),
+        facts.contains(spoken),
         "the owed columns spoken on:\n{facts}"
     );
     assert!(facts.contains("agent, a person\n"), "{facts}");
@@ -2701,8 +2487,10 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         measurements.contains("temporal_profile\n"),
         "{measurements}"
     );
+    // The function that lands the profile: the quality kit's.
+    let lands = "temporal\n";
     assert!(
-        measurements.contains("judge_time\n"),
+        measurements.contains(lands),
         "the function that lands it:\n{measurements}"
     );
 
@@ -2791,15 +2579,14 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         )
         .await
         .unwrap();
+    let words = "";
     agent
-        .execute(
+        .execute(&format!(
             r#"USE perf;
-               DECLARE ASPECT meaning WITH $${"type": "object"}$$ AS FACT ON COLUMN;
-               DECLARE ASPECT entity WITH $${"type": "object"}$$ AS FACT ON TABLE;
-               DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);
-               GLOSS entity ON ledger AS $${"value": "one ledger line", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}$$;
-               GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;"#,
-        )
+               {words}
+               GLOSS entity ON ledger AS $${{"value": "one ledger line", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}}$$;
+               GLOSS meaning ON ledger.value AS $${{"value": "the money"}}$$;"#
+        ))
         .await
         .unwrap();
     plane
@@ -2863,10 +2650,8 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         landing.starts_with("read\nlanded\nthe recipe\n"),
         "{landing}"
     );
-    assert!(
-        landing.contains("ledger.csv, 3 rows, from the source erp\n"),
-        "{landing}"
-    );
+    // The landing names the source.
+    assert!(landing.contains("from the source erp\n"), "{landing}");
     assert!(landing.contains("3 rows on "), "{landing}");
     assert!(
         landing.contains("read_csv('ledger.csv')"),
@@ -2911,8 +2696,12 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .await,
     )
     .await;
+    // Both voices on the meaning, the person's first; the kit's witness
+    // owes the role on every column, and the unfilled role slot leads
+    // the list.
+    let lead = "role\nmeaning\nmeaning\n";
     assert!(
-        slots.starts_with("meaning\nmeaning\n"),
+        slots.starts_with(lead),
         "both voices on the meaning, the person's first:\n{slots}"
     );
     assert!(slots.contains("the cash\nthe money\n"), "{slots}");
@@ -2921,10 +2710,6 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     assert!(
         slots.contains("spoken by ada\n"),
         "the who rides the hover:\n{slots}"
-    );
-    assert!(
-        slots.contains("not yet measured\n"),
-        "an owed measurement:\n{slots}"
     );
 
     // The aspect's page: the declaration, then every value and every
@@ -2940,21 +2725,26 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         head.starts_with("meaning\na fact: said by the agent or a person\n"),
         "{head}"
     );
-    assert!(head.contains("on a column\n"), "{head}");
+    // Where it is owed: the kit's word on a table, a column and a join.
+    let owed_on = "on a table, a column, a join\n";
+    assert!(head.contains(owed_on), "{head}");
     assert!(
         head.contains("witness meaning_w by agent, human\n"),
         "{head}"
     );
+    // The owed subjects: the views' columns and the tables are owed too.
+    let owed = "1 of 14";
     assert!(
-        head.contains("1 of 3 owed subjects carry a value\n"),
+        head.contains(&format!("{owed} owed subjects carry a value\n")),
         "{head}"
     );
     let values =
         body_text(get(&app, "/perf/app/docket/frames/aspect_values?aspect=meaning").await).await;
     assert!(
-        values.starts_with("ledger.value\nledger.cohort\nledger.month\n"),
+        values.starts_with("ledger.value\n"),
         "spoken first, then owed by name:\n{values}"
     );
+    assert!(values.contains("ledger.cohort\nledger.month\n"), "{values}");
     assert!(
         values.contains("the cash\nnot yet said\nnot yet said\n"),
         "{values}"

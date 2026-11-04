@@ -2,15 +2,22 @@
 # and every pull request: the format, clippy with warnings denied, the
 # suite, the dependency rules (deny.toml) and the unused dependencies —
 # on the target the image is built for, which the laptop is not. The
-# live job stands the dev rig up (dev/compose.yaml) and runs the
-# ignored tests it serves. Nothing here publishes: release.yml does, at
-# a tag, from a commit this ran green on.
+# suite runs on the glossql extension built from its repository at the
+# commit crates/duck/glossql.ref names, kept in the actions cache by that
+# commit so a pin move builds it once. Nothing here publishes:
+# release.yml does, at a tag, from a commit this ran green on.
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+
+# A newer push to a pull request cancels the run before it; main's
+# runs queue behind each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,40 +35,35 @@ jobs:
         with:
           shared-key: ci
           cache-on-failure: true
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
+      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
         with:
           tool: cargo-nextest,cargo-deny,cargo-machete
       - run: cargo fmt --all --check
       - run: cargo deny check
       - run: cargo machete
       - run: cargo clippy --workspace --all-targets --locked
-      - run: cargo nextest run --workspace --locked
-
-  live:
-    runs-on: ubuntu-24.04
-    needs: check
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: The glossql extension, from the cache or its repository
+        id: gloss
+        run: echo "ref=$(cat crates/duck/glossql.ref)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: gloss-cache
         with:
-          shared-key: ci
-      # The rig as a laptop runs it, loopback ports and all; the init
-      # container makes the `lake` container and exits.
-      - run: docker compose -f dev/compose.yaml up -d --wait postgres azurite
-      - run: docker compose -f dev/compose.yaml run --rm azurite-init
-      - name: Postgres as the catalog, the warehouse on the local disk
-        run: cargo test -p glossql-catalog -p glossql-serverd live_sql --locked -- --ignored
+          path: glossql-out
+          key: glossql-${{ steps.gloss.outputs.ref }}-linux_amd64
+      - if: steps.gloss-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+          git clone --filter=blob:none https://github.com/glossdb/glossql glossql-src
+          cd glossql-src
+          git checkout "${{ steps.gloss.outputs.ref }}"
+          git submodule update --init --depth 1 duckdb extension-ci-tools
+          GEN=ninja EXT_FLAGS=-DGLOSSQL_LAKE=OFF make release
+          mkdir -p ../glossql-out
+          cp build/release/repository/v2.0.0/*/glossql.duckdb_extension ../glossql-out/
+          cp -r kits ../glossql-out/kits
+          cp SPEC.md grammar.ebnf ../glossql-out/
+          cd .. && rm -rf glossql-src
+      - run: cargo nextest run --workspace --locked
         env:
-          GLOSSQL_E2E_CATALOG_SQL: postgres://glossql:glossql@127.0.0.1:5432/glossql
-      - name: Postgres as the catalog, the warehouse on Azurite
-        run: cargo test -p glossql-catalog -p glossql-serverd live_sql --locked -- --ignored
-        env:
-          GLOSSQL_E2E_CATALOG_SQL: postgres://glossql:glossql@127.0.0.1:5432/glossql_az
-          GLOSSQL_E2E_WAREHOUSE: abfss://lake@devstoreaccount1.dfs.core.windows.net/warehouse
-          AZURE_STORAGE_USE_EMULATOR: "true"
-      - name: A file source in the emulator
-        run: cargo test -p glossql-import live_source --locked -- --ignored
-        env:
-          GLOSSQL_E2E_SOURCE: abfss://lake@devstoreaccount1.dfs.core.windows.net/sources/finance
-          AZURE_STORAGE_USE_EMULATOR: "true"
+          GLOSSQL_EXTENSION: ${{ github.workspace }}/glossql-out/glossql.duckdb_extension
+          GLOSSQL_KITS: ${{ github.workspace }}/glossql-out/kits

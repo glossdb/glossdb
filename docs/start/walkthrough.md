@@ -128,10 +128,10 @@ SELECT count(*) FROM work_orders w JOIN sites s ON w.site_id = s.id;
 
 ## Gloss the vocabulary
 
-Role first — the rest of a column's obligations derive from it. Never
-assert a stock/flow verdict from a name: `behavior_evidence`
-reconciles the column against period movements over the declared
-edges, and the gloss cites it.
+Role first — the rest of a column's obligations derive from it. A
+stock/flow claim is the column's `behavior`, with its grounds: how
+the number combines over periods, read off the rows, never off a
+name.
 
 ```glossql
 GLOSS meaning ON work_orders.duration_min AS $${"value": "on-site working time per visit, in minutes"}$$;
@@ -150,7 +150,7 @@ judgment in the assumptions. Every disclosed assumption carries a
 `key` — the claim's identity, what rulings join on.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY ON DATASET;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
 
 GLOSS definitions ON ops AS $${"definitions": {
   "throughput": {"meaning": "work completed and accepted; counted at completion date",
@@ -161,7 +161,7 @@ GLOSS throughput ON ops AS $${
   "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, s.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
   "assumptions": [
     {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "behavior_evidence on work_orders.duration_min", "confidence": 1.0}
+    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
   ]
 }$$;
 ```
@@ -209,11 +209,11 @@ SELECT subject, band, score FROM ATTEST(ops::duration_present);
 
 ## The surfaces
 
-The cube holds each metric's cells at its judged resolution — the
-total and the slices along its judged dimensions — computed at read,
-landed in the catalog under the engine's cache, never recorded; the
-docket and any app chart it through
-`metric_series()`, and `metric_axes()` says what it admitted:
+The series read serves each metric's cells at its floor — the total
+and the slices along its dimension columns — computed at read from
+the metric's view, never recorded; the docket and any app chart it
+through `metric_series()`, and `metric_axes()` says what the record
+says of its columns:
 
 ```sql
 SELECT name, title, unit, meaning, formula
@@ -221,12 +221,12 @@ FROM metric_surfaces ORDER BY name
 ```
 
 ```sql
-SELECT metric, applicable, reason, behavior, resolution, dims
+SELECT metric, applicable, reason, behavior, floor, dims
 FROM metric_axes() ORDER BY metric
 ```
 
 ```sql
-SELECT metric, period, value FROM metric_series(grain => 'month')
+SELECT metric, period, value FROM metric_series(grain := 'month')
 WHERE dimension = '' ORDER BY metric, period
 ```
 

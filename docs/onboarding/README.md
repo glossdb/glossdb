@@ -16,8 +16,7 @@ instead of following a staged arc.
 - **The four flows, end to end through the MCP door.** Add-source,
   relationships, dimensions, metrics — each exercised end to end
   against a live door by the server's own suite
-  (`crates/serverd/tests/suite/doors.rs`), file and relational (ADBC)
-  sources alike.
+  (`crates/serverd/tests/suite/doors.rs`).
 - **Recipes as the cure surface.** Probe-first, authored typing,
   casts-clean accounting on file sources, supersede-and-reland for
   corrections — every cure triggered by measured evidence, never by
@@ -42,8 +41,8 @@ instead of following a staged arc.
   slot supersedes, every composed read serves the new value, and every
   row carries actor and timestamp.
 - **The question round.** One derivation — the grounding assumptions
-  disclosed below full confidence
-  (`crates/session/reads/open_questions.sql`) — rendered twice: the
+  disclosed below full confidence (the record's `open_questions`
+  read) — rendered twice: the
   MCP door serves one form per record-reading call (stands as stated ·
   wrong · unclear, with a standing ruling on the same key offered
   back), and the docket renders the same read as its open page. An
@@ -64,8 +63,7 @@ instead of following a staged arc.
 - **Backlog and triage reads.** `unassessed` disclosure, red-band
   `ATTEST` triage, `datasets` and `DESCRIBE` for workspace entry.
 - **Contested mechanics.** A slot contests only across voices — a
-  lone voice shows its band, never a withheld body
-  (`crates/glossary/src/rules.rs`). The collapsed read withholds with
+  lone voice shows its band, never a withheld body. The collapsed read withholds with
   band and score; resolution is convergence, a re-speak that closes
   the gap. Row removal refuses while the substrate cannot delete —
   superseding the slot is the cure.

@@ -25,13 +25,13 @@
 //! trigger, so a tab that ruled a dead question re-derives to the
 //! current state instead of asking for a reload.
 
+use crate::engine::Caller;
+use crate::engine::rulings::{self, Ruling};
 use axum::Extension;
 use axum::Form;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use glossql_session::Caller;
-use glossql_session::rulings::{self, Ruling};
 use serde::Deserialize;
 
 use crate::AppDoor;

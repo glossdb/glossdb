@@ -20,19 +20,7 @@
 //! Nothing here executes a write. A block that declares or glosses is
 //! held to rule 1 alone.
 
-use std::sync::Arc;
-
-use glossql_glossary::{Actor, ActorKind};
-
 use crate::common;
-use glossql_serverd::{Plane, bootstrap};
-
-fn human() -> Actor {
-    Actor {
-        kind: ActorKind::Human,
-        id: glossql_serverd::BOOTSTRAP.into(),
-    }
-}
 
 struct Block {
     skill: String,
@@ -132,36 +120,15 @@ fn blocks() -> Vec<Block> {
     out
 }
 
-/// A refusal that only says "this example names data this workspace
-/// does not have". Everything else is the skill's fault.
-///
-/// "No dataset in use" is deliberately NOT here. It was, and it
-/// swallowed the very bug this file exists for: `SELECT value FROM
-/// GLOSSARY()` fails on the missing dataset before it ever reaches the
-/// missing column, so the test passed on the exact example that
-/// shipped. The harness declares and USEs a dataset instead, and a
-/// read that cannot plan for any other reason is a defect.
-fn missing_table(error: &str) -> bool {
-    // Any qualified table this workspace does not have, not just the
-    // default schema: an extract example names its subject as
-    // `orders.amount`, which resolves to `datafusion.orders.amount`.
-    // A shipped read that does not exist lands
-    // here too — as `datafusion.public.<name>` — and always did.
-    error.contains("table 'datafusion.")
-        || error.contains("No table named")
-        || error.contains("table not found")
-        // `read.<metric>()` / `misfit.<frame>()` name a workspace's own
-        // groundings, which a fresh one has none of. Narrow on purpose:
-        // only an undeclared aspect behind a serve door, never a
-        // missing column inside one.
-        || (error.contains("not a subject:") && error.contains("is declared"))
-}
-
+/// Every fenced example parses on the engine, the language's grammar
+/// on: the extension's parser is the one the door runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_example_parses() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     for b in blocks() {
-        if let Err(e) = glossql_parser::GlossqlParser::parse_sql(&b.sql) {
+        if let Err(e) = session.parse(&b.sql).await {
             broken.push(format!("{}:{} — {e}", b.skill, b.line));
         }
     }
@@ -176,12 +143,14 @@ async fn every_skill_example_parses() {
 /// query.
 ///
 /// Rule 1 cannot see this: a function's body is opaque text to the
-/// glossql parser, so an example whose body the engine would refuse
+/// engine's parser, so an example whose body the engine would refuse
 /// parses perfectly and ships as teaching. A body is SQL — a
 /// measurement over data, a detector over `slots` (§6) — so the check
 /// is the same shape rule the session applies.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_function_body_compiles() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
     let mut broken = Vec::new();
     let mut checked = 0usize;
     for b in blocks() {
@@ -201,8 +170,8 @@ async fn every_skill_function_body_compiles() {
             };
             checked += 1;
             let body = &after[..close];
-            let is_sql = match glossql_parser::GlossqlParser::parse_sql(body) {
-                Ok(statements) => statements.len() == 1,
+            let is_sql = match session.parse(body).await {
+                Ok(n) => n == 1,
                 Err(e) => {
                     broken.push(format!("{}:{} — {e}", b.skill, b.line));
                     continue;
@@ -225,77 +194,76 @@ async fn every_skill_function_body_compiles() {
     );
 }
 
-/// A runtime that says it fills every point and serves none: the point's
-/// doors pass the plan-time gate and stop at their aspect lookup, which
-/// is where an example naming an undeclared frame belongs.
-#[derive(Debug)]
-struct ModelStub;
-
-#[glossql_session::async_trait]
-impl glossql_session::FunctionRuntime for ModelStub {
-    fn serves(&self, _point: &str) -> bool {
-        true
-    }
+/// A missing table is fine: an example may name a customer's data, or a
+/// grounding a fresh workspace has none of. A missing column is not.
+fn missing_table(error: &str) -> bool {
+    error.contains("Table with name") && error.contains("does not exist")
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_read_names_columns_that_exist() {
-    let (dir, store) = common::scratch_store().await;
-    let plane = Arc::new(Plane::new(store.clone(), Arc::new(ModelStub)));
-    bootstrap(&plane, human()).await.unwrap();
+/// A frame's read binds its parameters at the call: an example that
+/// spells them bound up to the values it was not given.
+fn unbound_parameters(error: &str) -> bool {
+    error.contains("Values were not provided for the following parameters")
+}
 
-    // One session for the run, with a dataset in use — the names the
-    // examples actually spell, so a read reaches its columns instead of
-    // stopping at the binding. The source the examples name stands
-    // too, over the scratch directory, so a listing example lists.
-    let session = plane.channel(human(), None).await.unwrap();
-    for name in ["ops", "orders", "erp_export"] {
+/// The examples' reads, bound on a fresh workspace: a read naming a
+/// column, a relation or a function the engine and its kits do not
+/// serve fails here. One channel for the run, with a dataset in use —
+/// the names the examples spell — so a read reaches its columns
+/// instead of stopping at the binding.
+async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, Vec<String>) {
+    let (_dir, plane) = common::scratch_plane().await;
+    let session = plane.channel(common::human(), None).await.unwrap();
+    for name in ["ops", "fin", "orders", "erp_export"] {
         session
             .execute(&format!(
-                "DECLARE DATASET {name} SET (purpose: 'the skills harness');"
+                "DECLARE DATASET {name} SET (purpose: 'the docs harness');"
             ))
             .await
             .unwrap();
     }
-    session
-        .execute(&format!(
-            "DECLARE SOURCE erp_export SET (type: parquet, location: '{}');",
-            dir.path().display()
-        ))
-        .await
-        .unwrap();
     session.execute("USE ops;").await.unwrap();
-
+    let mut bound = 0;
     let mut broken = Vec::new();
-    let mut planned = 0usize;
-    for b in blocks() {
+    for b in blocks {
         let trimmed: String = b
             .sql
             .lines()
             .filter(|l| !l.trim_start().starts_with("--"))
             .collect::<Vec<_>>()
             .join("\n");
-        let head = trimmed.trim_start();
-        // Reads only: a write example is held to parsing alone.
-        if !head.to_lowercase().starts_with("select") {
+        let head = trimmed.trim_start().to_lowercase();
+        // Reads only: a write example is held to parsing alone, and a
+        // read of the language's own — GLOSSARY(), ATTEST(), a
+        // measurement over a subject — binds in the extension, not in
+        // a plan.
+        if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
+            || head.contains("glossary(")
+            || head.contains("attest(")
+            || head.starts_with("select temporal(")
+        {
             continue;
         }
         // One statement per block, or we cannot bound it.
         if trimmed.trim_end().trim_end_matches(';').contains(';') {
             continue;
         }
-        let sql = format!(
-            "SELECT * FROM ({}) LIMIT 0",
-            trimmed.trim().trim_end_matches(';')
-        );
-        planned += 1;
-        if let Err(e) = session.execute(&sql).await {
+        bound += 1;
+        let sql = format!("EXPLAIN {}", trimmed.trim().trim_end_matches(';'));
+        if let Err(e) = session.batches(&sql, &[]).await {
             let text = e.to_string();
-            if !missing_table(&text) {
-                broken.push(format!("{}:{} — {text}", b.skill, b.line));
+            if !missing_table(&text) && !unbound_parameters(&text) {
+                broken.push(format!("{} — {text}", at(b)));
             }
         }
     }
+    (bound, broken)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_skill_read_names_columns_that_exist() {
+    let blocks = blocks();
+    let (bound, broken) = bind_reads(&blocks, |b| format!("{}:{}", b.skill, b.line)).await;
     assert!(
         broken.is_empty(),
         "skill examples naming something the reads do not serve:\n{}",
@@ -304,16 +272,13 @@ async fn every_skill_read_names_columns_that_exist() {
     // A test that silently checks nothing passes forever. The skills
     // teach reads; if this floor is not met, the classification above
     // has started skipping what it should be holding.
-    assert!(
-        planned >= 5,
-        "only {planned} skill reads were planned — the test is skipping its own subject"
-    );
+    assert!(bound >= 12, "only {bound} skill reads were bound");
 }
 
 /// The served table is the directory. `include_str!` keeps each
 /// embedded body current, but only for the files the table names — a
 /// skill added under `skills/` without a row in
-/// [`glossql_serverd::skills::SKILLS`] would sit on disk unserved,
+/// [`glossdb_serverd::skills::SKILLS`] would sit on disk unserved,
 /// and this is what refuses that.
 #[test]
 fn the_served_skills_are_the_skills_directory() {
@@ -326,13 +291,13 @@ fn the_served_skills_are_the_skills_directory() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     on_disk.sort();
-    let mut served: Vec<String> = glossql_serverd::skills::SKILLS
+    let mut served: Vec<String> = glossdb_serverd::skills::SKILLS
         .iter()
         .map(|s| s.name.to_string())
         .collect();
     served.sort();
     assert_eq!(served, on_disk);
-    for skill in &glossql_serverd::skills::SKILLS {
+    for skill in &glossdb_serverd::skills::SKILLS {
         assert!(
             !skill.description().is_empty(),
             "{} carries no frontmatter description — the listings serve it",
@@ -362,7 +327,7 @@ fn the_served_skills_are_the_skills_directory() {
         }
     }
     on_disk.sort();
-    let mut served: Vec<(String, String)> = glossql_serverd::skills::REFERENCES
+    let mut served: Vec<(String, String)> = glossdb_serverd::skills::REFERENCES
         .iter()
         .map(|p| {
             (
@@ -381,7 +346,7 @@ fn the_served_skills_are_the_skills_directory() {
         served, on_disk,
         "a served reference is the file as it stands"
     );
-    for p in glossql_serverd::skills::REFERENCES {
+    for p in glossdb_serverd::skills::REFERENCES {
         assert!(
             p.uri().starts_with("skill://") && p.title() != p.path,
             "{} needs a `# ` title line — the listing serves it as the description",
@@ -438,7 +403,7 @@ fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
         .expect("the vendored vega-lite bundle");
     let served = first_quoted_semver_major(&bundle).expect("a version literal in the bundle");
 
-    let skill = glossql_serverd::skills::SKILLS
+    let skill = glossdb_serverd::skills::SKILLS
         .iter()
         .find(|s| s.name == "glossql-apps")
         .expect("the apps skill ships");

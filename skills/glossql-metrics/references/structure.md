@@ -71,12 +71,12 @@ child event before a *deadline* is ordinary. Re-run after new batches.
 
 ## Score the slice axes
 
-`dimension_relevance` scores `coverage × evenness` — zero free
-parameters, one scale for every axis. The number answers "is this axis
-usable, how much does it resolve"; **interest is yours**. A
-near-uniform sequence column scores high and is still `none`.
-Abstentions are gates, not defects: near-keys, null-dominated columns,
-constants.
+An axis is a served column you gloss `role` dimension and rank with a
+`dimension` gloss, `primary` first; `column_profile()` says whether
+it is usable — how many rows name a bucket, how evenly — and
+**interest is yours**. A near-key is an identifier, not an axis, a
+constant resolves nothing, and a null-dominated column speaks for a
+minority: gloss them `none` with the grounds.
 
 `detect_hierarchies` screens within-table dependencies at high recall.
 Judge each:

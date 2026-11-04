@@ -9,8 +9,8 @@
 
 use std::fmt::Write as _;
 
-use glossql_glossary::{Actor, ActorKind};
-use glossql_session::{DOORS, DoorPage, Plane, Registered, SessionError};
+use crate::engine::{Actor, ActorKind};
+use crate::engine::{DOORS, DoorPage, Plane, Registered, SessionError};
 
 use crate::wire;
 
@@ -21,7 +21,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         id: crate::BOOTSTRAP.into(),
     };
     let session = plane.channel(actor, None).await?;
-    let mut door = session.registered_functions();
+    let mut door = session.registered_functions().await?;
     door.extend(DOORS.iter().map(|(name, syntax)| Registered {
         kind: "door",
         name: (*name).to_string(),
@@ -61,9 +61,8 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
              answers by name are the doors over the record (`door`); a \
              declared function runs as an extraction, `SELECT <name>() FROM \
              <subject>`, and `SELECT name FROM functions` lists what stands \
-             now (`extract`, as declared when the door opened). \
-             a grounding serves under its name, `misfit.<name>()` serves \
-             what the workspace glossed.",
+             now (`extract`, as declared when the door opened); a \
+             grounding serves under its name.",
             &door,
         ),
         page(
@@ -73,14 +72,14 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
              engine's defaults, the try-casts, and the three readers over \
              the source's files. Nothing else — no JSON functions, no \
              shipped aggregates, no declared function.",
-            &glossql_session::reader_functions(),
+            &crate::engine::reader_functions(),
         ),
         page(
             "detector",
             "Functions in a detector",
             "What a witness's detector query can call over its `slots` \
              relation: the engine's defaults, nothing more.",
-            &glossql_session::detector_functions(),
+            &crate::engine::detector_functions(),
         ),
     ])
 }

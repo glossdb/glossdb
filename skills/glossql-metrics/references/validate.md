@@ -40,9 +40,9 @@ GLOSS hours_reconcile ON work_logs AS $${
   the profile showed dirt does not see the dirt — fix the check's SQL.
   The docket's Quality tab is where the human sees both: what each
   landing dropped and nulled, and every check with its band.
-- **Promote confirmed reconciliations.** A `behavior_evidence`
-  convention that reconciled at ~0 residual is a standing invariant —
-  make it a check.
+- **Promote confirmed reconciliations.** A data test that settled a
+  behaviour claim — an event table's movements reconciling with a
+  level — is a standing invariant; make it a check.
 - **A window has two bounds.** A readmission, a return, a repeat
   within N days tests the next event against both ends: after the
   index event and inside the window. Probe the rows that pass with a
@@ -56,8 +56,7 @@ GLOSS hours_reconcile ON work_logs AS $${
 
 **The check half is a function, and you write it here** — the body
 rides its declaration, so an expectation without a measuring voice is
-a choice rather than a limit. `glossql-functions` has
-the contract, the kernels and the abstention rule; `rate_tolerance` is
+a choice rather than a limit. `glossql-functions` has the contract and the abstention rule; `rate_tolerance` is
 the detector that bands an authored expectation against a check voice:
 
 ```glossql

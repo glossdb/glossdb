@@ -7,12 +7,14 @@ description: How a glossql release is cut — the order of operations across bot
 
 One release is one version everywhere: `version` in the workspace
 `Cargo.toml` (`[workspace.package]`) is the single bump point, and
-`glossql --version` answers with it. The artifacts: a macOS arm64
-tarball behind the brew tap, and the server image on GHCR
-(`ghcr.io/glossdb/glossql:<version>` and `:latest`, x86_64, built
-from the `Dockerfile` at the tag). No model rides either: the
-forecast model is glossthesi, released from its own repository on
-its own cadence. **Never built**: macOS x86_64, ARM Linux, Jetson,
+`glossdb --version` answers with it. The artifacts: a macOS arm64 tarball behind the brew tap — `bin/`
+with the binary, DuckDB compiled in, `share/glossdb/`
+with the glossql extension, its SPEC.md and `grammar.ebnf`, and the kits of both repositories — and the server image on GHCR
+(`ghcr.io/glossdb/glossdb:<version>` and `:latest`, x86_64, built
+from the `Dockerfile` at the tag, the extension built inside it from
+the commit `crates/duck/glossql.ref` names). No model rides either: the
+model service is glossthesi, released from its own repository on its
+own cadence. **Never built**: macOS x86_64, ARM Linux, Jetson,
 a cuda flavor, a Linux package (the image is the Linux artifact) —
 ruled, don't propose them back.
 
@@ -24,18 +26,22 @@ nowhere else.
 ## The order
 
 1. If glossthesi's wire changed, glossthesi releases first — the
-   server's live tests against a running service are the check.
-2. Bump `version` in the workspace `Cargo.toml`, and the image tag in
-   the `docker run` example of `docs/start/install.md`. Workspace
-   `cargo test` green — a datafusion pin move since the last release
-   fails the vendored-guide test until `vendor/datafusion/refresh.sh
-   <tag>` has run.
+   server's suites against a running service are the check.
+2. The extension's commit is pushed: `crates/duck/glossql.ref` names a
+   commit of `glossdb/glossql` that GitHub serves, or CI and the image
+   build fail at the checkout. Bump `version` in the workspace
+   `Cargo.toml`, and the image tag in the `docker run` example of
+   `docs/start/install.md`. Workspace `cargo test` green — a DuckDB
+   pin move since the last release fails the vendored-guide test
+   until `vendor/duckdb/refresh.sh <version> <commit>` has run.
 3. Tag and push: `git tag v<version> && git push origin v<version>`,
    from a commit the `ci` workflow ran green on — the tag run builds,
    it does not test. The workflow builds the image and pushes it to
    GHCR — public the moment the push lands.
-4. The laptop half: `.github/release-macos.sh` opens the draft
-   release on the tag, builds, uploads the tarball, and renders
+4. The laptop half: `.github/release-macos.sh` refuses unless the
+   sibling checkout `../gloss` is at the pinned commit, builds the
+   extension there and the binary here, stages the tarball, opens the
+   draft release on the tag, uploads it, and renders
    `.github/homebrew/glossql.rb` with the real checksum.
 5. Write the notes on the release: a very short overview and the
    fixes, one line each. Brief — the notes are not the docs, and
@@ -44,12 +50,15 @@ nowhere else.
    --draft=false`. Publish once, complete — that is the standing
    preference.
 6. Copy the rendered file to
-   `glossdb/homebrew-glossql/Formula/glossql.rb` and push the tap —
+   `glossdb/homebrew-glossdb/Formula/glossdb.rb` and push the tap —
    after the publish, so the formula never points at a draft. Commit
    the rendered file here too.
 
 ## Sharp edges (each one has already fired)
 
+- The image build compiles DuckDB to build the extension — an hour
+  on a runner the first time; the layer is cached by the pinned
+  commit, so a tag without a pin move reuses it.
 - A tag-push run uses the workflow file **at the tag's commit**. A
   workflow fix after tagging needs the tag re-pointed:
   `git tag -f v<version> && git push -f origin v<version>`.
@@ -64,7 +73,7 @@ nowhere else.
 - A package's first push to GHCR lands **private** (packages do not
   inherit the repository's visibility); the package is made public
   once, in the org's package settings, and cannot be made private
-  again. Until then `docker pull` answers "denied". `glossdb/glossql`
+  again. Until then `docker pull` answers "denied". `glossdb/glossdb`
   is public.
 - The bump PR can fail `cargo deny check` on an advisory published
   since the last green run on `main`: the tree did not move, the

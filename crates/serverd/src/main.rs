@@ -14,15 +14,14 @@
 )]
 
 mod config;
+mod service;
 
 use std::future::IntoFuture;
 use std::sync::Arc;
 
-use config::{Catalog, Config, USAGE};
-use glossql_catalog::Lake;
-use glossql_glossary::{Actor, ActorKind, Store};
-use glossql_scripts::KernelRuntime;
-use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
+use config::{Config, usage};
+use glossdb_serverd::engine::{Actor, ActorKind, WarehouseCredential, store_kind};
+use glossdb_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
 fn main() {
     // Before parse: --version and --help answer and exit — a packaging
@@ -34,7 +33,7 @@ fn main() {
             return;
         }
         Some("--help" | "-h") => {
-            println!("{USAGE}");
+            println!("{}", usage());
             return;
         }
         _ => {}
@@ -42,7 +41,7 @@ fn main() {
     let flags = match config::parse(std::env::args()) {
         Ok(flags) => flags,
         Err(e) => {
-            eprintln!("{e}\n{USAGE}");
+            eprintln!("{e}\n{}", usage());
             std::process::exit(2);
         }
     };
@@ -64,7 +63,7 @@ fn run(flags: config::Flags) -> Result<(), Box<dyn std::error::Error + Send + Sy
         dotenvy::dotenv().ok();
     }
     let config = Config::read(flags, |name| std::env::var(name).ok())
-        .map_err(|e| format!("{e}\n{USAGE}"))?;
+        .map_err(|e| format!("{e}\n{}", usage()))?;
     serve(config)
 }
 
@@ -75,9 +74,9 @@ fn run(flags: config::Flags) -> Result<(), Box<dyn std::error::Error + Send + Sy
 /// same reason.
 #[tokio::main]
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // After `.env`, so `GLOSSQL_LOG` and the export switch may come
+    // After `.env`, so `GLOSSDB_LOG` and the export switch may come
     // from it; before anything opens, so the opening is on the record.
-    let telemetry = glossql_serverd::telemetry::install()?;
+    let telemetry = glossdb_serverd::telemetry::install()?;
     let served = doors(config).await;
     // The flush blocks, so it runs on the blocking pool while the
     // runtime — and the gRPC channel on it — is still alive.
@@ -89,47 +88,86 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
 
 /// Everything between the runtime's start and the server's stop.
 async fn doors(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = runtime_of(&config.points)?;
-    let store = Store::open(open_lake(config.catalog).await?).await?;
-    let plane = Plane::new(store.clone(), runtime)
-        .with_row_cap(config.row_cap)
-        .with_cube_cache(config.cube_cache_mb)
-        .with_memory_limit(config.memory_limit_mb)
-        .with_spill_limit(config.spill_limit_mb)
-        .with_local_sources(config.local_sources);
+    let plane = opened(&config).await?;
     let plane = bootstrapped(plane).await?;
     let access = access_of(config.auth, &config.audience).await?;
     let app = router(plane, config.doors, access);
     serve_until_stopped(app, &config.addr).await
 }
 
-/// The native kernels, and the service behind each point the
-/// environment names (bodies ride their declarations, fixture 24 —
-/// nothing of the runtime's lives in the workspace). Every point is
-/// on the record at start-up, named or not.
-fn runtime_of(
-    points: &[config::Point],
-) -> Result<Arc<KernelRuntime>, Box<dyn std::error::Error + Send + Sync>> {
-    let mut runtime = KernelRuntime::native();
-    for point in points {
-        runtime = runtime.with_point(
-            point.name,
-            &point.url,
-            glossql_scripts::Bearer::from_env(point.token.as_deref(), point.audience.as_deref()),
-        )?;
+/// The workspace on DuckDB: the directory's lake on a laptop, the
+/// named catalog in a deployment.
+async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
+    let mut duck = match &config.catalog.workspace {
+        Some(dir) => glossdb_serverd::engine::Config::laptop(dir),
+        None => glossdb_serverd::engine::Config::deployment(
+            &config.catalog.catalog,
+            &config.catalog.warehouse,
+        ),
+    };
+    duck.row_cap = config.row_cap;
+    duck.root = config.root.clone();
+    duck.service = config.service.clone();
+    duck.memory_limit_mb = config.memory_limit_mb;
+    duck.spill_limit_mb = config.spill_limit_mb;
+    let (credential, held) = warehouse_credential(&config.catalog, &duck.warehouse).await?;
+    duck.warehouse_credential = credential;
+    tracing::info!(catalog = %duck.catalog, warehouse = %duck.warehouse, "opening the lake");
+    let plane = Plane::open(duck).await?;
+    if let (Some(ttl), Some(sink)) = (held, plane.warehouse_sink()) {
+        service::keep_minting(
+            move |token| sink.set(token),
+            service::Mint::Access,
+            Some(ttl),
+        )
+        .await;
     }
-    let runtime = Arc::new(runtime);
-    for point in glossql_session::POINTS {
-        match runtime.url(point) {
-            Some(url) => tracing::info!(point, url, "service"),
-            None => tracing::info!(
-                point,
-                variable = glossql_session::point_variable(point, "URL"),
-                "no service — the point's reads refuse by name"
-            ),
+    match plane.service() {
+        Some(service) => {
+            tracing::info!(url = %service.url, "model service");
+            if let Some(audience) = &service.audience {
+                let sink = plane.token_sink();
+                service::keep_minting(
+                    move |token| sink.set(token),
+                    service::Mint::Identity {
+                        audience: audience.clone(),
+                    },
+                    None,
+                )
+                .await;
+            }
         }
+        None => tracing::info!(
+            variable = glossdb_serverd::engine::SERVICE_URL,
+            "no model service — the walk, the forecast and the what-if refuse by name"
+        ),
     }
-    Ok(runtime)
+    Ok(plane)
+}
+
+/// The warehouse's credential: the key pair the environment names, or,
+/// a Google bucket named without one, the access token the platform
+/// mints for the account this process runs as — held before the lake
+/// opens on it, since the record's files are in the warehouse too, and
+/// minted anew from then on (its life comes back beside it). A
+/// directory warehouse needs none.
+async fn warehouse_credential(
+    catalog: &config::Catalog,
+    warehouse: &str,
+) -> Result<(Option<WarehouseCredential>, Option<std::time::Duration>), String> {
+    match (&catalog.credential, store_kind(warehouse)) {
+        (Some(keys), Some(_)) => Ok((Some(keys.clone()), None)),
+        (None, Some("gcs")) => {
+            let (token, ttl) = service::first(&service::Mint::Access).await.map_err(|e| {
+                format!(
+                    "the warehouse {warehouse} needs a key pair (GLOSSDB_WAREHOUSE_KEY_ID, \
+                         GLOSSDB_WAREHOUSE_SECRET) or the platform's own account: {e}"
+                )
+            })?;
+            Ok((Some(WarehouseCredential::Bearer(token)), Some(ttl)))
+        }
+        _ => Ok((None, None)),
+    }
 }
 
 /// A fresh workspace receives the shipped system before any door
@@ -142,13 +180,13 @@ async fn bootstrapped(
         &plane,
         Actor {
             kind: ActorKind::Human,
-            id: glossql_serverd::BOOTSTRAP.into(),
+            id: glossdb_serverd::BOOTSTRAP.into(),
         },
     )
     .await?;
-    let listings = glossql_serverd::functions::pages(&plane).await?;
+    let listings = glossdb_serverd::functions::pages(&plane).await?;
     Ok(Arc::new(plane.with_pages(
-        glossql_serverd::skills::door_pages_with(listings),
+        glossdb_serverd::skills::door_pages_with(listings)?,
     )))
 }
 
@@ -174,7 +212,7 @@ async fn access_of(
         None => {
             tracing::warn!(
                 actor = INSECURE_DEV_MODE,
-                "GLOSSQL_INSECURE_OPEN — the doors are open, nobody is verified"
+                "GLOSSDB_INSECURE_OPEN — the doors are open, nobody is verified"
             );
             Access::Open
         }
@@ -193,7 +231,7 @@ async fn serve_until_stopped(
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(
         addr = %addr,
-        "glossql listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app"
+        "glossdb listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app"
     );
     let stopping = Arc::new(tokio::sync::Notify::new());
     let drain = {
@@ -211,19 +249,6 @@ async fn serve_until_stopped(
         }
     }
     Ok(())
-}
-
-/// Open the data plane the run names. The SQL catalog's URI carries
-/// the credentials, so the record gets its scheme and nothing more.
-async fn open_lake(catalog: Catalog) -> Result<Lake, String> {
-    tracing::info!(
-        catalog = catalog.catalog.split(':').next().unwrap_or("sql"),
-        warehouse = %catalog.warehouse,
-        "opening the catalog"
-    );
-    Lake::open_sql(&catalog.catalog, &catalog.warehouse)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// SIGINT or SIGTERM — the terminal's Ctrl-C or the platform's stop.

@@ -20,15 +20,16 @@ band.
 
 ## Mechanism
 
-The door, `metric_forecast_ahead`, reads each applicable metric as a
-whole from the cube: the `''` dimension at the metric's own resolution
-over its rung ([reads](../reference/reads.md), `metric_series()`). A
-forecast period is therefore a cube bucket. It sends one table per
-grain and totals: `member` the metric, `period` the bucket's start,
-`value` and `status`. The history goes as `actual` rows, then the
-horizon's periods ahead as `forecast` rows with no value. The specification
-names the target, the walk's five levels (0.05, 0.1, 0.5, 0.9, 0.95),
-the grain and the horizon, and for a flow the totals as spans.
+The measurement reads each applicable metric as a whole: the `''`
+dimension at the metric's floor over its rung ([reads](../reference/reads.md),
+`metric_series()`). A forecast period is a bucket of that series. It
+sends one request per grain and set of totals: `member` the metric,
+`period` the bucket's start, `value` and `status`. The history goes
+as `actual` rows, then the horizon's periods ahead as `forecast` rows
+with no value. The specification names the target, the five levels
+(0.05, 0.1, 0.5, 0.9, 0.95), the grain and the horizon, and for a flow
+the totals as spans. `forecast_request()` and `forecast_bodies()`
+serve the request as it is sent.
 
 The horizon is fixed per grain where the service measured its
 coverage:
@@ -42,7 +43,8 @@ coverage:
 
 A total runs from the first period ahead to the end of the quarter,
 year or month that period falls in. It is asked only where it fits in
-the horizon. A stock or a ratio has no total. A minute or hour metric
+the horizon; two spans of one length are asked once and served under
+both names. A stock or a ratio has no total. A minute or hour metric
 is inapplicable: the service forecasts day and coarser. A year metric
 is inapplicable: too few periods. A metric with fewer than six periods
 is inapplicable before any call. One the service cannot forecast is
@@ -58,7 +60,7 @@ land: neither is known at the origin.
 ## The reads
 
 `forecast_points()` flattens the latest run, one row per metric and
-point. For every point whose actual the cube now holds, it joins the
+point. For every point whose actual the series now holds, it joins the
 actual and says where it landed: `below` p05, `low` between p05 and
 p10, `inside` p10 to p90, `high` between p90 and p95, `above` p95. A
 span's actual is the sum of its periods' actuals, where every one is
@@ -73,21 +75,20 @@ else the service's held-out share. At 30 points the standard error of
 a share near 0.8 is 0.07. A range handed out carries this number
 beside it.
 
-`forecast_coverage()` counts over every run the record holds, one
-forecast per metric and origin: per grain, step and span, the points
-whose actual has landed, the share inside the 80% band, the share
-inside the 90% band, and how many forecasts they come from. The `''`
-metric row is the dataset as a whole. These are the rows a point's
+`forecast_coverage()` counts over every run the record holds: per
+metric and for the dataset (`''`), per grain, step, span and the
+span's name, the points whose actual has landed, the counts and the
+shares inside the 80% and the 90% band. These are the rows a point's
 `held_80` and `held_90` come from once one reaches 30 points.
 
-`metric_series(world => 'forecast')` serves the newest run as cells
+`metric_series(world := 'forecast')` serves the newest run as cells
 beside the actuals: per metric, one row per step with the median as
 `value`, at the metric's own resolution. The actual world is the
 default, so a read that names no world sees no forecast rows. A
 variance of forecast against actual is a join of the two worlds on
 metric and period ([reads](../reference/reads.md), `metric_series()`).
 The plan world sits beside them ([the plan world](plan.md)): a
-forecast against the plan is the same join, `world => 'plan', plan =>
+forecast against the plan is the same join, `world := 'plan', plan :=
 '<name>'` on the plan's side, at the plan's grain or coarser, and
 `plan_points()` serves it for every plan at once — the plan's year
 against the actual to date plus the year to go, with how often such a
@@ -104,9 +105,10 @@ position. Coverage needs only the band.
 
 ## Serving the model
 
-The call goes to the service the forecast point names,
-`GLOSSQL_FORECAST_URL` ([install](../start/install.md)), as one Arrow
-IPC stream each way. Without it the measurement refuses by name.
+The call goes to the model service's forecast route, the service
+named once for the instance, `GLOSSDB_SERVICE_URL`
+([install](../start/install.md)), as JSON each way. Without it the
+measurement refuses by name.
 
 The service measured its 80% band on held-out data at every step the
 horizon asks and for the totals it asks. Every answer carries these

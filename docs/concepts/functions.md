@@ -6,7 +6,7 @@ runs. It is either a **measurement** — it `RETURNS` an aspect and its
 query runs over data — or a **detector** — no `RETURNS`, its query
 runs over a witness's `slots` relation. The shape tells the role.
 Metrics are neither: a metric is a QUERY aspect, run as its grounding
-SQL. Normative definition: [SPEC.md §6](../../SPEC.md).
+SQL. Normative definition: [SPEC.md §6](https://github.com/glossdb/glossql/blob/main/SPEC.md).
 
 ## Measurements and voices
 

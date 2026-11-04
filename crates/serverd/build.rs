@@ -6,7 +6,8 @@
 //! door serves them as resources, so a connected agent holds what a
 //! checkout holds — and what a build serves is what its suite tested:
 //! the first two trees sit under the docs and skills harnesses, the
-//! third is held to the lock's datafusion version.
+//! third is held to the lock's DuckDB release.
+//!
 
 use std::path::{Path, PathBuf};
 

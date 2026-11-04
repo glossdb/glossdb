@@ -1,6 +1,5 @@
-// The MCP handler's futures reach through the session into the store
-// and the engine; proving them `Send` descends further than the
-// default limit allows.
+// The MCP handler's futures reach through the engine into the store;
+// proving them `Send` descends further than the default limit allows.
 #![recursion_limit = "256"]
 
 //! serverd — the workspace's doors (M5): one axum listener carrying the
@@ -27,7 +26,7 @@
 //! Every door is behind one gate (`auth`): a bearer token, verified
 //! against the issuer's published keys, says who is speaking; the door
 //! it came through says with which standing. The one way around the
-//! gate is explicit ([`Access::Open`], the `GLOSSQL_INSECURE_OPEN`
+//! gate is explicit ([`Access::Open`], the `GLOSSDB_INSECURE_OPEN`
 //! switch): every caller becomes [`INSECURE_DEV_MODE`], the door still
 //! saying with which standing.
 
@@ -54,20 +53,24 @@ pub mod telemetry;
 pub mod window;
 mod wire;
 
+/// The engine the doors are built on: the facade over DuckDB and the
+/// glossql extension, under the one name a door uses.
+pub use glossdb_duck as engine;
+
+pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};
 pub use bootstrap::bootstrap;
-pub use glossql_apps::ipc::ARROW_STREAM;
-pub use glossql_session::Plane;
+pub use glossdb_apps::ipc::ARROW_STREAM;
 pub use login::Login;
 pub use mcp::GlossqlMcp;
 pub use wire::DEFAULT_ROW_CAP;
 
 use std::sync::Arc;
 
+use crate::engine::Caller;
+use crate::engine::{Actor, ActorKind};
 use axum::Router;
 use axum::routing::{get, post};
-use glossql_glossary::{Actor, ActorKind};
-use glossql_session::Caller;
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tower_http::trace::TraceLayer;
@@ -113,7 +116,7 @@ impl Default for DoorConfig {
 }
 
 /// Who may speak at the doors: verified by the gate the login carries,
-/// or — by the explicit `GLOSSQL_INSECURE_OPEN=true` switch — anyone,
+/// or — by the explicit `GLOSSDB_INSECURE_OPEN=true` switch — anyone,
 /// every caller stamped [`INSECURE_DEV_MODE`] with the door's
 /// standing.
 pub enum Access {
@@ -132,7 +135,7 @@ pub(crate) async fn missing_dataset(plane: &Plane, dataset: &str) -> Option<Stri
         return None;
     }
     let known = plane.datasets().await.unwrap_or_default();
-    Some(glossql_apps::no_such_dataset(dataset, &known))
+    Some(glossdb_apps::no_such_dataset(dataset, &known))
 }
 
 /// The doors. `/` is the workspace — which datasets there are;
@@ -181,11 +184,11 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     // door; only the kind differs, and it is the door's to say
     // (SPEC.md §1, the actor rides the transport).
     let human = Router::new()
-        .merge(glossql_apps::root_router(root_plane, &doors.own_uri))
+        .merge(glossdb_apps::root_router(root_plane, &doors.own_uri))
         .route("/{dataset}/query", post(query::query).with_state(plane))
         .nest(
             "/{dataset}/app",
-            glossql_apps::router(app_plane, &doors.own_uri),
+            glossdb_apps::router(app_plane, &doors.own_uri),
         );
     // Two agent doors over the one service: the workspace door opens
     // every call unbound, and the bound door opens it on the dataset
@@ -251,7 +254,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     routes
         // The assets are the app's own script and styles and hold no
         // data — outside the gate in either arrangement.
-        .nest("/assets", glossql_apps::assets_router())
+        .nest("/assets", glossdb_apps::assets_router())
         // The request span, outermost: every door, the gate included,
         // works inside it. tower-http's own layer; what the span holds
         // is telemetry's to say.

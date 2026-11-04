@@ -1,0 +1,26 @@
+[package]
+name = "glossdb-duck"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The engine on DuckDB: the facade the doors use over the glossql extension and a DuckLake"
+
+[dependencies]
+# The two actor types the doors stamp a request with.
+duckdb-neo = { workspace = true }
+arrow = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

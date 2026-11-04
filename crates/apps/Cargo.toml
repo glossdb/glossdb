@@ -1,5 +1,5 @@
 [package]
-name = "glossql-apps"
+name = "glossdb-apps"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,9 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-glossql-glossary = { path = "../glossary" }
-glossql-session = { path = "../session" }
-datafusion = { workspace = true }
+glossdb-duck = { path = "../duck" }
+arrow = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }
@@ -18,14 +17,11 @@ futures.workspace = true
 serde.workspace = true
 serde_json = { workspace = true }
 tera.workspace = true
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs", "io-util"] }
 toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-glossql-catalog = { path = "../catalog" }
-glossql-parser = { path = "../parser" }
-glossql-scripts = { path = "../scripts" }
 tower.workspace = true
 tempfile.workspace = true
 

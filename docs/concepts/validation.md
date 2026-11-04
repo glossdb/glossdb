@@ -6,7 +6,7 @@ a detector that bands across the slots, and `ATTEST` as the verdict
 surface. No part writes a verdict into data — judgment lives in the
 detector and in read policy, and every verdict is recomputed from the
 current slots at read. Normative definition:
-[SPEC.md §7](../../SPEC.md).
+[SPEC.md §7](https://github.com/glossdb/glossql/blob/main/SPEC.md).
 
 ## Witnesses
 

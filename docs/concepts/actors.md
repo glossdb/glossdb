@@ -6,7 +6,7 @@ kind on every statement. There is no BY clause anywhere: authorship is
 transport, not syntax, so it cannot be claimed. An answer the door
 elicits from a human mid-call is server-witnessed and lands with human
 standing — the same rule; the transport is just not always a
-connection. Normative definition: [SPEC.md §1, §5.2](../../SPEC.md).
+connection. Normative definition: [SPEC.md §1, §5.2](https://github.com/glossdb/glossql/blob/main/SPEC.md).
 
 ## Supersession is a read
 

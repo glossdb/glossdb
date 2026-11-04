@@ -1,83 +1,84 @@
 # Install and run
 
-`glossql` is one binary serving one workspace — the directory that
+`glossdb` is one binary serving one workspace — the directory that
 holds your data lake and everything declared over it. The binary
-carries no model. Two points — the forecast behind the metric-bands
-walk, and the misfit behind `misfit.<frame>()` — are served by a
-service the deployment names per point, `GLOSSQL_FORECAST_URL` and
-`GLOSSQL_MISFIT_URL`, hosted or run beside the server. A point left
-unnamed refuses by name and everything else serves.
+carries no model. The walk, the forecast and the what-if are served
+by a model service the deployment names once, `GLOSSDB_SERVICE_URL`,
+hosted or run beside the server. Unnamed, those three refuse by name
+and everything else serves.
 
 ## Install
 
 macOS (Apple Silicon):
 
 ```bash
-brew install glossdb/glossql/glossql
+brew install glossdb/glossdb/glossdb
 ```
 
-The formula installs one command, `glossql`. On Linux, run the
+The formula installs one command, `glossdb`, with the DuckDB library,
+the glossql extension and the kits beside it. On Linux, run the
 container (below) or build from source.
 
 ## Build and start
 
+The server links DuckDB and loads the glossql extension, built from its
+own repository at the commit `crates/duck/glossql.ref` names. A source
+build takes the extension, its kits and the language's two documents
+from the sibling checkout, `../gloss`, built there with `GEN=ninja
+make release`, and the server's own kits from `kits/`;
+`GLOSSQL_EXTENSION`, `GLOSSQL_KITS` and `GLOSSDB_KITS` name other places.
+
 ```bash
-cargo build --release -p glossql-serverd
 cp .env.example .env            # then fill it in — see Tokens below
-./target/release/glossql --workspace ~/acme
+cargo run --release -p glossdb-serverd -- --workspace ~/acme
 ```
 
-A source build needs nothing beside the repository.
-
-The server reads `.env`, reads the issuer's keys, prints its doors and
-listens:
+The server reads `.env`, reads the issuer's keys, opens the lake,
+prints its doors and listens:
 
 ```
 2026-09-03T08:04:42.103275Z  INFO verifying tokens issuer=https://issuer.example audience=http://127.0.0.1:8080 application=a1b2c3…
-2026-09-03T08:04:42.104551Z  INFO glossql listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app addr=127.0.0.1:8080 scheme="http"
+2026-09-03T08:04:42.104551Z  INFO glossdb listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app addr=127.0.0.1:8080 scheme="http"
 ```
 
 ## The container
 
-The same binary as an x86_64 image: `ghcr.io/glossdb/glossql:<version>`,
+The same binary as an x86_64 image: `ghcr.io/glossdb/glossdb:<version>`,
 pushed at each release tag. `docker build .` at a checkout builds the
-same. A distroless base — glibc, the C runtime
-libraries, the root certificates, no shell and no package manager —
-and the binary; no model, no weights, no GPU. It listens on 8080 and
-runs as the base's unprivileged `nonroot` user. There is no workspace in a container:
-the state is the catalog and the warehouse `GLOSSQL_CATALOG_SQL` and
-`GLOSSQL_WAREHOUSE` name, and without both the server refuses to
-start, naming them; the apps are the built-ins and the app parts in
-the record. A file source is a URL too — a container or bucket path
-the server's identity may read — since there is no directory for
-files. The configuration is the environment the platform injects,
-secrets included — nothing is read from a file, and the image holds no
-value of its own. `GET /healthz` answers `ok` outside the gate, for a
-platform's probe, and stays off the record. One server owns a
-workspace: it holds the store's head in memory, so a deployment runs
-one replica per catalog and warehouse
+same. A distroless base — glibc, the C runtime libraries, the root
+certificates, no shell and no package manager — the binary, the
+DuckDB library beside it, the extension, the kits and the lake's
+extensions; no model, no weights, no GPU. It listens on 8080 and runs
+as the base's unprivileged `nonroot` user. There is no workspace in a
+container: the state is the catalog and the warehouse
+`GLOSSDB_CATALOG_SQL` and `GLOSSDB_WAREHOUSE` name, and without both
+the server refuses to start, naming them; the apps are the built-ins
+and the app parts in the record. The configuration is the environment
+the platform injects, secrets included — nothing is read from a file,
+and the image holds no value of its own. `GET /healthz` answers `ok`
+outside the gate, for a platform's probe, and stays off the record.
+One server owns a workspace: it holds the record read in memory, so a
+deployment runs one replica per catalog and warehouse
 ([the store](../architecture/store.md)).
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e GLOSSQL_ISSUER=https://issuer.example \
-  -e GLOSSQL_AUDIENCE=https://glossql.example \
-  -e GLOSSQL_CLIENT_ID=… -e GLOSSQL_CLIENT_SECRET=… \
-  -e GLOSSQL_CATALOG_SQL=postgres://glossql:…@db.example:5432/glossql \
-  -e GLOSSQL_WAREHOUSE=abfss://lake@account.dfs.core.windows.net/warehouse \
-  -e AZURE_STORAGE_ACCOUNT_NAME=account -e AZURE_STORAGE_ACCOUNT_KEY=… \
-  -e GLOSSQL_FORECAST_URL=https://… -e GLOSSQL_FORECAST_TOKEN=… \
-  -e GLOSSQL_MISFIT_URL=https://… -e GLOSSQL_MISFIT_TOKEN=… \
-  ghcr.io/glossdb/glossql:0.3.0
+  -e GLOSSDB_ISSUER=https://issuer.example \
+  -e GLOSSDB_AUDIENCE=https://glossql.example \
+  -e GLOSSDB_CLIENT_ID=… -e GLOSSDB_CLIENT_SECRET=… \
+  -e GLOSSDB_CATALOG_SQL=postgres://glossql:…@db.example:5432/glossql \
+  -e GLOSSDB_WAREHOUSE=gs://lake/warehouse \
+  -e GLOSSDB_WAREHOUSE_KEY_ID=… -e GLOSSDB_WAREHOUSE_SECRET=… \
+  -e GLOSSDB_SERVICE_URL=https://… -e GLOSSDB_SERVICE_TOKEN=… \
+  ghcr.io/glossdb/glossdb:0.3.0
 ```
 
 The image sizes the server for a box with 8 GiB of memory and an
-8 GiB ephemeral disk, two numbers from two facts: the engine's ceiling
-and the cube cache at their defaults, 6 GiB tracked and the rest of
-the memory to the process and what the engine does not track;
-`GLOSSQL_SPILL_LIMIT=6144` for the disk, the rest to the writable
-layer. It listens on `0.0.0.0:8080`. A different box injects its own
-numbers as variables, beside the rest of its environment.
+8 GiB ephemeral disk: `GLOSSDB_MEMORY_LIMIT=6144` for the engine's
+ceiling, the rest of the memory to the process; `GLOSSDB_SPILL_LIMIT=6144`
+for the disk, the rest to the writable layer. It listens on
+`0.0.0.0:8080`. A different box injects its own numbers as variables,
+beside the rest of its environment.
 
 ## Flags
 
@@ -86,18 +87,12 @@ flag wins where both are set.
 
 | flag | variable | default | meaning |
 |---|---|---|---|
-| `--workspace <dir>` | — | required when the catalog or the warehouse lives in it | the laptop's shape: the directory holding the catalog and the warehouse. A deployment names both in the environment (or a REST catalog) and runs without a directory |
-| `--addr <ip:port>` | `GLOSSQL_ADDR` | `127.0.0.1:8080` | where the doors listen |
-| `--row-cap <n>` | `GLOSSQL_ROW_CAP` | `200` | rows an MCP tool result ships before declaring `truncated` (data reads only; metadata reads arrive whole) |
-| `--cube-cache <megabytes>` | `GLOSSQL_CUBE_CACHE` | `2048` | the byte budget for the cube cache — every metric's cells held in memory, evicted least-recently-used past it; the `cube` aspect bounds one cube, this bounds them all |
-| `--memory-limit <megabytes>` | `GLOSSQL_MEMORY_LIMIT` | `4096` | the engine's memory ceiling for the whole process. A sort or a hash aggregate that outgrows it spills to the OS temp directory, up to `--spill-limit`. Past that bound, or for a shape that cannot spill (a `count(DISTINCT …)` held whole per partition), the plan is refused by name with the shape that fits. Separate from `--cube-cache`, whose bytes sit outside the engine — size a deployment's memory for the sum |
-| `--spill-limit <megabytes>` | `GLOSSQL_SPILL_LIMIT` | twice `--memory-limit` | how much of the disk the engine may spill onto, at its temp directory. The disk's own number, set from the box: a container's ephemeral disk, or a disk mounted at the temp directory. Unset, it follows the memory ceiling |
-
-A deployment reads no path of its own. A source declared with a path
-for its `location` — no scheme, or `file://` — is refused when it is
-declared and again when a recipe reads it, naming the location and the
-forms a source takes there: a location in an object store or a
-relational URI. The laptop's shape, under `--workspace`, reads a path.
+| `--workspace <dir>` | — | required when the catalog or the warehouse lives in it | the laptop's shape: the directory holding the lake's catalog and its files. A deployment names both in the environment and runs without a directory |
+| `--addr <ip:port>` | `GLOSSDB_ADDR` | `127.0.0.1:8080` | where the doors listen |
+| `--row-cap <n>` | `GLOSSDB_ROW_CAP` | `200` | rows an MCP tool result ships before declaring `truncated` (data reads only; the record's reads arrive whole) |
+| `--memory-limit <megabytes>` | `GLOSSDB_MEMORY_LIMIT` | the engine's own, most of the box | the engine's memory ceiling. A sort or a hash aggregate that outgrows it spills to the temporary directory, up to `--spill-limit` |
+| `--spill-limit <megabytes>` | `GLOSSDB_SPILL_LIMIT` | the engine's own | how much of the disk the engine may spill onto, under the system's temporary directory. The disk's own number, set from the box |
+| — | `GLOSSDB_ROOT` | nobody | the actor ids, comma-separated, that have the engine's own knobs at the doors: `SET`, `ATTACH`, `INSTALL`, `LOAD`, `CALL`. Everyone else has the workspace: tables, rows, files, views, the language, the reads |
 
 Authorization is not a flag. A run with a workspace reads `.env` in
 the working directory, and the environment on top of it (a set
@@ -106,19 +101,21 @@ platform injects the variables, secrets included:
 
 | variable | meaning |
 |---|---|
-| `GLOSSQL_ISSUER` | the authorization server's issuer URL; its OpenID configuration names the keys tokens are verified against |
-| `GLOSSQL_AUDIENCE` | this server's canonical URI: the API identifier registered at the issuer and the `aud` a token must name (RFC 8707 §2), and the host the agent door answers beside loopback — read under the open switch too, so a deployment always names its URL; defaults to `http://<addr>` |
-| `GLOSSQL_CLIENT_ID` | the application registered at the issuer for this server, which the browser login on `/app` signs in and exchanges its code as |
-| `GLOSSQL_CLIENT_SECRET` | that application's secret, used by the browser login on `/app` |
-| `GLOSSQL_INSECURE_OPEN` | `true` (the literal) serves every door without authentication — no issuer needed, no login served, every caller recorded as `insecure_dev_mode` with the door's standing. The name is the warning: a laptop trying the server out, never a deployment |
-| `GLOSSQL_CATALOG_SQL` | the workspace's catalog on a Postgres server (`postgres://user:password@host:5432/db`) instead of the workspace directory's own SQLite file — the same catalog in a database that outlives a container. The warehouse stays under `--workspace` unless `GLOSSQL_WAREHOUSE` moves it. Unset, `catalog.sqlite` in the workspace serves |
-| `GLOSSQL_WAREHOUSE` | the lake in an object store instead of under `--workspace`: `s3://bucket/prefix`, `gs://bucket/prefix` or `abfss://container@account.dfs.core.windows.net/prefix`. The store's own conventions carry the credentials (`AWS_*`; `AZURE_STORAGE_ACCOUNT_NAME` and `_KEY`, or the managed identity the client reads on Container Apps with nothing set; `GOOGLE_SERVICE_ACCOUNT_PATH`, or the attached service account the client reads on Cloud Run with nothing set). With both this and `GLOSSQL_CATALOG_SQL` named the server needs no workspace directory |
-| `GLOSSQL_FORECAST_URL`, `GLOSSQL_MISFIT_URL` | the service behind each point: the forecast behind the metric-bands walk, the misfit behind `misfit.<frame>()`. Each names the service's address; the point's route is appended. One service may serve both. A point left unnamed refuses by name and everything else serves |
-| `GLOSSQL_FORECAST_TOKEN`, `GLOSSQL_MISFIT_TOKEN` | the bearer that point's service expects: a key it was started with |
-| `GLOSSQL_FORECAST_AUDIENCE`, `GLOSSQL_MISFIT_AUDIENCE` | instead of a token, on GCP: the service's URL. The server mints a Google-signed ID token for it from the metadata server, as the service account it runs as, and refreshes it before it expires — no key anywhere. The service verifies the token and the account; Cloud Run checks the same token in front when the service requires authentication |
-| `AWS_ACCESS_KEY_ID` …, `AZURE_STORAGE_ACCOUNT_NAME` … | storage has no glossql variables of its own: the warehouse is reached through the store's standard conventions, read by the storage layer itself (or the platform's identity, where the deployment attaches one): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT`, `AWS_DEFAULT_REGION`, `AWS_ALLOW_HTTP`; `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`, `AZURE_STORAGE_USE_EMULATOR` (with `AZURITE_BLOB_STORAGE_URL` when the emulator is not on the loopback) |
-| `GLOSSQL_LOG` | what the server puts on its record — a `tracing` filter. A bare level (`debug`) is this server's crates at that level, the substrate held at `info` and the MCP library at `warn`; directives (`glossql_session=debug,apache_avro=debug`) are taken as written. `RUST_LOG` is honoured when it is unset; `info` when neither is |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | where an OpenTelemetry collector listens (`http://127.0.0.1:4318`; `/v1/traces` and `/v1/logs` are appended). Set, the record is also exported there — spans as traces, events as logs, OTLP, batched. Unset, nothing is exported. The exporter's other variables are the SDK's own: `OTEL_EXPORTER_OTLP_PROTOCOL` picks the transport, `http/protobuf` (the default) or `grpc`; `OTEL_EXPORTER_OTLP_HEADERS` carries a hosted collector's credentials; `OTEL_RESOURCE_ATTRIBUTES` names the deployment beyond `service.name=glossql`. A platform's managed collector injects the endpoint and the protocol itself — Container Apps' agent does, and speaks gRPC |
+| `GLOSSDB_ISSUER` | the authorization server's issuer URL; its OpenID configuration names the keys tokens are verified against |
+| `GLOSSDB_AUDIENCE` | this server's canonical URI: the API identifier registered at the issuer and the `aud` a token must name (RFC 8707 §2), and the host the agent door answers beside loopback — read under the open switch too, so a deployment always names its URL; defaults to `http://<addr>` |
+| `GLOSSDB_CLIENT_ID` | the application registered at the issuer for this server, which the browser login on `/app` signs in and exchanges its code as |
+| `GLOSSDB_CLIENT_SECRET` | that application's secret, used by the browser login on `/app` |
+| `GLOSSDB_INSECURE_OPEN` | `true` (the literal) serves every door without authentication — no issuer needed, no login served, every caller recorded as `insecure_dev_mode` with the door's standing. The name is the warning: a laptop trying the server out, never a deployment |
+| `GLOSSDB_CATALOG_SQL` | the lake's catalog on a Postgres server (`postgres://user:password@host:5432/db`) instead of the workspace directory's own file — the same catalog in a database that outlives a container. Unset, `catalog.ducklake` in the workspace serves |
+| `GLOSSDB_WAREHOUSE` | the lake's files in an object store instead of under `--workspace`: `s3://bucket/prefix` or `gs://bucket/prefix`, reached through the engine's `httpfs` extension with the key pair below. A `gs://` bucket named without the pair is reached as the service account the platform runs the server as (Cloud Run, GKE, Compute Engine): the access token is minted from the metadata server before the lake opens and minted anew before it expires, no key anywhere. With both this and `GLOSSDB_CATALOG_SQL` named the server needs no workspace directory |
+| `GLOSSDB_WAREHOUSE_KEY_ID`, `GLOSSDB_WAREHOUSE_SECRET` | the store's key pair, together: S3's access key and secret, or the HMAC pair of a Google service account. Held in the engine's secret manager, scoped to the warehouse, never logged |
+| `GLOSSDB_WAREHOUSE_REGION` | the bucket's region, for S3 |
+| `GLOSSDB_SERVICE_URL` | the model service's address; each call's route is appended — the walk, the forecast, the what-if. Unnamed, those measurements refuse by name and everything else serves |
+| `GLOSSDB_SERVICE_TOKEN` | the bearer the service expects: a key it was started with, sent as-is |
+| `GLOSSDB_SERVICE_AUDIENCE` | instead of a token, on GCP: the service's URL. The server mints a Google-signed ID token for it from the metadata server, as the service account it runs as, and refreshes it before it expires — no key anywhere |
+| `GLOSSQL_EXTENSION`, `GLOSSQL_KITS`, `GLOSSDB_KITS` | where the glossql extension file, the extension's kits and the server's own kits are, when not beside the binary in `share/glossdb` and not the dev tree: the sibling checkout's build and `kits/`. `SPEC.md` and `grammar.ebnf`, served on the door, are read from beside the extension's kits |
+| `GLOSSDB_LOG` | what the server puts on its record — a `tracing` filter. A bare level (`debug`) is this server's crates at that level, the libraries at `info` and the MCP library at `warn`; directives (`glossdb_duck=debug,rmcp=debug`) are taken as written. `RUST_LOG` is honoured when it is unset; `info` when neither is |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | where an OpenTelemetry collector listens (`http://127.0.0.1:4318`; `/v1/traces` and `/v1/logs` are appended). Set, the record is also exported there — spans as traces, events as logs, OTLP, batched. Unset, nothing is exported. The exporter's other variables are the SDK's own: `OTEL_EXPORTER_OTLP_PROTOCOL` picks the transport, `http/protobuf` (the default) or `grpc`; `OTEL_EXPORTER_OTLP_HEADERS` carries a hosted collector's credentials; `OTEL_RESOURCE_ATTRIBUTES` names the deployment beyond `service.name=glossdb` |
 
 `.env.example` at the repository root lists them; `.env` is never
 committed.
@@ -127,47 +124,38 @@ The record goes to stdout: lines for a person when that is a
 terminal, JSON otherwise. At `info` the server logs a request at any
 door as its method, path and status, and a call as its actor, the
 dataset it arrived on, the digest and length of its text, and the
-spans of the work it caused — each statement, each read's planning
-and the engine's own optimizing and physical planning after it, the
-catalog walk and each table it loads, each read and append of the
-record, a source listing, a cube build, each measurement run —
-each closing with its busy and idle time and the count that sizes
-it: tables loaded, rows read, files listed, cells built.
-A read closes when its client has taken the last row or dropped the
-stream, with the engine's own counts: rows served, whether it
-completed, the operators, their compute time and spills; at `debug`
-the physical plan annotated with those counts, as `EXPLAIN ANALYZE`
-prints it.
-The text of a call is a `debug` event inside its span and nothing
-else, because statement bodies and groundings carry data. A refusal
-carries its reason and never the token.
+spans of the work it caused — each statement, each read, each
+landing, each measurement run — each closing with its busy and idle
+time. The text of a call is a `debug` event inside its span and
+nothing else, because statement bodies and groundings carry data. A
+refusal carries its reason and never the token.
 
 With `OTEL_EXPORTER_OTLP_ENDPOINT` set the same record goes to the
-collector as well, under `service.name=glossql`: the spans as traces,
+collector as well, under `service.name=glossdb`: the spans as traces,
 with their events; the events as log records, each carrying the trace
 and span id it happened under, so a log line leads to its trace. A
 `traceparent` header a client sends makes its request a child of the
 client's trace. The export runs on the OpenTelemetry SDK's own
-threads, never on the engine's runtime, and is flushed when the server
-stops on SIGINT or SIGTERM. Metrics are not exported: a backend derives request rates and
-latencies from the spans.
+threads, never on the engine's, and is flushed when the server stops
+on SIGINT or SIGTERM. Metrics are not exported: a backend derives
+request rates and latencies from the spans.
 
 ## Tokens
 
 The token's subject says who is speaking. The door sets the standing:
-the `mcp` doors write as an agent, the other doors as a human. glossql
+the `mcp` doors write as an agent, the other doors as a human. glossdb
 is an OAuth 2.1 resource server and never an authorization server — it
 verifies against the keys the issuer publishes, it does not issue, and
 there is no login flow, client registration or user table inside a
-workspace. A request without a valid token gets a 401, and a
-server without an issuer does not start. The one exception is
-explicit: `GLOSSQL_INSECURE_OPEN=true` serves the doors open, every
-caller recorded as `insecure_dev_mode` — for a laptop trying the
-server out, never for a deployment.
+workspace. A request without a valid token gets a 401, and a server
+without an issuer does not start. The one exception is explicit:
+`GLOSSDB_INSECURE_OPEN=true` serves the doors open, every caller
+recorded as `insecure_dev_mode` — for a laptop trying the server out,
+never for a deployment.
 
 The issuer is any OpenID Connect provider. Register this server there
-as an API whose identifier is `GLOSSQL_AUDIENCE`, and one confidential
-application (`GLOSSQL_CLIENT_ID`) with two redirect URIs:
+as an API whose identifier is `GLOSSDB_AUDIENCE`, and one confidential
+application (`GLOSSDB_CLIENT_ID`) with two redirect URIs:
 `<audience>/auth/callback` for the browser login, and the loopback
 redirect of the MCP client that will sign in with it (Claude Code:
 `http://localhost:3118/callback`, see [`connect.md`](connect.md)). The
@@ -185,39 +173,40 @@ token that names another resource, or none.
 How a client obtains a token is the client's flow with the issuer —
 [`connect.md`](connect.md) shows Claude Code's.
 
-## What boot does
+## What open does
 
-Opening a workspace creates `warehouse/` if absent and opens the
-catalog. Before any door opens, boot declares the shipped system into
-a fresh workspace: the measurement library and the KPI kit (the
-semantic vocabulary and its witnesses) — ordinary declarations,
-readable back through the `functions` and `aspects` relations like
-anything an agent writes. The bootstrap is idempotent; every boot
-calls it, and it declares only into a workspace that holds none of
-it. The server writes nothing outside the workspace directory.
+Opening a workspace loads the extension, installs and loads the lake's
+extensions, attaches the lake — creating the catalog file and the
+`warehouse/` directory if absent — and declares the record's own
+reads. Then it runs the kits in order, the KPI kit and the quality
+kit from the extension, the metrics kit and the futures kit from
+`kits/`: ordinary declarations, readable
+back through the `aspects`, `functions` and `witnesses` relations like
+anything an agent writes, declared only where the record holds none
+of them. Last it declares the door's reads and composes the `next`
+read from every kit's routes. The server writes nothing outside the
+workspace directory.
 
 ## Workspace anatomy
 
 ```
 acme/
-  catalog.sqlite     the catalog and the record — every declared
-                     relation is a table here, and so are the landed
-                     tables' versions and files, in the shapes the
-                     DuckLake specification names (absent with
-                     GLOSSQL_CATALOG_SQL: all of it is then on the
+  catalog.ducklake   the lake's catalog and the record — every landed
+                     table's versions and files in the shapes the
+                     DuckLake specification names, and every declared
+                     relation as a table beside them (absent with
+                     GLOSSDB_CATALOG_SQL: all of it is then on the
                      Postgres server it names)
-  warehouse/         the lake — every landed table lives here as
-                     parquet files, one directory per table
+  warehouse/         the lake's files — every landed table as parquet,
+                     one directory per dataset and table
 ```
 
 The workspace directory is the complete, copyable state of the
-system: the catalog and the record in one database file, the landed
-tables' files beside it.
+system: the catalog and the record in one file, the landed tables'
+files beside it.
 
-With `GLOSSQL_CATALOG_SQL` and `GLOSSQL_WAREHOUSE` set, `catalog.sqlite`
+With `GLOSSDB_CATALOG_SQL` and `GLOSSDB_WAREHOUSE` set, the catalog
 and `warehouse/` move to the Postgres server and the object store they
 name: the state of the system is then that database and that
 warehouse, and a deployment runs without a directory. Everything else
-is the same lake — every landed table parquet under its dataset's
-directory, every declared relation and every version a table in the
-catalog's database.
+is the same lake, readable by any DuckLake client.

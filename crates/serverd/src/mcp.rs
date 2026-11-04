@@ -20,13 +20,20 @@ use rmcp::model::{ListResourceTemplatesResult, ResourceTemplate};
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
 
-use glossql_glossary::{Actor, ActorKind};
-use glossql_session::Caller;
+use crate::engine::Caller;
+use crate::engine::{Actor, ActorKind};
 
-use glossql_session::{CallShape, Plane, Session, SessionError};
+use crate::engine::{CallShape, Plane, Session, SessionError};
 
 use crate::window;
 use crate::wire;
+
+type BriefCounts = crate::engine::BriefCounts;
+
+/// The brief's counts, as each engine serves them.
+async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
+    plane.brief_counts().await.map_err(|e| e.to_string())
+}
 
 const INSTRUCTIONS: &str = "glossql workspace server — one SQL-shaped surface over a \
 workspace's data and its context, behind one tool, `glossql`, which runs statements and \
@@ -52,7 +59,7 @@ and `doc://grammar.ebnf` — rows of `pages()` too.";
 /// rendered string is display, not identity).
 #[derive(Clone, PartialEq, Eq)]
 pub struct BriefFacts {
-    counts: glossql_glossary::BriefCounts,
+    counts: BriefCounts,
     questions: usize,
     datasets: usize,
 }
@@ -151,7 +158,7 @@ impl GlossqlMcp {
              read, not a gate: what it counts waits for the human while the work goes on."
         }
         .to_string();
-        match plane.store().brief_counts().await {
+        match brief_counts(plane).await {
             Ok(counts) => {
                 // Debt first, presence last: what owes an act is what
                 // the reader acts on, and a count of human writings is
@@ -488,7 +495,7 @@ impl GlossqlMcp {
         // The cheap answer (`params` below) is how the repeat stops
         // costing a re-read.
         //
-        // The composing and the writing are `glossql_session::rulings`,
+        // The composing and the writing are `crate::engine::rulings`,
         // shared with the app door — the docket answers these same
         // questions when a person comes back to a page rather than to a
         // form. This door's part is to say WHO is speaking: the token's
@@ -508,9 +515,9 @@ impl GlossqlMcp {
             Ok(session) => session,
             Err(e) => return format!("question-round: refused: {e}"),
         };
-        match glossql_session::rulings::land(
+        match crate::engine::rulings::land(
             &human,
-            glossql_session::rulings::Ruling {
+            crate::engine::rulings::Ruling {
                 subject,
                 aspect,
                 dimension,
@@ -580,7 +587,7 @@ impl GlossqlMcp {
 /// the session exactly as frames do.
 async fn read_rows(session: &Session, sql: &str) -> Result<Vec<serde_json::Value>, String> {
     let query = session.query_stream(sql).await.map_err(|e| e.to_string())?;
-    let out = wire::stream_json(query.stream, usize::MAX).await?;
+    let out = wire::stream_json(query, usize::MAX).await?;
     Ok(out["rows"].as_array().cloned().unwrap_or_default())
 }
 
@@ -637,8 +644,8 @@ struct RulingEntry<'a> {
 /// What still stands open for a human to judge, and the round's ONLY
 /// derivation — unassessed witnessed claims (behavior, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
-/// shipped functions settle them. The derivation
-/// itself is `crates/session/reads/open_questions.sql`, which carries
+/// shipped functions settle them. The derivation itself is the core's
+/// `open_questions` read (`crates/duck/kits/core.sql`), which carries
 /// the gates and the reasons; the door only orders and serves it, and
 /// the app's docket renders the same read. Least-confident first, and
 /// the ordering rides here because an inner ORDER BY does not survive
@@ -825,7 +832,7 @@ impl ServerHandler for GlossqlMcp {
                 .enable_prompts()
                 .build(),
         );
-        info.server_info = Implementation::new("glossql-serverd", env!("CARGO_PKG_VERSION"));
+        info.server_info = Implementation::new("glossdb-serverd", env!("CARGO_PKG_VERSION"));
         info.instructions = Some(self.instructions(None));
         info
     }
@@ -1032,7 +1039,11 @@ impl ServerHandler for GlossqlMcp {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let shape = glossql_session::call_shape(statements);
+        let shape = crate::engine::call_shape(statements);
+        // The brief as it stood when the call arrived: what the call's
+        // own refresh is compared against, whatever else lands
+        // meanwhile — the boot's refresh included.
+        let before = self.brief.facts.read().ok().and_then(|f| f.clone());
         let probed = match self
             .question_round(&request, &context, &shape, &session, &id)
             .await
@@ -1043,7 +1054,11 @@ impl ServerHandler for GlossqlMcp {
         let (rendered, landed) = self
             .run_statements(&session, &actor, bound.as_deref(), statements)
             .await;
-        let brief_moved = self.brief_moved(shape.writes || probed.is_some()).await;
+        // A write (or a landed ruling) moves the counts; a call before
+        // the boot's own refresh has landed composes them too.
+        let brief_moved = self
+            .brief_moved(shape.writes || probed.is_some() || before.is_none(), before)
+            .await;
         // Where the call left the agent and one act per goal from there,
         // on every call (`window`). It rides the result, never the
         // instructions, so the stable prefix holds.
@@ -1192,9 +1207,12 @@ impl GlossqlMcp {
     ) -> (Result<serde_json::Value, String>, Option<serde_json::Value>) {
         let mut landed_json: Option<serde_json::Value> = None;
         let rendered = match session.query_page(statements).await {
-            Ok(query) => wire::stream_json(query.stream, query.cap)
-                .await
-                .map(|rows| serde_json::Value::Array(vec![rows])),
+            Ok(query) => {
+                let cap = query.cap;
+                wire::stream_json(query, cap)
+                    .await
+                    .map(|rows| serde_json::Value::Array(vec![rows]))
+            }
             // Statement sequences run at the plane: `USE` moves the
             // statements after it onto another channel for the rest of
             // this call, and never rebinds a session.
@@ -1227,11 +1245,10 @@ impl GlossqlMcp {
     /// keeping per-actor state the run has never asked for. Scoped to
     /// the cause: only a write (or a landed ruling) can move the
     /// counts, so a pure read never pays the recomposition.
-    async fn brief_moved(&self, moved: bool) -> Option<String> {
+    async fn brief_moved(&self, moved: bool, before: Option<BriefFacts>) -> Option<String> {
         if !moved {
             return None;
         }
-        let before = self.brief.facts.read().ok().and_then(|f| f.clone());
         Self::refresh_brief(&self.plane, &self.brief).await;
         let after = self.brief.facts.read().ok().and_then(|f| f.clone());
         (after.is_some() && after != before).then(|| format!("brief: {}", self.brief.line()))

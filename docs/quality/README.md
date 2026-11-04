@@ -4,10 +4,10 @@ The quality layer checks the soundness of the numbers; the performance
 layer reads them. Ordinary growth, seasonality, and business change
 belong to performance monitoring — the quality layer's job is to
 ignore them and to report when the pipeline, not the business,
-moved. The instruments ship with acceptance tests over data whose
-truth is known by construction (`crates/scripts/tests/suite/`) and are
-graded on corpora with declared truth in the glossval repo; not yet
-validated on a design partner's data.
+moved. The instruments ship with acceptance tests over data whose truth is
+known by construction (the kits' own suites in the extension's
+repository) and are graded on corpora with declared truth in the
+glossval repo; not yet validated on a design partner's data.
 
 ## The discipline
 
@@ -56,19 +56,17 @@ judged by the actor):
   child-before-parent date incoherence (the trace a wrong pairing
   leaves). No column-shaped check can see either on a
   high-cardinality key.
-- **`detect_relationships`, `profile`, `outliers`, `temporal`,
-  `behavior_evidence`, `dimension_relevance`, `detect_hierarchies`,
-  `detect_grounding_collisions`** — structure discovery and per-column
-  shape, the substrate the quality reads stand on.
-- **Three detectors adjudicate at read** — `slot_entropy` across an
-  aspect's slots, `band_breach` over the walked bands,
-  `rate_tolerance` between an authored expectation and its check
-  voice.
-- **The band plane** — the forecast behind the runtime seam, served
-  by the service the forecast point names (the server carries no
-  model), with `metric_bands` and `band_breach` in the library — the
-  walk withholding a partial trailing month where rows land through
-  the month, the detector scoring the newest complete one.
+- **`detect_relationships`, `column_profile`, `outlier_profile`,
+  `temporal`, `detect_hierarchies`, `detect_grounding_collisions`** —
+  structure discovery and per-column shape, the substrate the quality
+  reads stand on.
+- **Two detectors adjudicate at read** — `slot_entropy` across an
+  aspect's slots, `band_breach` over the walked bands; an authored
+  check binds its own.
+- **The band plane** — the walk served by the model service (the
+  server carries no model), `metric_bands` and `band_breach` in the
+  futures kit — the walk sending complete months only, the service's
+  verdict scoring the newest point of every metric walked.
 
 Practices established by measurement, taught in skills rather than
 shipped as code:
@@ -91,7 +89,6 @@ shipped as code:
 Cross-chain reconciliation — confirmed derivations re-checked on each
 landing — catches the value faults no marginal statistic sees;
 `relationship_coherence` watches what every declared join asserts;
-`misfit.<frame>()` ranks new rows against a declared frame of
-known-good history; the band walk computes, for each recent month, the
+the band walk computes, for each recent month, the
 range it should have landed in. A clean corpus stays green at the
 judge.

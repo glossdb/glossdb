@@ -1,21 +1,21 @@
 -- Where a breached metric's move is: for each axis the metric is
 -- sliced by, the member that moved most between the previous and the
--- newest complete walked month, with its move and the net of the
--- rest — the cube's own cells at month grain, the two months the walk
--- scored. A member absent in one of the months counts as zero there.
--- The metric is a page param the finding's frame fills in. Numbers
--- stay numbers; the row tile groups their digits.
+-- newest walked month, with its move and the net of the rest — the
+-- series' own cells at month grain, the two months the walk scored. A
+-- member absent in one of the months counts as zero there. The metric
+-- is a page param the finding's frame fills in. Numbers stay numbers;
+-- the row tile groups their digits.
 WITH walked AS (
   SELECT period, row_number() OVER (ORDER BY point_seq DESC) AS recency
   FROM band_points()
-  WHERE metric = CAST($metric AS VARCHAR) AND applicable AND partial = false AND period IS NOT NULL
+  WHERE metric = CAST($metric AS VARCHAR) AND applicable AND period IS NOT NULL
 ),
 newest AS (SELECT max(period) AS period FROM walked WHERE recency = 1),
 previous AS (SELECT max(period) AS period FROM walked WHERE recency = 2),
 cells AS (
-  SELECT s.dimension AS axis, s.member, to_char(s.period, '%Y-%m') AS ym, s.value
-  FROM metric_series(grain => 'month') s
-  WHERE s.metric = CAST($metric AS VARCHAR) AND s.world = 'actual' AND s.dimension NOT IN ('', 'alternative')
+  SELECT s.dimension AS axis, s.member, strftime(s.period, '%Y-%m') AS ym, s.value
+  FROM metric_series(grain := 'month', unclaimed := 'skip') s
+  WHERE s.metric = CAST($metric AS VARCHAR) AND s.world = 'actual' AND s.dimension <> ''
 ),
 moves AS (
   SELECT c.axis, c.member,
@@ -33,16 +33,16 @@ ranked AS (
          sum(coalesce(after, 0) - coalesce(before, 0)) OVER (PARTITION BY axis) AS total
   FROM moves
 )
-SELECT arrow_cast(axis, 'Utf8') AS axis,
-       arrow_cast(member, 'Utf8') AS member,
+SELECT axis,
+       member,
        before,
        after,
-       arrow_cast(CASE WHEN delta >= 0 THEN '+' ELSE '−' END, 'Utf8') AS sign,
+       CASE WHEN delta >= 0 THEN '+' ELSE '−' END AS sign,
        abs(delta) AS moved,
-       arrow_cast(CASE WHEN members - 1 = 0 THEN 'the only member'
-                       WHEN members - 1 = 1 THEN 'the other one'
-                       ELSE 'the other ' || CAST(members - 1 AS VARCHAR) || ' together' END, 'Utf8') AS rest,
-       arrow_cast(CASE WHEN members - 1 = 0 THEN '' WHEN total - delta >= 0 THEN '+' ELSE '−' END, 'Utf8') AS rest_sign,
+       CASE WHEN members - 1 = 0 THEN 'the only member'
+            WHEN members - 1 = 1 THEN 'the other one'
+            ELSE 'the other ' || CAST(members - 1 AS VARCHAR) || ' together' END AS rest,
+       CASE WHEN members - 1 = 0 THEN '' WHEN total - delta >= 0 THEN '+' ELSE '−' END AS rest_sign,
        CASE WHEN members - 1 = 0 THEN NULL ELSE abs(total - delta) END AS rest_moved
 FROM ranked
 WHERE rank = 1

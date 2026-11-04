@@ -1,0 +1,25 @@
+# The tap formula, rewritten by .github/release-macos.sh at each
+# release; lives at glossdb/homebrew-glossdb/Formula/glossdb.rb. The
+# tarball's bin and share go under libexec whole — the binary finds the
+# extension and the kits beside itself — and the command in bin is a
+# script that runs it there.
+class Glossdb < Formula
+  desc "Context language server: SQL-shaped surface over a workspace's data and context"
+  homepage "https://github.com/glossdb/glossdb"
+  url "https://github.com/glossdb/glossdb/releases/download/v{{version}}/glossdb-{{version}}-aarch64-apple-darwin.tar.gz"
+  sha256 "{{sha256}}"
+  version "{{version}}"
+  license "Apache-2.0"
+
+  depends_on :macos
+  depends_on arch: :arm64
+
+  def install
+    libexec.install "bin", "share"
+    bin.write_exec_script libexec/"bin/glossdb"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/glossdb --version")
+  end
+end

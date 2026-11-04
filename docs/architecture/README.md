@@ -3,27 +3,23 @@
 How the server is built.
 
 - [`kernel.md`](kernel.md) — the business information kernel: the
-  core, the kits, drivers and services, and what is planned in which
-  order.
-- [`store.md`](store.md) — one store, one pin, one plan; how reads and
-  writes behave.
-- [`substrate.md`](substrate.md) — building on DataFusion: the seams
-  used and the rules they impose.
-- [`storage.md`](storage.md) — the lake's physical layout and the
+  core, the kits, drivers and services, and what is planned.
+- [`store.md`](store.md) — one record in the lake's catalog: how reads
+  and writes behave, what stands and what is stale.
+- [`substrate.md`](substrate.md) — building on DuckDB and the gloss
+  extension: what each owns and the rules that come with it.
+- [`storage.md`](storage.md) — the lake's physical layout and its
   catalog.
 
 ## The crates
 
-The server is a Cargo workspace. `parser` reads the language;
-`glossary` is the record and its reads; `catalog` is the lake, its
-snapshots and the pin; `import` lands sources through recipes;
-`scripts` carries the shipped functions and the kits; `session` runs
-statements; `apps` serves the pages; `serverd` is the binary with its
-doors. Inside `session`, `shared.rs` is the leaf every other module
-reads: the refusal, the outcome, the runtime seam, the state a session
-holds and the resolution a statement carries into planning, and it
-imports no module of its own. `reads.rs` plans the record —
-`GLOSSARY()`, `ATTEST()`, the store's relations, a served grounding —
-and `doors.rs` answers the doors by name, with the registry serverd
-lists. The conformance suite holds the crate's mutual imports at a
-ceiling that only comes down.
+The server is a Cargo workspace. `duck` is the engine: the facade the
+doors use over the glossql extension and a DuckLake, the record's own
+reads (`kits/core.sql`) and the door's (`kits/door.sql`), and the
+actor types the doors stamp a call with. `apps` serves the pages;
+`serverd` is the binary with its doors. The language is the
+extension's: SPEC.md, `grammar.ebnf` and the corpus live in its
+repository, and the door serves the two documents from its share. The
+kits are SQL loaded at open: the vocabulary and the quality screens
+from the extension's repository, the metrics and the futures from
+`kits/` here; `kits/README.md` says what they add.

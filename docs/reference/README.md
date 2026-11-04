@@ -5,6 +5,6 @@ shipped source and stays exact.
 
 - [`functions.md`](functions.md) — the shipped function library.
 - [`reads.md`](reads.md) — the shipped reads and their columns.
-- [`kpi-kit.md`](kpi-kit.md) — the boot vocabulary: aspects, witnesses.
+- [`kpi-kit.md`](kpi-kit.md) — the kit's vocabulary: aspects, witnesses.
 - [`doors.md`](doors.md) — the three doors and their contracts.
 - [`apps.md`](apps.md) — authoring an app: manifest, frames, specs, tiles.

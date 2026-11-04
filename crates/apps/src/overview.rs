@@ -3,34 +3,27 @@
 //! frames, no params, one visit — so the rows come through the same
 //! channel a frame would use and land in the template as JSON.
 
-use std::collections::HashMap;
-
-use datafusion::common::{ParamValues, ScalarValue};
+use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
-use glossql_glossary::{Actor, ActorKind};
 use serde_json::Value;
 
 use crate::AppDoor;
 
-/// The datasets and their purpose. Workspace-scoped: read unbound.
 pub(crate) const DATASETS: &str = "SELECT name, \
-       arrow_cast(coalesce(json_get_str(settings, 'purpose'), ''), 'Utf8') AS purpose \
+       coalesce(json_extract_string(settings, '$.purpose'), '') AS purpose \
      FROM datasets ORDER BY name";
 
 /// A dataset at a glance: what has landed, what is served, what waits
 /// on a person. Bound to the dataset; `current_dataset` narrows the
 /// workspace-wide relations.
 pub(crate) const COUNTS: &str = "WITH latest AS ( \
-       SELECT i.table_name, max(i.imported_at) AS imported_at \
-       FROM imports i JOIN current_dataset d ON d.dataset = i.dataset \
-       GROUP BY i.table_name) \
+       SELECT i.table_name, i.rows, i.imported_at, \
+              row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn \
+       FROM imports i JOIN current_dataset d ON d.dataset = i.dataset) \
      SELECT \
-       (SELECT count(*) FROM latest) AS tables, \
-       (SELECT coalesce(sum(CAST(i.landed_rows AS BIGINT)), 0) \
-        FROM latest l JOIN imports i \
-          ON i.table_name = l.table_name AND i.imported_at = l.imported_at \
-        JOIN current_dataset d ON d.dataset = i.dataset) AS rows, \
-       (SELECT arrow_cast(coalesce(max(imported_at), ''), 'Utf8') FROM latest) AS landed, \
+       (SELECT count(*) FROM latest WHERE rn = 1) AS tables, \
+       (SELECT coalesce(sum(CAST(rows AS BIGINT)), 0) FROM latest WHERE rn = 1) AS rows, \
+       (SELECT coalesce(max(imported_at)::VARCHAR, '') FROM latest) AS landed, \
        (SELECT count(*) FROM metric_surfaces WHERE grounded AND stopped = '') AS served, \
        (SELECT count(*) FROM metric_surfaces WHERE stopped <> '') AS stopped, \
        (SELECT count(*) FROM open_questions q \
@@ -58,13 +51,11 @@ pub(crate) async fn rows(
         .channel(reader(), dataset)
         .await
         .map_err(|e| e.to_string())?;
-    let values: HashMap<String, ScalarValue> = params
+    let pairs: Vec<(String, String)> = params
         .iter()
-        .map(|(k, v)| (k.to_string(), ScalarValue::Utf8(Some(v.to_string()))))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
-    let params = (!values.is_empty()).then(|| ParamValues::from(values));
-    let query = session
-        .query_stream_with_params(sql, params)
+    let query = crate::query_with(&session, sql, pairs)
         .await
         .map_err(|e| e.to_string())?;
     let mut stream = query.stream;

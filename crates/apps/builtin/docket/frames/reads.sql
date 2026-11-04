@@ -1,25 +1,21 @@
--- Every read the dataset serves, for the Export tab: one row per
--- QUERY aspect that stands here — `metric_surfaces`, the record —
--- with the files the download door serves for `read.<name>()`. The
--- chip says kind and standing in one word: what the read is while it
--- serves (the skill's `x-kind`, a grounding without one is a metric),
--- else why it does not. A read that serves no file hides its links.
--- `$stopped` picks the served reads (0) or the stopped ones (1),
--- which fold under the list with the author's reason.
+-- Every read the dataset serves, for the Export tab: one row per QUERY
+-- aspect that stands here, with the files the download door serves for
+-- its view. The chip says kind and standing in one word. `$stopped`
+-- picks the served reads (0) or the stopped ones (1).
 SELECT s.name,
-       arrow_cast('read.' || s.name || '()', 'Utf8') AS read,
+       s.name AS read,
        s.title,
        s.unit,
-       arrow_cast(CASE WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped ELSE s.meaning END, 'Utf8') AS what,
-       arrow_cast(CASE
+       CASE WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped ELSE s.meaning END AS what,
+       CASE
          WHEN s.stopped <> '' THEN 'stopped'
          WHEN NOT s.grounded THEN 'no grounding'
          WHEN s.kind IN ('', 'measure', 'metric') THEN 'metric'
-         ELSE s.kind END, 'Utf8') AS chip,
-       arrow_cast(CASE WHEN s.stopped <> '' OR NOT s.grounded THEN 'warn' ELSE 'ok' END, 'Utf8') AS ccls,
-       arrow_cast(CASE WHEN s.stopped <> '' OR NOT s.grounded THEN 'off' ELSE '' END, 'Utf8') AS fcls,
-       arrow_cast('/' || d.dataset || '/app/export/read.' || s.name || '.csv', 'Utf8') AS csv,
-       arrow_cast('/' || d.dataset || '/app/export/read.' || s.name || '.parquet', 'Utf8') AS parquet
+         ELSE s.kind END AS chip,
+       CASE WHEN s.stopped <> '' OR NOT s.grounded THEN 'warn' ELSE 'ok' END AS ccls,
+       CASE WHEN s.stopped <> '' OR NOT s.grounded THEN 'off' ELSE '' END AS fcls,
+       '/' || d.dataset || '/app/export/read.' || s.name || '.csv' AS csv,
+       '/' || d.dataset || '/app/export/read.' || s.name || '.parquet' AS parquet
 FROM metric_surfaces s CROSS JOIN current_dataset d
 WHERE (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY CASE

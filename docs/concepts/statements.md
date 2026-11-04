@@ -3,7 +3,7 @@
 glossql is a declarative context language over a SQL host. It adds a
 small set of statements and two table functions to SQL; it does not
 re-specify SQL. Recipes, groundings, and every read body are host SQL
-and stay opaque to the grammar. [SPEC.md](../../SPEC.md) is the
+and stay opaque to the grammar. [SPEC.md](https://github.com/glossdb/glossql/blob/main/SPEC.md) is the
 normative definition; this page is the working map.
 
 ## The writes
@@ -56,31 +56,42 @@ actor rides the connection and the engine stamps every statement
 - `<metric>` — a grounded metric as a relation. The serving grounding
   is a view of the dataset's schema under the metric's name; a
   statement plans its definition at the statement's pins and composes
-  it in any FROM position, bare or as `dataset.metric`.
-  `read.<metric>()` names the same view. A reader attached to the
-  catalog sees the definition and its dialect.
+  it in any FROM position, bare or as `dataset.metric`. A reader
+  attached to the lake sees the view and its definition.
   A metric and a landed table of one dataset never share a name.
 - Plain SQL — tables, and the declaration relations (`functions`,
   `aspects`, `witnesses`, `sources`, `relationships`, `glossary`,
-  `measurements`, `imports`) read as ordinary tables. Removal is
-  spelled as SQL — `DELETE FROM glossary WHERE …` — and currently
-  refuses: rows cannot yet be removed from the lake, so a slot is
-  superseded, never deleted.
+  `measurements`, `imports`) read as ordinary tables. Removal is the
+  extension's statement, `DELETE FROM glossary WHERE …`, open to
+  every actor: the engine runs it on the store's table behind the
+  view. The glossary spans the workspace's datasets; name the
+  dataset in the `WHERE` to stay in one. A deleted slot stops
+  serving and the slot under it serves again; a grounding's view
+  stands until a gloss or a stop replaces it, so retiring a metric
+  is a stop.
 
 `subject::aspect` narrows a read to one declared aspect:
 `GLOSSARY(fin::dso)` is a metric's declaration and grounding in one
 row.
 
-## What the host refuses
+## What the door closes
 
-Substrate SQL runs behind an allowlist: queries pass, `DESCRIBE` and
-`EXPLAIN` pass (`DESCRIBE` over any name a read can plan: a landed
-table, a store relation, a shipped read, a cube read with its
-arguments; `SHOW TABLES` lists the bound
-dataset's tables and its groundings' views, typed), `DROP TABLE` refuses while
-the table holds data or
-glosses, and everything else that would alter schema or data directly
-is refused. Tables come from recipes.
+A door opens the workspace, never the engine. Every actor lands
+tables, writes rows, copies files in and out, drops what it made,
+declares and glosses, and reads (`DESCRIBE` over any name a read can
+plan: a landed table, a store relation, a shipped read, a metrics read
+with its arguments; `SHOW TABLES` lists the bound dataset's tables and
+its groundings' views, typed). The language's statements do the same
+by name: a recipe lands a table, a grounding is a view, a stop ends
+it. Closed is the engine itself, and the refusal names the knob: its
+settings and the session's variables (`SET`, `RESET`, a `PRAGMA`
+switch), where the actor and the workspace ride; what it attaches
+(`ATTACH`, `DETACH`); its extensions (`INSTALL`, `LOAD`); the lake's
+maintenance (`CALL`, `IMPORT DATABASE`, `EXPORT DATABASE`). A pragma
+call with parentheses is a read. An actor the deployment names in
+`GLOSSDB_ROOT` has the knobs: the operator who attaches a relational
+source or expires the lake's snapshots. `DELETE FROM glossary` (SPEC
+§5.2) is open.
 
 Statement identity is content: an unchanged re-declaration is a no-op;
 a changed recipe supersedes and re-lands its table.

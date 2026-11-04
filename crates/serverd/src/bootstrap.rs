@@ -7,7 +7,7 @@
 //! a detector that must already stand. What stays the agent's work is
 //! the company's own vocabulary — metrics, validations, scenarios.
 
-use glossql_glossary::Actor;
+use crate::engine::Actor;
 
 use crate::Plane;
 
@@ -19,28 +19,9 @@ use crate::Plane;
 /// fourteen ordinary declarations and reads back through the `functions`
 /// relation like anything else an agent wrote.
 pub async fn bootstrap(
-    plane: &Plane,
-    actor: Actor,
+    _plane: &Plane,
+    _actor: Actor,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Every boot declares: the store is idempotent on identical
-    // re-declares, and a changed shipped body supersedes like any
-    // re-declare — so what this build ships is what this build declares,
-    // on fresh and existing workspaces alike.
-    // The shipped system is the workspace's, not a dataset's: it
-    // declares on the unbound channel.
-    let session = plane.channel(actor, None).await?;
-    let shipped = async {
-        // One sequence. The order inside it stands — the library's
-        // column evidence conditions on the kit's `role`, and a witness
-        // names an aspect and a detector that must already stand.
-        let sequence = format!(
-            "{};\n{};\n{}",
-            glossql_scripts::library::KIT,
-            glossql_scripts::library::declarations()?,
-            glossql_scripts::library::WITNESSES
-        );
-        session.execute(&sequence).await?;
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    };
-    tracing::Instrument::instrument(Box::pin(shipped), tracing::info_span!("bootstrap")).await
+    // The kits are declared when the workspace opens (`glossdb_duck::Plane::open`).
+    Ok(())
 }

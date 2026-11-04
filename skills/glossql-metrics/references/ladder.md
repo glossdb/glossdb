@@ -1,0 +1,214 @@
+# The series, the worlds and the bands walk — read when a metric's floor, window or axes are not what you expected
+
+## The series
+
+A metric is a view, and the series read serves its cells from the
+view at read: nothing is built, nothing is recorded. The view's
+columns carry the words: the column with `role` timestamp is the
+period, the column with `role` measure the value (the one named
+`value` where several do), the columns with `role` dimension the
+slices. The `behavior` on the value column says how the number
+combines — a flow sums, a stock keeps the bucket's last level, a ratio
+re-divides its summed halves, `numerator` and `denominator` naming
+them. The `ladder` on the period column says how the periods are
+walked: `floor`, the grain the series is served at, by default the
+cadence `temporal()` measured on that column; `windows`, the rung per
+grain, how many whole buckets a read serves, measured back from the
+data's edge.
+
+```glossql
+GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
+```
+
+- `metric_series(grain := 'month')` serves every applicable metric
+  at the asked grain, a metric coarser than it serving no rows;
+  without a grain, each at its own floor. A rung of `n` buckets is
+  `n` whole buckets, the edge's bucket the last.
+- A flow's empty period is a zero cell up to the data's edge — the
+  last instant any served metric reaches — so a flow whose rows
+  stopped early shows its zeros, not an older window. A stock's or a
+  ratio's empty period is no cell.
+- **The no-claim rule.** Where rows have to be combined and no
+  `behavior` stands on the value column, the read refuses and names
+  the gloss; it defaults nothing. `unclaimed := 'skip'` lists the
+  rest, and the fact row says what the metric owes.
+- A dimension wider than 24 members serves its top 23 by weight and
+  `other`; never read `other` as a business member. If that is too
+  coarse, serve a narrower column from the metric's own SQL.
+- The axes are the served columns that carry `role` dimension; a
+  `dimension` gloss ranks them, `primary` first, `none` closes one.
+  `metric_axes().unranked` names the ones no gloss ranks,
+  `unadmitted` the served columns no role stands on, and `owed` the
+  gloss each wants.
+
+Where every metric stands, in one read — the record:
+
+```sql
+SELECT name, title, unit, meaning, formula
+FROM metric_surfaces ORDER BY name
+```
+
+What the record says of each metric's columns, and what a series can
+be served from:
+
+```sql
+SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, owed
+FROM metric_axes() ORDER BY metric
+```
+
+And the cells — one row per metric, dimension, member and period at
+the asked grain. `dimension = ''` is the metric's own total, anything
+else a served dimension; a ratio row carries `num` / `den`, and
+`behavior` is the verb that made the row. `world` says which set of
+numbers a row is: `actual` unless asked. This is what an app frame
+charts:
+
+```sql
+SELECT metric, period, value FROM metric_series(grain := 'month')
+WHERE dimension = '' ORDER BY metric, period
+```
+
+After a batch of fold-ins, run `temporal()` over the period columns
+once; `judged_current` is true on the docket's next load. The
+`rulings` and `slices` goals carry that order on the `next:` line.
+
+## The bands walk
+
+`metric_bands` asks, per metric and recent month: knowing only what
+came before, what would this month have had to be for nobody to be
+surprised? PIT says where the actual landed in that corridor — 0.5 is
+on the trajectory, past 0.95 or under 0.05 is outside what the
+metric's own history can explain. The service's verdict scores the
+newest point of every metric walked, and `bands_w` carries it. Each
+point's fit saw only the months before it.
+
+- **The walk is the `bands` goal.** `SELECT metric_bands() FROM
+  <dataset>` runs it; the `next:` line says when it is owed and when
+  it stands, and the docket's re-measure runs it too.
+- **The read is recall, you are the judge.** A business shift and a
+  data defect breach identically.
+- The walk sends complete months only, seven at least; a month the
+  data's edge falls inside is left out where rows land finer than
+  monthly.
+- A red `metric_bands` verdict names its metric and month through
+  `band_points()` — the recorded walk as rows, no re-run. A defect is
+  the grounding's to fix; a shift is the human's to hear: record it as
+  an assumption under the key `band-<period>` on the metric's
+  grounding, and the docket asks. The walk is owed again when a
+  grounding or the data changes.
+- A declared fact (`x-kind: fact`) `fact_values()` serves whole, its
+  number where the view is one row with a value; a derived relation
+  serves as its view alone.
+
+## The forecast at an origin
+
+`metric_forecast` asks the service, per metric, for the periods ahead
+from the last period with a value — twelve months, thirteen weeks,
+thirty-one days or four quarters by the metric's floor — and for a
+flow the totals to the end of the month, the quarter or the year.
+`SELECT metric_forecast() FROM <dataset>` runs it; a landing owes it
+again, since the origin moved.
+
+- `forecast_points()` is the latest forecast as rows; `actual` and
+  `landed` fill as the periods land. `held_80` and `held_90` say how
+  often such a band held, `held_from` whose count: this metric's
+  record once 30 of its points landed at that step, else the dataset's,
+  else the service's held-out share. Hand a range out with them.
+- `metric_series(world := 'forecast')` serves the newest run's medians
+  as cells beside the actuals, at the metric's own floor; the default
+  read is the actual world alone.
+- `forecast_coverage()` counts, over every forecast recorded, how often
+  the actual landed inside the 80% and 90% bands per step: the rows
+  `held_80` comes from once one reaches 30 points.
+- No PIT: a forecast is written before the actual exists, and five
+  quantiles say the band it fell in, not its exact place.
+
+## The scenario world
+
+A lever is a column of a metric's view that someone sets, glossed on
+it: `GLOSS lever ON net_sales.unit_price AS $${"value": true,
+"grounds": "the list price, set by sales"}$$`. A scenario is one FACT
+aspect per scenario with `x-kind: scenario`, glossed with `levers`:
+per lever the column as `metric.column`, a factor per period
+(`"2027-01": 1.15`; `YYYY-MM` a month, `YYYY-MM-DD` a day) and the
+basis. `scenarios()` judges every scenario: glossed, each lever a
+glossed lever on a served metric's column, the factor a map.
+
+- `SELECT metric_scenario() FROM <dataset>` runs the estimate for
+  every scenario: each lever forecast on its own as the planned input
+  (held at its last value where the forecast refuses), then the
+  what-if route for every metric the levers reach. It needs 26
+  periods of history and a lever that moves; a scenario that moves
+  nothing is judged, not sent. The estimate is owed again when the
+  data or a scenario gloss moves.
+- `metric_series(world := 'scenario', scenario := 'price_hike')`
+  serves the estimate's medians ahead of the last actual beside the
+  actual and the forecast worlds. No grounding is replayed over the
+  data.
+- `scenario_points('price_hike')` serves the cells with the model's
+  band (`low`, `high`), the history's own reading, how often such a
+  band held (`held_80`, `held_from`) and the service's `sign`,
+  `confidence` and `basis`. Hand an estimate out with its band and
+  its share.
+- Several levers are read as one change: the history adds what each
+  does, and `scenario_levers('price_hike')` serves each lever's part
+  per metric with `planned_from`, so the single levers and the pair
+  read as one picture. A combination the history never held together
+  states no sign, and an interaction between levers is not read.
+
+## The plan world
+
+A plan — a budget, a reforecast, a target — arrives as a landed table,
+and the glossary holds how to read it. A plan is one QUERY aspect per
+plan, declared with `x-kind: plan` and `x-plan-of: <metric>`, the
+metric it plans, and grounded by SQL like a metric: `DECLARE ASPECT
+revised_budget WITH $${"title": "Revised budget", "x-kind": "plan",
+"x-plan-of": "expense"}$$ AS QUERY;` then `GLOSS
+revised_budget ON fin AS $${"sql": "SELECT month AS date, revised AS
+value FROM budget"}$$;`. The plan is read through the metric it
+plans: its period and value are the columns named as that metric's,
+or `period` and `value`; its behaviour is the metric's; nothing is
+glossed on its own columns. `metric_axes()` lists it with its verdict,
+`plan_of` naming the metric. A row covers its own period; where a
+row's value is booked against the year — the adopted budget on the
+January row — the declaration adds `x-covers: year` and the plan
+reads at the year. One aspect per edition: the adopted budget and the
+amended one both stand.
+
+- `metric_series(world := 'plan', plan := 'revised_budget')` serves
+  the plan's cells under the metric it plans, `metric` the metric and
+  `world` `plan`, at the plan's own grain or any coarser grain asked.
+  The actual world never carries them.
+- A variance against the plan is a join of two worlds on `metric` and
+  `period` at the plan's grain or coarser; a forecast against the plan
+  is the same join with `world := 'forecast'`; two editions are a join
+  of two plan reads.
+- A year's budget beside monthly actuals reads at the year: the month
+  cells are what the ledger booked that month. The engine spreads
+  nothing; a phased budget is the planner's own table.
+- `plan_points()` serves every plan against the actual and the
+  forecast, one row per plan and period at the plan's own grain and at
+  the year: the plan's number, the actual where the period has begun,
+  the variance where it is complete, and the forecast's median with
+  its 80% band where it covers the rest — at the year, the actual to
+  date plus the year to go. `stands` says where the plan lies:
+  `landed`, `inside`, `below` or `above` the band, `open` or `ahead`,
+  and `partial` where the plan's rows cover part of the year — the
+  year row then carries `covers` (`9 of 12 months`), its number and
+  its actual over the covered months, and no band. A band at a coarser
+  grain exists on a flow where the forecast asks a total to go, and on
+  a stock as the band of the period's last month — a year-end
+  headcount against December's forecast; a ratio's plan is landed at
+  the metric's own grain, one row for the month it is due, and
+  compares to that month's band.
+- `SELECT metric_plan() FROM <dataset>.<plan>` judges the plan: the
+  same rows landed as a measurement on the plan with the forecast run
+  they were judged against, `plan_w` reading the gap off them. The
+  plan goal reads the judgement and never the data. Its route: the
+  first plan to declare, a declared plan to ground, the forecast to
+  run while owed, the plan to judge, then per plan year the band does
+  not hold — a scenario on a lever that closes the gap, its estimate
+  run, or the gap recorded as an assumption under `plan-<year>` in the
+  plan's body for the human to rule; `next://<dataset>/plan` hands the
+  statements filled. A plan's table is no edge of the actuals: a
+  budget landed through the year's end stretches no metric's series.

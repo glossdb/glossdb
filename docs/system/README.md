@@ -9,18 +9,19 @@ The server: one binary, one workspace, three doors. How it is built is
 
 - **The statement spine** — the parser over its corpus acceptance
   suite; every fixture transcribes a real artifact.
-- **The store** — every declared relation a table of rows in the
-  catalog's database; supersession is a read; admission and grain
-  rules ([store](../architecture/store.md)).
-- **The session** — one per connection, holding actor, dataset, store,
-  and engine context: recipe materialization, probe routing, ruling
-  composition, the shipped read library and `misfit.<frame>()`
-  ([reads](../reference/reads.md)).
-- **Import** — file sources with cast accounting; recipe and probe
-  execution at the source over ADBC; source-row counting.
-- **Scripts** — the native kernels; the shipped
-  function library declared at boot; the table call to the service a
-  point names, `GLOSSQL_<POINT>_URL`
+- **The record** — the glossql extension's store: every declared
+  relation a table of rows in the lake's catalog; supersession is a
+  read; admission, grain and the stale rule
+  ([store](../architecture/store.md)).
+- **The engine** — one DuckDB instance per process, a channel per
+  call bound to its actor and dataset; the reads as SQL over the
+  record and the lake ([reads](../reference/reads.md)).
+- **Import** — file sources read at the source, `PROBE` rehearsing a
+  recipe and `IMPORT` landing it again in one commit; a database the
+  engine attaches as a relational source.
+- **The kits** — the vocabulary, the quality screens, the metrics and
+  the futures as SQL, run at every open; the model service named once
+  for the walk, the forecast and the what-if, `GLOSSDB_SERVICE_URL`
   ([functions](../reference/functions.md),
   [methods](../methods/README.md)).
 - **The doors** — `/<dataset>/mcp` and `/mcp` (one `glossql` tool,
@@ -41,13 +42,12 @@ The server: one binary, one workspace, three doors. How it is built is
   name, and as a row of the `pages()` read, with the language spec and
   grammar beside them as `doc://` resources; every skill is gated by
   the server's test suite like these pages.
-- **Bootstrap** — a fresh workspace receives the shipped system at
-  boot; declaration relations read as plain tables.
+- **Open** — a workspace receives the kits at every open, declared
+  only where the record holds none of them; declaration relations
+  read as plain tables.
 
 ## Known limits
 
-- No request timeouts, no session eviction — bounded at PoC scale.
-- `SELECT _pos` is unreadable in user SQL; the lineage column is the
-  format's.
+- No request timeouts — bounded at PoC scale.
 - An MCP session reaped between calls answers a bare `Not Found`; the
   client re-inits and replays `USE`.

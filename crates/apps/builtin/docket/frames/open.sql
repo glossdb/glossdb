@@ -1,35 +1,21 @@
 -- The docket's open band: what stands open for a human to judge,
 -- straight from `open_questions` — the same rows the door asks as
--- forms. Display only: the confidence, the link, the order. The
--- verdict column stays empty here, which is what "open" looks like.
--- `pct` fills the confidence rail: the gutter is the page's one
--- signature, and read down the column it says how settled this
--- workspace is.
+-- forms. Display only: the confidence, the link, the order. `pct` fills
+-- the confidence rail.
 SELECT o.conf,
-       arrow_cast(CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR), 'Utf8') AS pct,
-       -- The confidence as the record holds it, to two places, so a
-       -- column of them lines up under the rails.
-       arrow_cast(CASE WHEN o.conf >= 1.0 THEN '1.00'
-                       ELSE '0.' || lpad(CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR), 2, '0')
-                  END, 'Utf8') AS cf,
-       arrow_cast(o.aspect, 'Utf8') AS subj,
-       arrow_cast(coalesce(o.dimension, '-') || ' · ' || o.key, 'Utf8') AS asp,
-       arrow_cast(o.assumption, 'Utf8') AS what,
-       arrow_cast(coalesce(o.basis, 'unstated'), 'Utf8') AS basis,
-       arrow_cast(coalesce(o.sibling, ''), 'Utf8') AS sibling,
-       -- The rival reading the agent named beside the claim. Empty
-       -- when none was named, which is itself worth seeing: a claim
-       -- with no rival is one nobody has argued against.
-       arrow_cast(coalesce(o.alternative, ''), 'Utf8') AS rival,
-       -- The three columns the ruling form posts back. They are the
-       -- claim's identity and nothing else: the page never sends the
-       -- prose, because the door re-derives it from this same read
-       -- before it writes.
-       arrow_cast(o.subject, 'Utf8') AS subj_id,
-       arrow_cast(o.aspect, 'Utf8') AS asp_id,
-       arrow_cast(o.key, 'Utf8') AS key_id,
-       -- The link carries the dataset: the app is mounted under it.
-       arrow_cast('/' || d.dataset || '/app/docket/p/metrics?metric=' || o.aspect, 'Utf8') AS link
+       CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR) AS pct,
+       CASE WHEN o.conf >= 1.0 THEN '1.00'
+            ELSE '0.' || lpad(CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR), 2, '0') END AS cf,
+       o.aspect AS subj,
+       coalesce(o.dimension, '-') || ' · ' || o.key AS asp,
+       o.assumption AS what,
+       coalesce(o.basis, 'unstated') AS basis,
+       coalesce(o.sibling, '') AS sibling,
+       coalesce(o.alternative, '') AS rival,
+       o.subject AS subj_id,
+       o.aspect AS asp_id,
+       o.key AS key_id,
+       '/' || d.dataset || '/app/docket/p/metrics?metric=' || o.aspect AS link
 FROM open_questions o
 JOIN current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf ASC, subj, asp

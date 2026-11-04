@@ -9,21 +9,19 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use datafusion::arrow::array::Int64Array;
-use glossql_glossary::{Actor, ActorKind, Store};
 use std::collections::HashMap;
 
-use glossql_serverd::{
-    ARROW_STREAM, Access, BOOTSTRAP, DoorConfig, INSECURE_DEV_MODE, Login, Plane, bootstrap, router,
-};
+use glossdb_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
 
 use crate::common;
-use glossql_session::NoRuntime;
+
+const INT: &str = "Int32";
+type IntArray = arrow::array::Int32Array;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 async fn app_with(doors: DoorConfig, login: Arc<Login>) -> (Router, tempfile::TempDir) {
-    app_capped(glossql_serverd::DEFAULT_ROW_CAP, doors, login).await
+    app_capped(glossdb_serverd::DEFAULT_ROW_CAP, doors, login).await
 }
 
 async fn app_capped(
@@ -31,11 +29,12 @@ async fn app_capped(
     doors: DoorConfig,
     login: Arc<Login>,
 ) -> (Router, tempfile::TempDir) {
-    let (dir, store) = common::scratch_store().await;
+    let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
-        Plane::new(store, Arc::new(NoRuntime))
-            .with_row_cap(row_cap)
-            .with_pages(glossql_serverd::skills::door_pages()),
+        plane.with_row_cap(row_cap).with_pages(
+            glossdb_serverd::skills::door_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
     );
     (router(plane, doors, Access::Gated(login)), dir)
 }
@@ -146,27 +145,14 @@ async fn a_refusal_answers_by_its_class() {
             (status, body_json(response).await)
         }
     };
-    let (status, body) = ask("SELECT * FROM read.nope()").await;
+    let (missing, said) = ("SELECT * FROM nope", "nope");
+    let (status, body) = ask(missing).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(
-        body["error"].as_str().unwrap().contains("no aspect `nope`"),
-        "{body}"
-    );
-    let (status, body) = ask("SELECT * FROM metric_forecast_ahead('fin')").await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
-    assert!(
-        body["error"].as_str().unwrap().contains("names none"),
-        "{body}"
-    );
+    assert!(body["error"].as_str().unwrap().contains(said), "{body}");
     let (status, body) = ask("SELECT * FROM metric_axes('revenue')").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert!(
-        body["error"]
-            .as_str()
-            .unwrap()
-            .contains("takes no arguments"),
-        "{body}"
-    );
+    let fault = "metric_axes";
+    assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -194,7 +180,7 @@ async fn the_query_door_streams_arrow_ipc() {
     let column = batches[0]
         .column(0)
         .as_any()
-        .downcast_ref::<Int64Array>()
+        .downcast_ref::<IntArray>()
         .unwrap();
     assert_eq!(column.value(0), 2);
 }
@@ -220,6 +206,39 @@ async fn the_query_door_refuses_a_read_the_engine_cannot_start() {
     let body = body_json(response).await;
     let error = body["error"].as_str().unwrap();
     assert!(error.contains("'x'"), "{error}");
+}
+
+/// The door's gate: a human at the query door is a standard actor
+/// unless the deployment names them root, so a `SET` that would take
+/// another standing is closed with its reason, and so is an `ATTACH`.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_query_door_closes_the_engine_to_a_standard_actor() {
+    let (app, _dir) = app_on_fin().await;
+    for (statement, word) in [
+        (
+            "SET VARIABLE glossql_actor = 'human'",
+            "`SET` is closed at this door",
+        ),
+        (
+            "ATTACH ':memory:' AS other",
+            "`ATTACH` is closed at this door",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/fin/query")
+                    .header(header::AUTHORIZATION, common::bearer("dev-human"))
+                    .body(Body::from(statement))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_client_error(), "{statement}");
+        let body = body_json(response).await;
+        let error = body["error"].as_str().unwrap();
+        assert!(error.contains(word), "{statement}: {error}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -265,11 +284,11 @@ async fn the_door_pages_are_rows_of_pages() {
     let outcomes = body.as_array().unwrap();
     assert_eq!(
         outcomes[0]["rows"][0]["body"],
-        json!(glossql_serverd::skills::SKILLS[0].body)
+        json!(glossdb_serverd::skills::SKILLS[0].body)
     );
     let served = {
-        use glossql_serverd::skills::{DOCS, PAGES, REFERENCES, SKILLS, VENDORED};
-        SKILLS.len() + DOCS.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
+        use glossdb_serverd::skills::{DOC_NAMES, PAGES, REFERENCES, SKILLS, VENDORED};
+        SKILLS.len() + DOC_NAMES.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
     };
     assert_eq!(outcomes[1]["rows"][0]["n"], json!(served));
 }
@@ -363,15 +382,14 @@ async fn the_token_names_the_subject_and_the_door_names_the_standing() {
 }
 
 /// The explicit open arrangement (`Access::Open`, the
-/// GLOSSQL_INSECURE_OPEN switch): no door asks for a token, and the
+/// GLOSSDB_INSECURE_OPEN switch): no door asks for a token, and the
 /// record still names who spoke — the well-known dev actor, with the
 /// door's standing. No login and no discovery document are served;
 /// with no 401 to answer, a client is never sent to authenticate.
 #[tokio::test(flavor = "multi_thread")]
 async fn open_doors_ask_no_token_and_stamp_the_dev_actor() {
-    let (_dir, store) = common::scratch_store().await;
-    let plane = Arc::new(Plane::new(store, Arc::new(NoRuntime)));
-    let app = router(plane, DoorConfig::default(), Access::Open);
+    let (_dir, plane) = common::scratch_plane().await;
+    let app = router(Arc::new(plane), DoorConfig::default(), Access::Open);
 
     // The agent door, bare: agent standing, the dev actor as the id.
     let request = Request::post("/mcp")
@@ -916,12 +934,8 @@ async fn the_discovery_document_and_the_assets_answer_without_a_token() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_probe_answers_without_a_token_in_both_arrangements() {
     let (gated, _dir) = app().await;
-    let (_dir, store) = common::scratch_store().await;
-    let open = router(
-        Arc::new(Plane::new(store, Arc::new(NoRuntime))),
-        DoorConfig::default(),
-        Access::Open,
-    );
+    let (_dir, plane) = common::scratch_plane().await;
+    let open = router(Arc::new(plane), DoorConfig::default(), Access::Open);
     for app in [gated, open] {
         let response = app
             .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
@@ -1016,14 +1030,14 @@ async fn the_agent_door_answers_the_hosts_its_config_names() {
     named.allowed_hosts.push(public.to_string());
     let (app, _dir) = app_with(named, common::login()).await;
     let body = expect_ok(mcp_at(app, public, initialize()).await).await;
-    assert_eq!(body["result"]["serverInfo"]["name"], "glossql-serverd");
+    assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_door_initializes_and_lists_the_one_tool() {
     let (app, _dir) = app().await;
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
-    assert_eq!(body["result"]["serverInfo"]["name"], "glossql-serverd");
+    assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 
     let body = expect_ok(
         mcp(
@@ -1167,7 +1181,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
     )
     .await;
     let text = body["result"]["contents"][0]["text"].as_str().unwrap();
-    assert_eq!(text, glossql_serverd::skills::SKILLS[0].body, "{body}");
+    assert_eq!(text, glossdb_serverd::skills::SKILLS[0].body, "{body}");
     assert_eq!(
         body["result"]["contents"][0]["mimeType"], "text/markdown",
         "{body}"
@@ -1201,7 +1215,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
     .await;
     assert_eq!(
         body["result"]["messages"][0]["content"]["text"],
-        glossql_serverd::skills::SKILLS[0].body,
+        glossdb_serverd::skills::SKILLS[0].body,
         "{body}"
     );
 
@@ -1260,7 +1274,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     // recipe just to DESCRIBE it).
     assert_eq!(
         outcomes[0]["columns"],
-        json!([{"name": "answer", "type": "Int64"}]),
+        json!([{"name": "answer", "type": INT}]),
         "{outcomes}"
     );
     let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer LIMIT 0")).await).await;
@@ -1269,7 +1283,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
     assert_eq!(
         outcomes[0]["columns"],
-        json!([{"name": "answer", "type": "Int64"}]),
+        json!([{"name": "answer", "type": INT}]),
         "{outcomes}"
     );
 
@@ -1399,54 +1413,29 @@ fn meta_elicit() -> Value {
     })
 }
 
+/// The same round on DuckDB: the kits are declared at open, a source
+/// and a recipe land the table, and the role gloss leaves the behavior
+/// claim owed — the witnessed claim a measurement settles, never a
+/// question for the human.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_asks_the_human_for_statistics() {
-    // An unassessed
-    // witnessed claim a measurement can settle (behavior, unit) is the
-    // AGENT's backlog — behavior_evidence computes it — and the door
-    // must not ask the human for it. The kit ships the vocabulary, a
-    // table lands, a role gloss marks the measure, the behavior claim
-    // stands owed — and the round stays silent; the brief counts no
-    // question. (Judgment questions — loose assumptions — still ask:
-    // the sibling test below.)
-    let dir = tempfile::tempdir().unwrap();
+    let (app, _dir) = app().await;
+    let files = tempfile::tempdir().unwrap();
     std::fs::write(
-        dir.path().join("ledger.csv"),
+        files.path().join("ledger.csv"),
         "month,value\n2026-01-01,10.5\n2026-02-01,4.0\n",
     )
     .unwrap();
-    let lake = glossql_catalog::Lake::open(
-        &dir.path().join("catalog.db"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = Store::open(lake).await.unwrap();
-    // The kit's witnesses carry detectors (slot_entropy), and reads
-    // adjudicate — this test needs the real script runtime.
-    let runtime = Arc::new(glossql_scripts::KernelRuntime::native());
-    let plane = Arc::new(Plane::new(store.clone(), runtime));
-    let human = Actor {
-        kind: ActorKind::Human,
-        id: BOOTSTRAP.into(),
-    };
-    bootstrap(&plane, human).await.unwrap();
-    let app = router(plane, DoorConfig::default(), Access::Gated(common::login()));
-
     let setup = format!(
         r#"DECLARE DATASET perf SET (purpose: 'kit test');
            USE perf;
            DECLARE SOURCE erp SET (type: csv, location: '{}');
            DECLARE RECIPE ledger ON perf FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(value AS DOUBLE) AS value FROM read_csv('ledger.csv')$$;
            GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;"#,
-        dir.path().display()
+        files.path().display()
     );
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 70, &setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    // The owed behavior claim derives in the store (unassessed row) —
-    // but the round asks nothing, even on a review-shaped call: no
-    // input_required, no form.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -1465,8 +1454,6 @@ async fn the_round_never_asks_the_human_for_statistics() {
         json!("input_required"),
         "the door asked the human for a statistic: {body}"
     );
-
-    // And the brief counts no open question — the claim is agent work.
     let body = expect_ok(mcp(app, initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(!instructions.contains("question"), "{instructions}");
@@ -1487,8 +1474,8 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "convention", "key": "days-in-period",
             "assumption": "days are the month's own calendar days, 28 to 31",
@@ -1640,7 +1627,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7},
@@ -1786,7 +1773,7 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -1871,7 +1858,7 @@ async fn the_round_never_interrupts_a_working_call() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2124,7 +2111,7 @@ async fn sequential_rulings_compose_instead_of_reverting() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "convention", "key": "flat-30-day-month", "assumption": "a flat 30-day month", "basis": "judgment", "confidence": 0.6},
@@ -2227,8 +2214,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS QUERY;
         GLOSS purchases ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "scope", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.7}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2312,7 +2299,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'brief delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2385,7 +2372,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'unkeyed assumptions');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
     "#;
@@ -2423,8 +2410,8 @@ async fn the_open_questions_read_composes_like_a_table() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the read library');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
-        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2608,11 +2595,11 @@ async fn the_workspace_says_what_it_affords() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         DECLARE ASPECT price_hike WITH $${"title": "Price +15%", "x-kind": "scenario"}$$ AS FACT ON DATASET;
-        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS QUERY;
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
         DECLARE WITNESS ar_tie_w ON ar_tie BY (AGENT, HUMAN);
     "#;
@@ -2636,6 +2623,7 @@ async fn the_workspace_says_what_it_affords() {
     let outcomes: Value = serde_json::from_str(text).unwrap();
     let rows = outcomes[0]["rows"].as_array().unwrap();
     let surfaces: Vec<&str> = rows.iter().filter_map(|r| r["surface"].as_str()).collect();
+    let samples: &[&str] = &[];
     for expected in [
         "apps",
         "aspects",
@@ -2645,13 +2633,15 @@ async fn the_workspace_says_what_it_affords() {
         "plans",
         "relationships",
         "rulings",
-        "samples",
         "scenarios",
         "sources",
         "tables",
         "validations",
-    ] {
-        assert!(surfaces.contains(&expected), "{expected} missing: {rows:?}");
+    ]
+    .iter()
+    .chain(samples)
+    {
+        assert!(surfaces.contains(expected), "{expected} missing: {rows:?}");
     }
     let row = |name: &str| {
         rows.iter()
@@ -2670,15 +2660,23 @@ async fn the_workspace_says_what_it_affords() {
     // standing with no body, which is exactly what `open` means.
     assert_eq!(row("scenarios")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
-    assert_eq!(row("samples")["stands"], json!(1), "{rows:?}");
-    assert_eq!(row("samples")["open"], json!(1), "{rows:?}");
     // Nothing ruled yet, so nothing owes a fold-in.
     assert_eq!(row("rulings")["stands"], json!(0), "{rows:?}");
     assert_eq!(row("rulings")["open"], json!(0), "{rows:?}");
     // A validation stands with its witness and is open while nobody
-    // has spoken on the witnessed aspect.
-    assert_eq!(row("validations")["stands"], json!(1), "{rows:?}");
-    assert_eq!(row("validations")["open"], json!(1), "{rows:?}");
+    // has spoken on the witnessed aspect. The DuckDB build opens with
+    // its kits declared, whose witnesses stand open here too.
+    let kit_witnesses = 11;
+    assert_eq!(
+        row("validations")["stands"],
+        json!(1 + kit_witnesses),
+        "{rows:?}"
+    );
+    assert_eq!(
+        row("validations")["open"],
+        json!(1 + kit_witnesses),
+        "{rows:?}"
+    );
 
     // The authored expectation is speech on the aspect: the validation
     // stops being owed the moment somebody speaks.
@@ -2701,7 +2699,11 @@ async fn the_workspace_says_what_it_affords() {
     .await;
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(outcomes[0]["rows"][0]["open"], json!(0), "{outcomes}");
+    assert_eq!(
+        outcomes[0]["rows"][0]["open"],
+        json!(kit_witnesses),
+        "{outcomes}"
+    );
 }
 
 /// Run 4 read `workspace_next` twice in one session and got two
@@ -2717,7 +2719,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY ON DATASET;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 170, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");

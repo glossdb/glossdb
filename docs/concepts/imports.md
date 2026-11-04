@@ -37,9 +37,9 @@ settings.
 
 ## Probes rehearse, recipes land
 
-What a recipe can name is a read: `SELECT path, size, modified FROM
-source_files('erp_export')` lists every file under the source's
-location, subdirectories included, through the same object store a
+What a recipe can name is a read at the source: `PROBE erp_export AS
+$$SELECT file FROM glob('*')$$` lists every file under the source's
+location, `glob('**')` the subdirectories too, through the same walk a
 `read_*` glob resolves through ([reads](../reference/reads.md)).
 
 `PROBE source AS $$sql$$` runs recipe-shaped SQL at the source and

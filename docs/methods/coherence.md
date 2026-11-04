@@ -40,12 +40,13 @@ a table and itself says nothing.
 
 ## Mechanism
 
-The `relationship_checks` door computes fill, orphans, and precedence
-per declared relationship; the body
-(`crates/scripts/functions/coherence.sql`) shapes them per
-relationship with the temporal evidence nested per column pair. No
-thresholds anywhere in the path: rates are served; thresholds belong
-to the witness layer and the judge.
+The screen `relationship_checks(dataset)` in the quality kit computes
+fill, orphans and precedence per declared relationship, each side's
+rows pivoted onto the edge's legs; the measurement,
+`relationship_coherence`, shapes them per relationship with the
+temporal evidence nested per column pair. No thresholds anywhere in
+the path: rates are served; thresholds belong to the witness layer
+and the judge.
 
 ## Limits
 

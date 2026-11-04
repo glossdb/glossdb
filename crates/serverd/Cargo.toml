@@ -1,5 +1,5 @@
 [package]
-name = "glossql-serverd"
+name = "glossdb-serverd"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,19 +8,16 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "glossql"
+name = "glossdb"
 path = "src/main.rs"
 
 # No model rides the binary: a point's table call goes to the service
-# `GLOSSQL_<POINT>_URL` names.
+# `GLOSSDB_<POINT>_URL` names.
 
 [dependencies]
-glossql-glossary = { path = "../glossary" }
-glossql-session = { path = "../session" }
-glossql-apps = { path = "../apps" }
-glossql-catalog = { path = "../catalog" }
-glossql-scripts = { path = "../scripts" }
-datafusion = { workspace = true }
+glossdb-duck = { path = "../duck" }
+glossdb-apps = { path = "../apps" }
+arrow = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }
 futures.workspace = true
@@ -57,7 +54,6 @@ serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 # The docs and skills suites parse every fenced example.
-glossql-parser = { path = "../parser" }
 arrow-ipc = { workspace = true }
 tower.workspace = true
 tempfile.workspace = true

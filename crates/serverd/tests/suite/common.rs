@@ -11,7 +11,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::EncodePrivateKey;
-use glossql_serverd::{Endpoints, Gate, Login};
+use glossdb_serverd::{Endpoints, Gate, Login};
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde_json::{Value, json};
@@ -143,15 +143,20 @@ pub fn far_future() -> u64 {
     9_999_999_999
 }
 
-/// A store over its own throwaway lake; hold the dir for the test's life.
-pub async fn scratch_store() -> (tempfile::TempDir, glossql_glossary::Store) {
+/// The same workspace on DuckDB: the extension and its kits from beside
+/// this checkout, the lake in the directory.
+/// The person the harness speaks as: the bootstrap actor.
+pub fn human() -> glossdb_serverd::engine::Actor {
+    glossdb_serverd::engine::Actor {
+        kind: glossdb_serverd::engine::ActorKind::Human,
+        id: glossdb_serverd::BOOTSTRAP.into(),
+    }
+}
+
+pub async fn scratch_plane() -> (tempfile::TempDir, glossdb_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
-    let lake = glossql_catalog::Lake::open(
-        &dir.path().join("catalog.sqlite"),
-        &dir.path().join("warehouse"),
-    )
-    .await
-    .unwrap();
-    let store = glossql_glossary::Store::open(lake).await.unwrap();
-    (dir, store)
+    let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
+    config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
+    let plane = glossdb_serverd::Plane::open(config).await.unwrap();
+    (dir, plane)
 }

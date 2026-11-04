@@ -1,17 +1,13 @@
--- Why the metric moved: every admitted dimension's member cells at the
--- viewer's grain, each member ranked by its own move between the
--- newest two periods, largest first, the top eight. A member's move
--- is at the metric's verb — a ratio member's move is its own ratio
--- shifting, never a share of the total (mix effects are a reading,
--- not a cell). The cells are the cube's, re-bucketed to the grain on
--- the server; the ranking is this SQL, nothing is computed in the
--- browser.
+-- Why the metric moved: every slice's member cells at the viewer's
+-- grain, each member ranked by its own move between the newest two
+-- periods, largest first, the top eight. A member's move is at the
+-- value column's behaviour; a ratio member's move is its own ratio
+-- shifting.
 WITH cells AS (
   SELECT dimension, member, period, value,
          dense_rank() OVER (ORDER BY period DESC) AS recency
-  FROM metric_series(grain => $grain)
-  WHERE metric = CAST($metric AS VARCHAR) AND dimension NOT IN ('', 'alternative')
-),
+  FROM metric_series(grain := $grain)
+  WHERE metric = CAST($metric AS VARCHAR) AND dimension <> ''),
 moves AS (
   SELECT dimension, member,
          max(CASE WHEN recency = 2 THEN value END) AS from_value,
@@ -19,11 +15,9 @@ moves AS (
          max(CASE WHEN recency = 2 THEN period END) AS prev_period,
          max(CASE WHEN recency = 1 THEN period END) AS last_period
   FROM cells WHERE recency <= 2
-  GROUP BY dimension, member
-)
+  GROUP BY dimension, member)
 SELECT dimension, member,
-       arrow_cast(CASE WHEN to_value - from_value >= 0 THEN '+' ELSE '' END
-         || CAST(round(to_value - from_value, 2) AS VARCHAR), 'Utf8') AS delta,
+       CASE WHEN to_value - from_value >= 0 THEN '+' ELSE '' END || CAST(round(to_value - from_value, 2) AS VARCHAR) AS delta,
        from_value, to_value, prev_period, last_period
 FROM moves
 WHERE from_value IS NOT NULL AND to_value IS NOT NULL

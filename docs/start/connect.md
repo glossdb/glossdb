@@ -60,8 +60,8 @@ With Claude Code:
 
 ```bash
 set -a; source .env; set +a      # the same application the server is registered as
-MCP_CLIENT_SECRET=$GLOSSQL_CLIENT_SECRET claude mcp add --transport http \
-  --client-id $GLOSSQL_CLIENT_ID --client-secret --callback-port 3118 \
+MCP_CLIENT_SECRET=$GLOSSDB_CLIENT_SECRET claude mcp add --transport http \
+  --client-id $GLOSSDB_CLIENT_ID --client-secret --callback-port 3118 \
   glossql http://127.0.0.1:8080/fin/mcp
 claude mcp login glossql
 ```
@@ -115,7 +115,7 @@ data (what is wrong and why, the checks, what the functions measured,
 each load, what is still unsaid); the words; the column lineage; and
 under Export every landed table and every served read with a CSV and
 a Parquet download (`/fin/app/export/orders.csv`,
-`/fin/app/export/read.dso.parquet`). The URL is the whole state — a
+`/fin/app/export/dso.parquet`). The URL is the whole state — a
 filtered view is a link someone can send. A workspace's own apps
 serve beside it at `/<dataset>/app/<name>`, authored as glosses over
 the agent door.

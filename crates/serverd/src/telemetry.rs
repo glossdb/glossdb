@@ -45,9 +45,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 /// The filter variable — `tracing`'s directive syntax. A bare level
 /// (`debug`) is this server's crates at that level, the substrate at
 /// `info` and the MCP library at `warn`; directives
-/// (`glossql_session=debug,apache_avro=debug`) are taken as written. `RUST_LOG` is honoured when it is unset;
+/// (`glossdb_duck=debug,rmcp=debug`) are taken as written. `RUST_LOG` is honoured when it is unset;
 /// `info` when neither is.
-pub const FILTER_VAR: &str = "GLOSSQL_LOG";
+pub const FILTER_VAR: &str = "GLOSSDB_LOG";
 
 /// The export switch, the SDK's own variable: where an OTLP collector
 /// listens (`http://127.0.0.1:4318`; the SDK appends `/v1/traces` and
@@ -55,7 +55,7 @@ pub const FILTER_VAR: &str = "GLOSSQL_LOG";
 /// configuration is the SDK's as well — [`PROTOCOL_VAR`] picks the
 /// transport, `OTEL_EXPORTER_OTLP_HEADERS` carries a hosted collector's
 /// credentials, `OTEL_RESOURCE_ATTRIBUTES` what names a deployment
-/// beyond `service.name`, which is `glossql`. A platform's managed
+/// beyond `service.name`, which is `glossdb`. A platform's managed
 /// collector injects the endpoint and the protocol itself.
 pub const ENDPOINT_VAR: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 
@@ -90,7 +90,7 @@ fn transport(get: impl Fn(&str) -> Option<String>) -> Result<Transport, String> 
 /// initialized, stream terminated, finished — which the request span
 /// already says; its `warn` is where it reports a problem.
 fn directives(level: &str) -> String {
-    format!("info,rmcp=warn,glossql={level},serverd={level}")
+    format!("info,rmcp=warn,glossdb={level}")
 }
 
 /// What `install` hands back: the export, to be drained once the
@@ -152,7 +152,7 @@ pub fn install() -> Result<Telemetry, String> {
     let spans = export.as_ref().map(|e| {
         tracing_opentelemetry::layer()
             .with_threads(false)
-            .with_tracer(e.traces.tracer("glossql"))
+            .with_tracer(e.traces.tracer("glossdb"))
     });
     let events = export
         .as_ref()
@@ -187,7 +187,7 @@ fn export(transport: Transport) -> Result<Option<Export>, opentelemetry_otlp::Ex
         return Ok(None);
     }
     let resource = Resource::builder()
-        .with_service_name("glossql")
+        .with_service_name("glossdb")
         .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
         .build();
     let spans = match transport {

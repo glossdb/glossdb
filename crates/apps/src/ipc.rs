@@ -11,22 +11,23 @@
 //! truncated stream, which is the truth; the reason is logged here, the
 //! one place it can still be read.
 
+use arrow::datatypes::SchemaRef;
+use arrow::record_batch::RecordBatch;
 use arrow_ipc::writer::StreamWriter;
 use axum::body::{Body, Bytes};
-use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::common::DataFusionError;
-use datafusion::execution::SendableRecordBatchStream;
 use futures::{SinkExt, StreamExt, channel::mpsc};
+
+use crate::engine::{BatchStream, SessionError};
 
 pub const ARROW_STREAM: &str = "application/vnd.apache.arrow.stream";
 
 /// The body of `batches`, `first` being the batch the caller already
 /// polled.
 pub fn body(
-    mut batches: SendableRecordBatchStream,
-    first: Option<Result<RecordBatch, DataFusionError>>,
+    schema: SchemaRef,
+    mut batches: BatchStream,
+    first: Option<Result<RecordBatch, SessionError>>,
 ) -> Body {
-    let schema = batches.schema();
     let (mut tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(2);
     tokio::spawn(async move {
         let mut writer = match StreamWriter::try_new(Vec::new(), schema.as_ref()) {

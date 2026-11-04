@@ -56,7 +56,7 @@ by the shell; the built-in's pages are its tabs and it prints none.
 A frame is one SQL file served as Arrow IPC. URL params bind as typed
 plan placeholders (`$from` in the SQL, `?from=…` on the URL); values
 arrive as Utf8 and the frame SQL casts explicitly, and a door argument
-binds the same way (`metric_series(grain => $grain)`). The bound
+binds the same way (`metric_series(grain := $grain)`). The bound
 dataset is not a parameter: the frame's channel is bound to the URL's
 dataset, and `current_dataset` names it inside the SQL. Frames only
 read, and the browser
@@ -152,10 +152,10 @@ After the docket's two writes the door answers with an event, never a
 navigation: a ruling with `HX-Trigger: glossql:written`, on which the
 frame store drops its record-class caches; re-measure (every
 measurement standing from before the last change re-run, and every
-one the cube's fact rows or a witness read that was never made run —
-`owed`'s `never measured` rows) with
-`glossql:remeasured, glossql:written`, on which the data-class caches
-drop too — a re-measure can change the cube, a ruling cannot. Every
+one the metrics' fact rows or a witness read that was never made
+run — `owed`'s `never measured` rows) with `glossql:remeasured,
+glossql:written`, on which the data-class caches drop too — a
+re-measure can change the numbers, a ruling cannot. Every
 connected tile refetches in place; instruments keep their DOM.
 
 ## The built-in docket
@@ -184,7 +184,7 @@ once with the who and when on hover) and Lineage. The second hands the data over
 as a file) and Query (a pane for a read of one's own, the SQL riding
 the page URL so a read is a link). Pages `index.html`, `metrics.html`,
 `quality.html`, `glossary.html`, `lineage.html`, `export.html`,
-`query.html`; frames over the shipped reads, the cube's two reads,
+`query.html`; frames over the shipped reads, `metric_series()`, `metric_axes()`,
 `forecast_points()`, `plan_points()`, `metric_sources()` and
 `imports`; two specs. Every built-in frame executes under the test
 suite.

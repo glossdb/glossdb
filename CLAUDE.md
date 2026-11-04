@@ -1,4 +1,4 @@
-# glossql — workspace rules
+# glossdb — workspace rules
 
 The context language and its server. The server ships: a brew tap and
 an image on GHCR, both cut at the workspace version. Grammar changes
@@ -6,49 +6,62 @@ follow the corpus-first process below.
 
 ## The map
 
-- `SPEC.md` — the only normative language prose. Open questions live
-  in §9 and close by transcription verdict, never by argument.
-- `grammar.ebnf` — the machine-readable grammar; the source of truth
-  for syntax.
-- `crates/session/reads/next.sql` — the routes the `next` read
-  answers from: per goal, its steps as query arms over the record,
-  one act per goal as a statement filled from the record; the door's
-  two lines, `crates/serverd/src/window.rs`.
-- `crates/parser/tests/corpus/` — transcriptions of real artifacts,
-  the parser's acceptance suite: ` ```glossql ` must parse,
-  ` ```glossql-gap ` documents a gap and must fail.
-- `crates/` — the server, a Cargo workspace: `parser` · `glossary` ·
-  `session` · `catalog` · `import` · `scripts` · `apps` · `serverd`.
-  What each is and how it is built: the crate headers and
-  `docs/architecture/`. Directories unprefixed, packages `glossql-*`;
-  datafusion sets the arrow major and every arrow crate follows it
-  (the workspace `Cargo.toml` comment).
+- The language is the extension's (`../gloss`, pinned by
+  `crates/duck/glossql.ref`): `SPEC.md`, the only normative language
+  prose, whose open questions live in §9 and close by transcription
+  verdict, never by argument; `grammar.ebnf`, the machine-readable
+  grammar and the source of truth for syntax; its `corpus/`, the
+  transcriptions of real artifacts that are the language's acceptance
+  record, held to the grammar by its suite (` ```glossql ` must parse,
+  ` ```glossql-gap ` documents a gap and must fail). The door serves
+  the two documents as `doc://SPEC.md` and `doc://grammar.ebnf`, read
+  at boot from beside the extension's kits.
+- The routes the `next` read answers from: per goal, its steps as
+  query arms over the record, one act per goal as a statement filled
+  from the record — each kit's `routes_<kit>()` in its kit under
+  `kits/`, the core's in `crates/duck/kits/door.sql`, composed at
+  open; the door's two lines, `crates/serverd/src/window.rs`.
+- `corpus/` — the two transcriptions behind the server's kits (19 and
+  27), in the extension's corpus form; the serverd suite parses them
+  on the engine.
+- `crates/` — the server, a Cargo workspace: `duck` ·
+  `apps` · `serverd`. What each is and how it is built: the crate
+  headers and `docs/architecture/`. Directories unprefixed, packages
+  `glossdb-*`; the engine is the glossql extension (`../gloss`, pinned
+  by `crates/duck/glossql.ref`) on DuckDB, compiled into every binary;
+  the arrow line is one (the workspace `Cargo.toml` comment).
+- `kits/` — the server's kits, metrics and futures: SQL loaded at
+  open after the extension's kpi and quality kits, each with its
+  `kit.test` suite beside it (DuckDB's sqllogictest form, run by the
+  engine crate's suite). The extension ships the language's kits as
+  examples; a kit whose words depend on the server, its doors or the
+  model service lives here. `kits/README.md` says what they add to
+  the language: vocabulary and reads, never grammar.
 - `docs/` — the curated statement of the system: what is implemented
   and what is planned (`start/`, `concepts/`, `reference/`,
   `methods/`, `architecture/`, and the concern pages). For agents and
   humans alike; enterprise-customer quality, constantly current.
   Never normative language prose.
 - `.github/` — `workflows/ci.yml` checks the standing invariant on
-  every push and pull request, with `deny.toml` and the dev rig's
-  live tests; the release machinery: `workflows/release.yml` builds
-  the image on a `v*` tag, `release-macos.sh` is the laptop half, the
-  rendered tap formula sits beside them. The order and its sharp
-  edges: the glossql-release skill.
-- `dev/` — the rig the live tests and a laptop run against: Postgres
-  and Azurite as one compose (`dev/README.md`).
+  every push and pull request, with `deny.toml`, on the extension
+  built from its pinned commit and kept in the actions cache; the
+  release machinery: `workflows/release.yml` builds the image on a
+  `v*` tag, `release-macos.sh` is the laptop half, the rendered tap
+  formula sits beside them. The order and its sharp edges: the
+  glossql-release skill.
 - `skills/` — the product skills, a `SKILL.md` and its `references/`
   each, where a door-connected agent learns the language; embedded in
   serverd and served on the MCP door as resources and prompts, gated
   by the test suite. `.claude/skills/` keeps the skills for building
   the server: the substrate, the prose and the release.
-- `vendor/` — DataFusion's SQL user guide at the tag the lock
-  resolves, served on the door as `doc://vendor/datafusion/sql/…`.
-  `vendor/datafusion/refresh.sh <tag>` at every pin move; the serverd
-  suite holds its VERSION to Cargo.lock.
+- `vendor/` — DuckDB's SQL guide for the release the lock resolves,
+  served on the door as `doc://vendor/duckdb/sql/…`.
+  `vendor/duckdb/refresh.sh <version> <duckdb-web commit>` at every
+  pin move; the serverd suite holds its VERSION to Cargo.lock.
 
 ## The record: issues, code, docs
 
-GitHub issues (`glossdb/glossql`) are the work record. One issue is
+GitHub issues (`glossdb/glossdb`) are the work record. One issue is
 one actionable unit at a uniform depth: what it buys, what stands
 (`file:line`, fixtures), done-when. Apache Software Foundation
 quality, and public: facts only — no session narrative, no run
@@ -84,14 +97,18 @@ plan is rewritten, not patched.
 - **Code is the work.** A task on the server ends in changed code and
   a passing suite. The rules under "The language" bind `SPEC.md` and
   `grammar.ebnf`; they do not gate server code.
-- **Standing invariant.** Workspace `cargo test` passes: every
-  ```sql block in SPEC.md parses, every corpus fixture behaves as
-  tagged, every fenced example under `docs/`, `skills/`, and
-  `.claude/skills/` parses and plans, and the store and session
-  suites hold the execution semantics. A change that breaks it
+- **Standing invariant.** Workspace `cargo test` passes: every fenced
+  example under `docs/`, `skills/`, and `.claude/skills/` parses on
+  the engine's grammar and every single read binds, the door suites
+  hold the execution semantics, and the corpus behaves as tagged
+  (` ```glossql ` parses, ` ```glossql-gap ` does not), and the suites
+  beside the kits under `kits/` pass on the engine; the extension's
+  kits' suites run in its repository. A change that breaks it
   doesn't land.
-- **Build on the substrate.** Extend DataFusion at its own seams,
-  never around it; the glossql-substrate skill carries the seam
+- **Build on the engine.** A read, a measurement, a route is SQL in a
+  kit; the extension owns the language and the record; the server
+  owns the doors. Extend DuckDB and the extension at their own seams,
+  never around them; the glossql-substrate skill carries the seam
   register and its rules.
 - **Grounding.** The corpus fixtures are the empirical record;
   coverage and semantics questions settle against this repo's own
@@ -99,8 +116,11 @@ plan is rewritten, not patched.
 
 ## The language
 
-- **One document.** SPEC.md is the only normative prose — no
-  satellite design docs, no assumption files, no per-topic notes.
+- **One document.** The extension's SPEC.md is the only normative
+  prose — no satellite design docs, no assumption files, no per-topic
+  notes. This repository's kits add vocabulary and reads on it
+  (`kits/README.md`), never grammar; a form they need goes through
+  the extension's corpus.
 - **Ideation before prose.** No idea enters SPEC.md until it survives
   a corpus test: competing statement forms for the same real
   artifact, checked against grammar and real table shapes, the forks

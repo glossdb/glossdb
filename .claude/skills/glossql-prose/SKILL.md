@@ -36,7 +36,7 @@ direct facts.
 
 - Do not edit fenced code blocks or tables in a prose pass. The test
   suite parses and plans every ```glossql and ```sql block under
-  `docs/`, `skills/`, and SPEC.md.
+  `docs/` and `skills/`, and parses the served SPEC.md's.
 - Keep every H1. The MCP door serves each docs page as a resource
   titled by its H1.
 - `docs/reference/reads.md` keeps its path and the literal

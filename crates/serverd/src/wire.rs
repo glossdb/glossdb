@@ -1,15 +1,15 @@
 //! Outcomes on the wire. The MCP door and the summary path of `/query`
 //! share one JSON shape. A tool result lands verbatim in the agent's
-//! context window, so a data read's rows are capped — by the session,
+//! context window, so a data read's rows are capped — by the engine,
 //! as a limit on the read's plan; this module renders what it is told.
 //! `row_count` counts the rows shipped; a declared `truncated` says the
 //! result held more, so the agent refines (aggregate, LIMIT, WHERE)
 //! instead of reading a capped result as complete.
 
-use datafusion::arrow::record_batch::RecordBatch;
-use datafusion::execution::SendableRecordBatchStream;
+use crate::engine::{Outcome, QueryStream};
+use arrow::datatypes::SchemaRef;
+use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
-use glossql_session::Outcome;
 use serde_json::{Value, json};
 
 pub const DEFAULT_ROW_CAP: usize = 200;
@@ -20,7 +20,7 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> Result<Value, String> {
         rendered.push(match outcome {
             Outcome::Done(done) => json!({ "done": done }),
             Outcome::Affected(n) => json!({ "affected": n }),
-            // The session that ran the read cut it and says so.
+            // The engine that ran the read cut it and says so.
             Outcome::Rows { batches, truncated } => {
                 let shipped = batches.iter().map(|b| b.num_rows()).sum();
                 render(
@@ -37,11 +37,10 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> Result<Value, String> {
 
 /// Pull batches until the cap is met, then drop the stream — what the
 /// agent won't see, the engine stops computing.
-pub async fn stream_json(
-    mut stream: SendableRecordBatchStream,
-    cap: usize,
-) -> Result<Value, String> {
-    let schema = stream.schema();
+pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, String> {
+    let QueryStream {
+        schema, mut stream, ..
+    } = query;
     let mut kept: Vec<RecordBatch> = Vec::new();
     let mut shipped = 0usize;
     let mut truncated = false;
@@ -63,7 +62,7 @@ pub async fn stream_json(
 }
 
 fn render(
-    schema: Option<datafusion::arrow::datatypes::SchemaRef>,
+    schema: Option<SchemaRef>,
     kept: &[RecordBatch],
     shipped: usize,
     truncated: bool,

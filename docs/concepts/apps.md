@@ -54,9 +54,8 @@ path named is not a param — the frame's channel is bound to it, and
 logic — labels, percentages, a CSS class chosen by a verdict — as
 columns; templates place values, they do not decide them. A frame plans through the same path
 as every other read, so every door is available inside one:
-a grounding under its name, `metric_series()` for the cube's
-cells at a grain, `band_points()` for the recorded walk beside the
-real books.
+a grounding under its name, `metric_series()` for the cells at a
+grain, `band_points()` for the recorded walk beside the real books.
 
 **Tiles** are tera macros placing what the frame computed — a value, a
 chart over a spec, a table, or a row surface with an authored
@@ -89,10 +88,13 @@ as the workspace writes. A part glossed under a built-in's name is
 refused — one part resolves the whole app, and the built-in's other
 pages would stop serving. Add an app; don't fork the built-in.
 
-## One write
+## Two writes
 
-The app door takes exactly one write in the whole system: the docket's
-ruling form, answering a question the workspace already derived (see
-[`questions.md`](questions.md)). Everything else on every app is a
-read. Anything an app needs to change, change with a statement — the
-page is a view of the record, never the way into it.
+The app door takes two writes: the docket's ruling form, answering a
+question the workspace already derived (see
+[`questions.md`](questions.md)), and the docket's re-measure, which
+runs again every measurement that stands from before the last change.
+Neither authors anything: a ruling is the human's slot, a re-measure
+is the functions speaking. Everything else on every app is a read.
+Anything an app needs to change, change with a statement — the page
+is a view of the record, never the way into it.

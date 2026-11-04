@@ -1,26 +1,24 @@
 # The KPI kit
 
-The semantic vocabulary a workspace starts with, declared at boot
-before the measurement library (`kpi_kit.glossql` — vocabulary first,
-so the library's column evidence can condition on `role`), with the
-shipped witnesses (`witnesses.glossql`) last. The kit ships the
-questions — what a column means, how a number behaves, its unit, which
-axes slice, what a table is, where definitions and formulas live, how
-a correction travels. The answers — the company's own metrics,
-validations, scenarios, plans — stay authored in the flows. The kit is
-statements, so adapting it is an edit.
+The semantic vocabulary a workspace starts with, the first kit the
+engine runs at open, before the quality kit whose screens condition on
+`role`, the metrics kit whose reads read the words on a view's
+columns, and the futures kit. The kit ships the questions — what a
+column means, how a number behaves, its unit, which axes slice, what a
+table is, where definitions live, how a correction travels. The
+answers — the company's own metrics, validations, scenarios, plans —
+stay authored in the flows. The kit is statements, so adapting it is
+an edit.
 
-An unwritten witnessed claim is owed: `unassessed` disclosure, the
-backlog, and the question round all derive from what stands unwritten.
-`WHEN` narrows what a column owes to what its role makes meaningful —
-a role-less column owes only `role`, and the backlog counts what is
-real instead of columns × vocabulary. The measurement library's
-column evidence carries the same conditions (`outlier_profile` and
-`behavior_evidence` where `role = 'measure'`, `temporal_profile`
-where `role = 'timestamp'`, `dimension_relevance` where
-`role = 'dimension'`). Statistics (`behavior`, `unit`)
-are the agent's measurement backlog, never a human question; the round
-asks judgment only.
+An unwritten witnessed claim is owed: the backlog and the question
+round derive from what stands unwritten. `WHEN` narrows what a column
+owes to what its role makes meaningful — a role-less column owes only
+`role`, and the backlog counts what is real instead of columns ×
+vocabulary. A metric's view is a table of its dataset, so its columns
+carry these words too: how its value combines over periods and
+members is the `behavior` on its value column. Statistics are the
+agent's measurement backlog, never a human question; the round asks
+judgment only.
 
 ## Aspects
 
@@ -28,25 +26,26 @@ asks judgment only.
 | --- | --- | --- |
 | `meaning` | FACT ON TABLE, COLUMN, RELATIONSHIP | `value` (prose), optional `term` |
 | `role` | FACT ON COLUMN | `key` / `measure` / `dimension` / `timestamp` / `attribute` |
-| `behavior` | FACT ON COLUMN WHEN `role = 'measure'` | `stock` / `flow` / `none`, with `grounds` |
+| `behavior` | FACT ON COLUMN WHEN `role = 'measure'` | `stock` / `flow` / `ratio` / `none`, with `grounds`; a ratio names its halves, `numerator` and `denominator`. A flow sums, a stock keeps its last level, a ratio re-divides its summed halves; `none` does not combine |
 | `unit` | FACT ON COLUMN WHEN `role = 'measure'` | the unit, optional `source_column` |
 | `dimension` | FACT ON COLUMN WHEN `role = 'dimension'` | `primary` / `supporting` / `none`, with `grounds` |
-| `lever` | FACT ON COLUMN | `value` true: a column someone sets — a list price, a discount rate, a promotion flag — the input a scenario moves ([the scenario world](../methods/scenario.md)); false: examined, none. `grounds` says who sets it. Not conditioned on `role`: a lever may be a measure or a flag. Witness-free: who sets a number is the business's word, not a claim the data can settle |
 | `entity` | FACT ON TABLE | what the table is: `value`, `role` (fact/dimension), `grain`, `time_axis`, `identity_columns` |
 | `conventions` | FACT ON SOURCE | fiscal calendar, sign conventions, what an export's nulls mean — read and superseded workspace-wide |
-| `formulas` | FACT ON DATASET | registry keyed by concept name: window-generic expressions over sibling concepts (`revenue[w] - expenses[w]`), the window `w` the one free variable — what a drill re-scopes from. Known gap: operands are not checked against declared concepts, so a typo is silent |
 | `definitions` | FACT ON DATASET | registry keyed by concept name: the handbook content — meaning, unit, owner, source — everything the company might revise, living where supersession applies. The aspect blob keeps only `title` and `x-kind`; a field lives in exactly one place, never both |
-| `cube` | FACT ON DATASET | the cube's shape: `resolution`, the floor (`minute` … `year`, default `day`) — a metric's resolution is its judged cadence and never finer, and its head is built at the floor; `windows`, the ladder — per resolution the window a grain is served over, back from the data's edge (defaults: minute 1 day · hour 1 month · day 18 months · week 3 years · month 48 months · quarter 10 years · year 20 years); the head holds the longest of them, so every grain derives from it. A gloss overrides the floor or any rung; `metric_axes().outside` counts the periods a rung leaves out. Witness-free: a setting is not a claim about the data |
-| `recipe_change` | FACT ON TABLE | `table`, `sql`, `reason` — the correction channel: the human gloss is the approval, the re-declare is the agent's next act |
-| `ruling` | FACT (grainless) | `rulings`: a list of `{aspect, key, stance, dimension?, assumption?, note?}` with stance `confirmed` / `corrected` / `unclear`. The `key` is the only thing joined on; `assumption` is the prose snapshot the human read, never a match column. Witness-free on purpose — actor kind stamps the writer, and a witness would put an unassessed row on every subject |
-| `app` / `app_page` / `app_frame` / `app_spec` | FACT (grainless) | an app's parts as glosses — `title` + optional `dataset` pin; `html`; `sql`; `spec`. One gloss per part, so an author edits one frame without rewriting the app. Grainless and witness-free: an app part is not a claim about the data, so it owes no verdict |
-| `app_release` | FACT (grainless) | the app's release — the door serves the parts as they stood when it was written, or at the earlier release `at` names; `note` optional. What is written after it is the draft, at `?draft` |
 
-Names machinery reads, shipped by this file: `recipe_change` (the
+The other kits add their words beside these: `ladder` on a time
+column, the metrics kit's (the floor a series is served at and the
+rung per grain, owed where `role = 'timestamp'`, witness `ladder_w`);
+`lever` on a column, the futures kit's (`value` true: a column
+someone sets, the input a scenario moves, `grounds` saying who;
+witness-free). The record's own words — `recipe_change`, `ruling`,
+the app parts, `app_release` — are the engine's, declared at every
+open before any kit.
+
+Names machinery reads, shipped by this kit: `recipe_change` (the
 brief counts pending approvals by that name), `title` / `x-kind` in
 QUERY-aspect blobs and `unit` / `meaning` in `definitions` entries
-(the docket's metric faces and `metric_surfaces`), `cube` (the floor
-and the ladder `metric_series()` computes under), and `none` as the
+(the docket's metric faces and `metric_surfaces`), and `none` as the
 judged negative in enum aspects — "examined, does not apply" is a
 different fact from an unassessed row, and the one that lets the
 backlog walk to zero.
@@ -61,10 +60,10 @@ backlog walk to zero.
 | `behavior_w` | `behavior` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
 | `unit_w` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
 | `dimension_w` | `dimension` | AGENT, HUMAN | — |
-| `bands_w` | `metric_bands` | — | `band_breach`, threshold 0.98 |
 
 A witness gates who may speak and makes the unwritten claim owed;
 detectors adjudicate the written slots — band and score, never a
-verdict of their own. The witness plane declares last at boot
-(`witnesses.glossql`): a witness names an aspect and a detector that
-must already stand.
+verdict of their own. The witnesses declare last in the kit: a witness
+names an aspect and a detector that must already stand. The futures
+kit binds its own: `bands_w`, `forecast_w`, `scenario_w`, `plan_w`
+([functions](functions.md)).
