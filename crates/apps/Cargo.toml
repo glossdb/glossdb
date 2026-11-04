@@ -1,5 +1,5 @@
 [package]
-name = "glossql-apps"
+name = "glossdb-apps"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-glossql-duck = { path = "../duck" }
+glossdb-duck = { path = "../duck" }
 arrow = { workspace = true }
 arrow-ipc = { workspace = true }
 arrow-json = { workspace = true }

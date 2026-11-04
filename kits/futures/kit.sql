@@ -4,20 +4,20 @@
 -- back as SQL, so that a door's next read judges from the record and
 -- never computes over the data. Loaded after the metrics kit, whose
 -- series the requests are built from. The service is named once for the instance
--- (gloss_service_url, gloss_service_token); every call goes through
--- glossql.service, one macro over gloss_service, so a suite stands in for
+-- (glossql_service_url, glossql_service_token); every call goes through
+-- glossql.service, one macro over glossql_service, so a suite stands in for
 -- the service by re-declaring the macro. The service owns its topic: the
 -- bands, the PIT and why it is withheld, the walk's verdict; the kit owns
 -- the calendar, and sends complete periods only.
 --
---   FROM gloss_kit('kits/kpi/kit.sql');
---   FROM gloss_kit('kits/quality/kit.sql');
---   FROM gloss_kit('kits/metrics/kit.sql');
---   FROM gloss_kit('kits/futures/kit.sql');
+--   FROM glossql_kit('kits/kpi/kit.sql');
+--   FROM glossql_kit('kits/quality/kit.sql');
+--   FROM glossql_kit('kits/metrics/kit.sql');
+--   FROM glossql_kit('kits/futures/kit.sql');
 
-CREATE OR REPLACE MACRO glossql.service(route, body) AS gloss_service(route, body);
+CREATE OR REPLACE MACRO glossql.service(route, body) AS glossql_service(route, body);
 -- the soft form: a refusal or an absent service comes back as {"error": "…"}, for a call the kit can stand without
-CREATE OR REPLACE MACRO glossql.service_soft(route, body) AS gloss_service(route, body, true);
+CREATE OR REPLACE MACRO glossql.service_soft(route, body) AS glossql_service(route, body, true);
 
 --===------------------------------------------------------------------===--
 -- The walk. band_series(): every applicable metric's total at month grain
@@ -442,7 +442,7 @@ WITH runs AS MATERIALIZED (SELECT * FROM glossql.forecast_runs()),
 newest AS (SELECT max(run) AS run FROM runs),
 current_ AS (
   SELECT coalesce(bool_and(current), true) AS current
-  FROM gloss_glossary(current_schema(), NULL, true) WHERE actor = 'function' AND aspect = 'metric_forecast'),
+  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' AND aspect = 'metric_forecast'),
 -- the record's tally behind held, over every run: per metric, and for the dataset
 tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points,
@@ -517,7 +517,7 @@ WITH declared AS (
   WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
 bodies AS (
   SELECT d.name AS scenario, g.value AS body
-  FROM declared d LEFT JOIN gloss_glossary(current_schema(), NULL, false) g
+  FROM declared d LEFT JOIN glossql_glossary(current_schema(), NULL, false) g
     ON g.aspect = d.name AND g.subject = current_schema() AND g.state = 'current'),
 levers AS (
   SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, split_part(u.l."column", '.', 2) AS col,
@@ -527,13 +527,13 @@ levers AS (
 judged AS (
   SELECT l.*,
          CASE WHEN l.lever IS NULL OR l.col = '' THEN 'a lever names a served metric''s column, <metric>.<column>'
-              WHEN NOT EXISTS (SELECT 1 FROM gloss_glossary(current_schema(), NULL, false) g
+              WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
                                WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
                 THEN l.lever || ' carries no lever gloss: a lever is a column someone sets, glossed lever true on the metric''s view'
               WHEN NOT EXISTS (SELECT 1 FROM glossql.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'fact', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
-              WHEN NOT EXISTS (SELECT 1 FROM gloss_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
+              WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
                 THEN l.metric || ' serves no column named ' || l.col
               WHEN json_type(l.factor) <> 'OBJECT' THEN 'the factor on ' || l.lever || ' is a factor per period, {"YYYY-MM": 1.15}'
          END AS reason
@@ -1218,7 +1218,7 @@ futures_judged AS (
          coalesce(g.current, true) AS current
   FROM (SELECT subject, value FROM glossql.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
         QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1) m
-  LEFT JOIN (SELECT subject, current FROM gloss_glossary(current_schema(), NULL, true)
+  LEFT JOIN (SELECT subject, current FROM glossql_glossary(current_schema(), NULL, true)
              WHERE actor = 'function' AND aspect = 'metric_plan') g ON g.subject = m.subject),
 futures_gaps AS (
   SELECT plan, metric, label, value, low, high, stands FROM glossql.plan_record()
@@ -1226,10 +1226,10 @@ futures_gaps AS (
 futures_scenarios AS (
   SELECT a.name FROM (SELECT name, kind, schema FROM glossql.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
   WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
-    AND EXISTS (SELECT 1 FROM gloss_glossary(current_schema(), NULL, false) g WHERE g.aspect = a.name AND g.state = 'current')),
+    AND EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g WHERE g.aspect = a.name AND g.state = 'current')),
 futures_levers AS (
   SELECT string_agg(subject, ', ' ORDER BY subject) AS columns
-  FROM gloss_glossary(current_schema(), NULL, false) WHERE aspect = 'lever' AND state = 'current' AND (value->>'value') = 'true'),
+  FROM glossql_glossary(current_schema(), NULL, false) WHERE aspect = 'lever' AND state = 'current' AND (value->>'value') = 'true'),
 futures_estimate AS (
   SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM glossql.scenario_points(NULL))
 $ctes$ AS ctes, $arms$

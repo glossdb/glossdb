@@ -20,8 +20,8 @@ use std::future::IntoFuture;
 use std::sync::Arc;
 
 use config::{Config, usage};
-use glossql_serverd::engine::{Actor, ActorKind, WarehouseCredential, store_kind};
-use glossql_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
+use glossdb_serverd::engine::{Actor, ActorKind, WarehouseCredential, store_kind};
+use glossdb_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
 
 fn main() {
     // Before parse: --version and --help answer and exit — a packaging
@@ -74,9 +74,9 @@ fn run(flags: config::Flags) -> Result<(), Box<dyn std::error::Error + Send + Sy
 /// same reason.
 #[tokio::main]
 async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // After `.env`, so `GLOSSQL_LOG` and the export switch may come
+    // After `.env`, so `GLOSSDB_LOG` and the export switch may come
     // from it; before anything opens, so the opening is on the record.
-    let telemetry = glossql_serverd::telemetry::install()?;
+    let telemetry = glossdb_serverd::telemetry::install()?;
     let served = doors(config).await;
     // The flush blocks, so it runs on the blocking pool while the
     // runtime — and the gRPC channel on it — is still alive.
@@ -99,8 +99,8 @@ async fn doors(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
 /// named catalog in a deployment.
 async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Send + Sync>> {
     let mut duck = match &config.catalog.workspace {
-        Some(dir) => glossql_serverd::engine::Config::laptop(dir),
-        None => glossql_serverd::engine::Config::deployment(
+        Some(dir) => glossdb_serverd::engine::Config::laptop(dir),
+        None => glossdb_serverd::engine::Config::deployment(
             &config.catalog.catalog,
             &config.catalog.warehouse,
         ),
@@ -137,7 +137,7 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
             }
         }
         None => tracing::info!(
-            variable = glossql_serverd::engine::SERVICE_URL,
+            variable = glossdb_serverd::engine::SERVICE_URL,
             "no model service — the walk, the forecast and the what-if refuse by name"
         ),
     }
@@ -159,8 +159,8 @@ async fn warehouse_credential(
         (None, Some("gcs")) => {
             let (token, ttl) = service::first(&service::Mint::Access).await.map_err(|e| {
                 format!(
-                    "the warehouse {warehouse} needs a key pair (GLOSSQL_WAREHOUSE_KEY_ID, \
-                         GLOSSQL_WAREHOUSE_SECRET) or the platform's own account: {e}"
+                    "the warehouse {warehouse} needs a key pair (GLOSSDB_WAREHOUSE_KEY_ID, \
+                         GLOSSDB_WAREHOUSE_SECRET) or the platform's own account: {e}"
                 )
             })?;
             Ok((Some(WarehouseCredential::Bearer(token)), Some(ttl)))
@@ -179,13 +179,13 @@ async fn bootstrapped(
         &plane,
         Actor {
             kind: ActorKind::Human,
-            id: glossql_serverd::BOOTSTRAP.into(),
+            id: glossdb_serverd::BOOTSTRAP.into(),
         },
     )
     .await?;
-    let listings = glossql_serverd::functions::pages(&plane).await?;
+    let listings = glossdb_serverd::functions::pages(&plane).await?;
     Ok(Arc::new(plane.with_pages(
-        glossql_serverd::skills::door_pages_with(listings)?,
+        glossdb_serverd::skills::door_pages_with(listings)?,
     )))
 }
 
@@ -211,7 +211,7 @@ async fn access_of(
         None => {
             tracing::warn!(
                 actor = INSECURE_DEV_MODE,
-                "GLOSSQL_INSECURE_OPEN — the doors are open, nobody is verified"
+                "GLOSSDB_INSECURE_OPEN — the doors are open, nobody is verified"
             );
             Access::Open
         }
@@ -230,7 +230,7 @@ async fn serve_until_stopped(
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(
         addr = %addr,
-        "glossql listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app"
+        "glossdb listening — / (datasets), /mcp, /<dataset>/mcp, /<dataset>/query, /<dataset>/app"
     );
     let stopping = Arc::new(tokio::sync::Notify::new());
     let drain = {

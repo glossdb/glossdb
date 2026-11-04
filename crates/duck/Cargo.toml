@@ -1,12 +1,12 @@
 [package]
-name = "glossql-duck"
+name = "glossdb-duck"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The engine on DuckDB: the facade the doors use over the gloss extension and a DuckLake"
+description = "The engine on DuckDB: the facade the doors use over the glossql extension and a DuckLake"
 
 [dependencies]
 # The two actor types the doors stamp a request with.

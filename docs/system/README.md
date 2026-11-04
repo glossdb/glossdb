@@ -9,7 +9,7 @@ The server: one binary, one workspace, three doors. How it is built is
 
 - **The statement spine** — the parser over its corpus acceptance
   suite; every fixture transcribes a real artifact.
-- **The record** — the gloss extension's store: every declared
+- **The record** — the glossql extension's store: every declared
   relation a table of rows in the lake's catalog; supersession is a
   read; admission, grain and the stale rule
   ([store](../architecture/store.md)).
@@ -21,7 +21,7 @@ The server: one binary, one workspace, three doors. How it is built is
   engine attaches as a relational source.
 - **The kits** — the vocabulary, the quality screens, the metrics and
   the futures as SQL, run at every open; the model service named once
-  for the walk, the forecast and the what-if, `GLOSSQL_SERVICE_URL`
+  for the walk, the forecast and the what-if, `GLOSSDB_SERVICE_URL`
   ([functions](../reference/functions.md),
   [methods](../methods/README.md)).
 - **The doors** — `/<dataset>/mcp` and `/mcp` (one `glossql` tool,

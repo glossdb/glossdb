@@ -60,8 +60,8 @@ With Claude Code:
 
 ```bash
 set -a; source .env; set +a      # the same application the server is registered as
-MCP_CLIENT_SECRET=$GLOSSQL_CLIENT_SECRET claude mcp add --transport http \
-  --client-id $GLOSSQL_CLIENT_ID --client-secret --callback-port 3118 \
+MCP_CLIENT_SECRET=$GLOSSDB_CLIENT_SECRET claude mcp add --transport http \
+  --client-id $GLOSSDB_CLIENT_ID --client-secret --callback-port 3118 \
   glossql http://127.0.0.1:8080/fin/mcp
 claude mcp login glossql
 ```

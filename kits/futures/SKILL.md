@@ -1,6 +1,6 @@
 ---
-name: gloss-futures
-description: The futures kit for a gloss workspace — the worlds beside the actual: the walk's bands, the forecast, the scenario's estimate and the plan's judgement, each a measurement the model service answers and the record reads back. Use after gloss_kit('kits/futures/kit.sql') with a service named, to judge metrics ahead of the data.
+name: glossdb-futures
+description: The futures kit for a gloss workspace — the worlds beside the actual: the walk's bands, the forecast, the scenario's estimate and the plan's judgement, each a measurement the model service answers and the record reads back. Use after glossql_kit('kits/futures/kit.sql') with a service named, to judge metrics ahead of the data.
 ---
 
 # The futures kit: what it teaches
@@ -18,16 +18,16 @@ from the record and never computes over the data.
 ## Load and check
 
 ```sql
-FROM gloss_kit('kits/kpi/kit.sql');
-FROM gloss_kit('kits/quality/kit.sql');
-FROM gloss_kit('kits/metrics/kit.sql');
-FROM gloss_kit('kits/futures/kit.sql');
-SET GLOBAL gloss_service_url = 'http://127.0.0.1:8100';  -- the service, named once for the instance; the server names it from GLOSSQL_SERVICE_URL
+FROM glossql_kit('kits/kpi/kit.sql');
+FROM glossql_kit('kits/quality/kit.sql');
+FROM glossql_kit('kits/metrics/kit.sql');
+FROM glossql_kit('kits/futures/kit.sql');
+SET GLOBAL glossql_service_url = 'http://127.0.0.1:8100';  -- the service, named once for the instance; the server names it from GLOSSDB_SERVICE_URL
 SELECT * FROM glossql.band_request();                    -- one row per metric: can the walk take it
 ```
 
 Every call goes through `glossql.service(route, body)`, one macro over
-`gloss_service`. A suite stands in for the service by re-declaring the
+`glossql_service`. A suite stands in for the service by re-declaring the
 macro. Without a service named, a measurement refuses by name before any
 call goes out.
 
@@ -164,5 +164,4 @@ reads the record, none the data.
 
 The model is the service's: the bands, the PIT, the verdict, the
 estimate. An hour, a minute and a year are not forecast. No grounding
-is replayed over the data under a scenario. The misfit door is a ruled
-form, not built.
+is replayed over the data under a scenario.

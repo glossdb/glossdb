@@ -45,7 +45,7 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
            'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
     FROM standing g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.seq > g.seq
     WHERE json_extract(h.body, '$.formulas.' || g.aspect) IS NOT NULL),
-  collapsed AS (SELECT subject, aspect, state FROM gloss_glossary(current_schema(), NULL, false)),
+  collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   contests AS (
     SELECT 'contest' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
            'withheld at read — a detector crossed or voices differ' AS why, '' AS since
@@ -53,7 +53,7 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
   remeasures AS (
     SELECT 're-measure' AS kind, v.actor AS subject, 'stale voices from ' || v.actor AS what,
            'landed before the last change — run the function again, or the docket''s re-measure' AS why, '' AS since
-    FROM (SELECT DISTINCT m.function AS actor FROM gloss_glossary(current_schema(), NULL, true) r
+    FROM (SELECT DISTINCT m.function AS actor FROM glossql_glossary(current_schema(), NULL, true) r
           JOIN ws.glossql.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
           WHERE r.actor = 'function' AND NOT r.current) v),
   wanted AS (

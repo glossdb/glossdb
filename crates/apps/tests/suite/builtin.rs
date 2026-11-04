@@ -2,7 +2,7 @@
 //! parses against the pinned substrate, so read-surface drift breaks
 //! the build, not the browser.
 
-use glossql_apps::BUILTINS;
+use glossdb_apps::BUILTINS;
 
 #[test]
 fn every_builtin_carries_manifest_and_index() {

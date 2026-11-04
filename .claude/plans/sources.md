@@ -4,7 +4,7 @@ What comes in: workbooks, documents, search, and the ranking
 experiments. The shared frame, the terms, the gates and the
 decisions are in `kernel.md`. A source is what a recipe reads: a
 reader the engine has over files, a database DuckDB attaches, or a
-service called through the extension's `gloss_service`, one table in
+service called through the extension's `glossql_service`, one table in
 and one table out, which stands; the scalar shape lands here with
 `embed(text)`, its first user. It runs under the phase 1 gate.
 
@@ -13,7 +13,7 @@ and one table out, which stands; the scalar shape lands here with
 | Element | Difficulty | What it touches | When | Issue |
 |---|---|---|---|---|
 | Spreadsheets as a source: the values through DuckDB's `excel` extension, the formulas, defined names and macro modules as rows through a reader the engine does not carry | Easy for the values; the formulas need a reader | SPEC §3, `reader_functions()` in `crates/duck`, the image's extensions | First | |
-| Documents as a source, a processor service the recipe calls | Easy | SPEC §3, one service through `gloss_service` | After workbooks | |
+| Documents as a source, a processor service the recipe calls | Easy | SPEC §3, one service through `glossql_service` | After workbooks | |
 | Search: `embed(text)` as a service scalar, distance in plain SQL (`array_distance`, the engine's own) | Easy | the extension's service seam, one service | After documents | |
 | The relational source on the engine: a database DuckDB attaches (`postgres`, `sqlite`, `mysql`), named by `location`, read by a recipe | Low: the extensions exist and the image carries `postgres` | SPEC §3's `via`, the facade's open, a suite case | When a customer names one | |
 | Ranking and CLM experiments | Easy, outside the tree | nothing here; glossval | Beside it; blocks nothing | |
@@ -28,7 +28,7 @@ and one table out, which stands; the scalar shape lands here with
   `read_json` (`reader_functions()` in `crates/duck/src/lib.rs`), and
   lands one table, typed by the recipe.
 - A service is called from SQL through the extension's
-  `gloss_service`: one table in, one table out, the URL and the bearer
+  `glossql_service`: one table in, one table out, the URL and the bearer
   named once for the instance. The futures kit's forecast and estimate
   are its users; the scalar shape, one text in and one vector out,
   lands here.
@@ -72,7 +72,7 @@ leaves this file.
   critical data stays in the systems of record; documents give
   context.
 - **What stands.** Same seams as the workbook: SPEC.md §3, the recipe
-  as the landing, `gloss_service` as the call. A processor that reads
+  as the landing, `glossql_service` as the call. A processor that reads
   PDF, Word and slides into structure, tables and reading order
   exists as an open server (docling) and runs per deployment, since
   text is customer content.
@@ -114,5 +114,5 @@ leaves this file.
   encoder with trained heads that scores candidates by dot product,
   one pass per new text; the training signal is glossval's record of
   every door call of every scored session. If it wins, it becomes a
-  service point, `GLOSSQL_RANK_URL`, refused by name when unset, on
+  service point, `GLOSSDB_RANK_URL`, refused by name when unset, on
   the kernel service's GPU.

@@ -4,7 +4,7 @@
 # duckdb-neo with the DuckDB release the extension is built against,
 # and arrow, datafusion, parquet on one arrow line — moves by hand, at
 # a pin move, with the vendored SQL guide refreshed (Cargo.toml,
-# crates/duck/gloss.ref).
+# crates/duck/glossql.ref).
 version: 2
 updates:
   - package-ecosystem: github-actions

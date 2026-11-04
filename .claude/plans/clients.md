@@ -111,12 +111,12 @@ Worker.
   (`crates/serverd/src/auth.rs:137`); the audience check is one
   compare (`auth.rs:226`). The allowed hosts are loopback and the
   audience's host (`crates/serverd/src/config.rs:254`). The issuer's
-  tokens carry `org_id`. `GLOSSQL_ORGANIZATION` and
-  `GLOSSQL_ALLOWED_HOSTS` are named in the platform design and not in
+  tokens carry `org_id`. `GLOSSDB_ORGANIZATION` and
+  `GLOSSDB_ALLOWED_HOSTS` are named in the platform design and not in
   the code.
-- **Done when.** With `GLOSSQL_ORGANIZATION` set, the gate refuses a
+- **Done when.** With `GLOSSDB_ORGANIZATION` set, the gate refuses a
   token whose `org_id` differs and admits one that matches, bearer
-  and cookie alike; unset, nothing changes. `GLOSSQL_ALLOWED_HOSTS`
+  and cookie alike; unset, nothing changes. `GLOSSDB_ALLOWED_HOSTS`
   adds hosts to the allowed set. The install page names both. The
   suite holds a refused token, an admitted token, and a request on
   the extra host.

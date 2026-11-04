@@ -11,7 +11,7 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use std::collections::HashMap;
 
-use glossql_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
+use glossdb_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
 
 use crate::common;
 
@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 async fn app_with(doors: DoorConfig, login: Arc<Login>) -> (Router, tempfile::TempDir) {
-    app_capped(glossql_serverd::DEFAULT_ROW_CAP, doors, login).await
+    app_capped(glossdb_serverd::DEFAULT_ROW_CAP, doors, login).await
 }
 
 async fn app_capped(
@@ -32,7 +32,7 @@ async fn app_capped(
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
         plane.with_row_cap(row_cap).with_pages(
-            glossql_serverd::skills::door_pages()
+            glossdb_serverd::skills::door_pages()
                 .expect("the language's documents beside the extension's kits"),
         ),
     );
@@ -251,10 +251,10 @@ async fn the_door_pages_are_rows_of_pages() {
     let outcomes = body.as_array().unwrap();
     assert_eq!(
         outcomes[0]["rows"][0]["body"],
-        json!(glossql_serverd::skills::SKILLS[0].body)
+        json!(glossdb_serverd::skills::SKILLS[0].body)
     );
     let served = {
-        use glossql_serverd::skills::{DOC_NAMES, PAGES, REFERENCES, SKILLS, VENDORED};
+        use glossdb_serverd::skills::{DOC_NAMES, PAGES, REFERENCES, SKILLS, VENDORED};
         SKILLS.len() + DOC_NAMES.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
     };
     assert_eq!(outcomes[1]["rows"][0]["n"], json!(served));
@@ -349,7 +349,7 @@ async fn the_token_names_the_subject_and_the_door_names_the_standing() {
 }
 
 /// The explicit open arrangement (`Access::Open`, the
-/// GLOSSQL_INSECURE_OPEN switch): no door asks for a token, and the
+/// GLOSSDB_INSECURE_OPEN switch): no door asks for a token, and the
 /// record still names who spoke — the well-known dev actor, with the
 /// door's standing. No login and no discovery document are served;
 /// with no 401 to answer, a client is never sent to authenticate.
@@ -997,14 +997,14 @@ async fn the_agent_door_answers_the_hosts_its_config_names() {
     named.allowed_hosts.push(public.to_string());
     let (app, _dir) = app_with(named, common::login()).await;
     let body = expect_ok(mcp_at(app, public, initialize()).await).await;
-    assert_eq!(body["result"]["serverInfo"]["name"], "glossql-serverd");
+    assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_door_initializes_and_lists_the_one_tool() {
     let (app, _dir) = app().await;
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
-    assert_eq!(body["result"]["serverInfo"]["name"], "glossql-serverd");
+    assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 
     let body = expect_ok(
         mcp(
@@ -1148,7 +1148,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
     )
     .await;
     let text = body["result"]["contents"][0]["text"].as_str().unwrap();
-    assert_eq!(text, glossql_serverd::skills::SKILLS[0].body, "{body}");
+    assert_eq!(text, glossdb_serverd::skills::SKILLS[0].body, "{body}");
     assert_eq!(
         body["result"]["contents"][0]["mimeType"], "text/markdown",
         "{body}"
@@ -1182,7 +1182,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
     .await;
     assert_eq!(
         body["result"]["messages"][0]["content"]["text"],
-        glossql_serverd::skills::SKILLS[0].body,
+        glossdb_serverd::skills::SKILLS[0].body,
         "{body}"
     );
 

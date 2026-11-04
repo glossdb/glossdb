@@ -1,7 +1,7 @@
 //! The language's record parses on the engine, the grammar on: every
 //! ```sql block of the SPEC.md the door serves as `doc://SPEC.md`,
 //! read from the extension's share at the pin, and the corpus here —
-//! the three fixtures behind the server's kits — where a ```glossql
+//! the two fixtures behind the server's kits — where a ```glossql
 //! block must parse and a ```glossql-gap block must not. The
 //! language's own corpus is held to the grammar in the extension's
 //! suite, which the pin inherits.
@@ -59,7 +59,7 @@ fn fenced(file: &str, text: &str, tags: &[&str]) -> Vec<Block> {
 async fn every_spec_sql_block_parses_on_the_engine() {
     let (_dir, plane) = common::scratch_plane().await;
     let session = plane.channel(common::human(), None).await.unwrap();
-    let docs = glossql_serverd::skills::docs()
+    let docs = glossdb_serverd::skills::docs()
         .expect("the language's documents beside the extension's kits");
     let spec = docs
         .iter()
@@ -117,7 +117,7 @@ async fn every_corpus_block_behaves_as_tagged() {
             }
         }
     }
-    assert!(admitted > 10, "{admitted} admitted blocks, {gaps} gaps");
+    assert!(admitted > 5, "{admitted} admitted blocks, {gaps} gaps");
     assert!(
         wrong.is_empty(),
         "corpus blocks that do not behave as tagged:\n{}",

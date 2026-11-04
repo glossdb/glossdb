@@ -1,4 +1,4 @@
-# glossql — workspace rules
+# glossdb — workspace rules
 
 The context language and its server. The server ships: a brew tap and
 an image on GHCR, both cut at the workspace version. Grammar changes
@@ -7,7 +7,7 @@ follow the corpus-first process below.
 ## The map
 
 - The language is the extension's (`../gloss`, pinned by
-  `crates/duck/gloss.ref`): `SPEC.md`, the only normative language
+  `crates/duck/glossql.ref`): `SPEC.md`, the only normative language
   prose, whose open questions live in §9 and close by transcription
   verdict, never by argument; `grammar.ebnf`, the machine-readable
   grammar and the source of truth for syntax; its `corpus/`, the
@@ -21,14 +21,14 @@ follow the corpus-first process below.
   from the record — each kit's `routes_<kit>()` in its kit under
   `kits/`, the core's in `crates/duck/kits/door.sql`, composed at
   open; the door's two lines, `crates/serverd/src/window.rs`.
-- `corpus/` — the three transcriptions behind the server's kits (19,
-  20, 27), in the extension's corpus form; the serverd suite parses
-  them on the engine.
+- `corpus/` — the two transcriptions behind the server's kits (19 and
+  27), in the extension's corpus form; the serverd suite parses them
+  on the engine.
 - `crates/` — the server, a Cargo workspace: `duck` ·
   `apps` · `serverd`. What each is and how it is built: the crate
   headers and `docs/architecture/`. Directories unprefixed, packages
-  `glossql-*`; the engine is the gloss extension (`../gloss`, pinned
-  by `crates/duck/gloss.ref`) on DuckDB, compiled into every binary;
+  `glossdb-*`; the engine is the glossql extension (`../gloss`, pinned
+  by `crates/duck/glossql.ref`) on DuckDB, compiled into every binary;
   the arrow line is one (the workspace `Cargo.toml` comment).
 - `kits/` — the server's kits, metrics and futures: SQL loaded at
   open after the extension's kpi and quality kits, each with its
@@ -61,7 +61,7 @@ follow the corpus-first process below.
 
 ## The record: issues, code, docs
 
-GitHub issues (`glossdb/glossql`) are the work record. One issue is
+GitHub issues (`glossdb/glossdb`) are the work record. One issue is
 one actionable unit at a uniform depth: what it buys, what stands
 (`file:line`, fixtures), done-when. Apache Software Foundation
 quality, and public: facts only — no session narrative, no run

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use glossql_serverd::{Access, DoorConfig, router};
+use glossdb_serverd::{Access, DoorConfig, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -18,7 +18,7 @@ async fn app() -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
         plane.with_pages(
-            glossql_serverd::skills::door_pages()
+            glossdb_serverd::skills::door_pages()
                 .expect("the language's documents beside the extension's kits"),
         ),
     );

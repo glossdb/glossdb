@@ -14,7 +14,7 @@ How the server is built.
 ## The crates
 
 The server is a Cargo workspace. `duck` is the engine: the facade the
-doors use over the gloss extension and a DuckLake, the record's own
+doors use over the glossql extension and a DuckLake, the record's own
 reads (`kits/core.sql`) and the door's (`kits/door.sql`), and the
 actor types the doors stamp a call with. `apps` serves the pages;
 `serverd` is the binary with its doors. The language is the

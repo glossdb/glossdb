@@ -106,7 +106,7 @@ position. Coverage needs only the band.
 ## Serving the model
 
 The call goes to the model service's forecast route, the service
-named once for the instance, `GLOSSQL_SERVICE_URL`
+named once for the instance, `GLOSSDB_SERVICE_URL`
 ([install](../start/install.md)), as JSON each way. Without it the
 measurement refuses by name.
 

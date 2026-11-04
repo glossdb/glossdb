@@ -217,7 +217,7 @@ what the model service answers; the plan, judged against them; the
 scenario, the service's estimate. Each lands as a measurement with its
 pin and is read back as SQL, so that the door's `next` read judges
 from the record and never computes over the data. The service is named
-once for the instance (`GLOSSQL_SERVICE_URL`); without one, these
+once for the instance (`GLOSSDB_SERVICE_URL`); without one, these
 measurements refuse by name and everything else serves. The service
 owns its topic: the bands, the PIT and why it is withheld, the walk's
 verdict, the forecast's quantiles, the estimate's sign. The kit owns

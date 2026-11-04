@@ -1,17 +1,17 @@
-# glossql
+# glossdb
 
 A declarative context language over a SQL host, and a server that speaks
 it. The language describes a dataset — sources, tables, relationships,
 meanings, checks — so that agents and humans work on the same data with
 the same context. The server is one Rust binary with the query engine (DuckDB) in
-process, the gloss extension that owns the language and the record,
+process, the glossql extension that owns the language and the record,
 and a DuckLake beside it. An agent
 connects over MCP, lands data, and builds the dataset's glossary;
 questions the data cannot answer go to a human, and the answer is
 stored as part of the record.
 
 The full definition is **SPEC.md** in the extension's repository,
-[glossdb/gloss](https://github.com/glossdb/gloss), with `grammar.ebnf`,
+[glossdb/glossql](https://github.com/glossdb/glossql), with `grammar.ebnf`,
 the machine source of truth for syntax, and the corpus, the language's
 acceptance record: each construct is checked against a real artifact.
 The server serves both documents on its door. Its own kits add
@@ -61,7 +61,7 @@ production — readable by any DuckLake client.
 
 Data work mixes two kinds of information: what you hold true before
 looking at the rows, and what the rows show. Code usually tangles
-them. glossql keeps them apart and joins them at read time.
+them. glossdb keeps them apart and joins them at read time.
 
 - **A priori — the declared world model.** Aspects (each with a JSON
   Schema as its contract), witnesses (who may speak on an aspect, and
@@ -106,12 +106,12 @@ the typed table and import is a filter, not an ETL step.
 ## The server
 
 A Rust workspace (`crates/`) on DuckDB: `glossary` (the actor
-types), `duck` (the engine: the facade over the gloss extension and a
+types), `duck` (the engine: the facade over the glossql extension and a
 DuckLake, a channel per call, the record's reads and the door's),
 `apps` (server-rendered data apps from declarative artifacts),
-`serverd` (the doors). The gloss extension owns the language, its
-parser, the store and the language's kits (`glossdb/gloss`), and
-`crates/duck/gloss.ref` pins the commit a build carries; the server's
+`serverd` (the doors). The glossql extension owns the language, its
+parser, the store and the language's kits (`glossdb/glossql`), and
+`crates/duck/glossql.ref` pins the commit a build carries; the server's
 own kits, metrics and futures, are `kits/` here.
 
 One listener, three doors, no server-side cursors. A browser stays on
@@ -165,13 +165,13 @@ agent judges; the false positives stay visible in the measurement.
 
 ## Building
 
-A Rust workspace. `cargo build -p glossql-serverd` builds the server;
+A Rust workspace. `cargo build -p glossdb-serverd` builds the server;
 use `--release` to run it for real. DuckDB is compiled into the
 binary from the sources its Rust crate ships, about three minutes
-once per profile; the gloss extension is built from the sibling
+once per profile; the glossql extension is built from the sibling
 checkout `../gloss` (`GEN=ninja make release`, a C++ build of DuckDB
-that takes a while once), or named by `GLOSS_EXTENSION` and
-`GLOSS_KITS` ([install](docs/start/install.md)). The parallel build
+that takes a while once), or named by `GLOSSQL_EXTENSION` and
+`GLOSSQL_KITS` ([install](docs/start/install.md)). The parallel build
 needs memory; if the build dies without a compiler error, the OOM
 killer hit — common in memory-capped containers. Bound the
 parallelism to about one job per 2 GB of available memory:

@@ -12,7 +12,7 @@ rust-version = "1.98"
 # each other by path.
 publish = false
 license = "Apache-2.0"
-repository = "https://github.com/glossdb/glossql"
+repository = "https://github.com/glossdb/glossdb"
 
 [workspace.lints.rust]
 # macOS ld notes that engine-sized debug binaries outgrow the compact

@@ -1,5 +1,5 @@
 [package]
-name = "glossql-serverd"
+name = "glossdb-serverd"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,15 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "glossql"
+name = "glossdb"
 path = "src/main.rs"
 
 # No model rides the binary: a point's table call goes to the service
-# `GLOSSQL_<POINT>_URL` names.
+# `GLOSSDB_<POINT>_URL` names.
 
 [dependencies]
-glossql-duck = { path = "../duck" }
-glossql-apps = { path = "../apps" }
+glossdb-duck = { path = "../duck" }
+glossdb-apps = { path = "../apps" }
 arrow = { workspace = true }
 arrow-json = { workspace = true }
 axum = { workspace = true }

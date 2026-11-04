@@ -832,7 +832,7 @@ impl ServerHandler for GlossqlMcp {
                 .enable_prompts()
                 .build(),
         );
-        info.server_info = Implementation::new("glossql-serverd", env!("CARGO_PKG_VERSION"));
+        info.server_info = Implementation::new("glossdb-serverd", env!("CARGO_PKG_VERSION"));
         info.instructions = Some(self.instructions(None));
         info
     }

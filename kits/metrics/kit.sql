@@ -5,9 +5,9 @@
 -- cadence. What an actor must learn about these words is SKILL.md beside
 -- this file.
 --
---   FROM gloss_kit('kits/kpi/kit.sql');
---   FROM gloss_kit('kits/quality/kit.sql');
---   FROM gloss_kit('kits/metrics/kit.sql');
+--   FROM glossql_kit('kits/kpi/kit.sql');
+--   FROM glossql_kit('kits/quality/kit.sql');
+--   FROM glossql_kit('kits/metrics/kit.sql');
 --
 -- A grounding's view is a table of its dataset: the column that carries
 -- role timestamp is the metric's period, the column that carries role
@@ -83,7 +83,7 @@ aspects AS (
     SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
     FROM glossql.aspects) WHERE rn = 1 AND kind = 'QUERY'),
 views AS (
-  SELECT DISTINCT c.table_name AS metric FROM gloss_columns(current_schema()) c
+  SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
 bodies AS (
   SELECT aspect AS metric, body FROM (
@@ -92,11 +92,11 @@ bodies AS (
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
 cols AS (
   SELECT c.table_name AS metric, c.column_name AS col, c.ordinal_position AS pos
-  FROM gloss_columns(current_schema()) c
+  FROM glossql_columns(current_schema()) c
   WHERE c.table_name IN (SELECT metric FROM views)),
 slots AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS metric, split_part(subject, '.', 3) AS col, aspect, value, state
-  FROM gloss_glossary(current_schema(), NULL, false)
+  FROM glossql_glossary(current_schema(), NULL, false)
   WHERE aspect IN ('role', 'behavior', 'dimension', 'ladder', 'temporal_profile')
     AND len(string_split(subject, '.')) = 3
     AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
@@ -399,7 +399,7 @@ WITH metrics AS (
   SELECT m.metric FROM glossql.metric_axes() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
 lineage AS (
   SELECT l.view AS metric, l."column" AS field, l.derivation, l.complete
-  FROM gloss_views_lineage(current_schema()) l WHERE l.view IN (SELECT metric FROM metrics)),
+  FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT metric FROM metrics)),
 -- a field descends from the columns its derivation names; an aggregate
 -- descends from no column — it is computed over them
 fields AS (
@@ -450,10 +450,10 @@ metrics_claimed AS (
 metrics_read_tables AS (
   SELECT DISTINCT split_part(path, '.', 2) AS table_name
   FROM (SELECT unnest(regexp_extract_all(derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
-        FROM gloss_views_lineage(current_schema()))),
+        FROM glossql_views_lineage(current_schema()))),
 metrics_unread AS (
   SELECT nullif(string_agg(t.table_name, ', ' ORDER BY t.table_name), '') AS tables
-  FROM (SELECT DISTINCT table_name FROM gloss_columns(current_schema(), false)) t
+  FROM (SELECT DISTINCT table_name FROM glossql_columns(current_schema(), false)) t
   WHERE t.table_name NOT IN (SELECT table_name FROM metrics_read_tables))
 $ctes$ AS ctes, $arms$
 SELECT 'metrics' AS surface, 1 AS step, 'next' AS state, 'GLOSS definitions' AS act,

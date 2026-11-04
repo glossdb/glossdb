@@ -2,7 +2,7 @@
 # description: the futures kit — the walk's request from the metric series, complete months only and seven at least; the walk landed as a measurement carrying the service's verdict; the reads and the witness over it
 # group: [sql]
 
-require gloss
+require glossql
 
 require json
 
@@ -11,25 +11,25 @@ require parquet
 require ducklake
 
 statement ok
-ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/gloss_kit_futures_lake/');
+ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/glossql_kit_futures_lake/');
 
 statement ok
 USE ws;
 
 statement ok
-PRAGMA gloss;
+PRAGMA glossql;
 
 statement ok
-FROM gloss_kit('{GLOSS_KITS}/kpi/kit.sql');
+FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok
-FROM gloss_kit('{GLOSS_KITS}/quality/kit.sql');
+FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
 
 statement ok
-FROM gloss_kit('{KITS}/metrics/kit.sql');
+FROM glossql_kit('{KITS}/metrics/kit.sql');
 
 statement ok
-FROM gloss_kit('{KITS}/futures/kit.sql');
+FROM glossql_kit('{KITS}/futures/kit.sql');
 
 statement ok
 DECLARE DATASET fin SET (purpose: 'futures');

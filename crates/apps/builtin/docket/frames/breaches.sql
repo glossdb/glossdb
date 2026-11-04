@@ -12,7 +12,7 @@
 WITH verdict AS (
   SELECT a.witness, a.band, a.computed_at, a.current, w.detector, w.threshold,
          row_number() OVER (ORDER BY CASE a.band WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.witness) AS rn
-  FROM gloss_attest(current_schema(), NULL) a
+  FROM glossql_attest(current_schema(), NULL) a
   JOIN (SELECT name, detector, threshold FROM witnesses QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
     ON w.name = a.witness
   WHERE w.detector = 'band_breach'

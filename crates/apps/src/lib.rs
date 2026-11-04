@@ -37,8 +37,8 @@ mod remeasure;
 mod rule;
 
 /// The engine the doors are built on: the facade over DuckDB and the
-/// gloss extension, under the one name a door uses.
-pub use glossql_duck as engine;
+/// glossql extension, under the one name a door uses.
+pub use glossdb_duck as engine;
 
 pub use app::AppDef;
 
@@ -106,7 +106,7 @@ pub fn no_such_dataset(dataset: &str, known: &[String]) -> String {
 
 /// The door takes exactly TWO writes, and both are human acts: this is
 /// a human door, so the gate stamps human standing on every caller
-/// that reaches it (`glossql_serverd::auth`).
+/// that reaches it (`glossdb_serverd::auth`).
 ///
 /// The page holds no other write, and the reason is standing: a page
 /// that can change the record invites a second way to say everything

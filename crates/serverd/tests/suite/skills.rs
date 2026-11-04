@@ -278,7 +278,7 @@ async fn every_skill_read_names_columns_that_exist() {
 /// The served table is the directory. `include_str!` keeps each
 /// embedded body current, but only for the files the table names — a
 /// skill added under `skills/` without a row in
-/// [`glossql_serverd::skills::SKILLS`] would sit on disk unserved,
+/// [`glossdb_serverd::skills::SKILLS`] would sit on disk unserved,
 /// and this is what refuses that.
 #[test]
 fn the_served_skills_are_the_skills_directory() {
@@ -291,13 +291,13 @@ fn the_served_skills_are_the_skills_directory() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     on_disk.sort();
-    let mut served: Vec<String> = glossql_serverd::skills::SKILLS
+    let mut served: Vec<String> = glossdb_serverd::skills::SKILLS
         .iter()
         .map(|s| s.name.to_string())
         .collect();
     served.sort();
     assert_eq!(served, on_disk);
-    for skill in &glossql_serverd::skills::SKILLS {
+    for skill in &glossdb_serverd::skills::SKILLS {
         assert!(
             !skill.description().is_empty(),
             "{} carries no frontmatter description — the listings serve it",
@@ -327,7 +327,7 @@ fn the_served_skills_are_the_skills_directory() {
         }
     }
     on_disk.sort();
-    let mut served: Vec<(String, String)> = glossql_serverd::skills::REFERENCES
+    let mut served: Vec<(String, String)> = glossdb_serverd::skills::REFERENCES
         .iter()
         .map(|p| {
             (
@@ -346,7 +346,7 @@ fn the_served_skills_are_the_skills_directory() {
         served, on_disk,
         "a served reference is the file as it stands"
     );
-    for p in glossql_serverd::skills::REFERENCES {
+    for p in glossdb_serverd::skills::REFERENCES {
         assert!(
             p.uri().starts_with("skill://") && p.title() != p.path,
             "{} needs a `# ` title line — the listing serves it as the description",
@@ -403,7 +403,7 @@ fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
         .expect("the vendored vega-lite bundle");
     let served = first_quoted_semver_major(&bundle).expect("a version literal in the bundle");
 
-    let skill = glossql_serverd::skills::SKILLS
+    let skill = glossdb_serverd::skills::SKILLS
         .iter()
         .find(|s| s.name == "glossql-apps")
         .expect("the apps skill ships");

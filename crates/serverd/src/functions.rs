@@ -61,9 +61,8 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
              answers by name are the doors over the record (`door`); a \
              declared function runs as an extraction, `SELECT <name>() FROM \
              <subject>`, and `SELECT name FROM functions` lists what stands \
-             now (`extract`, as declared when the door opened). \
-             a grounding serves under its name, `misfit.<name>()` serves \
-             what the workspace glossed.",
+             now (`extract`, as declared when the door opened); a \
+             grounding serves under its name.",
             &door,
         ),
         page(

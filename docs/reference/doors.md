@@ -26,18 +26,18 @@ door; the workspace door is where sources are declared and datasets
 brought into being.
 
 ```
-glossql [--workspace <dir>] [--addr <ip:port>] [--row-cap <n>]
+glossdb [--workspace <dir>] [--addr <ip:port>] [--row-cap <n>]
         [--memory-limit <megabytes>] [--spill-limit <megabytes>]
 ```
 
 Every flag but `--workspace` has a variable named after it
-(`--memory-limit` is `GLOSSQL_MEMORY_LIMIT`), the flag winning. The
-authorization arrangement — `GLOSSQL_ISSUER`, `GLOSSQL_AUDIENCE`,
-`GLOSSQL_CLIENT_ID`, `GLOSSQL_CLIENT_SECRET` — is read from `.env` or
+(`--memory-limit` is `GLOSSDB_MEMORY_LIMIT`), the flag winning. The
+authorization arrangement — `GLOSSDB_ISSUER`, `GLOSSDB_AUDIENCE`,
+`GLOSSDB_CLIENT_ID`, `GLOSSDB_CLIENT_SECRET` — is read from `.env` or
 the environment, never from flags ([install](../start/install.md)).
 
 The doors serve plain http. A deployment terminates TLS at its edge
-and names its https URL in `GLOSSQL_AUDIENCE`; unset, the audience is
+and names its https URL in `GLOSSDB_AUDIENCE`; unset, the audience is
 the bind address under http.
 
 Defaults: `127.0.0.1:8080`, row cap 200, the memory ceiling and the
@@ -93,15 +93,15 @@ standing; the supersession key's third leg, (subject, aspect, actor
 kind), is settled by where the request arrived.
 
 The gate is configured by the arrangement in the environment (`.env`
-on a laptop). `GLOSSQL_ISSUER`
+on a laptop). `GLOSSDB_ISSUER`
 is the authorization server's URL: its OpenID configuration is read at
 boot and names the key set (`jwks_uri`), which is fetched then and
-again only when a token names a key not in it. `GLOSSQL_AUDIENCE` is
+again only when a token names a key not in it. `GLOSSDB_AUDIENCE` is
 this server's canonical URI, which a token's `aud` names (RFC 8707 §2)
 — a token minted for another resource does not open this one.
 An issuer that does not honour `resource=` cannot mint a token this
 server accepts, because nothing else in a token says which resource it
-was meant for. `GLOSSQL_CLIENT_ID` is the application registered at the
+was meant for. `GLOSSDB_CLIENT_ID` is the application registered at the
 issuer for this server, which the browser login signs in and exchanges
 its code as; it binds nothing. Signature (by the key
 the token's `kid` names, with the algorithm that key admits), `iss`,
@@ -109,7 +109,7 @@ the token's `kid` names, with the algorithm that key admits), `iss`,
 logged with its reason, never with the token. A server that cannot
 reach its issuer does not start.
 
-The one way around the gate is explicit. `GLOSSQL_INSECURE_OPEN=true`
+The one way around the gate is explicit. `GLOSSDB_INSECURE_OPEN=true`
 serves every door without authentication: no login and no discovery
 document — with no 401 to answer, a client is never sent to
 authenticate — and every caller is recorded as `insecure_dev_mode`,
@@ -186,7 +186,7 @@ what a build serves is what its suite tested.
 
 - **The `Host` header.** The transport's DNS-rebinding guard accepts
   loopback hosts, the guard a laptop server needs, and the host of
-  `GLOSSQL_AUDIENCE`, this server's own URL — read under the open
+  `GLOSSDB_AUDIENCE`, this server's own URL — read under the open
   switch as well. A deployment names its URL; one that does not
   answers its bind address alone, and every real request is refused
   with the transport's reason.

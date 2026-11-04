@@ -15,7 +15,7 @@ sees a declaration in a kit, an arm in the next read, and a page.
 
 ## The core
 
-- **The language and the record.** The gloss extension: the grammar
+- **The language and the record.** The glossql extension: the grammar
   on DuckDB's parser, the store, declarations, glosses, measurements,
   supersession as a read, the stale rule ([store](store.md)).
 - **The engine and the lake.** DuckDB, and a DuckLake: the catalog as
@@ -71,7 +71,7 @@ declared at the door.
 
 A driver turns something that is not rows into rows. The rows are the
 interface: a recipe lands them, typed by the recipe, versioned on
-every import ([SPEC.md §3](https://github.com/glossdb/gloss/blob/main/SPEC.md)).
+every import ([SPEC.md §3](https://github.com/glossdb/glossql/blob/main/SPEC.md)).
 
 Today:
 
@@ -98,9 +98,9 @@ A service turns rows into rows. The pattern of a point:
 3. **Refused by name when none is named.** The read says what to set.
    Start-up logs it. Nothing stands in for a missing service.
 
-The model service is named once for the instance, `GLOSSQL_SERVICE_URL`
+The model service is named once for the instance, `GLOSSDB_SERVICE_URL`
 ([install](../start/install.md)), and the futures kit calls its routes
-through the extension's `gloss_service`: the walk, the forecast, the
+through the extension's `glossql_service`: the walk, the forecast, the
 what-if. Every answer names the service and its version, and the
 measurement records it as `served_by`.
 

@@ -1,41 +1,41 @@
 //! What a run is told, read once before anything opens: the flags, and
 //! the environment — `.env` beside a workspace, or the variables a
 //! platform injects. A sizing flag has a variable named after it
-//! (`--memory-limit` is `GLOSSQL_MEMORY_LIMIT`), the flag winning, so a
+//! (`--memory-limit` is `GLOSSDB_MEMORY_LIMIT`), the flag winning, so a
 //! deployment sizes a box without replacing the image's command. The
 //! arrangements that carry a secret are variables only, since a flag
 //! sits in a process list. Every reading goes through `get`, so it is
 //! testable without touching the process environment. The telemetry's
 //! variables are the export SDK's own and are read where it is
-//! installed ([`glossql_serverd::telemetry`]).
+//! installed ([`glossdb_serverd::telemetry`]).
 
 use std::path::PathBuf;
 
-use glossql_serverd::engine::{WarehouseCredential, store_kind};
-use glossql_serverd::{DEFAULT_ROW_CAP, DoorConfig};
+use glossdb_serverd::engine::{WarehouseCredential, store_kind};
+use glossdb_serverd::{DEFAULT_ROW_CAP, DoorConfig};
 
 const USAGE_TEXT: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] \
 [--row-cap <n>] [--memory-limit <megabytes>] [--spill-limit <megabytes>] \
-| glossql --version | glossql --help\n\
+| glossdb --version | glossql --help\n\
 --workspace is the laptop's shape: the directory holding the lake's catalog \
-and its files. GLOSSQL_CATALOG_SQL names the catalog on a Postgres server \
-(postgres://…), GLOSSQL_WAREHOUSE the lake's files in an object store \
+and its files. GLOSSDB_CATALOG_SQL names the catalog on a Postgres server \
+(postgres://…), GLOSSDB_WAREHOUSE the lake's files in an object store \
 (s3://…, gs://…); a deployment names them and runs without a directory. \
-The engine reaches the store with GLOSSQL_WAREHOUSE_KEY_ID and \
-GLOSSQL_WAREHOUSE_SECRET (GLOSSQL_WAREHOUSE_REGION for S3), or, a gs:// \
+The engine reaches the store with GLOSSDB_WAREHOUSE_KEY_ID and \
+GLOSSDB_WAREHOUSE_SECRET (GLOSSDB_WAREHOUSE_REGION for S3), or, a gs:// \
 bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
-GLOSSQL_ADDR, GLOSSQL_ROW_CAP, GLOSSQL_MEMORY_LIMIT, GLOSSQL_SPILL_LIMIT.\n\
+GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT.\n\
 {service}\
 the authorization arrangement is read from .env or the environment: \
-GLOSSQL_ISSUER, GLOSSQL_CLIENT_ID, GLOSSQL_CLIENT_SECRET, [GLOSSQL_AUDIENCE] \
-— or GLOSSQL_INSECURE_OPEN=true serves the doors without authentication, \
+GLOSSDB_ISSUER, GLOSSDB_CLIENT_ID, GLOSSDB_CLIENT_SECRET, [GLOSSDB_AUDIENCE] \
+— or GLOSSDB_INSECURE_OPEN=true serves the doors without authentication, \
 every caller recorded as insecure_dev_mode (the name is the warning) \
 (see .env.example)";
 
-const SERVICE_USAGE: &str = "the model service — the walk, the forecast, the misfit, the what-if — is \
-named once: GLOSSQL_SERVICE_URL, with its bearer in GLOSSQL_SERVICE_TOKEN or \
-minted by the platform for GLOSSQL_SERVICE_AUDIENCE; unnamed, its reads \
+const SERVICE_USAGE: &str = "the model service — the walk, the forecast, the what-if — is \
+named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
+minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
 refuse by name and everything else serves.\n";
 
 /// The usage, with the service's line as this build names it.
@@ -95,7 +95,7 @@ pub struct Config {
     /// The disk the engine may spill onto, in megabytes — the box's
     /// disk, a number of its own; unset, the engine's own default.
     pub spill_limit_mb: Option<u64>,
-    /// This server's own URI — `GLOSSQL_AUDIENCE`, the API identifier a
+    /// This server's own URI — `GLOSSDB_AUDIENCE`, the API identifier a
     /// token must name (RFC 8707 §2) and the host the world reaches
     /// the doors at — defaulting to the bind address. Read under both
     /// arrangements: the open switch verifies nobody, and the door
@@ -104,7 +104,7 @@ pub struct Config {
     /// The authorization arrangement; none under the open switch.
     pub auth: Option<Auth>,
     /// The model service, named once, where the environment names it.
-    pub service: Option<glossql_serverd::engine::Service>,
+    pub service: Option<glossdb_serverd::engine::Service>,
     pub catalog: Catalog,
 }
 
@@ -149,17 +149,17 @@ impl Config {
 
         let addr = flags
             .addr
-            .or_else(|| var("GLOSSQL_ADDR"))
+            .or_else(|| var("GLOSSDB_ADDR"))
             .unwrap_or_else(|| "127.0.0.1:8080".to_string());
-        let audience = var("GLOSSQL_AUDIENCE").unwrap_or_else(|| format!("http://{addr}"));
+        let audience = var("GLOSSDB_AUDIENCE").unwrap_or_else(|| format!("http://{addr}"));
         let doors = DoorConfig {
             allowed_hosts: allowed_hosts(&audience),
             own_uri: audience.clone(),
         };
         let row_cap = match flags.row_cap {
             Some(n) => n,
-            None => var("GLOSSQL_ROW_CAP")
-                .map(|v| number("GLOSSQL_ROW_CAP", &v))
+            None => var("GLOSSDB_ROW_CAP")
+                .map(|v| number("GLOSSDB_ROW_CAP", &v))
                 .transpose()?
                 .unwrap_or(DEFAULT_ROW_CAP),
         };
@@ -174,17 +174,17 @@ impl Config {
         Ok(Config {
             memory_limit_mb: match flags.memory_limit_mb {
                 Some(mb) => Some(mb),
-                None => sized("GLOSSQL_MEMORY_LIMIT")?,
+                None => sized("GLOSSDB_MEMORY_LIMIT")?,
             },
             spill_limit_mb: match flags.spill_limit_mb {
                 Some(mb) => Some(mb),
-                None => sized("GLOSSQL_SPILL_LIMIT")?,
+                None => sized("GLOSSDB_SPILL_LIMIT")?,
             },
-            service: var(glossql_serverd::engine::SERVICE_URL).map(|url| {
-                glossql_serverd::engine::Service {
+            service: var(glossdb_serverd::engine::SERVICE_URL).map(|url| {
+                glossdb_serverd::engine::Service {
                     url,
-                    token: var(glossql_serverd::engine::SERVICE_TOKEN),
-                    audience: var(glossql_serverd::engine::SERVICE_AUDIENCE),
+                    token: var(glossdb_serverd::engine::SERVICE_TOKEN),
+                    audience: var(glossdb_serverd::engine::SERVICE_AUDIENCE),
                 }
             }),
             catalog: Catalog::from(&var, flags.workspace.as_deref())?,
@@ -203,27 +203,27 @@ impl Auth {
             var(name).ok_or_else(|| {
                 format!(
                     "{name} is not set — the authorization arrangement lives in .env \
-                     (see .env.example); GLOSSQL_INSECURE_OPEN=true serves open instead, \
+                     (see .env.example); GLOSSDB_INSECURE_OPEN=true serves open instead, \
                      every caller insecure_dev_mode"
                 )
             })
         };
         Ok(Auth {
-            issuer: required("GLOSSQL_ISSUER")?,
-            client_id: required("GLOSSQL_CLIENT_ID")?,
-            client_secret: required("GLOSSQL_CLIENT_SECRET")?,
+            issuer: required("GLOSSDB_ISSUER")?,
+            client_id: required("GLOSSDB_CLIENT_ID")?,
+            client_secret: required("GLOSSDB_CLIENT_SECRET")?,
         })
     }
 }
 
 /// The explicit way to serve without the arrangement:
-/// `GLOSSQL_INSECURE_OPEN=true` opens every door, every caller
-/// recorded as [`glossql_serverd::INSECURE_DEV_MODE`]. Only the literal
+/// `GLOSSDB_INSECURE_OPEN=true` opens every door, every caller
+/// recorded as [`glossdb_serverd::INSECURE_DEV_MODE`]. Only the literal
 /// `true` counts — the switch is a statement, never a fallback:
 /// anything else leaves the gate required, and the refusal names the
 /// switch.
 fn open(get: &impl Fn(&str) -> Option<String>) -> bool {
-    get("GLOSSQL_INSECURE_OPEN").is_some_and(|v| v.trim() == "true")
+    get("GLOSSDB_INSECURE_OPEN").is_some_and(|v| v.trim() == "true")
 }
 
 /// Whose `Host` header the agent door answers: loopback — the
@@ -246,46 +246,46 @@ fn allowed_hosts(audience: &str) -> Vec<String> {
 }
 
 impl Catalog {
-    /// The catalog: on the Postgres server `GLOSSQL_CATALOG_SQL` names,
+    /// The catalog: on the Postgres server `GLOSSDB_CATALOG_SQL` names,
     /// or the workspace directory's own file; the lake's files at the
-    /// location `GLOSSQL_WAREHOUSE` names in an object store, or under
+    /// location `GLOSSDB_WAREHOUSE` names in an object store, or under
     /// the workspace directory. Without a directory the environment has
     /// to name both.
     fn from(
         var: &impl Fn(&str) -> Option<String>,
         workspace: Option<&std::path::Path>,
     ) -> Result<Catalog, String> {
-        let catalog = match (var("GLOSSQL_CATALOG_SQL"), workspace) {
+        let catalog = match (var("GLOSSDB_CATALOG_SQL"), workspace) {
             (Some(uri), _) => uri.trim().to_string(),
             (None, Some(dir)) => dir.join("catalog.ducklake").display().to_string(),
             (None, None) => return Err(NO_WORKSPACE.into()),
         };
-        let warehouse = match (var("GLOSSQL_WAREHOUSE"), workspace) {
+        let warehouse = match (var("GLOSSDB_WAREHOUSE"), workspace) {
             (Some(location), _) => location.trim().to_string(),
             (None, Some(dir)) => dir.join("warehouse").display().to_string(),
             (None, None) => return Err(NO_WORKSPACE.into()),
         };
         let credential = match (
-            var("GLOSSQL_WAREHOUSE_KEY_ID"),
-            var("GLOSSQL_WAREHOUSE_SECRET"),
+            var("GLOSSDB_WAREHOUSE_KEY_ID"),
+            var("GLOSSDB_WAREHOUSE_SECRET"),
         ) {
             (Some(key_id), Some(secret)) => Some(WarehouseCredential::Keys {
                 key_id,
                 secret,
-                region: var("GLOSSQL_WAREHOUSE_REGION"),
+                region: var("GLOSSDB_WAREHOUSE_REGION"),
             }),
             (None, None) => None,
             (Some(_), None) => {
-                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSQL_WAREHOUSE_SECRET"));
+                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSDB_WAREHOUSE_SECRET"));
             }
             (None, Some(_)) => {
-                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSQL_WAREHOUSE_KEY_ID"));
+                return Err(HALF_A_PAIR.replace("{missing}", "GLOSSDB_WAREHOUSE_KEY_ID"));
             }
         };
         if credential.is_some() && store_kind(&warehouse).is_none() {
             return Err(format!(
-                "GLOSSQL_WAREHOUSE_KEY_ID names a key pair while the warehouse is a directory \
-                 ({warehouse}): a key pair goes with GLOSSQL_WAREHOUSE in an object store"
+                "GLOSSDB_WAREHOUSE_KEY_ID names a key pair while the warehouse is a directory \
+                 ({warehouse}): a key pair goes with GLOSSDB_WAREHOUSE in an object store"
             ));
         }
         Ok(Catalog {
@@ -300,12 +300,12 @@ impl Catalog {
 /// What a run is told when the environment names one half of the key
 /// pair.
 const HALF_A_PAIR: &str = "{missing} is not set — the warehouse's key pair is \
-GLOSSQL_WAREHOUSE_KEY_ID and GLOSSQL_WAREHOUSE_SECRET together";
+GLOSSDB_WAREHOUSE_KEY_ID and GLOSSDB_WAREHOUSE_SECRET together";
 
 /// What a run without a workspace directory is told when the
 /// environment does not name the state either.
 const NO_WORKSPACE: &str = "--workspace is required while the catalog or the warehouse lives \
-in it: name both GLOSSQL_CATALOG_SQL and GLOSSQL_WAREHOUSE, or the directory";
+in it: name both GLOSSDB_CATALOG_SQL and GLOSSDB_WAREHOUSE, or the directory";
 
 #[cfg(test)]
 mod tests {
@@ -313,7 +313,7 @@ mod tests {
 
     fn flags(flags: &[&str]) -> super::Flags {
         parse(
-            std::iter::once("glossql")
+            std::iter::once("glossdb")
                 .chain(flags.iter().copied())
                 .map(str::to_string),
         )
@@ -330,7 +330,7 @@ mod tests {
 
     /// A readable run: a workspace and the open switch, plus `vars`.
     fn read(typed: &[&str], vars: &'static [(&str, &str)]) -> Result<Config, String> {
-        let base = env(&[("GLOSSQL_INSECURE_OPEN", "true")]);
+        let base = env(&[("GLOSSDB_INSECURE_OPEN", "true")]);
         let more = env(vars);
         let mut all = vec!["--workspace", "/tmp/w"];
         all.extend(typed);
@@ -356,7 +356,7 @@ mod tests {
 
         let named = read(
             &["--addr", "0.0.0.0:8080"],
-            &[("GLOSSQL_AUDIENCE", "https://glossql.example")],
+            &[("GLOSSDB_AUDIENCE", "https://glossql.example")],
         )
         .expect("readable");
         assert_eq!(named.audience, "https://glossql.example");
@@ -384,24 +384,24 @@ mod tests {
         };
         let none = refusal(gated(&[]));
         assert!(
-            none.contains("GLOSSQL_ISSUER") && none.contains(".env"),
+            none.contains("GLOSSDB_ISSUER") && none.contains(".env"),
             "{none}"
         );
 
-        let issuer_only = refusal(gated(&[("GLOSSQL_ISSUER", "https://issuer.test")]));
-        assert!(issuer_only.contains("GLOSSQL_CLIENT_ID"), "{issuer_only}");
+        let issuer_only = refusal(gated(&[("GLOSSDB_ISSUER", "https://issuer.test")]));
+        assert!(issuer_only.contains("GLOSSDB_CLIENT_ID"), "{issuer_only}");
 
         let no_secret = refusal(gated(&[
-            ("GLOSSQL_ISSUER", "https://issuer.test"),
-            ("GLOSSQL_CLIENT_ID", "app-1"),
+            ("GLOSSDB_ISSUER", "https://issuer.test"),
+            ("GLOSSDB_CLIENT_ID", "app-1"),
         ]));
-        assert!(no_secret.contains("GLOSSQL_CLIENT_SECRET"), "{no_secret}");
+        assert!(no_secret.contains("GLOSSDB_CLIENT_SECRET"), "{no_secret}");
 
         let whole = gated(&[
-            ("GLOSSQL_ISSUER", "https://issuer.test"),
-            ("GLOSSQL_CLIENT_ID", "app-1"),
-            ("GLOSSQL_CLIENT_SECRET", "s3cret"),
-            ("GLOSSQL_AUDIENCE", "https://glossql.example"),
+            ("GLOSSDB_ISSUER", "https://issuer.test"),
+            ("GLOSSDB_CLIENT_ID", "app-1"),
+            ("GLOSSDB_CLIENT_SECRET", "s3cret"),
+            ("GLOSSDB_AUDIENCE", "https://glossql.example"),
         ])
         .expect("readable");
         assert_eq!(whole.audience, "https://glossql.example");
@@ -433,10 +433,10 @@ mod tests {
         let keyed = read(
             &[],
             &[
-                ("GLOSSQL_WAREHOUSE", "s3://lake/warehouse"),
-                ("GLOSSQL_WAREHOUSE_KEY_ID", "AKIA"),
-                ("GLOSSQL_WAREHOUSE_SECRET", "s3cret"),
-                ("GLOSSQL_WAREHOUSE_REGION", "eu-west-1"),
+                ("GLOSSDB_WAREHOUSE", "s3://lake/warehouse"),
+                ("GLOSSDB_WAREHOUSE_KEY_ID", "AKIA"),
+                ("GLOSSDB_WAREHOUSE_SECRET", "s3cret"),
+                ("GLOSSDB_WAREHOUSE_REGION", "eu-west-1"),
             ],
         )
         .expect("readable");
@@ -445,21 +445,21 @@ mod tests {
             Some(super::WarehouseCredential::Keys { ref key_id, ref region, .. })
                 if key_id == "AKIA" && region.as_deref() == Some("eu-west-1")
         ));
-        let bare = read(&[], &[("GLOSSQL_WAREHOUSE", "gs://lake/warehouse")]).expect("readable");
+        let bare = read(&[], &[("GLOSSDB_WAREHOUSE", "gs://lake/warehouse")]).expect("readable");
         assert!(bare.catalog.credential.is_none());
         let half = refusal(read(
             &[],
             &[
-                ("GLOSSQL_WAREHOUSE", "gs://lake/warehouse"),
-                ("GLOSSQL_WAREHOUSE_KEY_ID", "GOOG1E"),
+                ("GLOSSDB_WAREHOUSE", "gs://lake/warehouse"),
+                ("GLOSSDB_WAREHOUSE_KEY_ID", "GOOG1E"),
             ],
         ));
-        assert!(half.contains("GLOSSQL_WAREHOUSE_SECRET"), "{half}");
+        assert!(half.contains("GLOSSDB_WAREHOUSE_SECRET"), "{half}");
         let misplaced = refusal(read(
             &[],
             &[
-                ("GLOSSQL_WAREHOUSE_KEY_ID", "GOOG1E"),
-                ("GLOSSQL_WAREHOUSE_SECRET", "s"),
+                ("GLOSSDB_WAREHOUSE_KEY_ID", "GOOG1E"),
+                ("GLOSSDB_WAREHOUSE_SECRET", "s"),
             ],
         ));
         assert!(misplaced.contains("directory"), "{misplaced}");
@@ -488,10 +488,10 @@ mod tests {
         let named = read(
             &[],
             &[
-                ("GLOSSQL_ADDR", "0.0.0.0:8080"),
-                ("GLOSSQL_ROW_CAP", "50"),
-                ("GLOSSQL_MEMORY_LIMIT", "512"),
-                ("GLOSSQL_SPILL_LIMIT", "1024"),
+                ("GLOSSDB_ADDR", "0.0.0.0:8080"),
+                ("GLOSSDB_ROW_CAP", "50"),
+                ("GLOSSDB_MEMORY_LIMIT", "512"),
+                ("GLOSSDB_SPILL_LIMIT", "1024"),
             ],
         )
         .expect("readable");
@@ -506,16 +506,16 @@ mod tests {
         let typed = read(
             &["--memory-limit", "256", "--addr", "127.0.0.1:9000"],
             &[
-                ("GLOSSQL_MEMORY_LIMIT", "512"),
-                ("GLOSSQL_ADDR", "0.0.0.0:8080"),
+                ("GLOSSDB_MEMORY_LIMIT", "512"),
+                ("GLOSSDB_ADDR", "0.0.0.0:8080"),
             ],
         )
         .expect("readable");
         assert_eq!(typed.memory_limit_mb, Some(256));
         assert_eq!(typed.addr, "127.0.0.1:9000");
 
-        let bad = refusal(read(&[], &[("GLOSSQL_MEMORY_LIMIT", "4g")]));
-        assert!(bad.contains("GLOSSQL_MEMORY_LIMIT"), "{bad}");
+        let bad = refusal(read(&[], &[("GLOSSDB_MEMORY_LIMIT", "4g")]));
+        assert!(bad.contains("GLOSSDB_MEMORY_LIMIT"), "{bad}");
     }
 
     /// The shape of the run: a workspace directory holds the lake, a
@@ -532,9 +532,9 @@ mod tests {
 
         let deployment = Config::read(flags(&[]), |name| {
             match name {
-                "GLOSSQL_INSECURE_OPEN" => Some("true"),
-                "GLOSSQL_CATALOG_SQL" => Some("postgres://catalog.internal/glossql"),
-                "GLOSSQL_WAREHOUSE" => Some("s3://warehouse/glossql"),
+                "GLOSSDB_INSECURE_OPEN" => Some("true"),
+                "GLOSSDB_CATALOG_SQL" => Some("postgres://catalog.internal/glossql"),
+                "GLOSSDB_WAREHOUSE" => Some("s3://warehouse/glossql"),
                 _ => None,
             }
             .map(str::to_string)
@@ -553,7 +553,7 @@ mod tests {
     #[test]
     fn the_service_is_named_once() {
         let none =
-            read(&[], &[("GLOSSQL_FORECAST_URL", "http://127.0.0.1:8100")]).expect("readable");
+            read(&[], &[("GLOSSDB_FORECAST_URL", "http://127.0.0.1:8100")]).expect("readable");
         assert!(
             none.service.is_none(),
             "a point's variable names no service"
@@ -561,8 +561,8 @@ mod tests {
         let key = read(
             &[],
             &[
-                ("GLOSSQL_SERVICE_URL", "http://127.0.0.1:8100"),
-                ("GLOSSQL_SERVICE_TOKEN", "k1"),
+                ("GLOSSDB_SERVICE_URL", "http://127.0.0.1:8100"),
+                ("GLOSSDB_SERVICE_TOKEN", "k1"),
             ],
         )
         .expect("readable");
@@ -573,8 +573,8 @@ mod tests {
         let minted = read(
             &[],
             &[
-                ("GLOSSQL_SERVICE_URL", "https://thesi.example"),
-                ("GLOSSQL_SERVICE_AUDIENCE", "https://thesi.example"),
+                ("GLOSSDB_SERVICE_URL", "https://thesi.example"),
+                ("GLOSSDB_SERVICE_AUDIENCE", "https://thesi.example"),
             ],
         )
         .expect("readable");
@@ -582,6 +582,6 @@ mod tests {
             minted.service.expect("named").audience.as_deref(),
             Some("https://thesi.example")
         );
-        assert!(super::usage().contains("GLOSSQL_SERVICE_URL"));
+        assert!(super::usage().contains("GLOSSDB_SERVICE_URL"));
     }
 }

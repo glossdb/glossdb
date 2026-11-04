@@ -1,9 +1,9 @@
 //! The engine's own suite: a workspace opened on a tempdir, the kits
 //! declared, statements of the language run through a channel, reads
 //! streamed, the brief counted, a ruling landed. Needs the extension
-//! beside this checkout (`GLOSS_EXTENSION` overrides the path).
+//! beside this checkout (`GLOSSQL_EXTENSION` overrides the path).
 
-use glossql_duck::{
+use glossdb_duck::{
     Actor, ActorKind, Config, Outcome, Plane, SessionError, call_shape, rows_as_text,
 };
 
@@ -21,13 +21,15 @@ fn human() -> Actor {
     }
 }
 
-/// The extension beside this checkout, or where `GLOSS_EXTENSION`
+/// The extension beside this checkout, or where `GLOSSQL_EXTENSION`
 /// points. A build without one — CI, until the extension ships as an
 /// artifact — runs none of this suite and says so.
 fn extension_present() -> bool {
     let present = Config::laptop(std::path::Path::new(".")).extension.exists();
     if !present {
-        eprintln!("skipped: no gloss extension beside this checkout (GLOSS_EXTENSION overrides)");
+        eprintln!(
+            "skipped: no glossql extension beside this checkout (GLOSSQL_EXTENSION overrides)"
+        );
     }
     present
 }
@@ -152,9 +154,9 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
     assert_eq!(before.human_writings, 0);
 
     let session = plane.channel(human(), Some("fin")).await.unwrap();
-    let said = glossql_duck::rulings::land(
+    let said = glossdb_duck::rulings::land(
         &session,
-        glossql_duck::rulings::Ruling {
+        glossdb_duck::rulings::Ruling {
             subject: "orders.id",
             aspect: "meaning",
             dimension: "scope",
@@ -272,7 +274,7 @@ fn the_kits_suites_pass() {
     assert!(!suites.is_empty(), "no suite under {}", kits.display());
     for suite in suites {
         let dir = tempfile::tempdir().expect("a tempdir");
-        let records = glossql_duck::sqllogic::run_suite(&suite, dir.path())
+        let records = glossdb_duck::sqllogic::run_suite(&suite, dir.path())
             .unwrap_or_else(|report| panic!("{report}"));
         eprintln!("{}: {records} records", suite.display());
     }

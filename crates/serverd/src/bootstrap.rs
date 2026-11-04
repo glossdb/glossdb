@@ -22,6 +22,6 @@ pub async fn bootstrap(
     _plane: &Plane,
     _actor: Actor,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // The kits are declared when the workspace opens (`glossql_duck::Plane::open`).
+    // The kits are declared when the workspace opens (`glossdb_duck::Plane::open`).
     Ok(())
 }

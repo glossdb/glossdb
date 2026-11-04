@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   # The image is the Dockerfile at the tag, built from source on the
-  # runner and pushed as ghcr.io/glossdb/glossql:<version> plus :latest.
+  # runner and pushed as ghcr.io/glossdb/glossdb:<version> plus :latest.
   # A dispatch run pushes :<branch> and :sha-<commit>; :latest moves at
   # a tag only.
   image:

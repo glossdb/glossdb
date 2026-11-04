@@ -57,8 +57,8 @@ these files wherever they differ.
 The project lead's position, in short.
 
 - Kernel means the business information kernel. glossdb is it.
-- The model service is glossthesi, in its own repo. glossql names it
-  per point: `GLOSSQL_FORECAST_URL`, `GLOSSQL_MISFIT_URL`.
+- The model service is glossthesi, in its own repo. glossdb names it
+  once: `GLOSSDB_SERVICE_URL`.
 - Define the core first, including the kits. Then evolve that idea.
   That is the meta layer, and the docs page is its statement.
 - The pattern of a point: declared in the kit, filled by a service the

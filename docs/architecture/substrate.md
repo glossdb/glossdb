@@ -1,6 +1,6 @@
 # The substrate
 
-glossql is built on DuckDB. The gloss extension owns the language and
+glossql is built on DuckDB. The glossql extension owns the language and
 the record; DuckLake owns the lake; this repository owns the doors.
 Nothing here re-implements what the engine does: a read is SQL the
 engine plans, a kit is SQL the engine runs, a measurement is a SQL
@@ -19,13 +19,13 @@ body the engine executes.
 - **Subjects.** A dataset, a table, a column, a relationship, a source,
   and a view with its columns: a metric's grounding stands as a view
   under its name, and its columns are subjects like a table's.
-- **The lineage of views** (`gloss_views_lineage`), **the cells of a
+- **The lineage of views** (`glossql_views_lineage`), **the cells of a
   dataset** (`dataset_cells`, every cell of its tables or its views as
   rows, which the quality screens read), **a view kept per store
-  version** (`gloss_kept_view`), and **the service call**
-  (`gloss_service(route, body)`, JSON each way, with a soft form that
+  version** (`glossql_kept_view`), and **the service call**
+  (`glossql_service(route, body)`, JSON each way, with a soft form that
   answers a refusal as a value).
-- **The kits' loader.** `FROM gloss_kit('<file>')` runs a kit's
+- **The kits' loader.** `FROM glossql_kit('<file>')` runs a kit's
   statements in order.
 
 ## What the server owns
@@ -51,7 +51,7 @@ body the engine executes.
   a write moves the version.
 - **A kit is content.** A new measurement, read or route is a
   statement in a kit, loaded at open, never a change to the server.
-- **The extension is pinned.** `crates/duck/gloss.ref` names the
+- **The extension is pinned.** `crates/duck/glossql.ref` names the
   commit of the extension the build carries; the DuckDB release is
   the one the Rust side links, and the extension is built against the
   same one.

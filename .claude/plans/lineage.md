@@ -3,7 +3,7 @@
 The evaluation behind one addition to SPEC.md §3 and §5.2: a landing
 records what computed each of its columns, and `stale` reads
 re-derivation from that record. The extension runs this form
-(`../gloss/src/gloss_lineage.cpp`), serves it as `gloss_lineage(sql)`
+(`../gloss/src/glossql_lineage.cpp`), serves it as `glossql_lineage(sql)`
 and lands it on every import; its suite holds the cases. The SPEC
 wording is a proposal: the language has one owner.
 
@@ -11,7 +11,7 @@ wording is a proposal: the language has one owner.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| One derivation vocabulary: a leaf is `scan.column:type`, an expression is its function's or operator's name over its children's texts, no alias, no binding, nothing of the plan's shape; a column the walk cannot follow carries a digest of the recipe | Built: the extension walks the bound plan before any optimizer runs | `../gloss/src/gloss_lineage.cpp`, its suite | | language, not an issue |
+| One derivation vocabulary: a leaf is `scan.column:type`, an expression is its function's or operator's name over its children's texts, no alias, no binding, nothing of the plan's shape; a column the walk cannot follow carries a digest of the recipe | Built: the extension walks the bound plan before any optimizer runs | `../gloss/src/glossql_lineage.cpp`, its suite | | language, not an issue |
 | SPEC §3 and §5.2 say it: a landing records each column's derivation, and a gloss reads `stale` once the derivation behind its column moved, a source sending a column under another type included | Low | `SPEC.md` §3 re-land paragraph, §5.2 `snapshot_id` bullet | The lead's verdict | language, not an issue |
 | The concept page says what a landing records and how `stale` reads it | Low | `docs/concepts/imports.md` | With the SPEC row | |
 | A measurement's lineage: the same walk over its body names the columns it read, finer than the tables `reads` names | Medium | the extension's `ReadsOf` | Later | |
@@ -34,7 +34,7 @@ wording is a proposal: the language has one owner.
   a source under `SELECT *` whose column arrives as a double where it
   was an integer while the landed column keeps its type.
 - The metrics kit's `metric_sources(metric)` reads a metric's sources
-  through `gloss_lineage`.
+  through `glossql_lineage`.
 
 ## The reasoning
 

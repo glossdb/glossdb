@@ -7,12 +7,12 @@ description: How a glossql release is cut — the order of operations across bot
 
 One release is one version everywhere: `version` in the workspace
 `Cargo.toml` (`[workspace.package]`) is the single bump point, and
-`glossql --version` answers with it. The artifacts: a macOS arm64 tarball behind the brew tap — `bin/`
-with the binary, DuckDB compiled in, `share/glossql/`
-with the gloss extension, its SPEC.md and `grammar.ebnf`, and the kits of both repositories — and the server image on GHCR
-(`ghcr.io/glossdb/glossql:<version>` and `:latest`, x86_64, built
+`glossdb --version` answers with it. The artifacts: a macOS arm64 tarball behind the brew tap — `bin/`
+with the binary, DuckDB compiled in, `share/glossdb/`
+with the glossql extension, its SPEC.md and `grammar.ebnf`, and the kits of both repositories — and the server image on GHCR
+(`ghcr.io/glossdb/glossdb:<version>` and `:latest`, x86_64, built
 from the `Dockerfile` at the tag, the extension built inside it from
-the commit `crates/duck/gloss.ref` names). No model rides either: the
+the commit `crates/duck/glossql.ref` names). No model rides either: the
 model service is glossthesi, released from its own repository on its
 own cadence. **Never built**: macOS x86_64, ARM Linux, Jetson,
 a cuda flavor, a Linux package (the image is the Linux artifact) —
@@ -27,8 +27,8 @@ nowhere else.
 
 1. If glossthesi's wire changed, glossthesi releases first — the
    server's suites against a running service are the check.
-2. The extension's commit is pushed: `crates/duck/gloss.ref` names a
-   commit of `glossdb/gloss` that GitHub serves, or CI and the image
+2. The extension's commit is pushed: `crates/duck/glossql.ref` names a
+   commit of `glossdb/glossql` that GitHub serves, or CI and the image
    build fail at the checkout. Bump `version` in the workspace
    `Cargo.toml`, and the image tag in the `docker run` example of
    `docs/start/install.md`. Workspace `cargo test` green — a DuckDB
@@ -50,7 +50,7 @@ nowhere else.
    --draft=false`. Publish once, complete — that is the standing
    preference.
 6. Copy the rendered file to
-   `glossdb/homebrew-glossql/Formula/glossql.rb` and push the tap —
+   `glossdb/homebrew-glossdb/Formula/glossdb.rb` and push the tap —
    after the publish, so the formula never points at a draft. Commit
    the rendered file here too.
 
@@ -73,7 +73,7 @@ nowhere else.
 - A package's first push to GHCR lands **private** (packages do not
   inherit the repository's visibility); the package is made public
   once, in the org's package settings, and cannot be made private
-  again. Until then `docker pull` answers "denied". `glossdb/glossql`
+  again. Until then `docker pull` answers "denied". `glossdb/glossdb`
   is public.
 - The bump PR can fail `cargo deny check` on an advisory published
   since the last green run on `main`: the tree did not move, the

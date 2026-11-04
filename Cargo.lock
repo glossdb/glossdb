@@ -1078,7 +1078,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "glossql-apps"
+name = "glossdb-apps"
 version = "0.3.0"
 dependencies = [
  "arrow",
@@ -1086,7 +1086,7 @@ dependencies = [
  "arrow-json",
  "axum",
  "futures",
- "glossql-duck",
+ "glossdb-duck",
  "serde",
  "serde_json",
  "tempfile",
@@ -1098,7 +1098,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "glossql-duck"
+name = "glossdb-duck"
 version = "0.3.0"
 dependencies = [
  "arrow",
@@ -1112,7 +1112,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "glossql-serverd"
+name = "glossdb-serverd"
 version = "0.3.0"
 dependencies = [
  "arrow",
@@ -1123,8 +1123,8 @@ dependencies = [
  "dotenvy",
  "ed25519-dalek",
  "futures",
- "glossql-apps",
- "glossql-duck",
+ "glossdb-apps",
+ "glossdb-duck",
  "jsonwebtoken",
  "oauth2",
  "opentelemetry",

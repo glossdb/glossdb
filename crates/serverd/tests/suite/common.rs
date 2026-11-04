@@ -11,7 +11,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::EncodePrivateKey;
-use glossql_serverd::{Endpoints, Gate, Login};
+use glossdb_serverd::{Endpoints, Gate, Login};
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde_json::{Value, json};
@@ -146,16 +146,16 @@ pub fn far_future() -> u64 {
 /// The same workspace on DuckDB: the extension and its kits from beside
 /// this checkout, the lake in the directory.
 /// The person the harness speaks as: the bootstrap actor.
-pub fn human() -> glossql_serverd::engine::Actor {
-    glossql_serverd::engine::Actor {
-        kind: glossql_serverd::engine::ActorKind::Human,
-        id: glossql_serverd::BOOTSTRAP.into(),
+pub fn human() -> glossdb_serverd::engine::Actor {
+    glossdb_serverd::engine::Actor {
+        kind: glossdb_serverd::engine::ActorKind::Human,
+        id: glossdb_serverd::BOOTSTRAP.into(),
     }
 }
 
-pub async fn scratch_plane() -> (tempfile::TempDir, glossql_serverd::Plane) {
+pub async fn scratch_plane() -> (tempfile::TempDir, glossdb_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
-    let config = glossql_serverd::engine::Config::laptop(dir.path());
-    let plane = glossql_serverd::Plane::open(config).await.unwrap();
+    let config = glossdb_serverd::engine::Config::laptop(dir.path());
+    let plane = glossdb_serverd::Plane::open(config).await.unwrap();
     (dir, plane)
 }

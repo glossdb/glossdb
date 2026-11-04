@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use base64::Engine;
-use glossql_serverd::engine::SessionError;
+use glossdb_serverd::engine::SessionError;
 
 /// Google's metadata server, which mints tokens for the attached
 /// service account.

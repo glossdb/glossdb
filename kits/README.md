@@ -15,8 +15,6 @@ the engine crate's suite on its own runner
 | `metrics` | the actual world: every applicable metric's cells at its floor or a coarser grain, read as `metric_series()` and described by `metric_axes()`; the ladder over the view's time column | `metrics/kit.test`; fixtures 26 and 28 of the extension's corpus |
 | `futures` | the forecast, scenario and plan worlds on the same read, answered by the model service: the walk's bands, the forecast, the scenario's estimate, the plan's judgement | `futures/kit.test`; `corpus/` here, fixtures 19 and 27 |
 
-Fixture 20, the misfit door, is a ruled form no kit builds yet.
-
 ## The worlds on the series read
 
 A scenario is a world on the series read (fixture 19): a FACT aspect
@@ -31,10 +29,7 @@ contract — a plan's numbers are a landed table, read by SQL
 as the actual's are — read as `metric_series(world := 'plan', plan :=
 '<name>')` under the metric it names, at the plan's own grain; an
 edition of a plan is an aspect of its own, and a plan aspect serves
-no cell of the actual world. Analyses stay operation-named
-reads — `misfit.<frame>()` (fixture 20) ranks a declared frame's
-rows against the frame itself — the frame is an ordinary QUERY gloss,
-the density kernel machinery; `metric_series()` serves the cells —
+no cell of the actual world. `metric_series()` serves the cells —
 every applicable metric at its floor or a coarser grain, computed at
 read from the metric's view and the claims on its columns, never
 recorded, except the forecast, scenario and plan worlds, which read

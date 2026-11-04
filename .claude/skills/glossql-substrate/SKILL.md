@@ -1,11 +1,11 @@
 ---
 name: glossql-substrate
-description: How to build ON DuckDB and the gloss extension rather than around them — what each owns, the seams, the rules that come with them, and the laptop's sharp edges. Use before writing or reviewing any server code that opens the engine, runs a statement, reads the record, or adds a read, a measurement or a route.
+description: How to build ON DuckDB and the glossql extension rather than around them — what each owns, the seams, the rules that come with them, and the laptop's sharp edges. Use before writing or reviewing any server code that opens the engine, runs a statement, reads the record, or adds a read, a measurement or a route.
 ---
 
 # The substrate
 
-glossql is a database built on DuckDB. The gloss extension owns the
+glossql is a database built on DuckDB. The glossql extension owns the
 language and the record; DuckLake owns the lake; this repository
 owns the doors. A read is SQL the engine plans, a kit is SQL the
 engine runs, a measurement is a SQL body the engine executes. Nothing
@@ -21,7 +21,7 @@ mode; this file is so nobody has to rediscover it.
 | topic | reference |
 |---|---|
 | the extension: grammar, store, subjects, reads, kits, conformance | `../gloss/README.md`, `../gloss/CONFORMANCE.md`, `../gloss/src/` headers |
-| the kits and their suites | the language's: `../gloss/kits/<kit>/kit.sql`, `../gloss/test/sql/gloss_kit_<kit>.test`; the server's: `kits/<kit>/kit.sql` and `kit.test` beside it, run by `crates/duck/src/sqllogic.rs` |
+| the kits and their suites | the language's: `../gloss/kits/<kit>/kit.sql`, `../gloss/test/sql/glossql_kit_<kit>.test`; the server's: `kits/<kit>/kit.sql` and `kit.test` beside it, run by `crates/duck/src/sqllogic.rs` |
 | DuckDB's SQL, the release the lock resolves | `vendor/duckdb/sql/` (served as `doc://vendor/duckdb/sql/…`) |
 | DuckDB's C API through Rust | the `duckdb-neo` crate at the version `Cargo.toml` names |
 | DuckLake: the catalog, snapshots, the data path | ducklake.select, the `ducklake` extension |
@@ -36,7 +36,7 @@ mode; this file is so nobody has to rediscover it.
   rule), the subjects (a dataset, a table, a column, a relationship,
   a source, a view and its columns), the lineage of views, the cells
   of a dataset (`dataset_cells`), a view kept per store version, the
-  service call (`gloss_service`), and the kit loader (`gloss_kit`).
+  service call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   witnesses, table macros that read the record and the views, and
   its routes for the `next` read. A kit is SQL, the language's in
@@ -84,7 +84,7 @@ mode; this file is so nobody has to rediscover it.
   call's soft form, `glossql.service_soft`, answers a refusal as
   `{"error": …}`; DuckDB's `TRY()` refuses volatile functions, so
   the soft form is the extension's.
-- **The extension is pinned.** `crates/duck/gloss.ref` names the
+- **The extension is pinned.** `crates/duck/glossql.ref` names the
   commit the build carries; the DuckDB release is the one `duckdb-neo`
   links, and the extension is built against the same one. A pin move
   is both at once, and the vendored guide follows.

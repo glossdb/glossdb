@@ -3,7 +3,7 @@
 # extension's and this repository's, in one directory), and the lake
 # extensions DuckDB loads at open
 # — on a distroless base; no model, no weights, no GPU. Built at a
-# release tag by the workflow and pushed to ghcr.io/glossdb/glossql;
+# release tag by the workflow and pushed to ghcr.io/glossdb/glossdb;
 # `docker build .` builds the same image from any checkout. The build
 # context is what the binary compiles and embeds (.dockerignore).
 # Both bases by digest, moved by Dependabot; the rust base carries the
@@ -11,45 +11,45 @@
 # cache mounts, so a rebuild compiles the workspace alone.
 
 # The extension, built from its own repository at the commit
-# crates/duck/gloss.ref names, against the DuckDB release the Rust side
+# crates/duck/glossql.ref names, against the DuckDB release the Rust side
 # compiles in; the lake is not built beside it (it is installed below).
 # One RUN, so the layer holds the loadable and the kits, not the build.
 FROM rust:1.98-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS extension
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake ninja-build python3 \
     && rm -rf /var/lib/apt/lists/*
-COPY crates/duck/gloss.ref /gloss.ref
-RUN git clone --filter=blob:none https://github.com/glossdb/gloss /gloss \
-    && cd /gloss && git checkout "$(cat /gloss.ref)" \
+COPY crates/duck/glossql.ref /glossql.ref
+RUN git clone --filter=blob:none https://github.com/glossdb/glossql /glossql \
+    && cd /glossql && git checkout "$(cat /glossql.ref)" \
     && git submodule update --init --depth 1 duckdb extension-ci-tools \
-    && GEN=ninja EXT_FLAGS=-DGLOSS_LAKE=OFF make release \
-    && mkdir -p /out/share/glossql \
-    && cp build/release/repository/v2.0.0/*/gloss.duckdb_extension /out/share/glossql/ \
-    && cp -r kits /out/share/glossql/kits \
-    && cp SPEC.md grammar.ebnf /out/share/glossql/ \
-    && rm -rf /gloss
+    && GEN=ninja EXT_FLAGS=-DGLOSSQL_LAKE=OFF make release \
+    && mkdir -p /out/share/glossdb \
+    && cp build/release/repository/v2.0.0/*/glossql.duckdb_extension /out/share/glossdb/ \
+    && cp -r kits /out/share/glossdb/kits \
+    && cp SPEC.md grammar.ebnf /out/share/glossdb/ \
+    && rm -rf /glossql
 
 # The Rust stage compiles DuckDB too (libduckdb-sys, bundled), so it
 # starts once the extension stage is done: two DuckDB builds at once
 # exhaust a builder's memory. The extension's share rides along and
 # leaves with the binary.
 FROM rust:1.98-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS build
-COPY --from=extension /out/share/glossql /out/share/glossql
+COPY --from=extension /out/share/glossdb /out/share/glossdb
 WORKDIR /src
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
-    cargo build --locked --release -p glossql-serverd \
+    cargo build --locked --release -p glossdb-serverd \
     && mkdir -p /out/bin \
-    && cp target/release/glossql /out/bin/glossql \
-    && cp -r kits/. /out/share/glossql/kits/
+    && cp target/release/glossdb /out/bin/glossdb \
+    && cp -r kits/. /out/share/glossdb/kits/
 # The lake extensions DuckDB loads at open — the lake itself, httpfs for
 # the model service and an object-store warehouse, postgres for a
 # catalog on a Postgres server — fetched from DuckDB's own repository
 # into the layout INSTALL keeps, so the image opens without reaching
 # it. The platform is DuckDB's name for this build's.
 RUN arch="$(uname -m)" && case "$arch" in x86_64) platform=linux_amd64 ;; aarch64) platform=linux_arm64 ;; esac \
-    && dir="/out/share/glossql/extensions/v2.0.0/${platform}" && mkdir -p "$dir" \
+    && dir="/out/share/glossdb/extensions/v2.0.0/${platform}" && mkdir -p "$dir" \
     && for ext in ducklake httpfs postgres_scanner; do \
          curl -fsSL "https://extensions.duckdb.org/v2.0.0/${platform}/${ext}.duckdb_extension.gz" \
          | gunzip > "$dir/${ext}.duckdb_extension"; \
@@ -62,8 +62,8 @@ RUN arch="$(uname -m)" && case "$arch" in x86_64) platform=linux_amd64 ;; aarch6
 # files. The distroless C-runtime image is exactly that, with an
 # unprivileged user and no shell or package manager.
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:3ee00291cf386ec52a552e6a858d555debd74776eb4bfa53fa3df2cd6677515e
-COPY --from=build /out/bin/glossql /usr/local/bin/glossql
-COPY --from=build /out/share/glossql /usr/local/share/glossql
+COPY --from=build /out/bin/glossdb /usr/local/bin/glossdb
+COPY --from=build /out/share/glossdb /usr/local/share/glossdb
 USER nonroot
 EXPOSE 8080
 # No workspace, no directory, no file: the state is the catalog and the
@@ -76,7 +76,7 @@ EXPOSE 8080
 # bound 6 GiB of the disk, the rest to the writable layer. They are
 # variables, so a different box injects its own numbers beside the rest
 # of its environment.
-ENV GLOSSQL_ADDR=0.0.0.0:8080 \
-    GLOSSQL_MEMORY_LIMIT=6144 \
-    GLOSSQL_SPILL_LIMIT=6144
-CMD ["/usr/local/bin/glossql"]
+ENV GLOSSDB_ADDR=0.0.0.0:8080 \
+    GLOSSDB_MEMORY_LIMIT=6144 \
+    GLOSSDB_SPILL_LIMIT=6144
+CMD ["/usr/local/bin/glossdb"]

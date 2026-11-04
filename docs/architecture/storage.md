@@ -2,13 +2,13 @@
 
 A workspace is a DuckLake: a catalog and the files it names. The
 catalog is the workspace directory's `catalog.ducklake` on a laptop,
-or the Postgres database `GLOSSQL_CATALOG_SQL` names in a deployment.
+or the Postgres database `GLOSSDB_CATALOG_SQL` names in a deployment.
 It holds two things side by side: the lake's own metadata — every
 landed table, its versions, each version's files — and the record,
 every relation the language declares as a table of rows
 ([store](store.md)). The files are parquet under the warehouse: the
 directory beside the catalog, or the object-store location
-`GLOSSQL_WAREHOUSE` names.
+`GLOSSDB_WAREHOUSE` names.
 
 ## The lake
 

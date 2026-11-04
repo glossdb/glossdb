@@ -62,7 +62,7 @@ never from the service.
 
 The server carries no model. The walk's call goes to the model
 service's bands route, the service named once for the instance,
-`GLOSSQL_SERVICE_URL` ([install](../start/install.md)), as JSON each
+`GLOSSDB_SERVICE_URL` ([install](../start/install.md)), as JSON each
 way. Without it the walk refuses by name. Every answer names the
 service and its version, and the measurement records it as
 `served_by`.

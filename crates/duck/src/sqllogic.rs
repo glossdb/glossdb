@@ -8,7 +8,7 @@
 //! fails for any other, so nothing is skipped. The engine is the
 //! server's own instance before the lake: a suite attaches its lake
 //! and loads the kits it tests. In the text, `{TEST_DIR}` is a
-//! directory of the suite's own, `{GLOSS_KITS}` the extension's kits
+//! directory of the suite's own, `{GLOSSQL_KITS}` the extension's kits
 //! and `{KITS}` this repository's.
 
 use std::path::Path;
@@ -18,7 +18,7 @@ use duckdb_neo::connection::Connection;
 use crate::{Config, arrow_batches, engine_instance, pieces, rows_as_text, run};
 
 /// The extensions the engine loads at open.
-const LOADED: &[&str] = &["gloss", "json", "parquet", "ducklake"];
+const LOADED: &[&str] = &["glossql", "json", "parquet", "ducklake"];
 
 enum Record {
     Require(String),
@@ -42,13 +42,13 @@ pub fn run_suite(suite: &Path, test_dir: &Path) -> Result<usize, String> {
     let text = std::fs::read_to_string(suite)
         .map_err(|e| at(e.to_string()))?
         .replace("{TEST_DIR}", &test_dir.display().to_string())
-        .replace("{GLOSS_KITS}", &pieces.gloss_kits.display().to_string())
+        .replace("{GLOSSQL_KITS}", &pieces.glossql_kits.display().to_string())
         .replace("{KITS}", &pieces.kits.display().to_string());
     let records = parse(&text).map_err(at)?;
     let config = Config::laptop(test_dir);
     let (_environment, _instance, conn) =
         engine_instance(&config).map_err(|e| at(e.to_string()))?;
-    run(&conn, "SET active_grammar_extensions = ['gloss']").map_err(|e| at(e.to_string()))?;
+    run(&conn, "SET active_grammar_extensions = ['glossql']").map_err(|e| at(e.to_string()))?;
     for (line, record) in &records {
         check(&conn, record).map_err(|why| format!("{}:{line}: {why}", suite.display()))?;
     }

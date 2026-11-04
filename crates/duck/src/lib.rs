@@ -1,4 +1,4 @@
-//! The engine. The gloss extension owns the language and the record,
+//! The engine. The glossql extension owns the language and the record,
 //! DuckLake the lake; this crate is the facade the doors use: a plane
 //! that opens the workspace, a channel per actor, statements executed
 //! and queries streamed as Arrow.
@@ -249,15 +249,15 @@ pub const DOORS: &[(&str, &str)] = &[];
 #[derive(Debug, Clone)]
 pub struct Caller(pub Actor);
 
-/// The model service, named once for the instance: `GLOSSQL_SERVICE_URL`
-/// its base, the route each call's own; `GLOSSQL_SERVICE_TOKEN` a key
-/// sent as-is, or `GLOSSQL_SERVICE_AUDIENCE` the audience an ID token is
+/// The model service, named once for the instance: `GLOSSDB_SERVICE_URL`
+/// its base, the route each call's own; `GLOSSDB_SERVICE_TOKEN` a key
+/// sent as-is, or `GLOSSDB_SERVICE_AUDIENCE` the audience an ID token is
 /// minted for by the platform this process runs on — the host mints and
 /// refreshes it through `Plane::token_sink`. Unnamed, every service call
 /// refuses by name.
-pub const SERVICE_URL: &str = "GLOSSQL_SERVICE_URL";
-pub const SERVICE_TOKEN: &str = "GLOSSQL_SERVICE_TOKEN";
-pub const SERVICE_AUDIENCE: &str = "GLOSSQL_SERVICE_AUDIENCE";
+pub const SERVICE_URL: &str = "GLOSSDB_SERVICE_URL";
+pub const SERVICE_TOKEN: &str = "GLOSSDB_SERVICE_TOKEN";
+pub const SERVICE_AUDIENCE: &str = "GLOSSDB_SERVICE_AUDIENCE";
 
 /// The model service as the environment names it.
 #[derive(Clone, Debug, Default)]
@@ -370,7 +370,7 @@ impl TokenSink {
         run(
             &conn,
             &format!(
-                "SET GLOBAL gloss_service_token = '{}'",
+                "SET GLOBAL glossql_service_token = '{}'",
                 token.replace('\'', "''")
             ),
         )
@@ -547,9 +547,9 @@ fn is_read(statement: &str) -> bool {
 /// Where the engine finds its pieces.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// The gloss extension, as a file to load.
+    /// The glossql extension, as a file to load.
     pub extension: PathBuf,
-    /// The kits, in order; each a script `gloss_kit` runs at open.
+    /// The kits, in order; each a script `glossql_kit` runs at open.
     pub kits: Vec<PathBuf>,
     /// Where DuckDB's own extensions — ducklake, httpfs, postgres —
     /// are installed; none, DuckDB's default under the home directory,
@@ -575,14 +575,14 @@ pub struct Config {
 /// The engine's spill files, and the files the export door writes:
 /// under the system's temporary directory, never beside the process.
 fn spill_dir() -> PathBuf {
-    std::env::temp_dir().join("glossql")
+    std::env::temp_dir().join("glossdb")
 }
 
-/// The extension's pieces beside a released binary: `<bin>/../share/glossql`,
+/// The extension's pieces beside a released binary: `<bin>/../share/glossdb`,
 /// the image's and the tarball's layout.
 fn share() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.parent()?.join("share/glossql"))
+    Some(exe.parent()?.parent()?.join("share/glossdb"))
 }
 
 /// The engine's pieces and where they are.
@@ -591,15 +591,15 @@ struct Pieces {
     /// The extension's kits: the language's examples, kpi and quality.
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
-    gloss_kits: PathBuf,
+    glossql_kits: PathBuf,
     /// This repository's kits, `kits/`: metrics and futures.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
 
 /// Where the extension, the kits and the lake extensions are: what
-/// `GLOSS_EXTENSION`, `GLOSS_KITS`, `GLOSSQL_KITS` and
-/// `GLOSS_EXTENSION_DIR` name; else the share directory beside the
+/// `GLOSSQL_EXTENSION`, `GLOSSQL_KITS`, `GLOSSDB_KITS` and
+/// `GLOSSQL_EXTENSION_DIR` name; else the share directory beside the
 /// binary where it holds them, whose one `kits` directory carries both
 /// roots' kits; else the dev tree: the sibling checkout's build and
 /// its kits, and `kits/` at this workspace's root.
@@ -607,29 +607,29 @@ fn pieces() -> Pieces {
     let gloss = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../gloss");
     let share = share();
     let beside = |name: &str| share.as_ref().map(|s| s.join(name)).filter(|p| p.exists());
-    let extension = std::env::var_os("GLOSS_EXTENSION")
+    let extension = std::env::var_os("GLOSSQL_EXTENSION")
         .map(PathBuf::from)
-        .or_else(|| beside("gloss.duckdb_extension"))
+        .or_else(|| beside("glossql.duckdb_extension"))
         .unwrap_or_else(|| {
             gloss.join(format!(
-                "build/release/repository/v2.0.0/{}/gloss.duckdb_extension",
+                "build/release/repository/v2.0.0/{}/glossql.duckdb_extension",
                 platform()
             ))
         });
-    let gloss_kits = std::env::var_os("GLOSS_KITS")
+    let glossql_kits = std::env::var_os("GLOSSQL_KITS")
         .map(PathBuf::from)
         .or_else(|| beside("kits"))
         .unwrap_or_else(|| gloss.join("kits"));
-    let kits = std::env::var_os("GLOSSQL_KITS")
+    let kits = std::env::var_os("GLOSSDB_KITS")
         .map(PathBuf::from)
         .or_else(|| beside("kits"))
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kits"));
-    let extension_dir = std::env::var_os("GLOSS_EXTENSION_DIR")
+    let extension_dir = std::env::var_os("GLOSSQL_EXTENSION_DIR")
         .map(PathBuf::from)
         .or_else(|| beside("extensions"));
     Pieces {
         extension,
-        gloss_kits,
+        glossql_kits,
         kits,
         extension_dir,
     }
@@ -641,7 +641,7 @@ fn pieces() -> Pieces {
 /// share and the CI cache all keep them. A missing document is the
 /// caller's error to raise: the door serves nothing it cannot read.
 pub fn language_document(name: &str) -> std::io::Result<String> {
-    let kits = pieces().gloss_kits;
+    let kits = pieces().glossql_kits;
     let path = kits.parent().unwrap_or(&kits).join(name);
     std::fs::read_to_string(&path)
         .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))
@@ -655,8 +655,8 @@ impl Config {
         Config {
             extension: pieces.extension,
             kits: vec![
-                pieces.gloss_kits.join("kpi/kit.sql"),
-                pieces.gloss_kits.join("quality/kit.sql"),
+                pieces.glossql_kits.join("kpi/kit.sql"),
+                pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("metrics/kit.sql"),
                 pieces.kits.join("futures/kit.sql"),
             ],
@@ -769,7 +769,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         "ds AS (SELECT dataset FROM {LAKE}.glossql.current_dataset), \
          axes AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.metric_axes()), \
          owed AS MATERIALIZED (SELECT * FROM {LAKE}.glossql.owed), \
-         reds AS MATERIALIZED (SELECT subject, witness FROM gloss_attest(current_schema(), NULL) WHERE band = 'red'), \
+         reds AS MATERIALIZED (SELECT subject, witness FROM glossql_attest(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
            SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
            FROM {LAKE}.glossql.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
@@ -995,14 +995,14 @@ impl Plane {
                     run(
                         &conn,
                         &format!(
-                            "SET GLOBAL gloss_service_url = '{}'",
+                            "SET GLOBAL glossql_service_url = '{}'",
                             service.url.replace('\'', "''")
                         ),
                     )?;
                     run(
                         &conn,
                         &format!(
-                            "SET GLOBAL gloss_service_token = '{}'",
+                            "SET GLOBAL glossql_service_token = '{}'",
                             service
                                 .token
                                 .as_deref()
@@ -1028,13 +1028,13 @@ impl Plane {
                     ),
                 )?;
                 run(&conn, &format!("USE {LAKE}"))?;
-                run(&conn, "SET active_grammar_extensions = ['gloss']")?;
-                run(&conn, "PRAGMA gloss")?;
+                run(&conn, "SET active_grammar_extensions = ['glossql']")?;
+                run(&conn, "PRAGMA glossql")?;
                 for statement in split_statements(CORE) {
                     run(&conn, &statement)?;
                 }
                 for kit in &config.kits {
-                    run(&conn, &format!("FROM gloss_kit('{}')", kit.display()))
+                    run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
                 for statement in split_statements(DOOR) {
@@ -1145,14 +1145,20 @@ impl Plane {
             move || -> Result<Connection, SessionError> {
                 let conn = instance.connect()?;
                 run(&conn, &format!("USE {LAKE}"))?;
-                run(&conn, "SET active_grammar_extensions = ['gloss']")?;
+                run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(
                     &conn,
-                    &format!("SET VARIABLE gloss_actor = '{}'", kind.replace('\'', "''")),
+                    &format!(
+                        "SET VARIABLE glossql_actor = '{}'",
+                        kind.replace('\'', "''")
+                    ),
                 )?;
                 run(
                     &conn,
-                    &format!("SET VARIABLE gloss_actor_id = '{}'", id.replace('\'', "''")),
+                    &format!(
+                        "SET VARIABLE glossql_actor_id = '{}'",
+                        id.replace('\'', "''")
+                    ),
                 )?;
                 if let Some(dataset) = &dataset {
                     run(&conn, &format!("USE {LAKE}.{}", quote_name(dataset))).map_err(|_| {
@@ -1533,7 +1539,7 @@ impl Session {
             .batches(
                 &format!(
                     "SELECT DISTINCT m.function, m.subject \
-                     FROM gloss_glossary(current_schema(), NULL, true) r \
+                     FROM glossql_glossary(current_schema(), NULL, true) r \
                      JOIN {LAKE}.glossql.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
                      WHERE r.actor = 'function' AND NOT r.current \
                      UNION \
@@ -1898,7 +1904,7 @@ mod tests {
             )
             .await
             .expect("a channel");
-        let read = "SELECT current_setting('gloss_service_url'), current_setting('gloss_service_token'), \
+        let read = "SELECT current_setting('glossql_service_url'), current_setting('glossql_service_token'), \
                     (SELECT loaded FROM duckdb_extensions() WHERE extension_name = 'httpfs')";
         let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
         assert_eq!(
@@ -1929,7 +1935,7 @@ mod tests {
             .expect("a channel");
         let rows = rows_as_text(
             &channel
-                .batches("SELECT current_setting('gloss_service_url')", &[])
+                .batches("SELECT current_setting('glossql_service_url')", &[])
                 .await
                 .expect("reads"),
         );

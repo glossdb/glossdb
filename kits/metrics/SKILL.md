@@ -1,6 +1,6 @@
 ---
-name: gloss-metrics
-description: The metrics kit for a gloss workspace — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over periods and slices, the no-claim refusal, the ladder on a time column, facts and sources. Use after gloss_kit('kits/metrics/kit.sql') to ground metrics and read their numbers.
+name: glossdb-metrics
+description: The metrics kit for a gloss workspace — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over periods and slices, the no-claim refusal, the ladder on a time column, facts and sources. Use after glossql_kit('kits/metrics/kit.sql') to ground metrics and read their numbers.
 ---
 
 # The metrics kit: what it teaches
@@ -16,9 +16,9 @@ serve it as the record does.
 ## Load and check
 
 ```sql
-FROM gloss_kit('kits/kpi/kit.sql');
-FROM gloss_kit('kits/quality/kit.sql');
-FROM gloss_kit('kits/metrics/kit.sql');    -- the same three lines in the opener
+FROM glossql_kit('kits/kpi/kit.sql');
+FROM glossql_kit('kits/quality/kit.sql');
+FROM glossql_kit('kits/metrics/kit.sql');    -- the same three lines in the opener
 SELECT * FROM glossql.metric_axes();       -- one row per metric: what its columns say
 ```
 

@@ -10,15 +10,15 @@ use arrow::array::Float64Array;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use glossql_apps::engine::{Actor, ActorKind};
-use glossql_apps::engine::{Caller, Plane};
+use glossdb_apps::engine::{Actor, ActorKind};
+use glossdb_apps::engine::{Caller, Plane};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
 
 async fn open_plane(dir: &std::path::Path) -> Plane {
-    Plane::open(glossql_apps::engine::Config::laptop(dir))
+    Plane::open(glossdb_apps::engine::Config::laptop(dir))
         .await
         .unwrap()
 }
@@ -80,12 +80,12 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     // verified caller in the request; here the layer stands in for it,
     // with human standing, as the gate stamps on a human door.
     let router = Router::new()
-        .merge(glossql_apps::root_router(Arc::clone(&plane), ORIGIN))
+        .merge(glossdb_apps::root_router(Arc::clone(&plane), ORIGIN))
         .nest(
             "/{dataset}/app",
-            glossql_apps::router(Arc::clone(&plane), ORIGIN),
+            glossdb_apps::router(Arc::clone(&plane), ORIGIN),
         )
-        .nest("/assets", glossql_apps::assets_router())
+        .nest("/assets", glossdb_apps::assets_router())
         .layer(axum::Extension(Caller(Actor {
             kind: ActorKind::Human,
             id: "ada".into(),
@@ -97,7 +97,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
 /// cut from its core: re-declared here, it is a no-op, and the tests
 /// keep one shape on both engines.
 fn shipped_ruling_declaration() -> &'static str {
-    let kit = glossql_apps::engine::CORE;
+    let kit = glossdb_apps::engine::CORE;
     let start = kit
         .find("DECLARE ASPECT ruling")
         .expect("the kit ships the ruling aspect");
@@ -112,7 +112,7 @@ fn shipped_ruling_declaration() -> &'static str {
 /// `app_spec` — cut from the core the same way, so the door serves the
 /// parts a real workspace writes.
 fn shipped_app_declarations() -> &'static str {
-    let kit = glossql_apps::engine::CORE;
+    let kit = glossdb_apps::engine::CORE;
     let start = kit
         .find("DECLARE ASPECT app WITH")
         .expect("the kit ships the app aspects");
@@ -341,7 +341,7 @@ async fn a_release_gates_what_the_door_serves() {
         .execute("SELECT min(written_at) FROM glossary WHERE aspect = 'app_release';")
         .await
         .unwrap();
-    let glossql_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
         panic!("a read answers rows")
     };
     let first_at = arrow::util::display::array_value_to_string(batches[0].column(0), 0).unwrap();
@@ -357,7 +357,7 @@ async fn a_release_gates_what_the_door_serves() {
         .execute("SELECT app, note, \"at\" FROM app_releases;")
         .await
         .unwrap();
-    let glossql_apps::engine::Outcome::Rows { batches, .. } = &released[0] else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = &released[0] else {
         panic!("a read answers rows")
     };
     let cell =
@@ -430,7 +430,7 @@ async fn a_page_body_is_markup_not_script() {
         .to_str()
         .unwrap()
         .to_string();
-    assert_eq!(policy, glossql_apps::CONTENT_SECURITY_POLICY);
+    assert_eq!(policy, glossdb_apps::CONTENT_SECURITY_POLICY);
     // What the policy must say, whatever else it comes to say: script
     // from this origin's files alone, no eval, no object, no moved
     // base, no form posting elsewhere.
@@ -453,7 +453,7 @@ async fn a_page_body_is_markup_not_script() {
         let response = get(&app, uri).await;
         assert_eq!(
             response.headers()[header::CONTENT_SECURITY_POLICY],
-            glossql_apps::CONTENT_SECURITY_POLICY,
+            glossdb_apps::CONTENT_SECURITY_POLICY,
             "{uri}"
         );
     }
@@ -701,7 +701,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
         .execute("SELECT actor_id FROM glossary WHERE aspect = 'ruling' AND actor_kind = 'human';")
         .await
         .unwrap();
-    let glossql_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
+    let glossdb_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
         panic!("expected rows");
     };
     let batch = batches.iter().find(|b| b.num_rows() > 0).unwrap();
@@ -723,7 +723,7 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
 
     // Every refusal at once, so one run says what the port still owes.
     let mut refused = Vec::new();
-    for builtin in glossql_apps::BUILTINS {
+    for builtin in glossdb_apps::BUILTINS {
         for (path, _) in builtin.files {
             let Some(stem) = path
                 .strip_prefix("frames/")
@@ -2216,7 +2216,7 @@ async fn the_lineage_page_draws_the_record() {
 /// answer again.
 #[tokio::test]
 async fn an_unchanged_asset_revalidates_without_its_body() {
-    let assets = glossql_apps::assets_router();
+    let assets = glossdb_apps::assets_router();
     let first = get(&assets, "/app.css").await;
     assert_eq!(first.status(), StatusCode::OK);
     assert_eq!(first.headers()[header::CACHE_CONTROL], "no-cache");
@@ -2270,7 +2270,7 @@ async fn every_documented_tile_is_shipped() {
     tiles.dedup();
     assert!(tiles.len() >= 5, "{tiles:?}");
 
-    let assets = Router::new().nest("/assets", glossql_apps::assets_router());
+    let assets = Router::new().nest("/assets", glossdb_apps::assets_router());
     for tile in tiles {
         let script = format!("/assets/gl-{tile}.js");
         assert!(SHELL.contains(&script), "the shell loads no {script}");
