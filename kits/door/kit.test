@@ -38,12 +38,12 @@ statement ok
 FROM glossql_kit('{KITS}/door/kit.sql');
 
 query I
-SELECT count(*) FROM glossql.owed;
+SELECT count(*) FROM owed;
 ----
 0
 
 query I
-SELECT count(*) > 0 FROM glossql.routes_core();
+SELECT count(*) > 0 FROM routes_core();
 ----
 true
 
@@ -53,6 +53,6 @@ FROM glossql_kit('{KITS}/door/kit.sql');
 door	stands
 
 query I
-SELECT count(*) FROM glossql.kits;
+SELECT count(*) FROM kits;
 ----
 6

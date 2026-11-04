@@ -3,7 +3,7 @@
 Every relation the language declares — glosses, functions, aspects,
 witnesses, sources, recipes, relationships, measurements, imports —
 is a table in the lake's catalog, beside the lake's own metadata, and
-the engine serves each as a view, `ws.glossql.<relation>`
+the engine serves each as a view in the lake's `main` schema, `ws.main.<relation>`, bare from any dataset in use
 ([storage](storage.md)). The record the language keeps sits beside
 the rows that name the data.
 

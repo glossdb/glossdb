@@ -23,17 +23,17 @@ statement ok
 FROM glossql_kit('{KITS}/core/kit.sql');
 
 query I
-SELECT count(*) FROM glossql.aspects WHERE name IN ('recipe_change', 'ruling', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
+SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'ruling', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
 ----
 7
 
 query I
-SELECT count(*) FROM glossql.open_questions;
+SELECT count(*) FROM open_questions;
 ----
 0
 
 query I
-SELECT count(*) FROM glossql.ruling_entries;
+SELECT count(*) FROM ruling_entries;
 ----
 0
 
@@ -44,6 +44,6 @@ FROM glossql_kit('{KITS}/core/kit.sql');
 core	stands
 
 query I
-SELECT count(*) FROM glossql.kits WHERE name = 'core';
+SELECT count(*) FROM kits WHERE name = 'core';
 ----
 1

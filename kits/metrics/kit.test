@@ -50,12 +50,12 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 # --- the fact row: what the view's columns owe before anything is said
 
 query TTTT
-SELECT metric, applicable, reason, unadmitted FROM glossql.metric_axes();
+SELECT metric, applicable, reason, unadmitted FROM metric_axes();
 ----
 spend	false	no column carries role timestamp: gloss role on the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
 
 query T
-SELECT owed[1] FROM glossql.metric_axes();
+SELECT owed[1] FROM metric_axes();
 ----
 GLOSS role ON fin.spend.period AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;
 
@@ -76,7 +76,7 @@ GLOSS role ON spend.object AS $${"value": "dimension"}$$;
 
 # the roles stand and no cadence does: the row wants the profile
 query TTTT
-SELECT applicable, reason, dims, wanted FROM glossql.metric_axes();
+SELECT applicable, reason, dims, wanted FROM metric_axes();
 ----
 false	no cadence stands on period: SELECT temporal() FROM fin.spend.period, or gloss ladder with a floor	[fund, object]	[temporal over fin.spend.period]
 
@@ -84,14 +84,14 @@ statement ok
 SELECT temporal() FROM spend.period;
 
 query TTTTTTTTTT
-SELECT applicable, period_column, value_column, cadence, floor, rung, behavior, behavior_state, dims, judged_current FROM glossql.metric_axes();
+SELECT applicable, period_column, value_column, cadence, floor, rung, behavior, behavior_state, dims, judged_current FROM metric_axes();
 ----
 true	period	value	month	month	48	NULL	none	[fund, object]	true
 
 # --- the no-claim rule: rows have to be combined and nobody said how
 
 statement error
-SELECT * FROM glossql.metric_series();
+SELECT * FROM metric_series();
 ----
 no behaviour stands on fin.spend.value, and spend serves several rows in one period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
 
@@ -100,7 +100,7 @@ GLOSS behavior ON spend.value AS $${"value": "flow"}$$;
 
 # the total at the floor, by the primary slice, at a coarser grain; a finer grain serves no rows
 query TTTR
-SELECT metric, dimension, period::DATE, value FROM glossql.metric_series() WHERE dimension = '' ORDER BY period;
+SELECT metric, dimension, period::DATE, value FROM metric_series() WHERE dimension = '' ORDER BY period;
 ----
 spend	(empty)	2024-01-01	118.0
 spend	(empty)	2024-02-01	116.0
@@ -108,7 +108,7 @@ spend	(empty)	2024-03-01	130.0
 spend	(empty)	2024-04-01	113.0
 
 query TTR
-SELECT member, period::DATE, value FROM glossql.metric_series() WHERE dimension = 'fund' AND member = 'water' ORDER BY period;
+SELECT member, period::DATE, value FROM metric_series() WHERE dimension = 'fund' AND member = 'water' ORDER BY period;
 ----
 water	2024-01-01	36.0
 water	2024-02-01	42.0
@@ -116,13 +116,13 @@ water	2024-03-01	41.0
 water	2024-04-01	40.0
 
 query TTR
-SELECT world, period::DATE, value FROM glossql.metric_series(grain := 'quarter') WHERE dimension = '' ORDER BY period;
+SELECT world, period::DATE, value FROM metric_series(grain := 'quarter') WHERE dimension = '' ORDER BY period;
 ----
 actual	2024-01-01	364.0
 actual	2024-04-01	113.0
 
 query I
-SELECT count(*) FROM glossql.metric_series(grain := 'day');
+SELECT count(*) FROM metric_series(grain := 'day');
 ----
 0
 
@@ -131,7 +131,7 @@ statement ok
 DELETE FROM fin.ledger WHERE booked >= DATE '2024-02-01' AND booked < DATE '2024-03-01';
 
 query TR
-SELECT period::DATE, value FROM glossql.metric_series() WHERE dimension = '' ORDER BY period;
+SELECT period::DATE, value FROM metric_series() WHERE dimension = '' ORDER BY period;
 ----
 2024-01-01	118.0
 2024-02-01	0.0
@@ -161,7 +161,7 @@ statement ok
 GLOSS behavior ON reach.value AS $${"value": "stock"}$$;
 
 query TTR
-SELECT metric, period::DATE, value FROM glossql.metric_series() WHERE dimension = '' AND period >= DATE '2024-04-01' ORDER BY metric, period;
+SELECT metric, period::DATE, value FROM metric_series() WHERE dimension = '' AND period >= DATE '2024-04-01' ORDER BY metric, period;
 ----
 reach	2024-06-01	7.0
 spend	2024-04-01	113.0
@@ -175,7 +175,7 @@ GLOSS reach ON fin AS $${"stopped": "one row, no series"}$$;
 
 # a field descends from the columns its derivation names; the summed value is computed, no column is its own
 query TTTT
-SELECT metric, field, source, table_name FROM glossql.metric_sources('spend') ORDER BY field NULLS FIRST;
+SELECT metric, field, source, table_name FROM metric_sources('spend') ORDER BY field NULLS FIRST;
 ----
 spend	NULL	NULL	ledger
 spend	fund	ledger.fund	ledger
@@ -213,7 +213,7 @@ statement ok
 GLOSS behavior ON headcount.value AS $${"value": "stock"}$$;
 
 query TR
-SELECT period::DATE, value FROM glossql.metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
+SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
 ----
 2024-01-01	14.0
 2024-02-01	16.0
@@ -221,7 +221,7 @@ SELECT period::DATE, value FROM glossql.metric_series() WHERE metric = 'headcoun
 2024-04-01	18.0
 
 query TTTR
-SELECT dimension, member, period::DATE, value FROM glossql.metric_series(grain := 'quarter') WHERE metric = 'headcount' ORDER BY dimension, member, period;
+SELECT dimension, member, period::DATE, value FROM metric_series(grain := 'quarter') WHERE metric = 'headcount' ORDER BY dimension, member, period;
 ----
 (empty)	(empty)	2024-01-01	17.0
 (empty)	(empty)	2024-04-01	18.0
@@ -259,13 +259,13 @@ statement ok
 SELECT temporal() FROM win_rate.period;
 
 query TTRRR
-SELECT dimension, period::DATE, value, num, den FROM glossql.metric_series() WHERE metric = 'win_rate' AND dimension = '' ORDER BY period;
+SELECT dimension, period::DATE, value, num, den FROM metric_series() WHERE metric = 'win_rate' AND dimension = '' ORDER BY period;
 ----
 (empty)	2024-01-01	0.8333333333333334	5.0	6.0
 (empty)	2024-02-01	0.16666666666666666	1.0	6.0
 
 query TTRRR
-SELECT member, period::DATE, value, num, den FROM glossql.metric_series(grain := 'quarter') WHERE metric = 'win_rate' ORDER BY dimension, member;
+SELECT member, period::DATE, value, num, den FROM metric_series(grain := 'quarter') WHERE metric = 'win_rate' ORDER BY dimension, member;
 ----
 (empty)	2024-01-01	0.5	6.0	12.0
 ops	2024-01-01	0.5	4.0	8.0
@@ -277,12 +277,12 @@ statement ok
 GLOSS ladder ON headcount.period AS $${"floor": "quarter", "windows": {"quarter": 1}}$$;
 
 query TTI
-SELECT cadence, floor, rung FROM glossql.metric_axes() WHERE metric = 'headcount';
+SELECT cadence, floor, rung FROM metric_axes() WHERE metric = 'headcount';
 ----
 month	quarter	1
 
 query TR
-SELECT period::DATE, value FROM glossql.metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
+SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
 ----
 2024-04-01	18.0
 
@@ -292,7 +292,7 @@ statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n * 1 AS value, dept FROM fin.levels"}$$;
 
 query TTTT
-SELECT applicable, judged_current, behavior, behavior_state FROM glossql.metric_axes() WHERE metric = 'headcount';
+SELECT applicable, judged_current, behavior, behavior_state FROM metric_axes() WHERE metric = 'headcount';
 ----
 true	false	stock	stale
 
@@ -305,12 +305,12 @@ statement ok
 GLOSS fte_cap ON fin AS $${"sql": "SELECT 40 AS value"}$$;
 
 query TRT
-SELECT * FROM glossql.fact_values();
+SELECT * FROM fact_values();
 ----
 fte_cap	40.0	NULL
 
 query TT
-SELECT applicable, reason FROM glossql.metric_axes() WHERE metric = 'fte_cap';
+SELECT applicable, reason FROM metric_axes() WHERE metric = 'fte_cap';
 ----
 false	a fact serves one number, read through fact_values()
 
@@ -318,12 +318,12 @@ statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;
 
 query TT
-SELECT applicable, reason FROM glossql.metric_axes() WHERE metric = 'win_rate';
+SELECT applicable, reason FROM metric_axes() WHERE metric = 'win_rate';
 ----
 false	stopped: offers are not booked before 2024
 
 query I
-SELECT count(*) FROM glossql.metric_series() WHERE metric = 'win_rate';
+SELECT count(*) FROM metric_series() WHERE metric = 'win_rate';
 ----
 0
 
@@ -333,11 +333,11 @@ statement ok
 GLOSS behavior ON headcount.value AS $${"value": "none"}$$;
 
 query I
-SELECT count(DISTINCT metric) FROM glossql.metric_series(unclaimed := 'skip');
+SELECT count(DISTINCT metric) FROM metric_series(unclaimed := 'skip');
 ----
 1
 
 statement error
-SELECT count(*) FROM glossql.metric_series();
+SELECT count(*) FROM metric_series();
 ----
 the behaviour on fin.headcount.value is none, so its rows do not combine

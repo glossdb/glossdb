@@ -31,7 +31,7 @@ mode; this file is so nobody has to rediscover it.
 
 - **The extension** owns the statements of the language (parsed by
   its grammar on DuckDB's parser), the store (the relations as tables
-  in the lake's catalog, served as `ws.glossql.*`), the record read
+  in the lake's catalog, served as views in `ws.main`), the record read
   (`GLOSSARY()`, `ATTEST()`, the collapse, the witnesses, the stale
   rule), the subjects (a dataset, a table, a column, a relationship,
   a source, a view and its columns), the lineage of views, the cells
@@ -59,8 +59,8 @@ mode; this file is so nobody has to rediscover it.
 - **One instance, a connection per call.** The instance holds the
   extension, the lake and the kits. A channel is a connection with
   the grammar on, the actor as session variables the extension reads,
-  the dataset in use and a search path of the dataset's schema and
-  the store's. No door keeps a cursor.
+  the dataset in use; the record reads bare, since the lake's `main`
+  schema is on every search path. No door keeps a cursor.
 - **A read never writes.** The record read and the kept views are
   computed once per store version — the lake's snapshot and every
   relation's highest sequence — and served from the object cache; a

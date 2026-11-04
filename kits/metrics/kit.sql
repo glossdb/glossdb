@@ -40,14 +40,14 @@ DECLARE ASPECT ladder WITH $${
 DECLARE WITNESS ladder_w ON ladder BY (AGENT, HUMAN);
 
 -- The grains in order, a bucket's step, and the kit's rung per grain.
-CREATE OR REPLACE MACRO glossql.grain_rank(g) AS
+CREATE OR REPLACE MACRO main.grain_rank(g) AS
   CASE g WHEN 'minute' THEN 1 WHEN 'hour' THEN 2 WHEN 'day' THEN 3 WHEN 'week' THEN 4
          WHEN 'month' THEN 5 WHEN 'quarter' THEN 6 WHEN 'year' THEN 7 END;
-CREATE OR REPLACE MACRO glossql.grain_step(g) AS
+CREATE OR REPLACE MACRO main.grain_step(g) AS
   CASE g WHEN 'minute' THEN INTERVAL 1 MINUTE WHEN 'hour' THEN INTERVAL 1 HOUR WHEN 'day' THEN INTERVAL 1 DAY
          WHEN 'week' THEN INTERVAL 7 DAY WHEN 'month' THEN INTERVAL 1 MONTH WHEN 'quarter' THEN INTERVAL 3 MONTH
          WHEN 'year' THEN INTERVAL 1 YEAR END;
-CREATE OR REPLACE MACRO glossql.rung_default(g) AS
+CREATE OR REPLACE MACRO main.rung_default(g) AS
   CASE g WHEN 'minute' THEN 1440 WHEN 'hour' THEN 720 WHEN 'day' THEN 548 WHEN 'week' THEN 156
          WHEN 'month' THEN 48 WHEN 'quarter' THEN 40 WHEN 'year' THEN 20 END;
 
@@ -76,19 +76,19 @@ CREATE OR REPLACE MACRO glossql.rung_default(g) AS
 -- the profile over its period column.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.metric_axes() AS TABLE
+CREATE OR REPLACE MACRO main.metric_axes() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (
   SELECT name, schema FROM (
     SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-    FROM glossql.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+    FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
 views AS (
   SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
 bodies AS (
   SELECT aspect AS metric, body FROM (
     SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn
-    FROM glossql.glossary g, ds
+    FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
 cols AS (
   SELECT c.table_name AS metric, c.column_name AS col, c.ordinal_position AS pos
@@ -218,14 +218,14 @@ judged_plans AS (
   FROM plans)
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, cadence, floor,
-       CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, glossql.rung_default(floor)) END AS rung,
+       CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.rung_default(floor)) END AS rung,
        behavior, behavior_state, dims, unranked, unadmitted, owed, wanted, judged_current
 FROM judged
 UNION ALL
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, NULL AS cadence, covers AS floor, NULL AS rung,
        behavior, behavior_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
-       CASE WHEN reason IS NULL AND NOT EXISTS (SELECT 1 FROM glossql.measurements m
+       CASE WHEN reason IS NULL AND NOT EXISTS (SELECT 1 FROM main.measurements m
                                                 WHERE m.dataset = current_schema() AND m.function = 'metric_plan'
                                                   AND m.subject = current_schema() || '.' || judged_plans.metric)
             THEN ['metric_plan over ' || current_schema() || '.' || metric] ELSE []::VARCHAR[] END,
@@ -259,17 +259,17 @@ ORDER BY metric;
 -- such a metric serves no cell, and its fact row says what it owes.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.world_cells(w, p, s, g) AS TABLE
+CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS behavior
 WHERE false;
 
-CREATE OR REPLACE MACRO glossql.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
+CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.*, coalesce(grain, m.floor) AS at_grain
-  FROM glossql.metric_axes() m
+  FROM main.metric_axes() m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
-    AND (grain IS NULL OR glossql.grain_rank(grain) >= glossql.grain_rank(m.floor))),
+    AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
   SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
@@ -285,7 +285,7 @@ all_rows AS MATERIALIZED (
 -- combine (none) cannot be combined over rows
 combining AS (
   SELECT a.metric, a.value_column, a.behavior, a.behavior_state,
-         glossql.grain_rank(a.at_grain) > glossql.grain_rank(a.floor) AS coarser,
+         main.grain_rank(a.at_grain) > main.grain_rank(a.floor) AS coarser,
          count(*) > count(DISTINCT r.instant) AS shared
   FROM asked a JOIN all_rows r USING (metric)
   WHERE a.behavior IS NULL OR a.behavior = 'none'
@@ -320,7 +320,7 @@ edges AS (
   FROM own_edges),
 windowed AS (
   SELECT b.* FROM bucketed b JOIN edges e USING (metric)
-  WHERE b.period > e.edge - glossql.grain_step(e.at_grain) * e.rung),
+  WHERE b.period > e.edge - main.grain_step(e.at_grain) * e.rung),
 -- a stock's level in a bucket is what stands at the bucket's last instant: that instant, per stock metric and bucket,
 -- grouped rather than windowed, since a window over every row of every flow costs the read more than the rest
 levels AS (
@@ -335,7 +335,7 @@ total AS (
   FROM windowed w LEFT JOIN levels l USING (metric, period) GROUP BY w.metric, w.period, w.behavior),
 filled AS (
   SELECT e.metric, '' AS dimension, '' AS member, g.period, e.behavior, 0.0 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den
-  FROM edges e, unnest(generate_series(greatest(e.first, e.edge - glossql.grain_step(e.at_grain) * (e.rung - 1)), e.edge, glossql.grain_step(e.at_grain))) AS g(period)
+  FROM edges e, unnest(generate_series(greatest(e.first, e.edge - main.grain_step(e.at_grain) * (e.rung - 1)), e.edge, main.grain_step(e.at_grain))) AS g(period)
   WHERE e.behavior = 'flow'
     AND NOT EXISTS (SELECT 1 FROM total t WHERE t.metric = e.metric AND t.period = g.period)),
 long AS (
@@ -360,7 +360,7 @@ FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM
 WHERE refused.refusal IS NULL
 UNION ALL
 SELECT metric, world, dimension, member, period, value, num, den, behavior
-FROM glossql.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
+FROM main.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
 ORDER BY metric, dimension, member, period;
 
 --===------------------------------------------------------------------===--
@@ -369,8 +369,8 @@ ORDER BY metric, dimension, member, period;
 -- the view is one row with a value column, reason where it is not.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.fact_values() AS TABLE
-WITH facts AS (SELECT metric, stopped FROM glossql.metric_axes() WHERE kind = 'fact'),
+CREATE OR REPLACE MACRO main.fact_values() AS TABLE
+WITH facts AS (SELECT metric, stopped FROM main.metric_axes() WHERE kind = 'fact'),
 cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
@@ -394,9 +394,9 @@ ORDER BY f.metric;
 -- alone; a view that does not plan serves one row with reason.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.metric_sources(for_metric := NULL) AS TABLE
+CREATE OR REPLACE MACRO main.metric_sources(for_metric := NULL) AS TABLE
 WITH metrics AS (
-  SELECT m.metric FROM glossql.metric_axes() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
+  SELECT m.metric FROM main.metric_axes() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
 lineage AS (
   SELECT l.view AS metric, l."column" AS field, l.derivation, l.complete
   FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT metric FROM metrics)),
@@ -434,18 +434,18 @@ ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 -- slices: every applicable metric slices by its dimension columns.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO glossql.routes_metrics() AS TABLE
+CREATE OR REPLACE MACRO main.routes_metrics() AS TABLE
 SELECT $ctes$
 metrics_aspects AS (
   SELECT name, schema FROM (
     SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-    FROM glossql.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+    FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
 metrics_declared AS (
   SELECT name FROM metrics_aspects WHERE coalesce(json_extract_string(schema, '$.x-kind'), '') <> 'plan'),
 metrics_claimed AS (
   SELECT a.name FROM metrics_declared a, ds
-  WHERE EXISTS (SELECT 1 FROM glossql.glossary g WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = a.name)
-     OR EXISTS (SELECT 1 FROM glossql.glossary d WHERE d.dataset = ds.dataset AND d.subject = ds.dataset AND d.aspect = 'definitions'
+  WHERE EXISTS (SELECT 1 FROM main.glossary g WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = a.name)
+     OR EXISTS (SELECT 1 FROM main.glossary d WHERE d.dataset = ds.dataset AND d.subject = ds.dataset AND d.aspect = 'definitions'
                 AND json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL)),
 metrics_read_tables AS (
   SELECT DISTINCT split_part(path, '.', 2) AS table_name

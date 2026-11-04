@@ -19,7 +19,7 @@ serve it as the record does.
 FROM glossql_kit('kits/kpi/kit.sql');
 FROM glossql_kit('kits/quality/kit.sql');
 FROM glossql_kit('kits/metrics/kit.sql');    -- the same three lines in the opener
-SELECT * FROM glossql.metric_axes();       -- one row per metric: what its columns say
+SELECT * FROM metric_axes();       -- one row per metric: what its columns say
 ```
 
 ## A metric is a view, and its columns are subjects
@@ -51,7 +51,7 @@ GLOSS role ON spend.value AS $${"value": "measure"}$$;
 GLOSS behavior ON spend.value AS $${"value": "flow", "grounds": "a row is the amount booked in its month"}$$;
 GLOSS role ON spend.fund AS $${"value": "dimension"}$$;
 SELECT temporal() FROM fin.spend.period;
-SELECT * FROM glossql.metric_series() WHERE metric = 'spend';
+SELECT * FROM metric_series() WHERE metric = 'spend';
 ```
 
 ## The reads

@@ -13,31 +13,31 @@
 -- dataset with no voice while a metric is grounded; `fold-in`, a ruling
 -- whose key still stands below full confidence. Each row resolves by
 -- the act it names, never by a flag.
-CREATE OR REPLACE VIEW ws.glossql.owed AS
+CREATE OR REPLACE VIEW ws.main.owed AS
   WITH ds AS (SELECT current_schema() AS dataset),
   approvals AS (
     SELECT h.dataset, json_extract_string(h.body, '$.table') AS tbl, h.written_at
-    FROM ws.glossql.glossary h, ds
+    FROM ws.main.glossary h, ds
     WHERE h.dataset = ds.dataset AND h.aspect = 'recipe_change' AND h.actor_kind = 'human'),
   recipes AS (
     SELECT 'recipe' AS kind, a.tbl AS subject, 'recipe change on ' || a.tbl AS what,
            'approved — the re-declare has not run' AS why, a.written_at::VARCHAR AS since
     FROM approvals a
     WHERE a.tbl IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM ws.glossql.imports i
+      AND NOT EXISTS (SELECT 1 FROM ws.main.imports i
                       WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
   -- a human formula answer newer than the agent's standing grounding:
   -- the view keeps serving the recorded SQL until the agent recomposes it
   query_aspects AS (
-    SELECT name FROM ws.glossql.aspects
+    SELECT name FROM ws.main.aspects
     QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1 AND kind = 'QUERY'),
   standing AS (
-    SELECT g.dataset, g.subject, g.aspect, g.seq FROM ws.glossql.glossary g, ds
+    SELECT g.dataset, g.subject, g.aspect, g.seq FROM ws.main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind = 'agent'
       AND g.aspect IN (SELECT name FROM query_aspects)
     QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
   answered AS (
-    SELECT h.dataset, h.subject, h.body, h.seq, h.written_at FROM ws.glossql.glossary h, ds
+    SELECT h.dataset, h.subject, h.body, h.seq, h.written_at FROM ws.main.glossary h, ds
     WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'formulas' AND h.actor_kind = 'human'
     QUALIFY row_number() OVER (ORDER BY h.seq DESC) = 1),
   formulas AS (
@@ -54,11 +54,11 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
     SELECT 're-measure' AS kind, v.actor AS subject, 'stale voices from ' || v.actor AS what,
            'landed before the last change — run the function again, or the docket''s re-measure' AS why, '' AS since
     FROM (SELECT DISTINCT m.function AS actor FROM glossql_glossary(current_schema(), NULL, true) r
-          JOIN ws.glossql.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
+          JOIN ws.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
           WHERE r.actor = 'function' AND NOT r.current) v),
   wanted AS (
     SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
-    FROM (SELECT unnest(wanted) AS w FROM glossql.metric_axes())),
+    FROM (SELECT unnest(wanted) AS w FROM main.metric_axes())),
   unmeasured AS (
     SELECT 'never measured' AS kind, w.function AS subject,
            'never measured: ' || w.function || '() over ' || string_agg(w.over, ', ' ORDER BY w.over) AS what,
@@ -68,18 +68,18 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
     SELECT 'never measured' AS kind, f.name AS subject,
            'never measured: ' || f.name || '() over ' || ds.dataset AS what,
            'a witnessed measurement on the dataset with no voice — run the function' AS why, '' AS since
-    FROM ws.glossql.functions f, ds
-    JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM ws.glossql.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
+    FROM ws.main.functions f, ds
+    JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM ws.main.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
       ON a.name = f.returns
     WHERE (f.scope = 'GLOBAL' OR f.scope = ds.dataset) AND list_contains(a.grains, 'DATASET')
-      AND EXISTS (SELECT 1 FROM ws.glossql.witnesses w WHERE w.aspect = a.name)
-      AND EXISTS (SELECT 1 FROM ws.glossql.metric_surfaces s WHERE s.grounded)
-      AND NOT EXISTS (SELECT 1 FROM ws.glossql.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
+      AND EXISTS (SELECT 1 FROM ws.main.witnesses w WHERE w.aspect = a.name)
+      AND EXISTS (SELECT 1 FROM ws.main.metric_surfaces s WHERE s.grounded)
+      AND NOT EXISTS (SELECT 1 FROM ws.main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
     QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.seq DESC) = 1),
   foldins AS (
     SELECT 'fold-in' AS kind, r.aspect AS subject, 'ruling on ' || r.aspect AS what,
            'ruled (' || r.stance || ') — the fold-in has not run' AS why, r.written_at::VARCHAR AS since
-    FROM ws.glossql.ruling_entries r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
+    FROM ws.main.ruling_entries r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
   SELECT * FROM recipes
   UNION ALL SELECT * FROM formulas
   UNION ALL SELECT * FROM contests
@@ -93,7 +93,7 @@ CREATE OR REPLACE VIEW ws.glossql.owed AS
 -- futures kit bands and plan. Served as the arms' SQL text, like a kit's
 -- routes, over the relations the engine's next read takes once: ds,
 -- axes, owed, reds, bodies, applicable.
-CREATE OR REPLACE MACRO ws.glossql.routes_core() AS TABLE
+CREATE OR REPLACE MACRO ws.main.routes_core() AS TABLE
 SELECT '' AS ctes, $arms$
 SELECT 'structure' AS surface, 1 AS step, 'next' AS state, 'DECLARE SOURCE' AS act,
        'declare the source the files come from' AS say,
@@ -101,16 +101,16 @@ SELECT 'structure' AS surface, 1 AS step, 'next' AS state, 'DECLARE SOURCE' AS a
        'DECLARE SOURCE <name> SET (type: parquet, location: ''<the root the files sit under>'');' AS statement,
        '' AS "then"
 FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.imports i WHERE i.dataset = ds.dataset)
-  AND NOT EXISTS (SELECT 1 FROM ws.glossql.sources)
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.imports i WHERE i.dataset = ds.dataset)
+  AND NOT EXISTS (SELECT 1 FROM ws.main.sources)
 UNION ALL
 SELECT 'structure', 2, 'next', 'DECLARE RECIPE',
        'land the tables from ' || s.name,
        s.name || ' is declared and no table is landed; a recipe lands one table, typed, and nothing more',
        'DECLARE RECIPE <table> ON ' || ds.dataset || ' FROM ' || s.name || ' AS $$SELECT * FROM read_parquet(''<path under the root>'')$$;',
        ''
-FROM (SELECT DISTINCT name FROM ws.glossql.sources) s, ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.imports i WHERE i.dataset = ds.dataset)
+FROM (SELECT DISTINCT name FROM ws.main.sources) s, ds
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.imports i WHERE i.dataset = ds.dataset)
 UNION ALL
 SELECT 'structure', 3, 'next', 'detect_relationships',
        'run the relationship detector',
@@ -118,7 +118,7 @@ SELECT 'structure', 3, 'next', 'detect_relationships',
        'SELECT detect_relationships() FROM ' || ds.dataset,
        'SELECT * FROM relationship_candidates(' || chr(39) || ds.dataset || chr(39) || ')'
 FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.measurements m WHERE m.dataset = ds.dataset AND m.function = 'detect_relationships')
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.measurements m WHERE m.dataset = ds.dataset AND m.function = 'detect_relationships')
 UNION ALL
 SELECT 'structure', 4, 'next', 'DECLARE RELATIONSHIP',
        'declare the edges you judge from the candidates',
@@ -126,14 +126,14 @@ SELECT 'structure', 4, 'next', 'DECLARE RELATIONSHIP',
        'SELECT * FROM relationship_candidates(' || chr(39) || ds.dataset || chr(39) || ')',
        'DECLARE RELATIONSHIP <child>.<column> -> <parent>.<column>;'
 FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.relationships r WHERE r.dataset = ds.dataset)
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.relationships r WHERE r.dataset = ds.dataset)
 UNION ALL
 SELECT 'structure', 5, 'next', 'relationship_coherence',
        'run the coherence check over the declared edges',
        'edges declared and never checked: orphan rate, child before parent',
        'SELECT relationship_coherence() FROM ' || ds.dataset, ''
 FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.measurements m WHERE m.dataset = ds.dataset AND m.function = 'relationship_coherence')
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.measurements m WHERE m.dataset = ds.dataset AND m.function = 'relationship_coherence')
 UNION ALL
 SELECT 'structure', 6, 'done', '', '', 'tables landed, edges declared and checked', '', ''
 FROM ds
@@ -170,7 +170,7 @@ SELECT 'checks', 4, 'next', 'DECLARE WITNESS',
          || 'GLOSS <name>_check ON ' || ds.dataset || ' AS $${"outcome": "<what must hold>", "tolerance": <the rate you measured>}$$;',
        'SELECT <name>_check_fn() FROM ' || ds.dataset
 FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM ws.glossql.functions f WHERE f.scope = ds.dataset)
+WHERE NOT EXISTS (SELECT 1 FROM ws.main.functions f WHERE f.scope = ds.dataset)
 UNION ALL
 SELECT 'checks', 5, 'done', '', '', 'your own checks stand, every check ran, none is red', '', ''
 FROM ds
@@ -188,19 +188,19 @@ SELECT 'app', 2, 'next', 'GLOSS app',
          || 'GLOSS app_page ON review.index AS $${"html": "{% extends \"shell.html\" %}\n{% import \"modules/tiles.html\" as tiles %}\n{% block main %}\n<div class=\"tiles\">\n  {{ tiles::chart(frame=\"frames/series\", spec=\"specs/trend.vl.json\", title=\"By month\", chip=\"metric_series(grain := ''month'')\") }}\n</div>\n{% endblock %}\n"}$$;',
        '-- serves at /' || ds.dataset || '/app/review'
 FROM applicable m, ds
-WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM ws.glossql.app_parts p WHERE p.dataset = ds.dataset)
+WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM ws.main.app_parts p WHERE p.dataset = ds.dataset)
 UNION ALL
 SELECT 'app', 3, 'next', 'GLOSS app_page',
        'write the page of ' || p.app,
        p.app || ' stands without its page: the door serves index.html, so nothing is served yet; the frames and the specs are parts like it',
        'GLOSS app_page ON ' || p.app || '.index AS $${"html": "{% extends \"shell.html\" %}\n{% import \"modules/tiles.html\" as tiles %}\n{% block main %}\n<the page over the app''s frames and specs — the glossql-apps skill>\n{% endblock %}\n"}$$;',
        '-- serves at /' || ds.dataset || '/app/' || p.app
-FROM (SELECT DISTINCT p.app FROM ws.glossql.app_parts p, ds
+FROM (SELECT DISTINCT p.app FROM ws.main.app_parts p, ds
       WHERE p.dataset = ds.dataset
-        AND NOT EXISTS (SELECT 1 FROM ws.glossql.app_parts i WHERE i.dataset = p.dataset AND i.app = p.app AND i.path = 'index.html')) p, ds
+        AND NOT EXISTS (SELECT 1 FROM ws.main.app_parts i WHERE i.dataset = p.dataset AND i.app = p.app AND i.path = 'index.html')) p, ds
 UNION ALL
 SELECT 'app', 4, 'done', '', '', 'an app stands: /' || ds.dataset || '/app/' || p.app, '', ''
-FROM (SELECT DISTINCT app FROM ws.glossql.app_parts p, ds WHERE p.dataset = ds.dataset AND p.path = 'index.html') p, ds
+FROM (SELECT DISTINCT app FROM ws.main.app_parts p, ds WHERE p.dataset = ds.dataset AND p.path = 'index.html') p, ds
 UNION ALL
 SELECT 'app', 5, 'done', '', '', 'an app stands', '', ''
 FROM ds
@@ -211,7 +211,7 @@ SELECT 'rulings', 1, 'next', 'GLOSS query',
        '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "human-ruled"; an unclear stance is a reformulation under a new key' || chr(10)
          || 'GLOSS ' || r.aspect || ' ON ' || r.subject || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;',
        ''
-FROM ws.glossql.ruling_entries r LEFT JOIN bodies b ON b.metric = r.aspect, ds
+FROM ws.main.ruling_entries r LEFT JOIN bodies b ON b.metric = r.aspect, ds
 WHERE r.dataset = ds.dataset AND NOT r.folded_in
 UNION ALL
 SELECT 'rulings', 2, 'next', 'DECLARE RECIPE', 're-declare ' || o.subject || ' as approved', o.why,

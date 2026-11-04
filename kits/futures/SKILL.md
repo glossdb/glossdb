@@ -23,10 +23,10 @@ FROM glossql_kit('kits/quality/kit.sql');
 FROM glossql_kit('kits/metrics/kit.sql');
 FROM glossql_kit('kits/futures/kit.sql');
 SET GLOBAL glossql_service_url = 'http://127.0.0.1:8100';  -- the service, named once for the instance; the server names it from GLOSSDB_SERVICE_URL
-SELECT * FROM glossql.band_request();                    -- one row per metric: can the walk take it
+SELECT * FROM band_request();                    -- one row per metric: can the walk take it
 ```
 
-Every call goes through `glossql.service(route, body)`, one macro over
+Every call goes through `service(route, body)`, one macro over
 `glossql_service`. A suite stands in for the service by re-declaring the
 macro. Without a service named, a measurement refuses by name before any
 call goes out.
@@ -53,8 +53,8 @@ asked with.
 
 ```sql
 SELECT metric_bands() FROM fin;
-SELECT served_by, grain, score, band, threshold FROM glossql.band_verdict();
-SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM glossql.band_points() WHERE metric = 'spend';
+SELECT served_by, grain, score, band, threshold FROM band_verdict();
+SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = 'spend';
 ```
 
 `metric_bands` lands the service's verdict over every metric walked and,
@@ -68,8 +68,8 @@ serves one row with its reason.
 
 ```sql
 SELECT metric_forecast() FROM fin;
-SELECT step, span, to_go, period, p10, p50, p90, actual, landed, held_80, held_from FROM glossql.forecast_points() WHERE metric = 'sales';
-SELECT * FROM glossql.forecast_coverage();
+SELECT step, span, to_go, period, p10, p50, p90, actual, landed, held_80, held_from FROM forecast_points() WHERE metric = 'sales';
+SELECT * FROM forecast_coverage();
 ```
 
 One request per metric at its floor. The horizon is 31 days, 13 weeks,
@@ -96,9 +96,9 @@ levers. A period not named keeps a factor of one.
 DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
 GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;
 GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.1}, "basis": "the February price list"}]}$$;
-SELECT * FROM glossql.scenarios();
+SELECT * FROM scenarios();
 SELECT metric_scenario() FROM fin;
-SELECT metric, period, low, value, high FROM glossql.scenario_points('price_up');
+SELECT metric, period, low, value, high FROM scenario_points('price_up');
 ```
 
 `scenarios()` judges every scenario declared: glossed, every lever a
@@ -123,7 +123,7 @@ actual world; its numbers are read under the metric it names.
 ```sql
 DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS QUERY;
 GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
-SELECT plan, grain, label, value, actual, variance, low, expected, high, stands FROM glossql.plan_points() WHERE plan = 'sales_budget';
+SELECT plan, grain, label, value, actual, variance, low, expected, high, stands FROM plan_points() WHERE plan = 'sales_budget';
 SELECT metric_plan() FROM fin.sales_budget;
 ```
 
