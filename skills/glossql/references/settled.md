@@ -10,7 +10,7 @@ leaves the workspace, walk this map and run what answers it:
 | what values a column holds — range, nulls, distincts, top values | `column_profile()` |
 | outliers on a numeric column | `outlier_profile()` |
 | a date column's grain, span, gaps | `temporal()` — on a table's column and on a metric's period column alike; the cadence is the floor the series is served at |
-| **stock or flow — may it be summed** | your reading of the column's meaning and the table's grain, glossed as `behavior` on the column with its `grounds`; the witness bands disagreement, and a series over the column refuses to combine rows until a claim stands |
+| **stock or flow — may it be summed** | `behavior_evidence()` over the declared edges: the level reconciled against a related event table's movements per entity and period, with the anchor that decided; then your reading of the column's meaning and the table's grain, glossed as `behavior` on the column citing the anchor in `grounds`; the witness bands disagreement, and a series over the column refuses to combine rows until a claim stands |
 | **a sign convention** (source-signed vs natural) | the `conventions` gloss on the source, read before the first probe |
 | which columns join, and how well | `detect_relationships()`, then your anti-join judging; standing health is `relationship_coherence()` |
 | whether a column derives from siblings (a = b × c) | `detect_derivations()` |

@@ -50,6 +50,12 @@ judged by the actor):
   statistic confuses it with a real price move. A confirmed identity,
   re-checked on each landing, is the standing instrument for subtle
   corruption.
+- **`behavior_evidence`** — whether a numeric column is a stock or a
+  flow, reconciled against the movements a related event table carries
+  per entity and period over the declared edges, with the anchor that
+  decided and the fit of both readings. The judge reads it before
+  glossing `behavior`; it is never a voice in the slots
+  ([behavior](../methods/behavior.md)).
 - **`relationship_coherence`** — what each declared join asserts,
   measured: orphan rate (exact; catches invented-key shapes including
   the single repeated orphan that defeats rare-category counting) and

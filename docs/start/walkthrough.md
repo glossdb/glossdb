@@ -131,7 +131,10 @@ SELECT count(*) FROM work_orders w JOIN sites s ON w.site_id = s.id;
 Role first — the rest of a column's obligations derive from it. A
 stock/flow claim is the column's `behavior`, with its grounds: how
 the number combines over periods, read off the rows, never off a
-name.
+name. Where a declared edge reaches an event table, `SELECT
+behavior_evidence() FROM <table>.<column>` lands that reading as
+evidence first: the level reconciled against the movements, with the
+anchor that decided.
 
 ```glossql
 GLOSS meaning ON work_orders.duration_min AS $${"value": "on-site working time per visit, in minutes"}$$;
