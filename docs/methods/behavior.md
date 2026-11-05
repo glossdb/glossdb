@@ -54,10 +54,14 @@ The quality kit's `behavior_anchors` screen is SQL over the cells.
 It folds them to the anchor's grain, the coarser of the two sides'
 native grains, with a month beside a day, and scopes by year where
 the grain allows, since a cumulative that resets is a stock only
-inside its year. Movement candidates are the event table's numeric
-columns minus its identifiers, the legs of declared edges and
-integers distinct on nine filled rows in ten, and every ordered pair
-difference of them; those identifiers ride each anchor as
+inside its year. Movement candidates are what the record says are
+measures: the event table's columns whose `role` claim stands as
+measure, minus the legs of declared edges, and every ordered pair
+difference of them on a pool of eight terms or fewer. Nothing is
+guessed from a type. An event table with numeric columns and no
+measure glossed makes every anchor on it abstain with the act to
+take, gloss `role` on its columns; the table's identifiers, declared
+legs and key-shaped integers, ride each anchor as
 `identifier_columns`. One anchor per alignment and scope reads the
 measure's own shape instead: entities that never decrease over four
 periods or more at the native grain vote stock under the convention
@@ -83,9 +87,11 @@ a thousand entities, the screen answers in about a second.
   `viable_entities`, and the column gets an abstention, not a
   verdict. A calendar gap between kept cells makes the change span it
   and read as noise; the abstention covers that miss.
-- The verdict is per column against its dataset's declared edges. A
-  table with no edge to an event table, no time axis, or a column that
-  is no number is `applicable: false` with its reason.
+- The verdict is per column against its dataset's declared edges and
+  glossed roles. A table with no edge to an event table, no time axis,
+  a column that is no number, or an identifier, a leg of a declared
+  relationship or an integer distinct on nine filled rows in ten, is
+  `applicable: false` with its reason.
 - A flow that rises every period for every entity, with no movement
   column reconciling it, reads as a stock through the monotone
   anchor. The served convention says so, and the judge reads the
