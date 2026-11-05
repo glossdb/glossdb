@@ -38,13 +38,13 @@ CREATE OR REPLACE VIEW main.owed AS
     QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
   answered AS (
     SELECT h.dataset, h.subject, h.body, h.seq, h.written_at FROM main.glossary h, ds
-    WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'formulas' AND h.actor_kind = 'human'
+    WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'definitions' AND h.actor_kind = 'human'
     QUALIFY row_number() OVER (ORDER BY h.seq DESC) = 1),
   formulas AS (
     SELECT 'formula' AS kind, g.aspect AS subject, 'formula answer on ' || g.aspect AS what,
            'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
     FROM standing g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.seq > g.seq
-    WHERE json_extract(h.body, '$.formulas.' || g.aspect) IS NOT NULL),
+    WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   contests AS (
     SELECT 'contest' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,

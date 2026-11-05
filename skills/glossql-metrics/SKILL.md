@@ -117,7 +117,7 @@ abstains with your own text.
 | `references/land.md` | before the first `PROBE`: the topic, the cohort, landing what the topic needs and nothing more, and what to do with the dirt you find |
 | `references/structure.md` | once tables stand: what each table is, the join structure, the slice axes |
 | `references/vocabulary.md` | before glossing a column: role first, behavior with its grounds, unit |
-| `references/ground.md` | before writing a grounding: the two registries, the row-grain shape, ratios and stocks, keys on assumptions, the rival, what a basis must be, serve or stop |
+| `references/ground.md` | before writing a grounding: the handbook, the row-grain shape, ratios and stocks, keys on assumptions, the rival, what a basis must be, serve or stop |
 | `references/read-sql.md` | before any read over a metric: flows, stocks and ratios, what this engine has that postgres lacks, and the three refusals that cost most calls |
 | `references/validate.md` | when a number needs a check that says why it holds, and at the close — a reconciliation run by hand becomes a standing check |
 | `references/ladder.md` | when a metric's floor, window or axes are not what you expected, and after every ruling; the worlds beside the actual |

@@ -12,55 +12,51 @@ place, never both.
 DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
 ```
 
-**Two registries ship with the kit — gloss into them, never redeclare.**
-Both are FACT on the dataset, both keyed by the concept's own name.
+**One registry ships with the kit, the handbook — gloss into it, never
+redeclare.** `definitions` is FACT on the dataset, keyed by the
+concept's own name. An entry holds what the company revises: meaning,
+unit, owner, source, and for a derived metric its formula.
 
-`formulas` is a derived metric's **definition**: a window-generic
-expression over sibling concepts, with the window `w` as its one free
-variable. `[w]` reads the window as a flow, `[end of w]` as a stock,
-`[w-1]` is the previous one. It covers every window because it names
-none, and it is the ruled definition — the recorded SQL is one
-evaluation of it, not a replacement for it.
+The `formula` is the metric's **definition** over sibling concepts, a
+window-generic expression with the window `w` as its one free variable.
+`[w]` reads the window as a flow, `[end of w]` as a stock, `[w-1]` is
+the previous one. It covers every window because it names none, and it
+is the ruled definition: the recorded SQL is one evaluation of it, not
+a replacement for it. Operands name sibling concepts, plus
+window-derived constants like `days[w]`. Nothing validates them; a
+misspelled sibling is silent, so read your own operand names back
+against `SELECT name FROM aspects WHERE kind = 'query'`. A base
+concept that grounds as an extract has no formula.
 
-```glossql
-GLOSS formulas ON ops AS $${"formulas": {
-  "backlog_days": "backlog[end of w] / throughput[w] * days[w]",
-  "net_completions": "completions[w] - reopens[w]",
-  "throughput_growth": "(throughput[w] - throughput[w-1]) / throughput[w-1]"
-}}$$;
-```
-
-Operands name sibling concepts, plus window-derived constants like
-`days[w]`. Nothing validates them — a misspelled sibling is silent, so
-read your own operand names back against `SELECT name FROM aspects
-WHERE kind = 'query'`. A base concept that grounds as an extract has no
-formula and needs no entry.
-
-`definitions` is the **handbook content** — what the company revises:
-meaning, unit, owner, source. Whatever sits in a `WITH` blob cannot
-be corrected, contested or outranked once anything is glossed on the
-aspect. The blob keeps only the `title` display label and the
-`x-kind` tooling flag. A unit written in both copies goes stale in
-one. `x-kind` lives in the `DECLARE ASPECT` blob and nowhere else —
-the grounding body's schema refuses it.
+Whatever sits in a `WITH` blob cannot be corrected, contested or
+outranked once anything is glossed on the aspect. The blob keeps only
+the `title` display label and the `x-kind` tooling flag. A unit
+written in both copies goes stale in one. `x-kind` lives in the
+`DECLARE ASPECT` blob and nowhere else; the grounding body's schema
+refuses it.
 
 ```glossql
 GLOSS definitions ON ops AS $${"definitions": {
   "throughput": {"meaning": "work completed and accepted; counted at completion date",
                  "unit": "hours", "owner": "Operations", "source": "KPI handbook v3 §2"},
   "backlog_days": {"meaning": "open work expressed in days of current throughput",
-                   "unit": "days", "owner": "Operations", "source": "KPI handbook v3 §2"}
+                   "unit": "days", "owner": "Operations", "source": "KPI handbook v3 §2",
+                   "formula": "backlog[end of w] / throughput[w] * days[w]"},
+  "net_completions": {"meaning": "completions net of reopens", "unit": "count",
+                      "formula": "completions[w] - reopens[w]"},
+  "throughput_growth": {"meaning": "throughput against the previous window", "unit": "ratio",
+                        "formula": "(throughput[w] - throughput[w-1]) / throughput[w-1]"}
 }}$$;
 ```
 
-Each registry is a single gloss, so a write replaces the whole map.
+The registry is a single gloss, so a write replaces the whole map.
 Read what stands before adding to it — a second concept glossed blind
 drops the first one's entry:
 
 ```sql
 SELECT g.aspect, g.body FROM glossary g
 JOIN current_dataset d ON d.dataset = g.dataset
-WHERE g.aspect IN ('formulas', 'definitions') AND g.actor_kind = 'agent'
+WHERE g.aspect = 'definitions' AND g.actor_kind = 'agent'
 ORDER BY g.written_at DESC
 ```
 
@@ -147,7 +143,8 @@ dimension column. The write's row names the served columns no role
 stands on and the gloss each owes.
 
 A ratio is never drilled from its output rows. Drilling backlog days
-by region means **re-scoping its components per the `formulas` gloss**
+by region means **re-scoping its components per the `formula` in its
+handbook entry**
 — each operand evaluated at the new scope, then the formula applied
 per member. The recorded SQL below is that recomposition written down
 for one choice of axis; the formula is what it was written down from:

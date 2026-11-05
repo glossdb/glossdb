@@ -1,7 +1,7 @@
 -- One metric surface: the recorded grounding that serves — the winning
 -- slot, a human writing over the agent's — with the definitions entry's
--- unit and meaning, the kind, the SQL or the stop, who wrote it and
--- when, and the statement that re-records it.
+-- unit, meaning and formula, the kind, the SQL or the stop, who wrote it
+-- and when, and the statement that re-records it.
 WITH a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
@@ -16,10 +16,6 @@ w AS (
 d AS (
   SELECT g.body FROM glossary g JOIN current_dataset c ON c.dataset = g.dataset
   WHERE g.subject = c.dataset AND g.aspect = 'definitions' AND g.actor_kind IN ('human', 'agent')
-  QUALIFY row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) = 1),
-f AS (
-  SELECT g.body FROM glossary g JOIN current_dataset c ON c.dataset = g.dataset
-  WHERE g.subject = c.dataset AND g.aspect = 'formulas' AND g.actor_kind IN ('human', 'agent')
   QUALIFY row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) = 1)
 SELECT w.aspect,
   coalesce(json_extract_string(a.schema, '$.title'), w.aspect) AS title,
@@ -33,11 +29,10 @@ SELECT w.aspect,
     coalesce(json_extract_string(a.schema, '$.title'), w.aspect),
     nullif(coalesce(json_extract_string(a.schema, '$.x-kind'), ''), ''),
     nullif(json_extract_string(d.body, '$.definitions.' || w.aspect || '.unit'), '')) AS meta,
-  coalesce(json_extract_string(f.body, '$.formulas.' || w.aspect), 'no recorded formula') AS formula,
+  coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.formula'), 'no recorded formula') AS formula,
   coalesce(w.actor_id, w.actor_kind) AS actor,
   strftime(w.written_at, '%Y-%m-%d') AS written,
   'GLOSS ' || w.aspect || ' ON ' || (SELECT dataset FROM current_dataset) || ' AS $$' || w.body::VARCHAR || '$$;' AS statement
 FROM w
 JOIN a ON a.name = w.aspect
 LEFT JOIN d ON true
-LEFT JOIN f ON true
