@@ -95,7 +95,10 @@ a thousand entities, the screen answers in about a second.
   glossed roles. A table with no edge to an event table, no time axis,
   a column that is no number, or an identifier, a leg of a declared
   relationship or an integer distinct on nine filled rows in ten, is
-  `applicable: false` with its reason, the counts stated exactly.
+  `applicable: false` with its reason, the counts stated exactly. The
+  refusal is a measurement row like any other: served while the table
+  it counted and the record it read are unchanged, computed again when
+  one of them moves.
 - A flow that rises every period for every entity, with no movement
   column reconciling it, reads as a stock through the monotone
   anchor. The served convention says so, and the judge reads the
