@@ -97,7 +97,7 @@ Every metric the bound dataset claims, with where it stands: one row
 per QUERY aspect a grounding stands on here, served or stopped, or
 whose `definitions` entry names it. Columns: `name`, `title`, `kind`
 (the aspect's `x-kind`), `unit` and `meaning` (from the `definitions`
-handbook), `formula` (from the `formulas` registry, or the stated
+handbook), `formula` (from the `definitions` handbook, or the stated
 base-concept default), `grounded` (a grounding with `sql` was
 written), `stopped` (the collapsed grounding's own text, empty where
 it serves). The numbers are `metric_axes()` and `metric_series()`;

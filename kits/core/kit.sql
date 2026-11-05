@@ -162,24 +162,22 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
     SELECT aspect, body FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
       FROM main.glossary g, ds
-      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN ('definitions', 'formulas')) WHERE rn = 1
+      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions') WHERE rn = 1
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
   SELECT a.name AS name,
          coalesce(json_extract_string(a.schema, '$.title'), a.name) AS title,
          coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS kind,
          coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.unit'), '') AS unit,
          coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.meaning'), '') AS meaning,
-         coalesce(json_extract_string(f.body, '$.formulas.' || a.name), 'a base concept — grounded as an extract, no formula') AS formula,
+         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.formula'), 'a base concept — grounded as an extract, no formula') AS formula,
          g.aspect IS NOT NULL AS grounded,
          coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
   FROM aspects a
   LEFT JOIN grounded g ON g.aspect = a.name
   LEFT JOIN collapsed c ON c.aspect = a.name
   LEFT JOIN registry d ON d.aspect = 'definitions'
-  LEFT JOIN registry f ON f.aspect = 'formulas'
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
-     OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL
-     OR json_extract(f.body, '$.formulas.' || a.name) IS NOT NULL;
+     OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
 -- What this workspace can be extended through, and where it stands on
 -- each: `stands` counts what exists, `open` what is unfinished on the

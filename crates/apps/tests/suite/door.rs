@@ -619,7 +619,6 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
                DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
                DECLARE ASPECT payables WITH $${"title": "Outstanding payables", "x-kind": "fact"}$$ AS QUERY;
                DECLARE ASPECT cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS QUERY;
-               DECLARE ASPECT formulas WITH $${"type": "object"}$$ AS FACT ON DATASET;
                GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger",
                  "assumptions": [
                    {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
@@ -628,10 +627,10 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
                  ]}$$;
                GLOSS payables ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
                GLOSS cleaned ON perf AS $${"sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
-               GLOSS formulas ON perf AS $${"formulas": {"dso": "ar[end of w] / revenue[w] * days[w]"}}$$;
                GLOSS definitions ON perf AS $${"definitions": {"dso": {
                  "meaning": "receivables outstanding expressed in days of revenue",
-                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3"}}}$$;
+                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3",
+                 "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
                GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
@@ -862,9 +861,9 @@ async fn the_dossier_faces_survive_a_second_dataset() {
     assert_eq!(served.lines().filter(|l| l.starts_with("dso")).count(), 1);
     // The formula the seed wrote, not the empty-state prose. Counting
     // rows alone is how the face came to render nothing in every real
-    // workspace: the fixture wrote a formulas map no skill ever taught
-    // an agent to write, so the join returned a row and the value was
-    // null everywhere but here.
+    // workspace: the fixture wrote a formula no skill ever taught an
+    // agent to write, so the join returned a row and the value was null
+    // everywhere but here.
     assert!(
         served.contains("ar[end of w] / revenue[w] * days[w]"),
         "the formula face served no formula:\n{served}"
@@ -898,7 +897,8 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    // Seeded state: agent formulas + agent dso gloss — nothing waits
+    // Seeded state: the agent's handbook entry with its formula, and the
+    // agent's dso gloss — nothing waits
     // but, on DuckDB, the futures kit's walk, forecast and estimate:
     // witnessed measurements on the dataset nobody ran while a metric is
     // grounded.
@@ -921,7 +921,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         .await
         .unwrap();
     human
-        .execute(r#"GLOSS formulas ON perf AS $${"formulas": {"dso": "ar[end of w] / revenue[w] * 360"}}$$;"#)
+        .execute(r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;"#)
         .await
         .unwrap();
     let after = get(&app, "/perf/app/docket/frames/owed").await;
@@ -967,7 +967,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metric_faces_serve_the_winning_slot_once() {
-    // With two slots on `formulas` (human and
+    // With two slots on `definitions` (human and
     // agent) the dossier rendered the formula and the materialization
     // twice. The metric face reads the winning slot only — human
     // outranking agent, exactly like the collapsed read. The
@@ -995,7 +995,7 @@ async fn the_metric_faces_serve_the_winning_slot_once() {
         .unwrap();
     human
         .execute(
-            r#"GLOSS formulas ON perf AS $${"formulas": {"dso": "ar[end of w] / revenue[w] * 360"}}$$;
+            r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;
                GLOSS dso ON perf AS $${"sql": "SELECT month, value FROM ledger",
                  "assumptions": [{"dimension": "definition", "key": "per-line",
                                   "assumption": "ruled", "basis": "engineer",
@@ -1496,7 +1496,7 @@ async fn the_metrics_faces_serve_the_cube() {
         )
         .await
         .unwrap()
-        .execute(r#"USE perf; GLOSS formulas ON perf AS $${"formulas": {"dso": "ar[end of w] / revenue[w] * days[w]"}}$$;"#)
+        .execute(r#"USE perf; GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;"#)
         .await
         .unwrap();
     let trend = get(
