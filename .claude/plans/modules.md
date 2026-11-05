@@ -54,11 +54,13 @@ order after it, its rows independent and listed in risk order.
   `query_page` cuts one row past the cap and never cuts a record
   read; the brief's counts are one read; `rulings::land` folds a
   ruling into the standing body.
-- **The extension** (`../gloss`, branch `kit-quality`, pinned by
-  `crates/duck/glossql.ref`): the language, the store, the kpi, quality
-  and spatial kits with their `.test` suites; the language's record,
-  SPEC.md, `grammar.ebnf` and the corpus, with the suite that holds it
-  to the grammar; a QUERY aspect's claims are the view's columns'
+- **The extension** (`../gloss`, pinned by `crates/duck/glossql.ref`):
+  the language, the store, the kpi, quality and spatial kits with their
+  `.test` suites, the stock/flow evidence among the quality kit's
+  screens (`behavior_evidence` over `glossql_behavior_cells`, the
+  judge's evidence, never a voice); the language's record, SPEC.md,
+  `grammar.ebnf` and the corpus, with the suite that holds it to the
+  grammar; a QUERY aspect's claims are the view's columns'
   (fixture 28); `behavior` takes `ratio`; the record read planned once
   and cached under the store's version.
 - **The server's kits** (`kits/`): metrics and futures with their
@@ -97,15 +99,13 @@ order after it, its rows independent and listed in risk order.
   docs and skills harness binds every single read through `EXPLAIN`
   on a fresh workspace; the vendored guide is DuckDB's. The worlds on
   the series read are `kits/README.md`'s, with fixtures 19 and 27.
-- **What the port left out, by name.** `behavior_evidence` (the
-  behaviour is a gloss on the view's value column, the cadence the
-  ladder's), `dimension_relevance` (the axes are the `role` and
-  `dimension` glosses), the scenario's replay through the groundings
-  (the lever's effect is the service's estimate),
-  `source_files()` (a `PROBE` over `glob`), the ADBC relational
-  source (a database DuckDB attaches; not exercised on the engine
-  yet), the per-point service names (one `GLOSSDB_SERVICE_URL`), the
-  cube cache, the live suites against a Postgres catalog.
+- **What the port left out, by name.** `dimension_relevance` (the
+  axes are the `role` and `dimension` glosses), the scenario's replay
+  through the groundings (the lever's effect is the service's
+  estimate), `source_files()` (a `PROBE` over `glob`), the ADBC
+  relational source (a database DuckDB attaches; not exercised on the
+  engine yet), the per-point service names (one `GLOSSDB_SERVICE_URL`),
+  the cube cache, the live suites against a Postgres catalog.
 
 ## The next row, drafted
 
