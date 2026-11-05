@@ -8,19 +8,19 @@
 
 -- The bound dataset as a relation: the schema in use when it is a
 -- dataset's, no row on an unbound channel. The doors join it.
-CREATE OR REPLACE VIEW ws.main.current_dataset AS
+CREATE OR REPLACE VIEW main.current_dataset AS
   SELECT current_schema() AS dataset
-  WHERE current_schema() IN (SELECT name FROM ws.main.datasets);
+  WHERE current_schema() IN (SELECT name FROM main.datasets);
 
 -- The agent's current assumptions, one row each: the latest agent
 -- gloss per slot, its `assumptions` unnested, `idx` from 0. Derived
 -- from the agent's CURRENT body, never a frozen copy, so an answered
 -- question drops out when the fold-in raises its confidence.
-CREATE OR REPLACE VIEW ws.main.agent_assumptions AS
+CREATE OR REPLACE VIEW main.agent_assumptions AS
   WITH latest AS (
     SELECT * FROM (
       SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY seq DESC) AS rn
-      FROM ws.main.glossary g WHERE actor_kind = 'agent') WHERE rn = 1)
+      FROM main.glossary g WHERE actor_kind = 'agent') WHERE rn = 1)
   SELECT l.dataset, l.subject, l.aspect, t.i - 1 AS idx,
          json_extract_string(t.a, '$.dimension') AS dimension,
          json_extract_string(t.a, '$.key') AS key,
@@ -34,11 +34,11 @@ CREATE OR REPLACE VIEW ws.main.agent_assumptions AS
 -- The human's standing rulings, one row per entry of the latest ruling
 -- body on a subject; `folded_in` once no agent assumption below full
 -- confidence carries the ruled key under the ruled aspect.
-CREATE OR REPLACE VIEW ws.main.ruling_entries AS
+CREATE OR REPLACE VIEW main.ruling_entries AS
   WITH latest AS (
     SELECT * FROM (
       SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
-      FROM ws.main.glossary r WHERE aspect = 'ruling' AND actor_kind = 'human') WHERE rn = 1),
+      FROM main.glossary r WHERE aspect = 'ruling' AND actor_kind = 'human') WHERE rn = 1),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
            json_extract_string(t.r, '$.aspect') AS aspect,
@@ -53,7 +53,7 @@ CREATE OR REPLACE VIEW ws.main.ruling_entries AS
          e.assumption, e.note, e.written_at,
          count(a.key) = 0 AS folded_in
   FROM entries e
-  LEFT JOIN ws.main.agent_assumptions a
+  LEFT JOIN main.agent_assumptions a
     ON a.dataset = e.dataset AND a.subject = e.subject AND a.aspect = e.aspect
    AND a.key = e.key AND a.conf < 1.0
   GROUP BY ALL;
@@ -64,24 +64,24 @@ CREATE OR REPLACE VIEW ws.main.ruling_entries AS
 -- ruling on its (dataset, subject, aspect, key). `sibling` carries a
 -- ruling on the same key under another aspect, so the round can offer
 -- it back. No ORDER BY: order where you consume.
-CREATE OR REPLACE VIEW ws.main.open_questions AS
+CREATE OR REPLACE VIEW main.open_questions AS
   WITH groundings AS (
     SELECT name FROM (
       SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM ws.main.aspects) WHERE rn = 1 AND kind = 'QUERY')
+      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
          max(s.stance || ' on ' || s.aspect) AS sibling,
          max(s.stance) AS sibling_stance,
          max(s.note) AS sibling_note
-  FROM ws.main.agent_assumptions o
+  FROM main.agent_assumptions o
   JOIN groundings a ON a.name = o.aspect
-  LEFT JOIN ws.main.ruling_entries s
+  LEFT JOIN main.ruling_entries s
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
     AND coalesce(o.dimension, '-') NOT IN ('behavior', 'sign', 'grain')
-    AND NOT EXISTS (SELECT 1 FROM ws.main.ruling_entries r
+    AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r
                     WHERE r.dataset = o.dataset AND r.subject = o.subject
                       AND r.aspect = o.aspect AND r.key = o.key)
   GROUP BY ALL;
@@ -92,11 +92,11 @@ CREATE OR REPLACE VIEW ws.main.open_questions AS
 -- query, `app_spec` a chart spec. Two collapses: the newest writing per
 -- (dataset, subject, aspect, actor kind), then the human's over the
 -- agent's. This is the draft; the door serves the app at its release.
-CREATE OR REPLACE VIEW ws.main.app_parts AS
+CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
     SELECT * FROM (
       SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn
-      FROM ws.main.glossary g
+      FROM main.glossary g
       WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
         AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
         AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')) WHERE rn = 1),
@@ -118,11 +118,11 @@ CREATE OR REPLACE VIEW ws.main.app_parts AS
 -- What is released of each glossed app: one row per app that carries a
 -- release, cut at `at` — the release's own time, or the earlier release
 -- its body names. The same two collapses as app_parts.
-CREATE OR REPLACE VIEW ws.main.app_releases AS
+CREATE OR REPLACE VIEW main.app_releases AS
   WITH newest AS (
     SELECT * FROM (
       SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, actor_kind ORDER BY seq DESC) AS rn
-      FROM ws.main.glossary g
+      FROM main.glossary g
       WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset) WHERE rn = 1),
   winning AS (
     SELECT * FROM newest
@@ -140,28 +140,28 @@ CREATE OR REPLACE VIEW ws.main.app_releases AS
 -- (a grounding with sql was written), stopped (the collapsed
 -- grounding's own text, '' where it serves). The numbers are
 -- metric_axes() and metric_series(); join on name.
-CREATE OR REPLACE VIEW ws.main.metric_surfaces AS
+CREATE OR REPLACE VIEW main.metric_surfaces AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (
     SELECT name, schema FROM (
       SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM ws.main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
   slots AS (
     SELECT aspect, body, actor_kind FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
-      FROM ws.main.glossary g, ds
+      FROM main.glossary g, ds
       WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
         AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
   collapsed AS (
     SELECT aspect, body FROM slots
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
   grounded AS (
-    SELECT DISTINCT g.aspect FROM ws.main.glossary g, ds
+    SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
   registry AS (
     SELECT aspect, body FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
-      FROM ws.main.glossary g, ds
+      FROM main.glossary g, ds
       WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN ('definitions', 'formulas')) WHERE rn = 1
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
   SELECT a.name AS name,
@@ -185,36 +185,36 @@ CREATE OR REPLACE VIEW ws.main.metric_surfaces AS
 -- each: `stands` counts what exists, `open` what is unfinished on the
 -- surface, `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
-CREATE OR REPLACE VIEW ws.main.workspace_next AS
-  WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM ws.main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM ws.main.ruling_entries),
-  apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM ws.main.app_parts)),
+CREATE OR REPLACE VIEW main.workspace_next AS
+  WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
+  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM main.ruling_entries),
+  apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
     SELECT name, kind, schema FROM (
       SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM ws.main.aspects) WHERE rn = 1),
+      FROM main.aspects) WHERE rn = 1),
   counts AS (
-    SELECT (SELECT count(*) FROM ws.main.sources) AS n_sources,
-           (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM ws.main.imports)) AS n_tables,
-           (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM ws.main.imports WHERE coalesce(dropped_rows_count, 0) > 0)) AS open_tables,
-           (SELECT count(*) FROM ws.main.relationships) AS n_relationships,
+    SELECT (SELECT count(*) FROM main.sources) AS n_sources,
+           (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports)) AS n_tables,
+           (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports WHERE coalesce(dropped_rows_count, 0) > 0)) AS open_tables,
+           (SELECT count(*) FROM main.relationships) AS n_relationships,
            (SELECT count(*) FROM newest_aspects) AS n_aspects,
-           (SELECT count(*) FROM ws.main.glossary) AS n_claims,
+           (SELECT count(*) FROM main.glossary) AS n_claims,
            (SELECT n FROM asked) AS open_claims,
-           (SELECT count(DISTINCT name) FROM ws.main.functions) AS n_functions,
+           (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY'
               AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
            (SELECT metrics FROM asked) AS open_metrics,
-           (SELECT count(DISTINCT name) FROM ws.main.witnesses) AS n_validations,
-           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM ws.main.witnesses) w
-            WHERE NOT EXISTS (SELECT 1 FROM ws.main.glossary g WHERE g.aspect = w.aspect)
-              AND NOT EXISTS (SELECT 1 FROM ws.main.measurements m WHERE m.aspect = w.aspect)) AS open_validations,
+           (SELECT count(DISTINCT name) FROM main.witnesses) AS n_validations,
+           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM main.witnesses) w
+            WHERE NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = w.aspect)
+              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = w.aspect)) AS open_validations,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
-              AND NOT EXISTS (SELECT 1 FROM ws.main.glossary g WHERE g.aspect = a.name)) AS open_scenarios,
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_scenarios,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'QUERY' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
-              AND NOT EXISTS (SELECT 1 FROM ws.main.glossary g WHERE g.aspect = a.name)) AS open_plans,
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
            (SELECT n FROM ruled) AS n_rulings,
            (SELECT owed FROM ruled) AS open_rulings,
            (SELECT n FROM apps) AS n_apps)
