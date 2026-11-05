@@ -99,15 +99,15 @@ CREATE OR REPLACE VIEW ws.main.app_parts AS
       FROM ws.main.glossary g
       WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
         AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
-        AND (aspect = 'app' OR split_part(subject, '.', 3) <> '')) WHERE rn = 1),
+        AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')) WHERE rn = 1),
   winning AS (
     SELECT * FROM newest
     QUALIFY row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
   SELECT dataset, split_part(subject, '.', 2) AS app,
          CASE aspect WHEN 'app' THEN 'app'
-                     WHEN 'app_page' THEN split_part(subject, '.', 3) || '.html'
-                     WHEN 'app_frame' THEN 'frames/' || split_part(subject, '.', 3) || '.sql'
-                     ELSE 'specs/' || split_part(subject, '.', 3) || '.vl.json' END AS path,
+                     WHEN 'app_page' THEN substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) || '.html'
+                     WHEN 'app_frame' THEN 'frames/' || substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) || '.sql'
+                     ELSE 'specs/' || substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) || '.vl.json' END AS path,
          CASE aspect WHEN 'app_page' THEN json_extract_string(body, '$.html')
                      WHEN 'app_frame' THEN json_extract_string(body, '$.sql')
                      WHEN 'app_spec' THEN json_extract_string(body, '$.spec')
