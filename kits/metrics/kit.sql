@@ -95,10 +95,10 @@ cols AS (
   FROM glossql_columns(current_schema()) c
   WHERE c.table_name IN (SELECT metric FROM views)),
 slots AS MATERIALIZED (
-  SELECT split_part(subject, '.', 2) AS metric, split_part(subject, '.', 3) AS col, aspect, value, state
+  SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
   FROM glossql_glossary(current_schema(), NULL, false)
   WHERE aspect IN ('role', 'behavior', 'dimension', 'ladder', 'temporal_profile')
-    AND len(string_split(subject, '.')) = 3
+    AND len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
 claims AS (SELECT * FROM slots WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),

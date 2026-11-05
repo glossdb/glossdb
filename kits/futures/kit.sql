@@ -520,7 +520,7 @@ bodies AS (
   FROM declared d LEFT JOIN glossql_glossary(current_schema(), NULL, false) g
     ON g.aspect = d.name AND g.subject = current_schema() AND g.state = 'current'),
 levers AS (
-  SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, split_part(u.l."column", '.', 2) AS col,
+  SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, substr(u.l."column", length(split_part(u.l."column", '.', 1)) + 2) AS col,
          u.l.factor AS factor, u.l.basis AS basis
   FROM bodies b, unnest(from_json(json_extract(b.body, '$.levers'), '[{"column": "VARCHAR", "factor": "JSON", "basis": "VARCHAR"}]')) AS u(l)
   WHERE b.body IS NOT NULL),
