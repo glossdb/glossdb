@@ -21,7 +21,8 @@ Measurements propose; they never verdict. The judge — the agent
 reading them — removes false positives.
 
 A column's evidence is owed by role: the profile on every column,
-`temporal` where `role = 'timestamp'`. Owed is not gated: any
+`temporal` where `role = 'timestamp'`, `behavior_evidence` where
+`role = 'measure'`. Owed is not gated: any
 measurement still runs on any column on ask, and lands.
 
 ## Column grain
@@ -80,6 +81,25 @@ per landing is the admission instrument for subtle corruption: a
 scoped artifact violates the lineage identity at exactly its row
 coverage while every marginal statistic confuses it with a real
 business move ([derivations](../methods/derivations.md)).
+
+### behavior_evidence → `behavior_evidence`
+
+`SELECT behavior_evidence() FROM <table>.<column>`. Whether a numeric
+column is a stock, a level correct at a point in time, or a flow, a
+movement that sums over a period. A column's own trajectory cannot
+decide it; the evidence is a movement summed per entity and period
+from an event table the declared relationships align with the
+column's table, scored against both readings: flow where the level
+matches the movement, stock where its change does. The summary
+carries the verdict, the anchor that decided (event table, alignment,
+time axes, grain, scope), its convention, the Wilson support over the
+entities both sides carry, the voted count, the median residuals of
+both readings and the sign partition; every anchor reads back through
+`GLOSSARY(<table>.<column>::behavior_evidence)`, abstentions with
+their reason. A table with no declared edge to an event table, no
+time axis, or a column that is no number is `applicable: false` with
+its reason. Never a voice in the `behavior` slots: the judge reads,
+then glosses ([behavior](../methods/behavior.md)).
 
 ## Dataset grain
 
