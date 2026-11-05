@@ -14,9 +14,9 @@ use std::path::PathBuf;
 use glossdb_serverd::engine::{WarehouseCredential, store_kind};
 use glossdb_serverd::{DEFAULT_ROW_CAP, DoorConfig};
 
-const USAGE_TEXT: &str = "usage: glossql [--workspace <dir>] [--addr <ip:port>] \
+const USAGE_TEXT: &str = "usage: glossdb [--workspace <dir>] [--addr <ip:port>] \
 [--row-cap <n>] [--memory-limit <megabytes>] [--spill-limit <megabytes>] \
-| glossdb --version | glossql --help\n\
+| glossdb --version | glossdb --help\n\
 --workspace is the laptop's shape: the directory holding the lake's catalog \
 and its files. GLOSSDB_CATALOG_SQL names the catalog on a Postgres server \
 (postgres://…), GLOSSDB_WAREHOUSE the lake's files in an object store \
