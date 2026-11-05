@@ -62,7 +62,11 @@ guessed from a type. An event table with numeric columns and no
 measure glossed makes every anchor on it abstain with the act to
 take, gloss `role` on its columns; the table's identifiers, declared
 legs and key-shaped integers, ride each anchor as
-`identifier_columns`. One anchor per alignment and scope reads the
+`identifier_columns`. The event side is summed for the entities the
+measure side carries with four days or more, so a wide, long event
+table costs what the alignment needs; an alignment that aligns
+nothing abstains on viability by name. One anchor per alignment and
+scope reads the
 measure's own shape instead: entities that never decrease over four
 periods or more at the native grain vote stock under the convention
 `monotone`, movers only. It is the only evidence a cumulative with
@@ -91,7 +95,7 @@ a thousand entities, the screen answers in about a second.
   glossed roles. A table with no edge to an event table, no time axis,
   a column that is no number, or an identifier, a leg of a declared
   relationship or an integer distinct on nine filled rows in ten, is
-  `applicable: false` with its reason.
+  `applicable: false` with its reason, the counts stated exactly.
 - A flow that rises every period for every entity, with no movement
   column reconciling it, reads as a stock through the monotone
   anchor. The served convention says so, and the judge reads the
