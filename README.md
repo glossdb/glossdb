@@ -1,169 +1,150 @@
 # glossdb
 
-A declarative context language over a SQL host, and a server that speaks
-it. The language describes a dataset — sources, tables, relationships,
-meanings, checks — so that agents and humans work on the same data with
-the same context. The server is one Rust binary with the query engine (DuckDB) in
-process, the glossql extension that owns the language and the record,
-and a DuckLake beside it. An agent
-connects over MCP, lands data, and builds the dataset's glossary;
-questions the data cannot answer go to a human, and the answer is
-stored as part of the record.
+**A harness framework for data agents.** Declare what must be known about
+your data. Agents establish it — the semantic layer, the ontology, the
+quality record — and answer from it.
 
-The full definition is **SPEC.md** in the extension's repository,
-[glossdb/glossql](https://github.com/glossdb/glossql), with `grammar.ebnf`,
-the machine source of truth for syntax, and the corpus, the language's
-acceptance record: each construct is checked against a real artifact.
-The server serves both documents on its door. Its own kits add
-vocabulary and reads on that language (`kits/README.md`), never
-grammar.
+## Why agents get data wrong
 
-The name: a *gloss* is a marginal annotation explaining a text's meaning;
-a glossary is a collection of them. `GLOSS` is the write verb — you gloss
-an aspect onto a subject; `GLOSSARY()` is the read.
+Agents hallucinate on company data because of information asymmetry. The
+meaning is not in the rows: a column called `amount` does not say whether
+it is net of tax, a balance or a movement, or which currency it is in, and
+no query fails when the agent guesses. Coding agents have it easier: code
+carries most of its own meaning, and compilers and tests say when the
+agent is wrong. Data has neither. glossdb gives data both: a declared
+description the agent must complete, and measurements and checks that
+test it.
 
-## What it is for
+## How it works
 
-- **Agents define the glossary, not just its entries.** An aspect is
-  a declared JSON Schema. An agent that needs vocabulary the workspace
-  lacks declares it with statements: the aspect, the functions that
-  measure it, the detector that scores agreement on it. The shipped
-  measurement library and the KPI kit are declared the same way, so
-  extending the workspace's analytics means writing statements, not
-  building a plugin.
-- **Ambiguity is resolved with a human, and the answer is stored.**
-  Measurements answer what the rows can: stock or flow, grain, sign
-  conventions. Definitions, conventions, and choices between readings
-  become open questions, shown as cards on the docket app or as forms
-  in the agent's MCP calls. The human's answer is written as a gloss
-  in the human's slot, takes precedence over the agent's at every
-  read, and persists — it is a stored row, not a chat message.
-- **One process uses the whole machine.** Engine, lake, glossary, and
-  apps run in one process; there is no network hop between an agent's
-  query and the data. Work arrives as statements and SQL, the engine
-  plans all of it, and it uses all available cores and memory.
-  Isolation is deployment's job: one workspace per VM.
-- **History is rows, never an update.** Every landing gives its
-  table a new version and one row of the record; every gloss, ruling
-  and declaration is a row in the record, superseded by a later row
-  and never overwritten. There is no separate version-control system
-  to operate: history and audit are reads, and each gloss stores the
-  subject table's version, so it is always clear which data a claim
-  was measured against.
+1. **You declare the harness.** Aspects are its schema: the properties
+   each dataset, table, column and relationship must carry, each with a
+   JSON Schema. Measurements produce evidence, witnesses check what is
+   said, goals set the work, and grants say which actor may do what. All
+   of it is written in [glossql](https://github.com/glossdb/glossql) and
+   packaged as kits.
+2. **Agents establish what must be known.** Before a table serves a
+   metric, the agent glosses it: what one row is, each column's role,
+   each measure's additivity and unit, the joins, the metric definitions.
+   A gloss is an assertion, validated against its aspect's schema and
+   stored with its actor and the data version it describes.
+3. **Evidence, not guesses.** Measurements profile the data, discover
+   relationships and hierarchies, and test derivations and stock-or-flow
+   behaviour. Each result is versioned with the data it read and
+   recomputed only when that data changes.
+4. **What is known is served back.** Every tool call returns what happened
+   and what is still open; what is known about any table is one query
+   away; skills teach the vocabulary. Nothing depends on the chat history.
+5. **Progress is measured.** Every required aspect nobody has glossed is
+   an open item. Goals turn open items into next steps, and coverage,
+   conflicts, failing checks and open questions are the agent's score.
+   Where the data cannot answer, the agent asks a person, and the answer
+   closes the gap for every later query.
 
-The integration points are standard: sources land by recipe from
-files or from a database the engine attaches, reads are served as
-Arrow IPC over plain HTTP, and the lake is a DuckLake — parquet files
-under a catalog of rows, a file for development, Postgres in
-production — readable by any DuckLake client.
+## What ships
 
-## Why a grammar and JSON Schemas
+**glossql**, the language and its catalog:
 
-Data work mixes two kinds of information: what you hold true before
-looking at the rows, and what the rows show. Code usually tangles
-them. glossdb keeps them apart and joins them at read time.
+- aspects with JSON Schemas, kinds (asserted, computed, metric) and
+  conditions for when they are required;
+- glosses validated on write, kept per actor, versioned with the data,
+  and marked stale when the data under them changes;
+- measurement functions in SQL, stored with their provenance and reused
+  until their inputs change;
+- witnesses and detectors that score agreement between agents, people
+  and measurements;
+- metric definitions as SQL views, with their assumptions and confidence;
+- load queries (recipes) over files and attached databases; every load a
+  DuckLake snapshot with its row account and column lineage;
+- the `kpi` kit, the semantic layer's vocabulary: role, additivity, unit,
+  dimension, entity, the business glossary;
+- the `quality` kit: relationship and hierarchy discovery, join coverage,
+  derivation tests, time coverage, stock-or-flow evidence, tolerance
+  checks.
 
-- **A priori — the declared world model.** Aspects (each with a JSON
-  Schema as its contract), witnesses (who may speak on an aspect, and
-  which detector scores the voices), relationships, sources, and
-  recipes are declarative statements. A world model made of statements
-  is text: an agent can write one, carry it, and apply it to new data.
-  The vocabulary exists before the dataset does. A fresh workspace starts with one: the kits.
-- **A posteriori — the measured evidence.** Functions compute what the
-  landed rows show: profiles, join evidence, stock/flow behavior,
-  hierarchies, metric bands. Measurements are tuned for recall. They
-  emit candidates with evidence, not conclusions. The reading agent
-  judges them against the data.
-- **Glosses join the two.** A gloss writes a JSON value into a slot
-  keyed (subject, aspect, actor kind). Function, agent, and human
-  voices sit in separate slots and never overwrite each other. Reads
-  collapse the slots with human > agent > function precedence.
-  Disagreement past a witness threshold shows as a contested state or
-  a red band, never as a silent resolution.
+**glossdb**, the harness around it:
 
-The write path is checked, not trusted. The aspect's schema validates
-the body. The witness gates the speaker. The aspect's grain — and its
-relevance condition, where declared — bounds which subjects owe a
-value.
+- an MCP interface: one tool for glossql and SQL, the skills served as
+  resources and prompts, every result closing with where the work stands;
+- goals (structure, metrics, slices, checks, apps, review), each with
+  what is done, what is open, and the next statement, filled from the
+  catalog;
+- a review queue: assumptions below full confidence become questions,
+  answered in the console or in the agent's client;
+- the semantic layer's query interface: a metric's series by time grain,
+  its slices along dimensions, what moved;
+- the console: the review queue, metrics, quality, the catalog with a page
+  per table, column and aspect, lineage, export, and a query pane;
+- data apps that agents write over the metrics, stored in the catalog;
+- Arrow over HTTP and CSV or Parquet export for tools; sign-in through
+  your identity provider;
+- one binary with DuckDB in process; a DuckLake on Postgres and object
+  storage in production, a directory on a laptop.
 
-## The statement set
+**Preview:** forecasts, expected ranges, plans and scenarios on the
+metrics, through a model service.
 
+**Planned:** grants per actor on statements and datasets, as in SQL.
+
+## Other harnesses
+
+The same framework declares harnesses for other jobs: harmonising several
+sources into one target model, a data contract per source, a documented
+feature set for modelling. The `spatial` kit is a small working example:
+it requires a shape and a coordinate system on every geometry column, and
+measures the geometries.
+
+## Actors and grants
+
+Actors are agents, people, or a person working with an agent. Grants work
+as in SQL: an architect declares the harness schema; an onboarding agent
+loads sources into one dataset; an analyst agent glosses and measures it
+without declaring anything new; a reviewer answers the questions; a BI
+tool reads the views.
+
+## Getting started
+
+On a Mac:
+
+```bash
+brew install glossdb/glossdb/glossdb
+GLOSSDB_INSECURE_OPEN=true glossdb --workspace ~/acme    # a laptop try-out: no sign-in
+claude mcp add --transport http glossdb http://127.0.0.1:8080/mcp
 ```
-DECLARE SOURCE / RECIPE / DATASET          -- where data comes from
-DECLARE RELATIONSHIP a.x -> b.y            -- declared structure (-> m:1, <-> 1:1)
-DECLARE ASPECT ... AS MEASUREMENT|FACT|QUERY   -- the vocabulary
-GLOSS aspect ON subject AS { ... }         -- the one write verb, body always JSON
-DECLARE FUNCTION ... AS $$ ... $$ RETURNS ...  -- SQL bodies as functions
-DECLARE WITNESS ... BY (...) DETECTOR ...  -- who may speak; who adjudicates
-SELECT * FROM GLOSSARY(subject)            -- collapsed context read
-SELECT * FROM ATTEST(subject.aspect)       -- adjudication read (band + score)
-```
 
-Reads, deletes, and function extraction are plain SQL. Schema-altering
-DDL is closed: tables come only from recipes, so the landed table is
-the typed table and import is a filter, not an ETL step.
+Then ask the agent to land a folder of exports and describe it; the
+console is at `http://127.0.0.1:8080/<dataset>/app`. On Linux, run the
+image `ghcr.io/glossdb/glossdb`. Sign-in through an identity provider,
+the deployment shape (a Postgres catalog and an object store) and every
+setting: [install](docs/start/install.md). Claude, ChatGPT and other MCP
+clients: [connect](docs/start/connect.md). One session from raw exports
+to served metrics: [walkthrough](docs/start/walkthrough.md).
 
-## The server
+## Interfaces
 
-A Rust workspace (`crates/`) on DuckDB: `glossary` (the actor
-types), `duck` (the engine: the facade over the glossql extension and a
-DuckLake, a channel per call, the record's reads and the door's),
-`apps` (server-rendered data apps from declarative artifacts),
-`serverd` (the doors). The glossql extension owns the language, its
-parser, the store and the language's kits (`glossdb/glossql`), and
-`crates/duck/glossql.ref` pins the commit a build carries; the server's
-own kits, metrics and futures, are `kits/` here.
+One process, one listener:
 
-One listener, three doors, no server-side cursors. A browser stays on
-one dataset, so `/query` and `/app` carry the dataset in the path. An
-agent moves between datasets, so `/mcp` is one endpoint and the
-dataset is named in the statements:
+| Path | For | Serves |
+|---|---|---|
+| `/mcp` | agents | the workspace: sources are declared and datasets brought into being here, and `USE` picks the dataset on every call |
+| `/<dataset>/mcp` | agents | one dataset: every call opens on it |
+| `/<dataset>/query` | tools | a query in the request body, an Arrow IPC stream back |
+| `/<dataset>/app` | people | the console and the data apps; every table and metric as CSV or Parquet |
+| `/` | people | the workspace: its datasets and the way into each |
 
-- **`/mcp`** — the MCP door: one `glossql` tool that takes
-  statements and returns outcomes. Agents connect here and open each
-  call with `USE <dataset>;`; question forms for the human ride the
-  same call.
-- **`/<dataset>/query`** — Arrow IPC streaming for programmatic reads.
-- **`/<dataset>/app`** — server-rendered data apps (htmx + vega-lite,
-  URL as the only state). The binary ships the docket, the dataset's
-  page: open questions for the human, settled rulings, the metrics,
-  the quality of the data, the column lineage, and every table and
-  read as a file. A workspace adds its own apps as glosses, which an
-  agent can write.
+The MCP interface has one tool, `glossql`, which takes glossql and SQL
+statements. The skills that teach the language and the kits are served as
+MCP resources (`skill://<name>/SKILL.md`) and as prompts, with the
+language's `SPEC.md` and `grammar.ebnf` beside them as `doc://`
+resources. Everything live is read through the language: the declared
+vocabulary, functions, witnesses and glosses are plain tables.
 
-A bearer token from the workspace's issuer says who is speaking; the
-server verifies it against the issuer's published keys, and `sub` is
-the actor id. The door sets the actor kind — `/mcp` is the agent door,
-the other two are human — so an agent's connection never reaches the
-human's slot.
+A bearer token from the workspace's identity provider says who is
+speaking: the server verifies it against the provider's published keys,
+and the token's subject is the actor. The interface sets the actor's
+kind: the MCP paths are agents', the others people's.
 
-Everything an agent must learn ships as skills (`skills/*/SKILL.md`),
-served on the MCP door: each skill is an MCP resource
-(`skill://<name>/SKILL.md`, its references beside it as
-`skill://<name>/references/<page>.md`) and a prompt of the same name,
-with `SPEC.md` and `grammar.ebnf` beside them as `doc://` resources.
-Everything live is read through the language: the declared vocabulary,
-functions, witnesses, and glossary are plain tables.
-
-## The shipped library
-
-The kits declare the reference measurement library at every open:
-
-| family | functions |
-|---|---|
-| profiling | `column_profile`, `outlier_profile`, `temporal` |
-| structure | `detect_relationships`, `relationship_coherence`, `detect_hierarchies`, `detect_derivations`, `detect_grounding_collisions` |
-| semantics | `slot_entropy` |
-| futures | `metric_bands`, `metric_forecast`, `metric_scenario`, `metric_plan` |
-
-plus the KPI kit: the semantic vocabulary (`meaning`, `role`,
-`behavior`, `unit`, `dimension`, `entity`, …) with its witnesses, and
-the metrics kit's `ladder` on a time column.
-Onboarding starts with a declared world model, not hand-built
-scaffolding. Detection functions over-produce by design. The reading
-agent judges; the false positives stay visible in the measurement.
-
-## Building
+## Building from source
 
 A Rust workspace. `cargo build -p glossdb-serverd` builds the server;
 use `--release` to run it for real. DuckDB is compiled into the
@@ -184,16 +165,47 @@ The dev profile already trims debug info workspace-wide (the workspace
 `Cargo.toml` records why); even a single job needs ~4 GB free for the
 largest units, DuckDB's among them.
 
+## Repository layout
+
+- `crates/` — the server, a Cargo workspace: `duck` (the engine: DuckDB
+  with the glossql extension and a DuckLake, behind one facade), `apps`
+  (the console and the data apps), `serverd` (the binary and its
+  interfaces).
+- `kits/` — the server's kits, SQL loaded at open around the extension's
+  `kpi` and `quality`: `core` (the workspace's own vocabulary and the
+  catalog's reads), `metrics` (the semantic layer's query interface),
+  `futures` (preview), `door` (what is open, and the goals); each with
+  its test suite ([kits](kits/README.md)).
+- `skills/` — the skills served to agents.
+- `docs/` — [start](docs/start/README.md),
+  [concepts](docs/concepts/README.md),
+  [reference](docs/reference/README.md),
+  [methods](docs/methods/README.md),
+  [architecture](docs/architecture/README.md).
+- `corpus/` — the two transcriptions behind the server's kits.
+- `vendor/` — DuckDB's SQL guide for the pinned release, served to
+  agents.
+
+The language — `SPEC.md`, `grammar.ebnf`, and the corpus that holds
+every construct to a real artifact — lives with the extension in
+[glossdb/glossql](https://github.com/glossdb/glossql);
+`crates/duck/glossql.ref` pins the commit a build carries.
+
 ## Status
 
 A working proof-of-concept. `cargo test` at the workspace root is the
 standing invariant: every fenced example under `docs/` and `skills/`
-parsed and bound on the engine, the door suites, and the suites
-beside the kits under `kits/`; the extension's kits carry theirs in
-its repository. The
-language is a working draft. Grammar changes are corpus-first: a
-construct is only added together with a fixture that was checked
-against a real artifact.
+parsed and bound on the engine, the interface suites, and the suites
+beside the kits under `kits/`; the extension's kits carry theirs in its
+repository. The language is a working draft. Grammar changes are
+corpus-first: a construct is only added together with a fixture that
+was checked against a real artifact.
+
+## The name
+
+A *gloss* is a marginal annotation explaining a text's meaning; a
+glossary is a collection of them. `GLOSS` is the write verb — you gloss
+an aspect onto a subject; `GLOSSARY()` is the read.
 
 ## Prior art
 
