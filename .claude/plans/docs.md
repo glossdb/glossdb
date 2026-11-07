@@ -14,8 +14,8 @@ out in the old words.
 |---|---|---|---|
 | 1. House rules: the prose skill's list of protected terms is replaced by the terms table below; CLAUDE.md and the build skills use the plain words | Low. Without it every agent session writes the old words again | `.claude/skills/glossql-prose/`, `CLAUDE.md`, `.claude/skills/` | done on `readme-harness` |
 | 2. One terms page and one analogy page (the coding harness table below), in both repositories | Low | `docs/terms.md`, `docs/harness.md`, the extension's `docs/` | done on `readme-harness` |
-| 3. The READMEs in the shape DuckLake and SurrealDB use: category sentence, the coding-harness analogy, features in industry words, a quick look, status per feature (stable, preview, planned). Out: "proof-of-concept", "working draft", the research file, "not built on purpose", the corpus and the DuckDB mapping table (to the docs) | Low | `README.md` here and in the extension | |
-| 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | |
+| 3. The READMEs in the shape DuckLake and SurrealDB use: category sentence, the coding-harness analogy, features in industry words, a quick look, status per feature (stable, preview, planned). Out: "proof-of-concept", "working draft", the research file, "not built on purpose", the corpus and the DuckDB mapping table (to the docs) | Low | `README.md` here and in the extension | done on `readme-harness` |
+| 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | drafted below |
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | |
 | 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | |
 | 7. An evaluator's page: what it is, where it runs, what data leaves, sign-in, deployment, support | Low | `docs/start/evaluate.md` | |
@@ -103,16 +103,15 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### The READMEs open like a product
+### A results page: the same tasks with and without the harness
 
-- **What it buys.** An evaluator reads one screen and can say what
-  glossdb is, what it does for their agents, and what is stable.
-- **What is there.** Both READMEs open with the one-liner. glossdb's
-  closes with "a working proof-of-concept" and "a working draft"; the
-  extension's carries the research file, "not built on purpose", the
-  corpus and the 20-row DuckDB mapping table.
-- **Done when.** Each opens with the category sentence, the coding-
-  harness analogy in three lines, features in industry words, a quick
-  look, and a status table per feature (stable, preview, planned);
-  the mapping table and the corpus move to the extension's docs; the
-  extension's examples run on its build; the suite passes.
+- **What it buys.** An evaluator sees what the harness changes, in
+  numbers they can repeat.
+- **What is there.** glossval runs agents on real corpora with and
+  without the harness and grades their metrics against a sealed
+  scorecard. The docs have no results page; the READMEs claim no
+  numbers.
+- **Done when.** `docs/results.md` names the corpora, the tasks, the
+  agents and the grading, and gives the share of metrics right and of
+  forks surfaced, with and without the harness; both READMEs link it;
+  the lead has approved the numbers.
