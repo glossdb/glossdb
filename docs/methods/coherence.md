@@ -1,58 +1,60 @@
-# Coherence — what a declared join asserts, checked
+# Relationship coherence
 
-`relationship_coherence` measures what each **declared** relationship
-claims against the rows it now governs. It runs at dataset grain
+`relationship_coherence` checks what each declared relationship claims
+against the rows it covers today. It runs on a dataset
 (`SELECT relationship_coherence() FROM fin`) and reports, per
 relationship: fill, orphan count and rate, and per column pair the
-temporal precedence evidence (child-before-parent rate). Discovery
-proposes and the judge declares ([discovery](discovery.md)); this
-instrument watches what the declaration asserts from then on.
+share of child rows dated before their parent (`precedes_rate`).
+[Discovery](discovery.md) proposes relationships, the agent declares
+them, and this measurement watches them from then on.
 
-## Why these two facts
+## What it answers
 
-Both are invisible to any column-shaped check:
+Two faults that no single-column check can see:
 
-- **Orphan rate, exact.** A child key with no parent is the trace an
-  invented or mispaired key leaves. Counted exactly, it catches the
-  shapes sampling misses — including a single repeated orphan value,
-  which defeats rare-category counting outright. On a
-  high-cardinality key, every marginal engine measured exactly 0.0
-  against these faults.
-- **Date incoherence.** A child event dated before its parent exists
-  is the trace a wrong pairing leaves even when the keys join. The
-  per-pair `precedes_rate` carries it as evidence, not verdict — a
-  payment before its invoice's due date is ordinary; before the
-  invoice exists is the fault — which is why the judge reads the pair
-  names and decides.
+- **Orphans, counted exactly.** A child key with no parent is what an
+  invented or mispaired key leaves behind. An exact count catches what
+  sampling misses, including one orphan value repeated many times,
+  which defeats counting by rare categories. On a high-cardinality key,
+  every single-column engine tested scored exactly 0.0 on these faults.
+- **Dates out of order.** A child event dated before its parent exists
+  is what a wrong pairing leaves even when the keys join. `precedes_rate`
+  is evidence, not a result: a payment before its invoice's due date is
+  ordinary, a payment before the invoice exists is a fault. The agent
+  reads the column names and decides.
 
-A composite endpoint joins on every leg of its tuple (the corpus's
-composite ruling) instead of being dropped as unspellable.
+A composite relationship joins on every column of its key.
 
-A relationship within one table is one of two things, and the to-side
-tells them apart. When the to-side is unique over the table — a key —
-the edge is a self-reference (`accounts.parent_id ->
-accounts.account_id`) and checks as a join of the table against
-itself. Otherwise it is a nest, recorded finer → coarser (`city ->
-country`): what it asserts is that every finer value determines one
-coarser value, and its orphans are the rows whose finer value maps to
-more than one. Neither carries temporal evidence — a date pair across
-a table and itself says nothing.
+A relationship inside one table is one of two things, and the target
+side tells which:
 
-## Mechanism
+- **A self-reference.** When the target is unique over the table, it is
+  a key (`accounts.parent_id -> accounts.account_id`), and the check is
+  a join of the table with itself.
+- **A nesting.** Otherwise it is recorded finer to coarser
+  (`city -> country`). It asserts that every finer value determines one
+  coarser value, and its orphans are the rows whose finer value maps to
+  more than one.
+
+Neither carries date evidence: a date pair between a table and itself
+says nothing.
+
+## How it works
 
 The screen `relationship_checks(dataset)` in the quality kit computes
-fill, orphans and precedence per declared relationship, each side's
-rows pivoted onto the edge's legs; the measurement,
-`relationship_coherence`, shapes them per relationship with the
-temporal evidence nested per column pair. No thresholds anywhere in
-the path: rates are served; thresholds belong to the witness layer
-and the judge.
+fill, orphans and date order per declared relationship, with each
+side's rows pivoted onto the relationship's columns. The measurement,
+`relationship_coherence`, shapes the result per relationship, with the
+date evidence nested per column pair. There are no thresholds in the
+path: rates are returned, and thresholds belong to tests and to the
+agent.
 
 ## Limits
 
-- Declared relationships only — an undeclared join is nobody's
-  assertion and is not watched.
-- Precedence needs date columns on both sides, tried up to three per
-  side; pairs without them contribute no temporal evidence.
-- Orphan rate says a pairing is broken, not which side broke — the
-  cure is a recipe or a re-declaration, and choosing is judgment.
+- Declared relationships only. An undeclared join is nobody's claim and
+  is not watched.
+- Date order needs date columns on both sides, up to three tried per
+  side. Pairs without them give no date evidence.
+- An orphan rate says a pairing is broken, not which side broke. The fix
+  is a load query or a new declaration, and choosing is the agent's or a
+  person's call.

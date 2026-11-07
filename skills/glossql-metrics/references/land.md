@@ -81,7 +81,7 @@ carries a missed relationship with it.
 ```glossql
 PROBE erp_export AS $$SELECT order_id,
        try_cast(amount AS DOUBLE) AS amount,
-       try_to_date(order_date, '%d.%m.%Y') AS order_date
+       try_strptime(order_date, '%d.%m.%Y')::DATE AS order_date
 FROM read_parquet('orders/*.parquet') LIMIT 0$$;
 ```
 
@@ -96,10 +96,10 @@ NULL — a kept row with a NULL cell, not a dropped row. The period
 axis every metric is bucketed on is a microsecond timestamp, but the
 engine buckets in nanoseconds, so the axis ends at 2262-04-11: a date
 past it is never a period. Cast dates with
-`try_cast(x AS TIMESTAMP)` or `try_to_date`, and check the cast
+`try_cast(x AS TIMESTAMP)` or `try_strptime(x, format)`, and check the cast
 account: a year past 2262 is a token the source wrote, not a date,
 and `try_cast(x AS TIMESTAMP)` stores it as NULL where the account
-counts it. `try_to_timestamp` keeps the token as a microsecond
+counts it. `try_strptime` keeps the token as a microsecond
 value, and the walk then abstains on every metric that column
 anchors, with the reason.
 
@@ -107,18 +107,17 @@ anchors, with the reason.
 DECLARE RECIPE orders ON ops FROM erp_export AS $$
   SELECT order_id,
          try_cast(amount AS DOUBLE) AS amount,
-         try_to_date(order_date, '%d.%m.%Y') AS order_date
+         try_strptime(order_date, '%d.%m.%Y')::DATE AS order_date
   FROM read_parquet('orders/*.parquet')$$;
 ```
 
-**One date column may carry several conventions.** `try_to_date` and
-`try_to_timestamp` take as many formats as you name and use the first
-that parses, so a mixed column is one call, not a chain of coalesces
+**One date column may carry several conventions.** `try_strptime`
+takes a list of formats and uses the first that parses, so a mixed column is one call, not a chain of coalesces
 over three copies of the value:
 
 ```glossql
 PROBE erp_export AS $$SELECT
-  try_to_date(paid, '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%b-%y') AS paid
+  try_strptime(paid, ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%b-%y'])::DATE AS paid
 FROM read_csv('payments.csv') LIMIT 5$$;
 ```
 

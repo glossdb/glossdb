@@ -18,8 +18,8 @@ out in the old words.
 | 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | drafted below |
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | done on `readme-harness` |
 | 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | done on `readme-harness` |
-| 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | drafted below |
-| 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | |
+| 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | done on `readme-harness` |
+| 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | drafted below |
 | 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | |
 | 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | |
 | 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | |
@@ -102,41 +102,25 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### glossdb's docs in the shape of DuckDB's and DuckLake's
+### glossql's docs in the shape of DuckLake's
 
-- **What it buys.** A reader finds a page by the task, as in any
-  database's docs; every page speaks the README's words; agents read the
-  same pages as `doc://` resources.
-- **What is there.** 43 pages under `start/`, `concepts/`, `reference/`,
-  `methods/`, `architecture/`, `system/`, `onboarding/`, `quality/`,
-  written as statements of the system, in the old words. Every page is
-  embedded (`crates/serverd/build.rs`), its examples held by
-  `crates/serverd/tests/suite/docs.rs`; `reference/reads.md` keeps its
-  path (a test asserts it).
-- **The tree.**
-  - `README.md`: the index, one line per section.
-  - Overview: `introduction.md`, `how-it-works.md` (from `harness.md`),
-    `terms.md`.
-  - Getting started: `installation.md`, `connect.md`, `quickstart.md`
-    (from `start/`).
-  - Usage, one page per task (from `concepts/`, `quality/`,
-    `onboarding/`): workspaces and datasets, loading data, describing
-    tables and columns, relationships, metrics, measurements, data
-    tests, the review queue, the console, data apps, querying and
-    export.
-  - Operations (from `start/install.md`, `concepts/actors.md`,
-    `architecture/storage.md`): configuration, authentication,
-    deployment, logging and monitoring.
-  - Reference: statements, functions, views and table functions
-    (`reads.md`), the KPI kit, the MCP interface, the HTTP endpoints,
-    app authoring.
-  - Methods: how each measurement works (`methods/`, not preview).
-  - Preview: forecasts, expected ranges, plans, scenarios, each opening
-    with a preview line.
-  - Internals: kernel, catalog store, storage, the DuckDB seams
-    (`architecture/`).
-  - `system/` and `onboarding/` are folded in and gone.
-- **Done when.** The tree stands, every page follows the prose skill,
-  no page repeats another, links resolve, the suite passes.
+- **What it buys.** The language reads like DuckLake: an overview, a
+  specification with one page per catalog table, the extension's
+  installation and usage, reference, and conformance.
+- **What is there.** README, SPEC.md, CONFORMANCE.md, `kits/README.md`,
+  `docs/terms.md`, `docs/duckdb.md`, `docs/interfaces.md`;
+  `docs/UPDATING.md` is the extension template's. The eleven catalog
+  tables exist only in `STORE_RELATIONS` (`src/glossql_store.cpp`);
+  the table functions (`glossql_kit`, `glossql_lineage`,
+  `glossql_columns`, `dataset_cells`, `subject_column`,
+  `json_schema_check`, `glossql_service`) only in README and
+  CONFORMANCE prose. glossdb's `reference/statements.md` and the
+  language pages of its usage section describe the same statements.
+- **Done when.** The extension's `docs/` holds overview, installation,
+  usage (one page per statement family), specification (one page per
+  catalog table, held to `STORE_RELATIONS` by a test), functions,
+  kits, interfaces, conformance; glossdb's statement reference links
+  there instead of restating it; the extension's suite parses every
+  example.
 
 (The results page, step 4, waits on the glossval rerun.)

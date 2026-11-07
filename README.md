@@ -40,8 +40,8 @@ without the facts.
    confidence goes to a review queue. A person's answer is stored and
    outranks every agent's.
 
-How each part maps onto a coding harness: [how the harness
-works](docs/harness.md). Every word: [terms](docs/terms.md).
+How each part maps onto a coding harness: [how it
+works](docs/overview/how-it-works.md). Every word: [terms](docs/overview/terms.md).
 
 ## Features
 
@@ -128,10 +128,11 @@ is at `http://127.0.0.1:8080/<dataset>/app`. On Linux, run the image
 `ghcr.io/glossdb/glossdb`.
 
 - Sign-in, the production setup (a Postgres catalog and an object
-  store) and every setting: [install](docs/start/install.md).
-- Claude, ChatGPT and other MCP clients: [connect](docs/start/connect.md).
+  store) and every setting: [deployment](docs/operations/deployment.md),
+  [configuration](docs/operations/configuration.md).
+- Claude, ChatGPT and other MCP clients: [connect](docs/getting-started/connect.md).
 - One session from raw exports to served metrics:
-  [walkthrough](docs/start/walkthrough.md).
+  [quickstart](docs/getting-started/quickstart.md).
 
 ## Interfaces
 
@@ -162,7 +163,7 @@ add `--release` to run it for real. DuckDB is compiled into the binary
 (about three minutes once per profile). The glossql extension is built
 from the sibling checkout `../gloss` (`GEN=ninja make release`), or
 named by `GLOSSQL_EXTENSION` and `GLOSSQL_KITS`
-([install](docs/start/install.md)).
+([installation](docs/getting-started/installation.md)).
 
 The parallel build needs memory. If it dies without a compiler error,
 the OOM killer hit. Allow about one job per 2 GB:
@@ -186,11 +187,8 @@ it.
   (goals and next steps); each with its test suite
   ([kits](kits/README.md)).
 - `skills/` — the skills served to agents.
-- `docs/` — [start](docs/start/README.md),
-  [concepts](docs/concepts/README.md),
-  [reference](docs/reference/README.md),
-  [methods](docs/methods/README.md),
-  [architecture](docs/architecture/README.md).
+- `docs/` — the [documentation](docs/README.md): getting started,
+  usage, operations, reference, extending, methods, internals.
 - `corpus/` — real artifacts written in glossql, behind the server's
   kits.
 - `vendor/` — DuckDB's SQL guide for the pinned release, served to

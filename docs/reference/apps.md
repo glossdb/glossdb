@@ -1,32 +1,33 @@
-# Authoring an app
+# App authoring
 
-An app is a named set of declarative parts — pages, frame queries,
-chart specs, a manifest. Authors write templates, SQL, specs, prose;
-never code. The door serves as many apps as the record holds. Nothing
-is read from disk: an app lives in the record or in the binary.
+A data app is a named set of parts: a manifest, pages, frames (SQL
+queries) and chart specs. Authors write templates, SQL and specs,
+never code. An app lives in the catalog or in the binary; nothing is
+read from disk. How agents write apps over the metrics:
+[data apps](../usage/data-apps.md).
 
-## Two sources, one resolution order
+## Where an app comes from
 
-1. **Glosses** — each part its own gloss, the one way an app is
-   written, by an agent over MCP or a person through any door:
-   `app` on `<name>` is the manifest (`title`, optional `dataset`),
-   `app_page` on `<name>.<page>` a page (`html`), `app_frame` on
-   `<name>.<frame>` a query (`sql`), `app_spec` on `<name>.<spec>` a
-   chart spec (`spec`). Supersession versions each part on its own; a
-   human's part wins over the agent's. The `app_parts` read shows every
-   part as a file row, keyed the way a directory would spell them
-   (`index.html`, `frames/open.sql`, `specs/monthly.vl.json`). The
-   door serves the parts as they stood at the app's release — a gloss
-   of `app_release` on `<name>` — and the newest parts under `?draft`;
-   an app nobody released serves its draft (`app_releases` says what
-   is released).
-2. **The built-in** — the console ships in the binary and resolves the
-   same way, after the record.
+1. **Annotations.** Each part is its own annotation, written by an
+   agent over MCP or by a person through any interface:
+   - `app` on `<name>`: the manifest (`title`, optional `dataset`);
+   - `app_page` on `<name>.<page>`: a page (`html`);
+   - `app_frame` on `<name>.<frame>`: a query (`sql`);
+   - `app_spec` on `<name>.<spec>`: a chart spec (`spec`).
 
-A glossed part under a built-in's name is refused: one part would
-resolve the whole app and the built-in's other pages would stop
-serving. Add an app under its own name instead; forking the built-in
-happens where its source is, in the repository.
+   Each part has its own history; a person's part wins over an agent's.
+   `app_parts` lists every part as a file (`index.html`,
+   `frames/open.sql`, `specs/monthly.vl.json`). The server serves the
+   parts as they were at the app's release, an `app_release`
+   annotation on `<name>`, and the newest parts under `?draft`. An app
+   with no release serves its draft; `app_releases` says what is
+   released.
+2. **The built-in.** The console ships in the binary and resolves the
+   same way, after the catalog.
+
+A part under the built-in's name is refused: it would replace the whole
+app and the console's other pages would stop serving. Write an app
+under its own name instead.
 
 ## The manifest
 
@@ -34,157 +35,150 @@ happens where its source is, in the repository.
 GLOSS app ON console_mine AS $${"title": "My console"}$$;
 ```
 
-**A manifest names no dataset.** The URL does — `/<dataset>/app/<name>` —
-so one app serves every dataset in the workspace and the bar's picker
-switches between them. A `dataset` key is accepted and ignored. App,
-page, frame, and spec names are flat segments — ASCII alphanumerics,
-`_`, `-`, `.`; nothing hidden, no dot-walking.
-
-**A manifest may list its pages.** `"pages": [{"name": "index",
-"title": "Overview"}, {"name": "cash", "title": "Cash"}]` is the
-order and the wording of the bar's tabs; without the list every page
-shows by its file name, `index` first. A page may carry a `"group"`:
-the bar draws a hairline where the group changes from one page to the
-next, so an app can set the pages that show what the record says
-apart from the ones that hand the data over; pages without a group
-draw none. An app with one page shows no tabs — the picker names it.
-Every page of a glossed app opens with the manifest's title, printed
-by the shell; the built-in's pages are its tabs and it prints none.
+- **No dataset.** The URL names it, `/<dataset>/app/<name>`, so one app
+  serves every dataset and the bar's picker switches between them. A
+  `dataset` key is accepted and ignored.
+- **Names.** App, page, frame and spec names are single segments: ASCII
+  letters and digits, `_`, `-`, `.`.
+- **Pages.** `"pages": [{"name": "index", "title": "Overview"},
+  {"name": "cash", "title": "Cash"}]` sets the order and the titles of
+  the tabs; without it every page shows by its file name, `index`
+  first. A page may carry a `"group"`: the bar draws a line where the
+  group changes. A one-page app shows no tabs. Every page of an app
+  from the catalog opens with the manifest's title; the console's
+  pages are its tabs and print none.
 
 ## Frames
 
-A frame is one SQL file served as Arrow IPC. URL params bind as typed
-plan placeholders (`$from` in the SQL, `?from=…` on the URL); values
-arrive as Utf8 and the frame SQL casts explicitly, and a door argument
-binds the same way (`metric_series(grain := $grain)`). The bound
-dataset is not a parameter: the frame's channel is bound to the URL's
-dataset, and `current_dataset` names it inside the SQL. Frames only
-read, and the browser
-fetches each frame once per state, sharing the table across every tile
-bound to it. The URL is the only state; drill is navigation, and so is
-a viewer's window: `?grain=quarter&span=24` are ordinary params bound
-as `$grain` and `$span`, and the frame SQL is the filter. A reference's
-own params are the author's defaults (`frames/trend?grain=month&span=24`);
-the page URL overrides them, and only the frames whose URL changed
-refetch.
+A frame is one SQL query served as Arrow IPC.
 
-Display logic — glyphs, classes, links — is computed in the frame's
-SQL, not in the template. The shipped reads (`open_questions`, `owed`,
-`metric_surfaces`, `metric_series()`, …) are the natural frame
-sources; narrow a workspace-wide one by joining `current_dataset`.
+- **Parameters.** URL parameters bind as typed placeholders: `$from`
+  in the SQL, `?from=…` on the URL. Values arrive as text; cast them in
+  the SQL. A table function's argument binds the same way
+  (`metric_series(grain := $grain)`). A placeholder nobody bound fails
+  and names what the URL needs.
+- **The dataset.** Not a parameter: the frame runs on the URL's
+  dataset, and `current_dataset` names it in the SQL.
+- **Read only.** Frames run as the person `app:<name>` and only read.
+- **State is the URL.** The browser fetches each frame once per state
+  and shares it across every tile bound to it. Drilling is navigation,
+  and so is a viewer's window: `?grain=quarter&span=24` bind as
+  `$grain` and `$span`. A frame reference's own parameters are the
+  author's defaults (`frames/trend?grain=month&span=24`); the page URL
+  overrides them, and only frames whose URL changed are fetched again.
 
-## Pages and tiles
+Display logic (glyphs, classes, links) belongs in the frame's SQL, not
+the template. The views and table functions (`open_questions`, `owed`,
+`metric_surfaces`, `metric_series()`, …) are the natural sources
+([views and table functions](reads.md)); narrow a workspace-wide one
+by joining `current_dataset`. `fmt_number(x)` and `fmt_change(p)`
+print a number the console's way.
 
-Pages are tera templates; pages of one app can include each other. A
-page is markup. The door serves every page under a
-`Content-Security-Policy` that runs the shell's own assets and nothing
-the page carries: a `<script>`, an `on…=` handler or a `javascript:`
-URL in a page is served as text the browser does not run, no eval is
-allowed, and a vega-lite spec runs in vega's interpreter rather than
-compiled to code. Inline style is allowed. The
-door ships the assets (all vendored, the only JS): htmx, vega-lite
-(vega, vega-embed, vega-interpreter), arrow-js, and the `gl-*` tiles — `gl-chart` (a
-vega-lite spec over a frame), `gl-table`, `gl-value`, and `gl-rows`:
+## Pages
+
+Pages are Tera templates and may include each other. A page is markup.
+Every page is served under a `Content-Security-Policy` that runs the
+server's own assets and nothing the page carries: a `<script>`, an
+`on…=` handler or a `javascript:` URL is not run, eval is not allowed,
+and a Vega-Lite spec runs in Vega's interpreter. Inline style is
+allowed. The server ships the only JavaScript, all vendored: htmx,
+Vega-Lite (Vega, vega-embed, vega-interpreter), Arrow JS, and the
+tiles below.
+
+## Tiles
+
+### gl-rows
 
 ```html
-<gl-rows frame="frames/open" empty="nothing stands open">
+<gl-rows frame="frames/open" empty="no open questions">
   <template>…{subject} — {assumption}…</template>
 </gl-rows>
 ```
 
-`gl-rows` renders the stored frame through the author's own
-`<template>`: every `{field}` in text or attribute values takes the
-row's value, formatted like a table cell. With `join="frames/y"
-on="key"` a second frame's row with the same key merges into each row
-(its fields win) — how a record frame and a data frame meet in one
-list without becoming one fetch. Substitution is literal and
-the template stays dumb — a frame that feeds an `href` emits a
-URL-ready value, with one guard: a substituted `href`/`src` carrying a
-script-capable scheme becomes `#`. An empty frame shows its `empty`
-text; a capped one notes the cap in its footer.
+Renders a frame through the author's `<template>`: every `{field}` in
+text or attribute values takes the row's value, formatted like a table
+cell. With `join="frames/y" on="key"`, the row of a second frame with
+the same key merges into each row (its fields win): how a catalog
+frame and a data frame meet in one list. Substitution is literal; a
+frame that feeds an `href` returns a URL-ready value. A substituted
+`href` or `src` with a script-capable scheme becomes `#`. An empty
+frame shows its `empty` text; a capped one says so in its footer.
 
-The other tiles:
+### gl-chart
 
-- `<gl-chart frame="frames/x" spec="specs/x.vl.json" empty="…">` — a
-  vega-lite view over the frame; the spec binds the named data source
-  `frame` and the store supplies the rows; width defaults to the
-  container. An empty frame shows the `empty` text, as `gl-rows`
-  does, instead of drawing a blank view.
-- `<gl-table frame="frames/x" rows="50" empty="…">` — the frame as a
-  plain HTML table, every column in the frame's order, first N rows
-  (default 50), total row count in the footer; an empty frame shows
-  the `empty` text.
-- `<gl-value frame="frames/kpis" field="billings"
-  delta-field="billings_delta" unit="days" format="compact" good="up">`
-  — one number from the frame's first row, optional delta beside it.
-  `format` is `compact | days | raw | month | text` (`text` passes a
-  band or verdict through unformatted); `good` says which direction
-  reads as healthy — the SQL computes the delta, the element only
-  shows it.
-- `<gl-window frame="frames/axes">` — the viewer's grain and span as
-  links over the page URL (`grain`, `span`); it reads the metric's
-  resolution from a `metric_axes()` frame and offers the grains from
-  there up.
-- `<gl-query dataset="<dataset>" rows="50">` — a read of the viewer's
-  own: a text area, a run button, the rows as a table, and the result
-  to save as csv or as the Arrow stream the door sent. It posts to the
-  query door, `/<dataset>/query`, and runs reads alone — SELECT, WITH,
-  DESCRIBE, SHOW, EXPLAIN — saying so for anything else; the door's
-  refusal comes back as its text. A page opened with `?sql=` runs
-  that read on load, so a read is a link, and a `sql` attribute on
-  the element does the same for a page that knows its read. A header
-  click sorts what came back, in the browser, and the footer says so.
-  The rows page in steps of `rows`, in the browser: every row the
-  door answered is held, the footer carries the page's range over the
-  total with a step either way, a sort starts over from the first
-  page, and the downloads keep the whole result. It touches no frame
-  and no store.
-- `<gl-graph nodes="frames/x" edges="frames/y" empty="…">` — column
-  lineage over two frames: nodes one row per column (`node`, `kind`
-  as `table` or `metric`, `col`, `ord`, `role`), edges one row per
-  edge (`src`, `dst` as column paths, `kind` as `m2o`, `o2o` or
-  `reads`). dagre places the tables along their key edges, the
-  metrics stack on the right, and the element draws the rest as SVG.
-  Columns nothing touches fold under a count; hover follows a column;
-  a click puts it in the URL as `focus`.
+`<gl-chart frame="frames/x" spec="specs/x.vl.json" empty="…">`
 
-After the console's two writes the door answers with an event, never a
-navigation: a ruling with `HX-Trigger: glossql:written`, on which the
-frame store drops its record-class caches; re-measure (every
-measurement standing from before the last change re-run, and every
-one the metrics' fact rows or a witness read that was never made
-run — `owed`'s `never measured` rows) with `glossql:remeasured,
-glossql:written`, on which the data-class caches drop too — a
-re-measure can change the numbers, a ruling cannot. Every
-connected tile refetches in place; instruments keep their DOM.
+A Vega-Lite view over the frame. The spec binds the named data source
+`frame`; the width defaults to the container. An empty frame shows the
+`empty` text instead of a blank chart.
 
-## The built-in console
+### gl-table
 
-`crates/apps/builtin/console/` — the reference app and the standing
-example, and the dataset's own page (`/<dataset>/app` opens it). Two
-groups of tabs. The first shows what the record says: Questions (what
-stands open for a human to judge, what has been settled, what waits
-on an act), Metrics (the surfaces, with the views and the facts listed
-apart from them and what their authors stopped folded under each
-list; a view's page shows the columns it serves, the tables it reads
-and its rows), Quality (the findings, worst first — a verdict that is
-not green, a load's refused cells, a defect a function measured, each
-a sentence from the record's fields; a breached corridor with its
-picture and the axis that moved most; then the standing checks, each
-opening to its evidence, what the functions measured in words, each
-table's newest load in one line, and what the vocabulary still owes
-by name), Glossary (the vocabulary first — every declared aspect
-with what it holds, where it is owed, who may speak it and how many
-owed subjects carry a value, in three groups by kind — then the
-terms, every table with its columns, the joins with their coherence
-and the sources with their conventions; a page per table, column and
-aspect holds every slot with its voice and standing, what the
-functions measured, the joins and the landing, a person's word marked
-once with the who and when on hover) and Lineage. The second hands the data over: Export (every table and read
-as a file) and Query (a pane for a read of one's own, the SQL riding
-the page URL so a read is a link). Pages `index.html`, `metrics.html`,
-`quality.html`, `glossary.html`, `lineage.html`, `export.html`,
-`query.html`; frames over the shipped reads, `metric_series()`, `metric_axes()`,
-`forecast_points()`, `plan_points()`, `metric_sources()` and
-`imports`; two specs. Every built-in frame executes under the test
-suite.
+`<gl-table frame="frames/x" rows="50" empty="…">`
+
+The frame as an HTML table, every column in the frame's order, the
+first N rows (default 50), the total row count in the footer.
+
+### gl-value
+
+`<gl-value frame="frames/kpis" field="billings" delta-field="billings_delta" unit="days" format="compact" good="up">`
+
+One number from the frame's first row, with an optional change beside
+it. `format` is `compact | days | raw | month | text` (`text` passes a
+word such as a band through unformatted); `good` says which direction
+reads as healthy. The SQL computes the change; the tile only shows it.
+
+### gl-window
+
+`<gl-window frame="frames/axes">`
+
+The viewer's grain and span as links over the page URL (`grain`,
+`span`). It reads the metric's finest grain from a `metric_axes()`
+frame and offers the grains from there up.
+
+### gl-query
+
+`<gl-query dataset="<dataset>" rows="50">`
+
+A query of the viewer's own: a text area, a run button, the rows as a
+table, and the result to save as CSV or as the Arrow stream. It posts
+to `/<dataset>/query` and runs reads only (SELECT, WITH, DESCRIBE,
+SHOW, EXPLAIN), saying so for anything else; the server's refusal is
+shown as its text. A page opened with `?sql=` runs that query on load,
+so a query is a link; a `sql` attribute does the same for a page that
+knows its query. A header click sorts the rows in the browser. Rows
+page in steps of `rows`; the downloads keep the whole result.
+
+### gl-graph
+
+`<gl-graph nodes="frames/x" edges="frames/y" empty="…">`
+
+Column lineage over two frames. Nodes are one row per column (`node`,
+`kind` as `table` or `metric`, `col`, `ord`, `role`); edges one row per
+edge (`src`, `dst` as column paths, `kind` as `m2o`, `o2o` or
+`reads`). dagre lays the tables out along their keys, the metrics stack
+on the right. Columns nothing touches fold under a count; hover
+follows a column; a click puts it in the URL as `focus`.
+
+## Writes and refresh
+
+The console takes two writes, a review decision and a re-measure. The
+server answers each with an event, never a navigation: a decision with
+`HX-Trigger: glossql:written`, on which the browser drops its cached
+catalog frames; a re-measure (every measurement stored before the last
+change run again, and every one a metric or a test reads that was never
+made, `owed`'s `never measured` rows) with `glossql:remeasured,
+glossql:written`, on which the cached data frames drop too, since a
+re-measure can change the numbers and a decision cannot. Every tile
+fetches again in place.
+
+## The console as an example
+
+`crates/apps/builtin/console/` is the reference app and each dataset's
+own page (`/<dataset>/app` opens it): pages `index.html` (the review
+queue), `metrics.html`, `quality.html`, `glossary.html`,
+`lineage.html`, `export.html` and `query.html`; frames over the views
+and table functions, `metric_series()`, `metric_axes()`,
+`forecast_points()`, `plan_points()`, `metric_sources()` and `imports`;
+two specs. Every built-in frame runs under the test suite. What each
+page shows: [the console](../usage/console.md).
