@@ -18,8 +18,8 @@ out in the old words.
 | 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | drafted below |
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | done on `readme-harness` |
 | 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | done on `readme-harness` |
-| 7. An evaluator's page: what it is, where it runs, what data leaves, sign-in, deployment, support | Low | `docs/start/evaluate.md` | drafted below |
-| 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | |
+| 7. An evaluator's page: what it is, where it runs, what data leaves, sign-in, deployment, support | Low | `docs/start/evaluate.md` | done on `readme-harness` |
+| 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | drafted below |
 | 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | |
 | 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | |
 | 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | |
@@ -103,22 +103,26 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### A page for evaluators
+### glossdb's docs by reader
 
-- **What it buys.** A customer's architect or security reviewer finds
-  in one page what they must sign off: what glossdb is, where it runs,
-  what data leaves, who signs in, how it is deployed and supported.
-- **What is there.** The answers are spread over `docs/start/install.md`
-  (the production setup, every setting), `docs/start/connect.md` (MCP
-  clients, sign-in), `docs/architecture/` and the README's interfaces
-  table; the model service for forecasts is named only in the futures
-  pages.
-- **Done when.** `docs/start/evaluate.md` answers, each in a short
-  section with links: what it is, the architecture in one diagram, where
-  it runs (one container, a Postgres catalog, an object store), what
-  leaves the deployment (nothing but calls to the model service, when
-  forecasts are on), sign-in and actors, the interfaces, status per
-  feature, the license; the README and `docs/README.md` link it; the
-  suite passes.
+- **What it buys.** A reader finds a page by what they want to do, and
+  every page speaks the README's words; agents read the same pages as
+  `doc://` resources.
+- **What is there.** 43 pages under `start/`, `concepts/`,
+  `reference/`, `methods/`, `architecture/`, `system/`, `onboarding/`
+  and `quality/`; `docs/README.md` opens with "the curated statement";
+  `onboarding/README.md` and `system/README.md` restate other pages;
+  the futures pages (`methods/bands.md`, `forecast.md`, `scenario.md`,
+  `plan.md`) carry no preview mark; the prose uses door, the record,
+  grounding, ruling, landing throughout. Every page is embedded
+  (`crates/serverd/build.rs`) and its examples are held by
+  `crates/serverd/tests/suite/docs.rs`.
+- **Done when.** `docs/README.md` indexes overview (harness, terms),
+  getting started (evaluate, install, connect, walkthrough), concepts,
+  guides, the console, running it, reference and methods, the language
+  linked to the extension; `onboarding/` and `system/` are folded in
+  and gone; the futures pages open with a preview line; every page's
+  prose follows the prose skill; links into moved pages are fixed in
+  skills and kits; the suite passes.
 
 (The results page, step 4, waits on the glossval rerun.)
