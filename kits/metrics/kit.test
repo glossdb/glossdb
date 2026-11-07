@@ -55,7 +55,7 @@ SELECT metric, applicable, reason, unadmitted FROM metric_axes();
 spend	false	no column carries role timestamp: gloss role on the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
 
 query T
-SELECT owed[1] FROM metric_axes();
+SELECT missing[1] FROM metric_axes();
 ----
 GLOSS role ON fin.spend.period AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;
 

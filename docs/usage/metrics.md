@@ -98,7 +98,7 @@ GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120
 Check what the catalog says of each metric's columns:
 
 ```sql
-SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, owed
+SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, missing
 FROM metric_axes() ORDER BY metric
 ```
 

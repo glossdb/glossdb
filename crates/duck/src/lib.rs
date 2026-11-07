@@ -1317,8 +1317,8 @@ impl Plane {
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
              rulings AS (
                SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
-               FROM latest r, unnest(coalesce(json_extract(r.body, '$.rulings')::JSON[], [])) t(jr)
-               WHERE r.actor_kind = 'human' AND r.aspect = 'ruling'),
+               FROM latest r, unnest(coalesce(json_extract(r.body, '$.decisions')::JSON[], [])) t(jr)
+               WHERE r.actor_kind = 'human' AND r.aspect = 'review_decision'),
              owed AS (
                SELECT count(*) AS n FROM rulings ru
                WHERE EXISTS (SELECT 1 FROM latest a, unnest(coalesce(json_extract(a.body, '$.assumptions')::JSON[], [])) t(ja)

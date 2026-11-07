@@ -102,8 +102,8 @@ follows.
 the metric's summary row, the `metric_axes()` shape at the catalog
 version the write moved to: `applicable` and `reason`, `period_column` and
 `value_column`, `behavior` and `behavior_state`, `cadence`, `floor`
-and `rung`, `dims`, `unadmitted` with the annotation each column needs (`owed`),
-`wanted` (the measurement the row reads and nobody ran; `owed` lists
+and `rung`, `dims`, `unadmitted` with the annotation each column needs (`missing`),
+`wanted` (the measurement the row reads and nobody ran; `missing` lists
 it until it is stored). A column with no role, a value with no behaviour,
 a series nobody can slice shows there first, and the `next:` line
 under it names the action. For a

@@ -158,7 +158,7 @@ rows_ AS (
          pr.cadence, coalesce(pr.judged_current, false) AS judged_current,
          coalesce(la.floor, pr.cadence) AS floor, la.windows,
          coalesce(d.cols, []::VARCHAR[]) AS dims, coalesce(ur.cols, []::VARCHAR[]) AS unranked,
-         coalesce(u.cols, []::VARCHAR[]) AS unadmitted, coalesce(u.acts, []::VARCHAR[]) AS owed,
+         coalesce(u.cols, []::VARCHAR[]) AS unadmitted, coalesce(u.acts, []::VARCHAR[]) AS missing,
          pr.metric IS NOT NULL AS profiled
   FROM chosen ch
   JOIN aspects a ON a.name = ch.metric
@@ -219,7 +219,7 @@ judged_plans AS (
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, cadence, floor,
        CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.rung_default(floor)) END AS rung,
-       behavior, behavior_state, dims, unranked, unadmitted, owed, wanted, judged_current
+       behavior, behavior_state, dims, unranked, unadmitted, missing, wanted, judged_current
 FROM judged
 UNION ALL
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
@@ -493,11 +493,11 @@ UNION ALL
 SELECT 'metrics', 5, 'next', 'GLOSS role',
        'gloss the columns of ' || a.metric,
        a.reason,
-       list_aggregate(a.owed, 'string_agg', chr(10)),
+       list_aggregate(a.missing, 'string_agg', chr(10)),
        ''
 FROM axes a, ds
 WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
-  AND len(a.wanted) = 0 AND len(a.owed) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
+  AND len(a.wanted) = 0 AND len(a.missing) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
 UNION ALL
 SELECT 'metrics', 6, 'next', 'GLOSS query',
        'record ' || a.metric || ' again' || ' — ' || split_part(a.reason, ':', 1),
@@ -506,7 +506,7 @@ SELECT 'metrics', 6, 'next', 'GLOSS query',
        ''
 FROM axes a LEFT JOIN bodies b ON b.metric = a.metric, ds
 WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
-  AND len(a.wanted) = 0 AND NOT (len(a.owed) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL))
+  AND len(a.wanted) = 0 AND NOT (len(a.missing) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL))
 UNION ALL
 SELECT 'metrics', 7, 'next', 'GLOSS behavior',
        'say how ' || a.metric || ' combines',
@@ -529,7 +529,7 @@ UNION ALL
 SELECT 'slices', 2, 'next', 'GLOSS role',
        'gloss ' || a.unadmitted[1] || ' on ' || a.metric,
        a.unadmitted[1] || ' is served by ' || a.metric || ' and carries no role: a dimension slices the series, an attribute rides along',
-       a.owed[1],
+       a.missing[1],
        ''
 FROM axes a, ds
 WHERE a.applicable AND len(a.unadmitted) > 0

@@ -200,7 +200,7 @@ silences the review on exactly what it exists to ask.
 **Behaviour is claimed, never defaulted.** The series combines a
 metric's rows by the `behavior` on its value column — flow, stock or
 ratio — and refuses to combine them while there is none; the write's
-answer says so, and `owed` lists the annotation until it is stored. The claim
+answer says so, and `missing` lists the annotation until it is stored. The claim
 is yours, with its grounds: the column's meaning and the table's
 grain, never a name. The test (`DECLARE TEST`) scores disagreement between actors and
 measurements, and `metric_axes().behavior_state` says where the claim

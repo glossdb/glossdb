@@ -218,7 +218,7 @@ walked, raised to the number of metrics scored. `TESTS()` carries it
 and the `checks` goal acts on it. Which metric and month is in the
 measurement's own output; `band_points()` returns them as rows.
 
-### forecast_stands, scenario_stands
+### forecast_exists, scenario_exists
 
 Used by `forecast_w` and `scenario_w`: green once a run exists, so a
 forecast and an estimate are expected while none exists, and again

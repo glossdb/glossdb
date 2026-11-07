@@ -189,7 +189,7 @@
         <template>
           <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr)">
             <span class="r-subj">{aspect}</span>
-            <span class="r-meta">{owed}</span>
+            <span class="r-meta">{missing}</span>
           </div>
         </template>
       </gl-rows>
@@ -220,7 +220,7 @@
     <gl-rows frame="frames/unsaid" empty="every required annotation is written">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr)">
-          <span class="r-subj">{aspect}<br><span class="r-meta">{owed} missing</span></span>
+          <span class="r-subj">{aspect}<br><span class="r-meta">{missing} missing</span></span>
           <span class="dict">{names}</span>
         </a>
       </template>

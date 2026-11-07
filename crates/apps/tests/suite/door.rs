@@ -105,8 +105,8 @@ const CORE: &str = include_str!(concat!(
 fn shipped_ruling_declaration() -> &'static str {
     let kit = CORE;
     let start = kit
-        .find("DECLARE ASPECT ruling")
-        .expect("the kit ships the ruling aspect");
+        .find("DECLARE ASPECT review_decision")
+        .expect("the kit ships the review_decision aspect");
     let len = kit[start..]
         .find("AS FACT;")
         .expect("the declaration closes")
@@ -703,7 +703,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
     // Signed with the name the gate carried in (`workspace()` holds
     // in for it with `ada`), not with a stand-in.
     let signed = human
-        .execute("SELECT actor_id FROM glossary WHERE aspect = 'ruling' AND actor_kind = 'human';")
+        .execute("SELECT actor_id FROM glossary WHERE aspect = 'review_decision' AND actor_kind = 'human';")
         .await
         .unwrap();
     let glossdb_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
@@ -1050,7 +1050,7 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
     human.execute(shipped_ruling_declaration()).await.unwrap();
     human
         .execute(
-            r#"GLOSS ruling ON perf AS $${"rulings": [
+            r#"GLOSS review_decision ON perf AS $${"decisions": [
                  {"aspect": "dso", "dimension": "definition", "key": "per-line",
                   "assumption": "per line", "stance": "confirmed"}]}$$;"#,
         )

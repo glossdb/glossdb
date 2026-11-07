@@ -467,7 +467,7 @@ impl GlossqlMcp {
     }
 
     /// The human rules an assumption: the review decision is stored as ITS OWN
-    /// record — an entry appended to the human's `ruling` value on the
+    /// record — an entry appended to the human's `review_decision` value on the
     /// subject — and the decided aspect's values stay agent-authored.
     /// The entry names the claim by `key` (the agent's declared
     /// identity, the only thing joined on) and carries the prose the
@@ -631,7 +631,7 @@ async fn open_question_count(plane: &Plane) -> Option<usize> {
 /// load rests on re-derivation, never on the echo.
 const ROUND_STATE: &str = "review:v1";
 
-/// One entry of the human's `ruling` value, as the interface composes it.
+/// One entry of the human's `review_decision` value, as the interface composes it.
 /// `key` names the claim (the join column); `assumption` is the prose
 /// the human read, kept for the catalog and never matched; `note` is
 /// display.
@@ -720,7 +720,7 @@ struct Question {
 /// opens on the free-text box with the claim third; sorted by these
 /// prefixes it opens on the claim, which is what the human came to
 /// read. Nobody sees these names — the titles are what render.
-const STANDS: &str = "1_stands";
+const STANDS: &str = "1_correct";
 const RATHER: &str = "2_rather";
 const SAME_AS: &str = "3_same_as";
 const UNCLEAR: &str = "4_unclear";

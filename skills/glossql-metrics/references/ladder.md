@@ -38,7 +38,7 @@ GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120
 - The axes are the served columns that carry `role` dimension; a
   `dimension` annotation ranks them, `primary` first, `none` closes one.
   `metric_axes().unranked` names the ones no annotation ranks,
-  `unadmitted` the served columns with no role, and `owed` the
+  `unadmitted` the served columns with no role, and `missing` the
   annotation each needs.
 
 Where every metric is, in one read — from the catalog:
@@ -52,7 +52,7 @@ What the catalog says of each metric's columns, and what a series can
 be served from:
 
 ```sql
-SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, owed
+SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, missing
 FROM metric_axes() ORDER BY metric
 ```
 
@@ -111,7 +111,7 @@ flow the totals to the end of the month, the quarter or the year.
 due again, since the origin moved.
 
 - `forecast_points()` is the latest forecast as rows; `actual` and
-  `landed` fill as the periods arrive. `held_80` and `held_90` say how
+  `actuals` fill as the periods arrive. `held_80` and `held_90` say how
   often such a band held, `held_from` whose count: this metric's
   history once 30 of its points arrived at that step, else the dataset's,
   else the service's held-out share. Hand a range out with them.
@@ -192,8 +192,8 @@ amended one both exist.
   the year: the plan's number, the actual where the period has begun,
   the variance where it is complete, and the forecast's median with
   its 80% band where it covers the rest — at the year, the actual to
-  date plus the year to go. The `stands` column says where the plan lies:
-  `landed`, `inside`, `below` or `above` the band, `open` or `ahead`,
+  date plus the year to go. The `planned` column says where the plan lies:
+  `complete`, `inside`, `below` or `above` the band, `open` or `ahead`,
   and `partial` where the plan's rows cover part of the year — the
   year row then carries `covers` (`9 of 12 months`), its number and
   its actual over the covered months, and no band. A band at a coarser

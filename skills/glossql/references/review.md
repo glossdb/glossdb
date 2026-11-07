@@ -1,8 +1,8 @@
 # Rulings and what they owe you — read when the brief counts a ruling, a question, or a contest
 
-A person's answer is stored as a **review decision** (`ruling` in the
+A person's answer is stored as a **review decision** (`review_decision` in the
 catalog): the judgment alone — confirmed or corrected, naming the
-claim by its `key` — in the person's `ruling` annotation on the asset,
+claim by its `key` — in the person's `review_decision` annotation on the asset,
 never a copy of your body. A decision keeps its question closed; your
 metric definition stays yours. Questions derive from *your current
 body*, so raising a confidence with a measurement basis closes its

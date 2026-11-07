@@ -14,7 +14,7 @@ SELECT CASE WHEN a.conf >= 1.0 THEN '●' ELSE '◐' END AS glyph,
          ELSE 'decided: ' || r.stance
               || CASE WHEN coalesce(r.note, '') <> '' THEN ' — ' || r.note ELSE '' END
               || CASE WHEN a.conf < 1.0 THEN ' · not yet applied' ELSE '' END
-       END AS ruling,
+       END AS decision,
        'GLOSS ' || a.aspect || ' ON ' || (SELECT dataset FROM current_dataset)
          || ' AS $$' || a.body::VARCHAR || '$$;' AS statement
 FROM agent_assumptions a

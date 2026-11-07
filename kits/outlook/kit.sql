@@ -360,11 +360,11 @@ $$ RETURNS metric_forecast;
 
 -- The forecast's test says a forecast exists: green once one is stored,
 -- so that the forecast is required while none is, and again once stale.
-DECLARE FUNCTION forecast_stands FOR GLOBAL AS $$
+DECLARE FUNCTION forecast_exists FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE TEST forecast_w ON metric_forecast DETECTOR forecast_stands;
+DECLARE TEST forecast_w ON metric_forecast DETECTOR forecast_exists;
 
 --===------------------------------------------------------------------===--
 -- forecast_record(): every forecast run's points as rows, from the
@@ -825,11 +825,11 @@ $$ RETURNS metric_scenario;
 
 -- The estimate's test says an estimate exists: green once one is stored,
 -- so that it is required while none is, and again once stale.
-DECLARE FUNCTION scenario_stands FOR GLOBAL AS $$
+DECLARE FUNCTION scenario_exists FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE TEST scenario_w ON metric_scenario DETECTOR scenario_stands;
+DECLARE TEST scenario_w ON metric_scenario DETECTOR scenario_exists;
 
 CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH newest AS (

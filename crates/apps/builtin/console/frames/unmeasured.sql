@@ -10,7 +10,7 @@ SELECT g.aspect,
                  WHEN list_contains(a.grains, 'TABLE') THEN 'tables'
                  ELSE 'subjects' END
          || coalesce(' where ' || json_extract_string(a.condition, '$.aspect') || ' = ' || json_extract_string(a.condition, '$.value'), '')
-         || ', none measured' AS owed
+         || ', none measured' AS missing
 FROM GLOSSARY() g JOIN a ON a.name = g.aspect
 WHERE a.kind = 'measurement'
 GROUP BY g.aspect, a.grains, a.condition

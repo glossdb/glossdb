@@ -1472,8 +1472,8 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'one key, one decision');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -1625,8 +1625,8 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'loose test');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
@@ -1661,13 +1661,13 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     // message is clipped at three lines and a title is truncated to
     // share its line with the value, while a description renders whole.
     assert!(
-        ask["params"]["requestedSchema"]["properties"]["1_stands"]["description"]
+        ask["params"]["requestedSchema"]["properties"]["1_correct"]["description"]
             .as_str()
             .is_some_and(|d| d.contains("per line")),
         "{body}"
     );
 
-    let answer = json!({"action": "accept", "content": {"1_stands": true}});
+    let answer = json!({"action": "accept", "content": {"1_correct": true}});
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -1709,7 +1709,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     assert_eq!(outcomes[0]["row_count"], json!(1), "{outcomes}");
     assert_eq!(
         outcomes[0]["rows"][0]["aspect"],
-        json!("ruling"),
+        json!("review_decision"),
         "{outcomes}"
     );
     let human_body = outcomes[0]["rows"][0]["body"].as_str().unwrap();
@@ -1771,8 +1771,8 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'defer test');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
@@ -1856,8 +1856,8 @@ async fn the_round_never_interrupts_a_working_call() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'cadence test');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
@@ -2109,8 +2109,8 @@ async fn sequential_rulings_compose_instead_of_reverting() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'sequential rulings');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
@@ -2126,7 +2126,7 @@ async fn sequential_rulings_compose_instead_of_reverting() {
         "loose:fin:dso:flat-30-day-month",
         "loose:fin:dso:total-revenue-denominator",
     ] {
-        let answer = json!({"action": "accept", "content": {"1_stands": true}});
+        let answer = json!({"action": "accept", "content": {"1_correct": true}});
         let body = expect_ok(
             mcp(
                 app.clone(),
@@ -2212,8 +2212,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'one claim, two rulings');
         USE fin;
-        DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
-          "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS VIEW;
         GLOSS purchases ON fin AS $${"sql": "SELECT 1 AS v",
@@ -2267,7 +2267,7 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     );
 
     // The human confirms it anyway — legitimate, different aspect.
-    let confirmed = json!({"action": "accept", "content": {"1_stands": true}});
+    let confirmed = json!({"action": "accept", "content": {"1_correct": true}});
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -2612,7 +2612,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 161,
-                "SELECT surface, stands, open FROM workspace_next ORDER BY surface;",
+                "SELECT surface, existing, open FROM workspace_next ORDER BY surface;",
                 None,
             ),
         )
@@ -2651,24 +2651,24 @@ async fn the_workspace_says_what_it_affords() {
     };
     // One metric declared, one grounded, one assumption open on it. The
     // sample frame is a VIEW aspect too and must not inflate this.
-    assert_eq!(row("metrics")["stands"], json!(1), "{rows:?}");
+    assert_eq!(row("metrics")["existing"], json!(1), "{rows:?}");
     assert_eq!(row("metrics")["open"], json!(1), "{rows:?}");
     assert_eq!(row("claims")["open"], json!(1), "{rows:?}");
     // The scenarios and the sample frames. The sample interface is a planner interface, not a row
     // in `functions`, so this map is the only place an agent meets them
     // at all. Each is declared here and never glossed — vocabulary
     // standing with no body, which is exactly what `open` means.
-    assert_eq!(row("scenarios")["stands"], json!(1), "{rows:?}");
+    assert_eq!(row("scenarios")["existing"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
     // Nothing decided yet, so no decision waits to be applied.
-    assert_eq!(row("review")["stands"], json!(0), "{rows:?}");
+    assert_eq!(row("review")["existing"], json!(0), "{rows:?}");
     assert_eq!(row("review")["open"], json!(0), "{rows:?}");
     // A validation holds with its test and is open while nobody
     // has spoken on the tested aspect. The DuckDB build opens with
     // its kits declared, whose tests stand open here too.
     let kit_witnesses = 11;
     assert_eq!(
-        row("validations")["stands"],
+        row("validations")["existing"],
         json!(1 + kit_witnesses),
         "{rows:?}"
     );
@@ -2737,7 +2737,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     };
 
     let whole = read(
-        "SELECT surface, stands FROM workspace_next ORDER BY surface;",
+        "SELECT surface, existing FROM workspace_next ORDER BY surface;",
         171,
     )
     .await;
@@ -2745,7 +2745,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let standing = |rows: &[Value], name: &str| -> i64 {
         rows.iter()
             .find(|r| r["surface"] == json!(name))
-            .and_then(|r| r["stands"].as_i64())
+            .and_then(|r| r["existing"].as_i64())
             .unwrap_or(-1)
     };
     let aspects_whole = standing(&whole_rows, "aspects");
@@ -2753,7 +2753,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
 
     // The same question, filtered.
     let one = read(
-        "SELECT surface, stands FROM workspace_next WHERE surface = 'aspects';",
+        "SELECT surface, existing FROM workspace_next WHERE surface = 'aspects';",
         172,
     )
     .await;
@@ -2771,7 +2771,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
 
     // And a filter that keeps several rows keeps exactly those.
     let some = read(
-        "SELECT surface, stands FROM workspace_next \
+        "SELECT surface, existing FROM workspace_next \
          WHERE surface IN ('tables', 'sources') ORDER BY surface;",
         173,
     )

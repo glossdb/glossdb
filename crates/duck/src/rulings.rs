@@ -28,7 +28,7 @@ fn ident_path(text: &str, max_segments: usize) -> bool {
         })
 }
 
-/// Land `ruling` on the human's channel.
+/// Store `review_decision` on the human's channel.
 pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, SessionError> {
     let Ruling {
         subject,
@@ -58,7 +58,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         .batches(
             &format!(
                 "SELECT body::VARCHAR FROM {}.main.glossary \
-                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'ruling' AND actor_kind = 'human' \
+                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'review_decision' AND actor_kind = 'human' \
                  ORDER BY seq DESC LIMIT 1",
                 crate::LAKE
             ),
@@ -69,8 +69,8 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         .first()
         .and_then(|r| r.first().cloned().flatten())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .unwrap_or_else(|| serde_json::json!({ "rulings": [] }));
-    let Some(rulings) = body.get_mut("rulings").and_then(|r| r.as_array_mut()) else {
+        .unwrap_or_else(|| serde_json::json!({ "decisions": [] }));
+    let Some(rulings) = body.get_mut("decisions").and_then(|r| r.as_array_mut()) else {
         return Err(SessionError::RulingSlotNotRulings);
     };
     rulings.retain(|r| !(r["aspect"] == aspect && r["key"] == key));
@@ -90,7 +90,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         return Err(SessionError::DollarQuotedBody);
     }
     human
-        .execute(&format!("GLOSS ruling ON {subject} AS $${body}$$"))
+        .execute(&format!("GLOSS review_decision ON {subject} AS $${body}$$"))
         .await
         .map(|_| {
             if stance == "unclear" {

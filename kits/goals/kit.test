@@ -50,7 +50,7 @@ true
 query TT
 FROM glossql_kit('{KITS}/goals/kit.sql');
 ----
-goals	stands
+goals	current
 
 query I
 SELECT count(*) FROM kits;

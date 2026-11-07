@@ -37,7 +37,7 @@ metrics kit's (the finest grain a series is served at and how many
 periods per grain, required where `role = 'timestamp'`, test
 `ladder_w`); `lever` on a column, the outlook kit's (`value` true: a
 column someone sets, the input a scenario moves, with `grounds`; no
-test). The core kit declares `recipe_change`, `ruling` and the app
+test). The core kit declares `recipe_change`, `review_decision` and the app
 properties before any other kit.
 
 Names the server reads, shipped by this kit: `title` and `x-kind` on

@@ -31,7 +31,7 @@ Where the workspace stands on each thing it can be extended with. Not
 a task list. Columns: `surface` (`sources`, `tables`, `relationships`,
 `aspects`, `claims`, `functions`, `metrics`, `validations`,
 `scenarios`, `plans`, `review`, `apps`), `how` (the statement that
-extends it), `stands` (what exists), `open` (what is unfinished; 0
+extends it), `existing` (what exists), `open` (what is unfinished; 0
 where nothing can be). A table is open while its load dropped rows.
 Every count spans the workspace: the view to read first, with no
 dataset bound.
@@ -127,7 +127,7 @@ column's measured grain), `floor` (the ladder's, else the cadence),
 nobody said, `contested` where the test withholds it), `dims` (the
 slicing columns, primary first), `unranked` (dimension columns no
 `dimension` annotation ranks), `unadmitted` (served columns with no
-role), `owed` (the annotation each of those needs), `wanted` (the
+role), `missing` (the annotation each of those needs), `wanted` (the
 measurement the row reads and nobody ran), `judged_current` (the
 profile is at the data's own version).
 
@@ -140,7 +140,7 @@ outlook kit's `metric_plan` until one exists, as a metric's row asks
 for the profile of its period column.
 
 ```sql
-SELECT metric, applicable, reason, behavior, floor, rung, dims, owed, wanted
+SELECT metric, applicable, reason, behavior, floor, rung, dims, missing, wanted
 FROM metric_axes() ORDER BY metric
 ```
 

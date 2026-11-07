@@ -19,9 +19,9 @@ grouped AS (
   SELECT aspect, grp, count(*) AS n, string_agg(name, ', ' ORDER BY name) AS names
   FROM named GROUP BY aspect, grp)
 SELECT aspect,
-       sum(n) AS owed,
+       sum(n) AS missing,
        string_agg(grp || ': ' || names, ' · ' ORDER BY CASE grp WHEN 'whole tables' THEN 0 WHEN 'joins' THEN 2 ELSE 1 END, grp) AS names,
        '/' || d.dataset || '/app/console/p/glossary?aspect=' || aspect AS link
 FROM grouped CROSS JOIN d
 GROUP BY aspect, d.dataset
-ORDER BY owed DESC, aspect
+ORDER BY missing DESC, aspect

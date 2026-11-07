@@ -33,13 +33,13 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
   FROM latest l, unnest(coalesce(json_extract(l.body, '$.assumptions')::JSON[], []::JSON[])) WITH ORDINALITY AS t(a, i);
 
 -- A person's current review decisions, one row per entry of the latest
--- `ruling` body on a subject; `folded_in` once no agent assumption below
+-- `review_decision` body on a subject; `folded_in` once no agent assumption below
 -- full confidence carries the decided key under the decided aspect.
 CREATE OR REPLACE VIEW main.review_decisions AS
   WITH latest AS (
     SELECT * FROM (
       SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
-      FROM main.glossary r WHERE aspect = 'ruling' AND actor_kind = 'human') WHERE rn = 1),
+      FROM main.glossary r WHERE aspect = 'review_decision' AND actor_kind = 'human') WHERE rn = 1),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
            json_extract_string(t.r, '$.aspect') AS aspect,
@@ -49,7 +49,7 @@ CREATE OR REPLACE VIEW main.review_decisions AS
            coalesce(json_extract_string(t.r, '$.assumption'), '') AS assumption,
            json_extract_string(t.r, '$.note') AS note,
            l.written_at
-    FROM latest l, unnest(coalesce(json_extract(l.body, '$.rulings')::JSON[], []::JSON[])) WITH ORDINALITY AS t(r, i))
+    FROM latest l, unnest(coalesce(json_extract(l.body, '$.decisions')::JSON[], []::JSON[])) WITH ORDINALITY AS t(r, i))
   SELECT e.dataset, e.subject, e.idx, e.aspect, e.key, e.stance, e.dimension,
          e.assumption, e.note, e.written_at,
          count(a.key) = 0 AS folded_in
@@ -181,12 +181,12 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
      OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
 -- What this workspace can be extended through, and its state on
--- each: `stands` counts what exists, `open` what is unfinished on the
+-- each: `existing` counts what exists, `open` what is unfinished on the
 -- surface, `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_next AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM main.review_decisions),
+  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
     SELECT name, kind, schema FROM (
@@ -214,8 +214,8 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
-           (SELECT n FROM ruled) AS n_rulings,
-           (SELECT owed FROM ruled) AS open_rulings,
+           (SELECT n FROM ruled) AS n_decisions,
+           (SELECT unapplied FROM ruled) AS open_decisions,
            (SELECT n FROM apps) AS n_apps)
   SELECT s.surface, s.how,
          CASE s.surface WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
@@ -223,11 +223,11 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            WHEN 'claims' THEN c.n_claims WHEN 'functions' THEN c.n_functions
            WHEN 'metrics' THEN c.n_metrics WHEN 'validations' THEN c.n_validations
            WHEN 'scenarios' THEN c.n_scenarios WHEN 'plans' THEN c.n_plans
-           WHEN 'review' THEN c.n_rulings ELSE c.n_apps END AS stands,
+           WHEN 'review' THEN c.n_decisions ELSE c.n_apps END AS existing,
          CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
            WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
-           WHEN 'review' THEN c.open_rulings ELSE 0 END AS open
+           WHEN 'review' THEN c.open_decisions ELSE 0 END AS open
   FROM counts c
   CROSS JOIN (VALUES
     ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
@@ -237,7 +237,7 @@ CREATE OR REPLACE VIEW main.workspace_next AS
     ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
     ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST (the test) with a DETECTOR scoring them — TESTS() serves the test results'),
+    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
     ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
     ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
@@ -256,9 +256,9 @@ DECLARE ASPECT recipe_change WITH $${
 -- claim it decides by key, confirmed or corrected; the decided aspect's
 -- values stay agent-authored and the agent applies the decision. No test
 -- on purpose: the actor kind stamps the writer.
-DECLARE ASPECT ruling WITH $${
-  "type": "object", "required": ["rulings"],
-  "properties": {"rulings": {"type": "array", "items": {
+DECLARE ASPECT review_decision WITH $${
+  "type": "object", "required": ["decisions"],
+  "properties": {"decisions": {"type": "array", "items": {
     "type": "object", "required": ["aspect", "key", "stance"],
     "properties": {"aspect": {"type": "string"},
                    "dimension": {"type": "string"},

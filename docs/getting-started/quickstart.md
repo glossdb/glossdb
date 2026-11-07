@@ -283,7 +283,7 @@ A statement there is a proposal: edit it, send it, or skip it.
 what is done and what is open on each:
 
 ```sql
-SELECT surface, how, stands, open FROM workspace_next ORDER BY open DESC;
+SELECT surface, how, existing, open FROM workspace_next ORDER BY open DESC;
 ```
 
 More: [next steps](../extending/next-steps.md).

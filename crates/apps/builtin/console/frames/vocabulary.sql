@@ -6,7 +6,7 @@
 -- it. A row opens the aspect's page.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition, schema,
-         CASE WHEN name IN ('app', 'app_page', 'app_frame', 'app_spec', 'app_release', 'ruling', 'recipe_change') THEN 'own'
+         CASE WHEN name IN ('app', 'app_page', 'app_frame', 'app_spec', 'app_release', 'review_decision', 'recipe_change') THEN 'own'
               ELSE lower(kind) END AS side
   FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
