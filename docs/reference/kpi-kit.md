@@ -45,7 +45,7 @@ open before any kit.
 Names machinery reads, shipped by this kit: `recipe_change` (the
 brief counts pending approvals by that name), `title` / `x-kind` in
 QUERY-aspect blobs and `unit` / `meaning` in `definitions` entries
-(the docket's metric faces and `metric_surfaces`), and `none` as the
+(the console's metric faces and `metric_surfaces`), and `none` as the
 judged negative in enum aspects — "examined, does not apply" is a
 different fact from an unassessed row, and the one that lets the
 backlog walk to zero.

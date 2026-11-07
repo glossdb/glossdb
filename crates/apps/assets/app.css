@@ -1,6 +1,6 @@
 /* The wrapper's one stylesheet.
 
-   A data app here is a docket, not a dashboard: a page of matters,
+   A data app here is a console, not a dashboard: a page of matters,
    each with what is claimed, who holds it, and where it stands. Three
    decisions carry that, and everything below derives from them.
 
@@ -144,6 +144,25 @@ a { color: inherit; text-decoration: none; }
    changes: the pages that show what the record says, then the ones
    that hand the data over. Structure, not decoration. */
 .tabs .sep { width: 1px; margin: 0.9rem 0.6rem; background: var(--rule); }
+
+/* The query behind a section sits beside its name, hidden until the
+   viewer asks for it. */
+html:not(.show-reads) header > .eyebrow + code.chip { display: none; }
+.reads-toggle {
+  font: inherit;
+  font-size: var(--step);
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.8rem;
+  cursor: pointer;
+}
+.reads-toggle:hover, .reads-toggle[aria-pressed="true"] { color: var(--ink); border-color: var(--faint); }
+.eyebrow[title] { cursor: help; }
+/* A line a row leaves empty takes no space. */
+.r-meta:empty + br { display: none; }
 
 /* The request indicator: a hairline of amber under the bar. */
 .load-bar {
@@ -383,7 +402,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 /* One rail per matter, filled to the confidence its author holds:
    hollow amber while it waits on a person, solid green once ruled and
    folded back in. Read straight down the column it says how settled
-   the workspace is, which is the one thing a docket should say at a
+   the workspace is, which is the one thing a console should say at a
    glance. The page's signature — and the only place it spends its
    accent at full strength. */
 
@@ -543,7 +562,7 @@ a.rrow:hover { background: var(--panel); }
 /* ---- counts ------------------------------------------------------- */
 
 /* Standing counts sit in a hairline lattice above the bands: cells on
-   a rule, not floating cards. Deliberately not a hero — the docket's
+   a rule, not floating cards. Deliberately not a hero — the console's
    subject is the matters, and these only say how many. */
 .counts {
   display: grid;
@@ -716,7 +735,7 @@ details.fold[open] summary { color: var(--muted); }
   .doors .why { grid-column: 1; }
 }
 
-/* A row's links — a dataset's docket, a table's files — right-aligned
+/* A row's links — a dataset's console, a table's files — right-aligned
    in the row's last track. */
 .rrow .wgroup { justify-content: flex-end; }
 
@@ -728,6 +747,8 @@ details.fold[open] summary { color: var(--muted); }
    focused column touches — the one thing on the page asking for the
    eye. A graph wider than the column scrolls inside its band. */
 .graph-wrap { overflow-x: auto; overflow-y: hidden; margin-top: 1rem; }
+.graph-wrap.overflows { box-shadow: inset -28px 0 18px -18px rgba(0, 0, 0, 0.55); }
+.graph-wrap:not(.overflows) + .scroll-hint { display: none; }
 gl-graph { display: block; min-height: 5rem; }
 gl-graph svg { display: block; font-family: var(--mono); }
 .n-box { fill: var(--panel); stroke: var(--rule); }

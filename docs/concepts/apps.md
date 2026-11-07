@@ -73,10 +73,10 @@ content security policy that runs the shell's own assets and nothing
 the page carries. What a page needs, it gets from a frame, a spec, a
 tile or a link.
 
-## The docket
+## The console
 
 One app ships in the binary, and it is the dataset's own page: the
-docket — what is open for a human to judge, what is settled, what
+console — what is open for a human to judge, what is settled, what
 waits on an act, with the metric surfaces, each metric's story with
 its forecast and its plan beside it, how well the data is held
 (what each landing dropped and nulled, the checks and their bands,
@@ -90,9 +90,9 @@ pages would stop serving. Add an app; don't fork the built-in.
 
 ## Two writes
 
-The app door takes two writes: the docket's ruling form, answering a
+The app door takes two writes: the console's ruling form, answering a
 question the workspace already derived (see
-[`questions.md`](questions.md)), and the docket's re-measure, which
+[`questions.md`](questions.md)), and the console's re-measure, which
 runs again every measurement that stands from before the last change.
 Neither authors anything: a ruling is the human's slot, a re-measure
 is the functions speaking. Everything else on every app is a read.

@@ -39,7 +39,7 @@ body the engine executes.
   The record reads bare from any dataset, since the lake's `main`
   schema is on every search path. No door keeps a cursor.
 - **The doors.** The MCP door, the Arrow door, the app door and the
-  docket, the pages.
+  console, the pages.
 
 ## The rules the substrate imposes
 

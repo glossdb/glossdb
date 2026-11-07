@@ -4,7 +4,7 @@ Every workspace serves these reads. The record's reads are views the
 engine declares at open. The kits' reads are table macros, loaded
 with the kits. `owed` and `next` are the door's own. Every one is SQL
 over the record and the lake; the same SQL answers the doors, the
-docket's frames and the skills' examples.
+console's frames and the skills' examples.
 
 A read is a derived relation. Filter with `WHERE`. Order at the call
 site: no read carries an ordering of its own. A table macro's named
@@ -15,7 +15,7 @@ Scope is the caller's too. `open_questions`, `agent_assumptions`,
 `ruling_entries`, `app_parts`, `app_releases` and `workspace_next`
 answer for the whole workspace and carry `dataset` on every row: the
 question round asks across every dataset from an unbound channel, the
-docket asks about the one it is bound to. `current_dataset` names the
+console asks about the one it is bound to. `current_dataset` names the
 bound one. The kits' reads and `owed` answer for the bound dataset and
 refuse an unbound call.
 
@@ -207,7 +207,7 @@ descends from. Columns: `metric`, `field`, `source` (`table.column`),
 `table_name`, `reason`. A computed field (an aggregate, an expression)
 descends from no column and has no row. Beside those, one row per
 table the view reads, `table_name` alone. A view that does not plan
-serves one row with `reason`. The docket's lineage tab draws this
+serves one row with `reason`. The console's lineage tab draws this
 beside the declared relationships.
 
 ## The futures kit's reads

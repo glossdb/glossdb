@@ -27,7 +27,7 @@ The server: one binary, one workspace, three doors. How it is built is
 - **The doors** — `/<dataset>/mcp` and `/mcp` (one `glossql` tool,
   stateless, row cap; the dataset's door opens every call on it, the
   workspace's opens unbound), `/<dataset>/query` (streaming Arrow IPC), `/<dataset>/app`
-  (the docket as the dataset's page: what waits on a person and the
+  (the console as the dataset's page: what waits on a person and the
   ruling form, the metrics, the quality of the data, the lineage,
   every table and read as CSV or Parquet; the glossed apps beside it)
   ([doors](../reference/doors.md)). The dataset is the resource and the

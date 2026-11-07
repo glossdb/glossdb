@@ -1,0 +1,34 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+
+{% block main %}
+{# The Query tab: a read of one's own against the query door. The pane
+   posts one SELECT and renders the stream; csv and arrow save what
+   came back. The SQL rides the page URL (`?sql=`), so a read is a
+   link: the relations beneath are such links, each putting its first
+   fifty rows in the pane. Reads alone; a write is the agent door's. #}
+<div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="One query against the query endpoint, /{{ dataset }}/query. The rows stream back as Arrow and show here; csv and arrow save what came back. The pane runs reads only; writes go through the MCP interface.">Run a query</span>
+      <code class="chip">/{{ dataset }}/query</code></header>
+    <p class="hint">One SELECT over the tables and views below. Run it with the button or ⌘↩. The query is in the URL, so this page is a link to it.</p>
+    <gl-query dataset="{{ dataset }}" rows="50"></gl-query>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every loaded table (its newest load is the table) and every served view: a metric&#x27;s rows, a view, a single value. A stopped metric definition serves nothing and is not offered.">What you can query</span>
+      <code class="chip">imports · metric_surfaces</code></header>
+    <p class="hint">Pick one and its first fifty rows come up in the pane.</p>
+    <gl-rows frame="frames/relations" empty="nothing is loaded here yet: a table is loaded by a load query, DECLARE RECIPE over the MCP interface">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,14rem) 4rem 6rem minmax(0,1fr)">
+          <span class="r-subj">{name}</span>
+          <span class="r-meta">{kind}</span>
+          <span class="r-num">{rows}</span>
+          <span class="r-what">{what}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+</div>
+{% endblock main %}

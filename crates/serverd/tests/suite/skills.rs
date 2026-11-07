@@ -392,7 +392,7 @@ fn schema_majors(text: &str) -> Vec<u32> {
 
 /// The apps skill names the vega-lite major outright, and this pin
 /// holds the number to what the door actually serves — the vendored
-/// bundle — alongside the built-in docket's own spec. Foreign agents
+/// bundle — alongside the built-in console's own spec. Foreign agents
 /// keep writing the `v5` habit into `app_spec` bodies; the skill's
 /// hint is the counter, and a bundle bump that forgets the prose
 /// fails here instead of teaching an outdated `$schema`.
@@ -412,8 +412,8 @@ fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
     // the suite, only held to the facts it states.
     let mut claimed = schema_majors(skill.body);
     let spec =
-        std::fs::read_to_string(manifest.join("../apps/builtin/docket/specs/series.vl.json"))
-            .expect("the docket's series spec");
+        std::fs::read_to_string(manifest.join("../apps/builtin/console/specs/series.vl.json"))
+            .expect("the console's series spec");
     claimed.extend(schema_majors(&spec));
     assert!(
         claimed.iter().all(|&v| v == served),

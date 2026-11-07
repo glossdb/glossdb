@@ -1,9 +1,9 @@
 // <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges"
 //           empty="…"> — column lineage over two stored frames. The
-// nodes frame is one row per column: `node` (a table, or a metric as
-// `read.<name>()`), `kind` (`table` | `metric`), `col`, `ord`, `role`.
+// nodes frame is one row per column: `node` (a table, or a metric by
+// its name), `kind` (`table` | `metric`), `col`, `ord`, `role`.
 // The edges frame is one row per edge: `src`, `dst` (column paths,
-// `table.col` or `read.<name>().field`, a composite endpoint as
+// `table.col` or `metric.field`, a composite endpoint as
 // `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
 //
 // dagre places the tables, reading left to right along the keys — a
@@ -252,6 +252,10 @@
       const line = document.createElement('p');
       line.className = 'focus-line';
       this.replaceChildren(svg, line);
+      // Past the fit floor the band scrolls: say so, since the metrics
+      // are the right-hand end and would otherwise sit out of sight.
+      const wrap = this.closest('.graph-wrap');
+      if (wrap) wrap.classList.toggle('overflows', wrap.scrollWidth > wrap.clientWidth + 1);
 
       const lit = (id) => {
         const marks = svg.querySelectorAll('.e, .e-tip');

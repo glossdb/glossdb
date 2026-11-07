@@ -3,52 +3,52 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>glossql</title>
+<title>glossdb</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='1' fill='%23151a22'/%3E%3Ctext x='8' y='12' text-anchor='middle' font-family='monospace' font-size='11' fill='%23e2a33f'%3Eg%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
 <header class="shell-nav"><div class="bar-in">
-  <a class="brand" href="/">glossql<span class="dot">.</span></a>
+  <a class="brand" href="/">glossdb<span class="dot">.</span></a>
   <span class="ws">workspace</span>
 </div></header>
 <main>
-{# The workspace root: the three doors first — where the server
+{# The workspace root: the interfaces first — where the server
    answers is the one thing a root page is for — then each dataset at
    a glance and the way into it, the apps, and how an agent connects.
-   Every number is the record's — the same relations the docket and
+   Every number is the catalog's: the same relations the console and
    the agent's brief read. #}
 <div class="tiles">
 
   <section class="tile">
-    <header><span class="eyebrow">The doors</span></header>
+    <header><span class="eyebrow">Interfaces</span></header>
     <ul class="doors">
       <li>
         <span class="path"><i>/&lt;dataset&gt;/</i>mcp</span>
-        <span class="who">the dataset's agent door</span>
-        <span class="why">One tool, <code>glossql</code>, taking statements. An agent lands, glosses and reads the dataset here; every call opens on it, and the skills are served as resources.</span>
+        <span class="who">MCP, one dataset</span>
+        <span class="why">One tool, <code>glossql</code>, taking statements. An agent loads, annotates and queries the dataset here; every call opens on it, and the skills are served as resources.</span>
       </li>
       <li>
         <span class="path"><i>/</i>mcp</span>
-        <span class="who">the workspace's agent door</span>
-        <span class="why">The same tool over the whole workspace: sources are declared and datasets brought into being here, and <code>USE</code> picks the dataset on every call.</span>
+        <span class="who">MCP, the whole workspace</span>
+        <span class="why">The same tool over the whole workspace: declare sources and create datasets here; <code>USE</code> picks the dataset on every call.</span>
       </li>
       <li>
         <span class="path"><i>/&lt;dataset&gt;/</i>query</span>
-        <span class="who">the arrow door</span>
-        <span class="why">POST a read as the body, get an Arrow IPC stream back — no row cap, straight from the engine. pyarrow reads it directly.</span>
+        <span class="who">query endpoint</span>
+        <span class="why">POST a query as the body, get an Arrow IPC stream back: no row cap, straight from the engine. pyarrow reads it directly.</span>
       </li>
       <li>
         <span class="path"><i>/&lt;dataset&gt;/</i>app</span>
-        <span class="who">the door for people</span>
-        <span class="why">The dataset's page is the docket: the questions the agent could not settle wait for you, with its metrics, its quality, its lineage, and every table and read as a file under Export. The apps written over the dataset sit in the bar's picker.</span>
+        <span class="who">the console</span>
+        <span class="why">The dataset's page is the console: the questions the agent could not settle wait for your review, beside its metrics, quality and lineage, and every table and view as a file under Export. The apps written over the dataset are in the bar's picker.</span>
       </li>
     </ul>
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow">Datasets</span><span class="count">{{ datasets | length }}</span>
-      <code class="chip" title="The workspace's datasets with what has landed in each, what is served, and what waits on a person — imports, metric_surfaces and open_questions, per dataset.">datasets · imports · metric_surfaces · open_questions</code></header>
+    <header><span class="eyebrow" title="The workspace's datasets: what is loaded in each, what is served, and what waits for a person.">Datasets</span><span class="count">{{ datasets | length }}</span>
+      <code class="chip">datasets · imports · metric_surfaces · open_questions</code></header>
     {% if error %}<p class="frame-error">{{ error }}</p>{% endif %}
     {% if datasets | length == 0 and not error %}
     <p class="rows-empty">This workspace holds no dataset yet. An agent declares
@@ -58,17 +58,17 @@
     <div class="rrow" style="grid-template-columns:8rem minmax(0,1fr) 16rem 9rem">
       <a class="r-subj" href="/{{ d.name }}/app">{{ d.name }}</a>
       <span class="r-what">{{ d.purpose }}{% if d.error %}<br><span class="r-meta">{{ d.error }}</span>{% else %}<br>
-        <span class="r-meta">{{ d.tables_txt }} table{% if d.tables != 1 %}s{% endif %} · {{ d.rows_txt }} row{% if d.rows != 1 %}s{% endif %}{% if d.landed_txt %} · last landed {{ d.landed_txt }}{% endif %}</span>{% endif %}</span>
+        <span class="r-meta">{{ d.tables_txt }} table{% if d.tables != 1 %}s{% endif %} · {{ d.rows_txt }} row{% if d.rows != 1 %}s{% endif %}{% if d.landed_txt %} · last loaded {{ d.landed_txt }}{% endif %}</span>{% endif %}</span>
       <span class="r-meta">{% if not d.error %}{{ d.served_txt }} metric{% if d.served != 1 %}s{% endif %} served{% if d.stopped %} · {{ d.stopped_txt }} stopped{% endif %}<br>
-        {% if d.open %}<span class="r-gap">{{ d.open_txt }} question{% if d.open != 1 %}s{% endif %} wait{% if d.open == 1 %}s{% endif %} on you</span>{% else %}nothing open{% endif %}{% endif %}</span>
-      <span class="wgroup"><a class="wbtn{% if d.open %} on{% endif %}" href="/{{ d.name }}/app/docket">docket</a><a class="wbtn" href="/{{ d.name }}/app/docket/p/export">export</a></span>
+        {% if d.open %}<span class="r-gap">{{ d.open_txt }} question{% if d.open != 1 %}s{% endif %} wait{% if d.open == 1 %}s{% endif %} for you</span>{% else %}nothing open{% endif %}{% endif %}</span>
+      <span class="wgroup"><a class="wbtn{% if d.open %} on{% endif %}" href="/{{ d.name }}/app/console">console</a><a class="wbtn" href="/{{ d.name }}/app/console/p/export">export</a></span>
     </div>
     {% endfor %}
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow">Apps</span><span class="count">{{ apps | length }}</span>
-      <code class="chip" title="Every app the door serves. An app names no dataset — the URL does — so a directory or built-in app serves every dataset; a glossed one was written by an agent over /mcp and serves the dataset it was glossed in.">apps/ · app_parts</code></header>
+    <header><span class="eyebrow" title="Every app this server serves. An app names no dataset (the URL does), so a built-in app serves every dataset; one an agent wrote over MCP serves the dataset it was written in.">Apps</span><span class="count">{{ apps | length }}</span>
+      <code class="chip">apps/ · app_parts</code></header>
     {% for a in apps %}
     <div class="rrow" style="grid-template-columns:14rem minmax(0,1fr) auto">
       <span class="r-subj">{{ a.title }}<br><span class="r-meta">{{ a.name }}</span></span>
@@ -80,9 +80,9 @@
 
   <section class="tile">
     <header><span class="eyebrow">Connect an agent</span></header>
-    <p class="hint">One entry per dataset the agent works on. A workspace with no dataset yet starts at the workspace door — <code>DECLARE DATASET</code> over <code>{{ origin }}/mcp</code> is what creates one.</p>
-<pre class="statement">claude mcp add --transport http glossql {{ origin }}/&lt;dataset&gt;/mcp
-claude mcp login glossql</pre>
+    <p class="hint">One entry per dataset the agent works on. A workspace with no dataset yet starts at the workspace endpoint: <code>DECLARE DATASET</code> over <code>{{ origin }}/mcp</code> creates one.</p>
+<pre class="statement">claude mcp add --transport http glossdb {{ origin }}/&lt;dataset&gt;/mcp
+claude mcp login glossdb</pre>
   </section>
 
 </div>

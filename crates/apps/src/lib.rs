@@ -116,14 +116,14 @@ pub fn no_such_dataset(dataset: &str, known: &[String]) -> String {
 /// human who steps away has no way back into the record at all, since
 /// the MCP round can only ask while they are watching and an agent may
 /// never speak for them.
-/// The docket is already the page of open questions; answering there
+/// The console is already the page of open questions; answering there
 /// is the gesture the page was drawn for.
 ///
 /// Mounted under `/{dataset}/app`; the dataset arrives in every
 /// handler's path tuple. `/export/<name>.<csv|parquet>` is the one
 /// static segment beside the apps: a relation as a file, no app in
 /// the way. An app named `export` still serves — only its two POST
-/// paths would share the prefix, and they are the docket's.
+/// paths would share the prefix, and they are the console's.
 pub fn router(plane: Arc<Plane>, origin: &str) -> Router {
     Router::new()
         .route("/", get(pages::home))

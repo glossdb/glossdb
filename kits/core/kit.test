@@ -22,6 +22,16 @@ PRAGMA glossql;
 statement ok
 FROM glossql_kit('{KITS}/core/kit.sql');
 
+query TTTTTTT
+SELECT fmt_number(21205673.3), fmt_number(999.6), fmt_number(12.345), fmt_number(0.001), fmt_number(0.00001), fmt_number(0), fmt_number(NULL);
+----
+21,205,673	1,000	12.3	0.001	0.00001	0	NULL
+
+query TTT
+SELECT fmt_change(12.34), fmt_change(-0.04), fmt_change(NULL);
+----
++12.3%	-0.04%	NULL
+
 query I
 SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'ruling', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
 ----

@@ -4,7 +4,7 @@
 //! rather than shadowing it. Forking the built-in happens where its
 //! source is, in this repository.
 //!
-//! One ships: the docket — the questions a human is asked, the metric
+//! One ships: the console — the questions a human is asked, the metric
 //! surfaces, how well the data is held, the dataset's words, the
 //! column lineage; then every table and read as a file, and a pane for
 //! a read of one's own (one app, not a model app beside a metrics app:
@@ -22,11 +22,11 @@ pub struct BuiltinApp {
 }
 
 /// The app `/<dataset>/app` opens: the dataset's own page.
-pub const DATASET_PAGE: &str = "docket";
+pub const DATASET_PAGE: &str = "console";
 
-macro_rules! docket {
+macro_rules! console {
     ($path:literal) => {
-        ($path, include_str!(concat!("../builtin/docket/", $path)))
+        ($path, include_str!(concat!("../builtin/console/", $path)))
     };
 }
 
@@ -34,7 +34,7 @@ macro_rules! frame {
     ($name:literal) => {
         (
             concat!("frames/", $name),
-            include_str!(concat!("../builtin/docket/frames/", $name)),
+            include_str!(concat!("../builtin/console/frames/", $name)),
         )
     };
 }
@@ -42,14 +42,14 @@ macro_rules! frame {
 pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
     name: DATASET_PAGE,
     files: &[
-        docket!("app.toml"),
-        docket!("index.html"),
-        docket!("metrics.html"),
-        docket!("quality.html"),
-        docket!("lineage.html"),
-        docket!("glossary.html"),
-        docket!("export.html"),
-        docket!("query.html"),
+        console!("app.toml"),
+        console!("index.html"),
+        console!("metrics.html"),
+        console!("quality.html"),
+        console!("lineage.html"),
+        console!("glossary.html"),
+        console!("export.html"),
+        console!("query.html"),
         frame!("aspect_head.sql"),
         frame!("aspect_values.sql"),
         frame!("assumptions.sql"),
@@ -102,8 +102,8 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("view_tables.sql"),
         frame!("views.sql"),
         frame!("vocabulary.sql"),
-        docket!("specs/corridor.vl.json"),
-        docket!("specs/series.vl.json"),
+        console!("specs/corridor.vl.json"),
+        console!("specs/series.vl.json"),
     ],
 }];
 

@@ -30,8 +30,8 @@ sees a declaration in a kit, an arm in the next read, and a page.
   `fact_values()` and `metric_sources()` ([reads](../reference/reads.md)).
 - **Checks and rulings.** Witnesses, detectors, `ATTEST()`, the
   question round, the ruling at the app door.
-- **The doors and the docket.** The two agent doors, the Arrow door,
-  the app door with the built-in docket and the glossed apps
+- **The doors and the console.** The two agent doors, the Arrow door,
+  the app door with the built-in console and the glossed apps
   ([doors](../reference/doors.md)).
 - **The next read.** Eight goals, a route of arms per goal, composed
   at open from the kits' routes and the core's; the two lines on every
@@ -63,7 +63,7 @@ from this repository's:
   measurement; the bands and plan goals.
 
 The kits are core content, not an extension. The next read and the
-docket name their aspects and functions. A workspace's own vocabulary
+console name their aspects and functions. A workspace's own vocabulary
 stays the agent's work: metrics, validations, scenarios, plans,
 declared at the door.
 

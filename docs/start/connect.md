@@ -109,7 +109,7 @@ it does. This door reads and writes; it does not create datasets.
 ## `/<dataset>/app` — the door for people
 
 Server-rendered data apps. `http://127.0.0.1:8080/fin/app` opens the
-docket, the dataset's page: what is open for a human to judge, what
+console, the dataset's page: what is open for a human to judge, what
 is settled, what waits on an act; the metrics; the quality of the
 data (what is wrong and why, the checks, what the functions measured,
 each load, what is still unsaid); the words; the column lineage; and

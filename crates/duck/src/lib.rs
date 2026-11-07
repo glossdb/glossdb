@@ -1625,7 +1625,7 @@ impl Session {
         })
     }
 
-    /// The docket's re-measure: every function voice of the bound
+    /// The console's re-measure: every function voice of the bound
     /// dataset that landed before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
     /// ran, and every witnessed measurement on the dataset nobody ran

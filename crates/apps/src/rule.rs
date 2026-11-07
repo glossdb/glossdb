@@ -1,4 +1,4 @@
-//! The docket's one write: a human ruling on a claim that stands open.
+//! The console's one write: a human ruling on a claim that stands open.
 //!
 //! The gate is the derivation itself. A posted ruling is accepted only
 //! if `open_questions` still carries that exact `(subject, aspect,
@@ -18,7 +18,7 @@
 //!
 //! The response is an event, not a navigation (not a 303 back to
 //! the Referer — PRG bent out of shape, since
-//! the reader never leaves the page and the docket is client-rendered
+//! the reader never leaves the page and the console is client-rendered
 //! anyway). Success is 204 with `HX-Trigger: glossql:written`; the
 //! store hears the event, drops its frame caches, and every connected
 //! component refetches in place. The stale-tab 409 carries the same
@@ -96,7 +96,7 @@ pub async fn rule(
             return (
                 StatusCode::CONFLICT,
                 WRITTEN,
-                "that question no longer stands — the page has re-derived".to_string(),
+                "that question is no longer open — the page has been refreshed".to_string(),
             )
                 .into_response();
         }

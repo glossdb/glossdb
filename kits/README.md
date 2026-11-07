@@ -38,5 +38,5 @@ every applicable metric at its floor or a coarser grain, computed at
 read from the metric's view and the claims on its columns, never
 recorded, except the forecast, scenario and plan worlds, which read
 the record's measurements and the plan's view — as long rows: metric names become data so a static frame (the built-in
-docket app) slices any metric with plain value filters; `metric_axes()`
+console app) slices any metric with plain value filters; `metric_axes()`
 beside it says what the record says of each metric's columns.

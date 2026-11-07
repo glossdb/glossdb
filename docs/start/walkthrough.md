@@ -1,4 +1,4 @@
-# Walkthrough — from exports to the docket
+# Walkthrough — from exports to the console
 
 One continuous session over a service company's exports: work orders
 and the sites they serve, as parquet files. Everything below runs
@@ -214,7 +214,7 @@ SELECT subject, band, score FROM ATTEST(ops::duration_present);
 
 The series read serves each metric's cells at its floor — the total
 and the slices along its dimension columns — computed at read from
-the metric's view, never recorded; the docket and any app chart it
+the metric's view, never recorded; the console and any app chart it
 through `metric_series()`, and `metric_axes()` says what the record
 says of its columns:
 
@@ -245,7 +245,7 @@ FROM open_questions ORDER BY conf ASC;
 ```
 
 On the MCP door they arrive as forms on the calls that read the
-record; on the docket they are the open page. An answer lands as a **ruling** — the judgment
+record; on the console they are the open page. An answer lands as a **ruling** — the judgment
 alone, in the human's slot — and the question retires by derivation.
 The agent folds each ruling back into its grounding at full
 confidence, and the rulings read back:
@@ -254,9 +254,9 @@ confidence, and the rulings read back:
 SELECT aspect, key, stance, folded_in FROM ruling_entries ORDER BY written_at DESC
 ```
 
-## The docket
+## The console
 
-Open `http://127.0.0.1:8080/ops/app`: the docket is the dataset's
+Open `http://127.0.0.1:8080/ops/app`: the console is the dataset's
 page. Its tabs come in two groups. Questions (what is open to judge,
 what is settled, what waits on an act), Metrics (the surfaces, the
 views and the facts, one metric's story and slices), Quality (what is

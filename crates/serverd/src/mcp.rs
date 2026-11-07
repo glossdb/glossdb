@@ -500,7 +500,7 @@ impl GlossqlMcp {
         // costing a re-read.
         //
         // The composing and the writing are `crate::engine::rulings`,
-        // shared with the app door — the docket answers these same
+        // shared with the app door — the console answers these same
         // questions when a person comes back to a page rather than to a
         // form. This door's part is to say WHO is speaking: the token's
         // subject, with human standing, on their own channel — the
@@ -651,7 +651,7 @@ struct RulingEntry<'a> {
 /// shipped functions settle them. The derivation itself is the core's
 /// `open_questions` read (`kits/core/kit.sql`), which carries
 /// the gates and the reasons; the door only orders and serves it, and
-/// the app's docket renders the same read. Least-confident first, and
+/// the app's console renders the same read. Least-confident first, and
 /// the ordering rides here because an inner ORDER BY does not survive
 /// a derived relation.
 const LOOSE_SQL: &str = "SELECT * FROM open_questions ORDER BY conf ASC, subject, aspect, idx";

@@ -295,3 +295,17 @@ DECLARE ASPECT app_release WITH $${
   "type": "object",
   "properties": {"note": {"type": "string"}, "at": {"type": "string"}}
 }$$ AS FACT;
+
+-- How the console and the apps print a number: grouped thousands from
+-- 1,000 up, three significant digits below, plain decimals under 0.001.
+CREATE OR REPLACE MACRO main.fmt_number(x) AS
+  CASE WHEN x IS NULL THEN NULL
+       WHEN abs(x::DOUBLE) >= 999.5 THEN format('{:,.0f}', x::DOUBLE)
+       WHEN x::DOUBLE = 0 OR abs(x::DOUBLE) >= 0.001 THEN format('{:.3g}', x::DOUBLE)
+       ELSE rtrim(rtrim(format('{:.9f}', x::DOUBLE), '0'), '.') END;
+
+-- A change in percent, signed: +12.3%, -0.04%.
+CREATE OR REPLACE MACRO main.fmt_change(p) AS
+  CASE WHEN p IS NULL THEN NULL
+       WHEN p::DOUBLE < 0 THEN '-' || main.fmt_number(abs(p::DOUBLE)) || '%'
+       ELSE '+' || main.fmt_number(p::DOUBLE) || '%' END;

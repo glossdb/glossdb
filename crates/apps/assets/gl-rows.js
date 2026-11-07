@@ -27,7 +27,11 @@
       return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso;
     }
     if (typeof value === 'number' && !Number.isInteger(value)) {
-      return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      // The console's rule (the core kit's fmt_number): grouped
+      // thousands from 1,000 up, three significant digits below.
+      return Math.abs(value) >= 999.5
+        ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+        : value.toLocaleString(undefined, { maximumSignificantDigits: 3 });
     }
     if (typeof value === 'number' || typeof value === 'bigint') {
       return value.toLocaleString();

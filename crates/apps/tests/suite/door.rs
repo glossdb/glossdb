@@ -217,34 +217,34 @@ async fn a_manifest_orders_the_tabs() {
 async fn pages_render_and_frames_stream() {
     let (app, _plane, _dir) = workspace().await;
 
-    // The dataset's page is the docket, and the URL says so.
+    // The dataset's page is the console, and the URL says so.
     let home = get(&app, "/perf/app").await;
     assert_eq!(home.status(), StatusCode::SEE_OTHER);
-    assert_eq!(home.headers()[header::LOCATION], "/perf/app/docket");
-    // The bar's picker lists the glossed app; the docket's pages are
+    assert_eq!(home.headers()[header::LOCATION], "/perf/app/console");
+    // The bar's picker lists the glossed app; the console's pages are
     // its tabs, the manifest's order, the current one marked.
-    let docket = text(get(&app, "/perf/app/docket/p/export").await).await;
+    let console = text(get(&app, "/perf/app/console/p/export").await).await;
     assert!(
-        docket.contains("<option value=\"/perf/app/board\">Perf</option>"),
-        "the picker lists the app:\n{docket}"
+        console.contains("<option value=\"/perf/app/board\">Perf</option>"),
+        "the picker lists the app:\n{console}"
     );
-    let open = docket
-        .find("href=\"/perf/app/docket\">Questions</a>")
+    let open = console
+        .find("href=\"/perf/app/console\">Review</a>")
         .unwrap();
-    let export = docket
+    let export = console
         .find(
-            "class=\"current\" aria-current=\"page\" href=\"/perf/app/docket/p/export\">Export</a>",
+            "class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Export</a>",
         )
         .unwrap();
-    assert!(open < export, "{docket}");
+    assert!(open < export, "{console}");
     // The manifest's groups: one hairline, right before the first page
     // of the data group.
-    assert_eq!(docket.matches("class=\"sep\"").count(), 1, "{docket}");
+    assert_eq!(console.matches("class=\"sep\"").count(), 1, "{console}");
     assert!(
-        docket.contains(
-            "</a><span class=\"sep\" aria-hidden=\"true\"></span><a class=\"current\" aria-current=\"page\" href=\"/perf/app/docket/p/export\">Export</a>"
+        console.contains(
+            "</a><span class=\"sep\" aria-hidden=\"true\"></span><a class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Export</a>"
         ),
-        "{docket}"
+        "{console}"
     );
 
     // The page renders through shell + macros, carrying the app root;
@@ -257,7 +257,7 @@ async fn pages_render_and_frames_stream() {
     assert!(!page.contains("class=\"tabs\""), "{page}");
     // A glossed app opens with its title; the built-in prints none.
     assert!(page.contains("<h1 class=\"app-title\">Perf</h1>"), "{page}");
-    assert!(!docket.contains("app-title"), "{docket}");
+    assert!(!console.contains("app-title"), "{console}");
     assert!(
         page.contains("<gl-chart frame=\"frames/monthly\""),
         "{page}"
@@ -455,7 +455,7 @@ async fn a_page_body_is_markup_not_script() {
     assert!(body.contains(planted), "{body}");
 
     // The workspace root and the built-in carry the same policy.
-    for uri in ["/", "/perf/app/docket"] {
+    for uri in ["/", "/perf/app/console"] {
         let response = get(&app, uri).await;
         assert_eq!(
             response.headers()[header::CONTENT_SECURITY_POLICY],
@@ -475,11 +475,11 @@ async fn the_shell_passes_its_own_policy() {
     let (app, _plane, _dir) = workspace().await;
     for uri in [
         "/",
-        "/perf/app/docket",
-        "/perf/app/docket/p/metrics",
-        "/perf/app/docket/p/quality",
-        "/perf/app/docket/p/lineage",
-        "/perf/app/docket/p/export",
+        "/perf/app/console",
+        "/perf/app/console/p/metrics",
+        "/perf/app/console/p/quality",
+        "/perf/app/console/p/lineage",
+        "/perf/app/console/p/export",
         "/perf/app/board",
     ] {
         let response = get(&app, uri).await;
@@ -527,7 +527,7 @@ async fn a_glossed_part_may_not_take_a_builtin_name() {
 
     // Add an app, don't fork the built-in: a part carries no manifest
     // requirement, so one frame under the built-in's name would resolve
-    // the whole app to that single file and 404 every page the docket
+    // the whole app to that single file and 404 every page the console
     // ships.
     let session = plane
         .channel(
@@ -542,12 +542,12 @@ async fn a_glossed_part_may_not_take_a_builtin_name() {
     session
         .execute(
             r#"USE perf;
-               GLOSS app_frame ON docket.mine AS $${"sql": "SELECT 1 AS v"}$$;"#,
+               GLOSS app_frame ON console.mine AS $${"sql": "SELECT 1 AS v"}$$;"#,
         )
         .await
         .unwrap();
 
-    let page = get(&app, "/perf/app/docket").await;
+    let page = get(&app, "/perf/app/console").await;
     assert_eq!(page.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let page = text(page).await;
     assert!(page.contains("ships in the binary"), "{page}");
@@ -687,7 +687,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
 
     let accepted = app
         .oneshot(
-            Request::post("/perf/app/docket/rule")
+            Request::post("/perf/app/console/rule")
                 .header(
                     axum::http::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded",
@@ -829,7 +829,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         let response = get(
             &app,
             &format!(
-                "/perf/app/docket/frames/{frame}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact"
+                "/perf/app/console/frames/{frame}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact"
             ),
         )
         .await;
@@ -855,7 +855,7 @@ async fn the_dossier_faces_survive_a_second_dataset() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await; // seeds a second dataset
 
-    let metric = get(&app, "/perf/app/docket/frames/metric?metric=dso").await;
+    let metric = get(&app, "/perf/app/console/frames/metric?metric=dso").await;
     assert_eq!(metric.status(), StatusCode::OK);
     let served = body_text(metric).await;
     assert_eq!(served.lines().filter(|l| l.starts_with("dso")).count(), 1);
@@ -881,7 +881,7 @@ async fn the_dossier_faces_survive_a_second_dataset() {
         served.contains("DSO · metric · days"),
         "the meta line took its unit from the registry:\n{served}"
     );
-    let assumptions = get(&app, "/perf/app/docket/frames/assumptions?metric=dso").await;
+    let assumptions = get(&app, "/perf/app/console/frames/assumptions?metric=dso").await;
     assert_eq!(assumptions.status(), StatusCode::OK);
     assert_eq!(row_count(assumptions).await, 2);
 }
@@ -903,7 +903,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     // witnessed measurements on the dataset nobody ran while a metric is
     // grounded.
     let walk = 3;
-    let before = get(&app, "/perf/app/docket/frames/owed").await;
+    let before = get(&app, "/perf/app/console/frames/owed").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, walk);
 
@@ -924,7 +924,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         .execute(r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;"#)
         .await
         .unwrap();
-    let after = get(&app, "/perf/app/docket/frames/owed").await;
+    let after = get(&app, "/perf/app/console/frames/owed").await;
     assert_eq!(
         row_count(after).await,
         1 + walk,
@@ -952,7 +952,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         )
         .await
         .unwrap();
-    let cleared = get(&app, "/perf/app/docket/frames/owed").await;
+    let cleared = get(&app, "/perf/app/console/frames/owed").await;
     // On DuckDB the re-record redefines the view, so the profile over
     // its period column reads stale and waits on a re-measure; the
     // formula answer itself no longer waits.
@@ -977,7 +977,7 @@ async fn the_metric_faces_serve_the_winning_slot_once() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let before = get(&app, "/perf/app/docket/frames/metric?metric=dso").await;
+    let before = get(&app, "/perf/app/console/frames/metric?metric=dso").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, 1);
 
@@ -1007,14 +1007,14 @@ async fn the_metric_faces_serve_the_winning_slot_once() {
     // Still one row on the metric face, and it is the human's; the
     // assumptions ledger keeps serving the agent's working record —
     // its two disclosed assumptions — never a blend of the two bodies.
-    let metric = get(&app, "/perf/app/docket/frames/metric?metric=dso").await;
+    let metric = get(&app, "/perf/app/console/frames/metric?metric=dso").await;
     let served = body_text(metric).await;
     assert_eq!(served.lines().filter(|l| l.starts_with("dso")).count(), 1);
     assert!(
         served.contains("ar[end of w] / revenue[w] * 360"),
         "the human's formula must outrank the agent's:\n{served}"
     );
-    let assumptions = get(&app, "/perf/app/docket/frames/assumptions?metric=dso").await;
+    let assumptions = get(&app, "/perf/app/console/frames/assumptions?metric=dso").await;
     assert_eq!(
         row_count(assumptions).await,
         2,
@@ -1032,7 +1032,7 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
     seed_model_shapes(&plane).await;
 
     // The seed's loose `per line` assumption queues.
-    let queue = get(&app, "/perf/app/docket/frames/open").await;
+    let queue = get(&app, "/perf/app/console/frames/open").await;
     assert_eq!(row_count(queue).await, 1, "the loose assumption queues");
 
     // The human's ruling lands (the door writes it in production; a
@@ -1058,21 +1058,21 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
         .unwrap();
 
     // The queue holds the question closed; the ledger shows the ruling
-    // beside its assumption, still awaiting the fold-in.
-    let queue = get(&app, "/perf/app/docket/frames/open").await;
+    // beside its assumption, not yet applied.
+    let queue = get(&app, "/perf/app/console/frames/open").await;
     assert_eq!(row_count(queue).await, 0, "the ruling closes the question");
-    let assumptions = get(&app, "/perf/app/docket/frames/assumptions?metric=dso").await;
+    let assumptions = get(&app, "/perf/app/console/frames/assumptions?metric=dso").await;
     let text = body_text(assumptions).await;
-    assert!(text.contains("ruled: confirmed"), "{text}");
-    assert!(text.contains("awaiting the fold-in"), "{text}");
+    assert!(text.contains("decided: confirmed"), "{text}");
+    assert!(text.contains("not yet applied"), "{text}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
+async fn the_console_takes_a_ruling_and_refuses_a_stale_one() {
     // The door's one write. A human who
     // steps away has no way back into the record at all: the MCP round
     // can only ask while they are watching, and an agent may never
-    // speak for them. The docket is already the page of open
+    // speak for them. The console is already the page of open
     // questions, so answering there is the gesture it was drawn for.
     //
     // Only the claim's identity is posted. The prose the ruling records
@@ -1097,7 +1097,7 @@ async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
         let app = app.clone();
         async move {
             app.oneshot(
-                Request::post("/perf/app/docket/rule")
+                Request::post("/perf/app/console/rule")
                     .header(
                         axum::http::header::CONTENT_TYPE,
                         "application/x-www-form-urlencoded",
@@ -1111,7 +1111,7 @@ async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
     };
 
     assert_eq!(
-        row_count(get(&app, "/perf/app/docket/frames/open").await).await,
+        row_count(get(&app, "/perf/app/console/frames/open").await).await,
         1
     );
 
@@ -1132,13 +1132,13 @@ async fn the_docket_takes_a_ruling_and_refuses_a_stale_one() {
 
     // The question closes and the ruling stands in the human's words.
     assert_eq!(
-        row_count(get(&app, "/perf/app/docket/frames/open").await).await,
+        row_count(get(&app, "/perf/app/console/frames/open").await).await,
         0,
         "the ruling closes its question"
     );
-    let settled = body_text(get(&app, "/perf/app/docket/frames/settled").await).await;
+    let settled = body_text(get(&app, "/perf/app/console/frames/settled").await).await;
     assert!(
-        settled.contains("/perf/app/docket/p/metrics?metric=dso\n"),
+        settled.contains("/perf/app/console/p/metrics?metric=dso\n"),
         "the link carries the dataset the app is mounted under:\n{settled}"
     );
     assert!(settled.contains("per order, not per line"), "{settled}");
@@ -1185,7 +1185,7 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
     let response = app
         .clone()
         .oneshot(
-            Request::post("/perf/app/docket/rule")
+            Request::post("/perf/app/console/rule")
                 .header(
                     axum::http::header::CONTENT_TYPE,
                     "application/x-www-form-urlencoded",
@@ -1202,12 +1202,12 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
     // The question closes — the refusal holds this key, and only a
     // re-record with a clearer assumption asks again.
     assert_eq!(
-        row_count(get(&app, "/perf/app/docket/frames/open").await).await,
+        row_count(get(&app, "/perf/app/console/frames/open").await).await,
         0
     );
-    let settled = body_text(get(&app, "/perf/app/docket/frames/settled").await).await;
+    let settled = body_text(get(&app, "/perf/app/console/frames/settled").await).await;
     assert!(
-        settled.contains("/perf/app/docket/p/metrics?metric=dso\n"),
+        settled.contains("/perf/app/console/p/metrics?metric=dso\n"),
         "the link carries the dataset the app is mounted under:\n{settled}"
     );
     assert!(settled.contains("unclear"), "{settled}");
@@ -1248,7 +1248,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // The verdict computes at read — the detector's query answers over
     // the dso grounding's slot.
 
-    let checks = get(&app, "/perf/app/docket/frames/checks").await;
+    let checks = get(&app, "/perf/app/console/frames/checks").await;
     let status = checks.status();
     if status != StatusCode::OK {
         let body = to_bytes(checks.into_body(), usize::MAX).await.unwrap();
@@ -1279,19 +1279,19 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // The check's page: the declaration and the verdict as one row,
     // then the evidence — every verdict, for a detector the page has
     // no shape for.
-    let page = text(get(&app, "/perf/app/docket/p/quality?check=dso_w&kind=verdicts").await).await;
+    let page = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts").await).await;
     assert!(page.contains("frames/check\""), "{page}");
     assert!(page.contains("frames/check_verdicts"), "{page}");
     assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/docket/p/quality\">Quality</a>"),
+        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/quality\">Quality</a>"),
         "opening a check stays on the tab:\n{page}"
     );
-    let check = body_text(get(&app, "/perf/app/docket/frames/check?check=dso_w").await).await;
+    let check = body_text(get(&app, "/perf/app/console/frames/check?check=dso_w").await).await;
     assert!(check.contains("probe_check\n"), "{check}");
     assert!(check.contains("0.9\n"), "the threshold:\n{check}");
-    assert!(check.contains("1 verdict: 1 orange\n"), "{check}");
+    assert!(check.contains("1 result: 1 orange\n"), "{check}");
     let verdicts =
-        body_text(get(&app, "/perf/app/docket/frames/check_verdicts?check=dso_w").await).await;
+        body_text(get(&app, "/perf/app/console/frames/check_verdicts?check=dso_w").await).await;
     assert!(verdicts.contains("perf\n"), "the subject:\n{verdicts}");
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
@@ -1320,13 +1320,13 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash"}$$;"#)
         .await
         .unwrap();
-    let checks = body_text(get(&app, "/perf/app/docket/frames/checks").await).await;
+    let checks = body_text(get(&app, "/perf/app/console/frames/checks").await).await;
     assert!(
         checks.contains("?check=value_w&kind=voices\n"),
         "a voice check opens to its voices:\n{checks}"
     );
     let slots =
-        body_text(get(&app, "/perf/app/docket/frames/check_slots?check=value_w").await).await;
+        body_text(get(&app, "/perf/app/console/frames/check_slots?check=value_w").await).await;
     assert!(
         slots.contains("ledger.value\n"),
         "the column whose voices differ:\n{slots}"
@@ -1339,7 +1339,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         !slots.contains("ledger.month"),
         "an agreeing column is not listed:\n{slots}"
     );
-    let points = get(&app, "/perf/app/docket/frames/check_points?check=value_w").await;
+    let points = get(&app, "/perf/app/console/frames/check_points?check=value_w").await;
     assert_eq!(
         row_count(points).await,
         0,
@@ -1360,7 +1360,7 @@ async fn the_metrics_faces_serve_the_cube() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
+    let pulse = get(&app, "/perf/app/console/frames/pulse?stopped=0").await;
     assert_eq!(pulse.status(), StatusCode::OK);
     let pulse = body_text(pulse).await;
     assert!(pulse.contains("dso\n"), "{pulse}");
@@ -1371,7 +1371,7 @@ async fn the_metrics_faces_serve_the_cube() {
 
     // The views list: the relation with its link carrying the kind,
     // and neither the series nor the fact.
-    let views = get(&app, "/perf/app/docket/frames/views?stopped=0").await;
+    let views = get(&app, "/perf/app/console/frames/views?stopped=0").await;
     assert_eq!(views.status(), StatusCode::OK);
     let views = body_text(views).await;
     assert!(views.contains("cleaned\n"), "{views}");
@@ -1381,7 +1381,7 @@ async fn the_metrics_faces_serve_the_cube() {
         "{views}"
     );
 
-    let latest = get(&app, "/perf/app/docket/frames/latest").await;
+    let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(latest.status(), StatusCode::OK);
     assert_eq!(
         row_count(latest).await,
@@ -1391,7 +1391,7 @@ async fn the_metrics_faces_serve_the_cube() {
 
     // The facts list: the fact with its one value, as of the landing
     // of the table its grounding reads, linked with its kind.
-    let facts = get(&app, "/perf/app/docket/frames/facts?stopped=0").await;
+    let facts = get(&app, "/perf/app/console/frames/facts?stopped=0").await;
     assert_eq!(facts.status(), StatusCode::OK);
     let facts = body_text(facts).await;
     assert!(facts.contains("payables\n"), "{facts}");
@@ -1401,28 +1401,28 @@ async fn the_metrics_faces_serve_the_cube() {
 
     // The fact's tile frame: a row for the fact, none for the series,
     // so the tile renders only where there is a number.
-    let fact = get(&app, "/perf/app/docket/frames/fact?metric=payables").await;
+    let fact = get(&app, "/perf/app/console/frames/fact?metric=payables").await;
     assert_eq!(fact.status(), StatusCode::OK);
     let fact = body_text(fact).await;
     assert!(fact.contains("as of 20"), "{fact}");
-    let none = get(&app, "/perf/app/docket/frames/fact?metric=dso").await;
+    let none = get(&app, "/perf/app/console/frames/fact?metric=dso").await;
     assert_eq!(none.status(), StatusCode::OK);
     assert_eq!(row_count(none).await, 0, "a series is not a fact");
 
-    let axes = get(&app, "/perf/app/docket/frames/axes?metric=dso").await;
+    let axes = get(&app, "/perf/app/console/frames/axes?metric=dso").await;
     assert_eq!(axes.status(), StatusCode::OK);
     assert_eq!(row_count(axes).await, 1, "one fact row for the metric");
 
     let dims = get(
         &app,
-        "/perf/app/docket/frames/dims?metric=dso&grain=month&span=24",
+        "/perf/app/console/frames/dims?metric=dso&grain=month&span=24",
     )
     .await;
     assert_eq!(row_count(dims).await, 1, "cohort is the one admitted axis");
 
     let slices = get(
         &app,
-        "/perf/app/docket/frames/slices?metric=dso&dim=cohort&grain=month&span=all",
+        "/perf/app/console/frames/slices?metric=dso&dim=cohort&grain=month&span=all",
     )
     .await;
     assert_eq!(
@@ -1433,7 +1433,7 @@ async fn the_metrics_faces_serve_the_cube() {
 
     let trend = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
     // The session engine serves the disclosed rival beside the chosen
@@ -1449,21 +1449,21 @@ async fn the_metrics_faces_serve_the_cube() {
     // quarter, for the chosen reading and the rival alike.
     let quarter = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=quarter&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=quarter&span=24",
     )
     .await;
     assert_eq!(row_count(quarter).await, series, "one quarter");
     // The span clips the newest periods in the frame's SQL.
     let clipped = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=1",
+        "/perf/app/console/frames/trend?metric=dso&grain=month&span=1",
     )
     .await;
     assert_eq!(row_count(clipped).await, series, "the newest month");
 
     let drivers = get(
         &app,
-        "/perf/app/docket/frames/drivers?metric=dso&grain=month",
+        "/perf/app/console/frames/drivers?metric=dso&grain=month",
     )
     .await;
     assert_eq!(
@@ -1478,7 +1478,7 @@ async fn the_metrics_faces_serve_the_cube() {
     // runs them, and with too short a history each lands its reasons
     // without a call.
     let walk = 1;
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
+    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
 
@@ -1501,7 +1501,7 @@ async fn the_metrics_faces_serve_the_cube() {
         .unwrap();
     let trend = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
     assert_eq!(
@@ -1509,20 +1509,20 @@ async fn the_metrics_faces_serve_the_cube() {
         2 * series,
         "the numbers stand after the gloss"
     );
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
+    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
         walk,
         "the verdicts read the data, not this gloss"
     );
 
-    // Re-measure — the docket's second write, a compute act: with
+    // Re-measure — the console's second write, a compute act: with
     // nothing stale it lands nothing, and the response is still the
     // write event the browser's frame store hears.
     let response = app
         .clone()
         .oneshot(
-            Request::post("/perf/app/docket/remeasure")
+            Request::post("/perf/app/console/remeasure")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1539,11 +1539,11 @@ async fn the_metrics_faces_serve_the_cube() {
     // The re-measure ran the walk too: with no metric of seven whole
     // months it called no service and landed its reasons, so nothing
     // stays owed.
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
+    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(row_count(banner).await, 0, "the verdicts still stand");
     let trend = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
     assert_eq!(row_count(trend).await, 2 * series, "and the numbers stand");
@@ -1582,9 +1582,9 @@ async fn the_plan_stands_beside_its_metric() {
         )
         .await
         .unwrap();
-    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
+    let pulse = get(&app, "/perf/app/console/frames/pulse?stopped=0").await;
     assert_eq!(row_count(pulse).await, 1, "the plan is no metric surface");
-    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
+    let plan = get(&app, "/perf/app/console/frames/plan?metric=dso").await;
     assert_eq!(plan.status(), StatusCode::OK);
     let text = body_text(plan).await;
     assert!(
@@ -1592,11 +1592,11 @@ async fn the_plan_stands_beside_its_metric() {
         "{text}"
     );
     assert!(text.contains("-12.5") && text.contains("2026"), "{text}");
-    let plan = get(&app, "/perf/app/docket/frames/plan?metric=dso").await;
+    let plan = get(&app, "/perf/app/console/frames/plan?metric=dso").await;
     assert_eq!(row_count(plan).await, 3, "two months and the year");
     let trend = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=month&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=month&span=24",
     )
     .await;
     assert_eq!(
@@ -1606,7 +1606,7 @@ async fn the_plan_stands_beside_its_metric() {
     );
     let yearly = get(
         &app,
-        "/perf/app/docket/frames/trend?metric=dso&grain=year&span=24",
+        "/perf/app/console/frames/trend?metric=dso&grain=year&span=24",
     )
     .await;
     assert_eq!(
@@ -1619,7 +1619,7 @@ async fn the_plan_stands_beside_its_metric() {
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes slot, and a metric whose
 /// period column nobody profiled — the banner counts the want, the
-/// docket's re-measure runs the profile, and the series serves.
+/// console's re-measure runs the profile, and the series serves.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_list_serves_a_workspace_without_a_fact() {
     let (app, plane, _dir) = workspace().await;
@@ -1646,16 +1646,16 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .await
         .unwrap();
 
-    let facts = get(&app, "/perf/app/docket/frames/facts?stopped=0").await;
+    let facts = get(&app, "/perf/app/console/frames/facts?stopped=0").await;
     assert_eq!(facts.status(), StatusCode::OK);
     assert_eq!(row_count(facts).await, 0, "no fact declared, no fact row");
-    let fact = get(&app, "/perf/app/docket/frames/fact?metric=dso").await;
+    let fact = get(&app, "/perf/app/console/frames/fact?metric=dso").await;
     assert_eq!(row_count(fact).await, 0, "a series is not a fact");
-    let fact = get(&app, "/perf/app/docket/frames/fact?metric=undated").await;
+    let fact = get(&app, "/perf/app/console/frames/fact?metric=undated").await;
     assert_eq!(row_count(fact).await, 0, "an undeclared kind is not a fact");
 
     // The undated measure carries its row's reason in the axes slot.
-    let pulse = get(&app, "/perf/app/docket/frames/pulse?stopped=0").await;
+    let pulse = get(&app, "/perf/app/console/frames/pulse?stopped=0").await;
     assert_eq!(pulse.status(), StatusCode::OK);
     let pulse = body_text(pulse).await;
     assert!(
@@ -1665,17 +1665,17 @@ async fn the_list_serves_a_workspace_without_a_fact() {
 
     // Nobody profiled `dso.month`: the row wants the profile, `owed`
     // lists it, the banner counts it, and the series waits.
-    let latest = get(&app, "/perf/app/docket/frames/latest").await;
+    let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 0, "no cadence, no series yet");
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
+    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
     // The futures kit's walk, forecast and estimate are owed beside the profile.
     assert!(
-        banner.contains("4 a metric or a witness reads were never made (metric_bands, metric_forecast, metric_scenario, temporal)"),
+        banner.contains("4 measurements that a metric or a test reads were never run (metric_bands, metric_forecast, metric_scenario, temporal)"),
         "{banner}"
     );
-    let owed = get(&app, "/perf/app/docket/frames/owed").await;
+    let owed = get(&app, "/perf/app/console/frames/owed").await;
     assert_eq!(
         row_count(owed).await,
         4,
@@ -1684,20 +1684,20 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let response = app
         .clone()
         .oneshot(
-            Request::post("/perf/app/docket/remeasure")
+            Request::post("/perf/app/console/remeasure")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let banner = get(&app, "/perf/app/docket/frames/remeasure").await;
+    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
         0,
         "the profile ran; the walk and the forecast landed their reasons"
     );
-    let latest = get(&app, "/perf/app/docket/frames/latest").await;
+    let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
 }
 
@@ -1709,18 +1709,18 @@ async fn the_metrics_pages_render_both_states() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let front = get(&app, "/perf/app/docket/p/metrics").await;
+    let front = get(&app, "/perf/app/console/p/metrics").await;
     assert_eq!(front.status(), StatusCode::OK);
     let front = text(front).await;
     assert!(front.contains("frames/pulse"), "{front}");
 
-    // the front counts live on the docket itself, not the metric list
-    let open = text(get(&app, "/perf/app/docket").await).await;
+    // the front counts live on the console itself, not the metric list
+    let open = text(get(&app, "/perf/app/console").await).await;
     assert!(open.contains("frames/front"), "{open}");
     assert!(open.contains("frames/open"), "{open}");
     assert!(open.contains("frames/settled"), "{open}");
 
-    let dossier = text(get(&app, "/perf/app/docket/p/metrics?metric=dso").await).await;
+    let dossier = text(get(&app, "/perf/app/console/p/metrics?metric=dso").await).await;
     assert!(dossier.contains("frames/trend"), "{dossier}");
     assert!(dossier.contains("frames/dims"), "{dossier}");
     assert!(
@@ -1728,7 +1728,7 @@ async fn the_metrics_pages_render_both_states() {
         "no dim picked — the slice tile must not render"
     );
 
-    let sliced = text(get(&app, "/perf/app/docket/p/metrics?metric=dso&dim=cohort").await).await;
+    let sliced = text(get(&app, "/perf/app/console/p/metrics?metric=dso&dim=cohort").await).await;
     assert!(sliced.contains("frames/slices"), "{sliced}");
 }
 
@@ -1736,7 +1736,7 @@ async fn the_metrics_pages_render_both_states() {
 async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
     // Not a 303 to the Referer: a
     // 303's job is to send the reader somewhere else to see the result,
-    // and the reader never leaves this page — the docket is
+    // and the reader never leaves this page — the console is
     // client-rendered, so the response is an event. Success is 204 with
     // `HX-Trigger: glossql:written`, never a Location; the Referer is
     // ignored entirely, so there is nothing a forged one can steer.
@@ -1784,19 +1784,19 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
         .unwrap();
 
     // Pages are never cached: they are live views of a mutable record.
-    let page = get(&app, "/perf/app/docket").await;
+    let page = get(&app, "/perf/app/console").await;
     assert_eq!(
         page.headers()
             .get(axum::http::header::CACHE_CONTROL)
             .and_then(|v| v.to_str().ok()),
         Some("no-store"),
-        "a docket page must not be cacheable"
+        "a console page must not be cacheable"
     );
 
     let post = |key: &'static str, referer: Option<&'static str>| {
         let app = app.clone();
         async move {
-            let mut request = Request::post("/perf/app/docket/rule").header(
+            let mut request = Request::post("/perf/app/console/rule").header(
                 axum::http::header::CONTENT_TYPE,
                 "application/x-www-form-urlencoded",
             );
@@ -1821,7 +1821,7 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
     for (key, referer) in [
         (
             "k0",
-            Some("http://127.0.0.1:8113/app/docket/p/metrics?metric=dso"),
+            Some("http://127.0.0.1:8113/app/console/p/metrics?metric=dso"),
         ),
         ("k1", Some("http://evil.example/steal")),
         ("k2", Some("//evil.example/steal")),
@@ -1871,7 +1871,7 @@ async fn the_root_lists_every_dataset_at_a_glance() {
         "dso, payables and the cleaned relation:\n{root}"
     );
     assert!(
-        root.contains("1 question waits on you"),
+        root.contains("1 question waits for you"),
         "the per-line assumption at 0.7:\n{root}"
     );
     // The second dataset, empty, still lists with its own way in.
@@ -1880,8 +1880,8 @@ async fn the_root_lists_every_dataset_at_a_glance() {
     assert!(root.contains("nothing open"), "{root}");
     // The built-in serves every dataset; a glossed app is served
     // where it was glossed and nowhere else.
-    assert!(root.contains("href=\"/perf/app/docket\""), "{root}");
-    assert!(root.contains("href=\"/second/app/docket\""), "{root}");
+    assert!(root.contains("href=\"/perf/app/console\""), "{root}");
+    assert!(root.contains("href=\"/second/app/console\""), "{root}");
     assert!(root.contains("href=\"/perf/app/board\""), "{root}");
     assert!(!root.contains("href=\"/second/app/board\""), "{root}");
     assert!(root.contains("glossed"), "{root}");
@@ -1889,8 +1889,8 @@ async fn the_root_lists_every_dataset_at_a_glance() {
     // The doors and the connect line: an agent connects to a
     // dataset's door, and the workspace door is named for what only it
     // does.
-    assert!(root.contains("the dataset's agent door"), "{root}");
-    assert!(root.contains("the workspace's agent door"), "{root}");
+    assert!(root.contains("MCP, one dataset"), "{root}");
+    assert!(root.contains("MCP, the whole workspace"), "{root}");
     // The connect line names the server as it was told it is reached,
     // whatever host the request claimed. The template escapes the
     // scheme's slashes, so the host is the tell.
@@ -1909,7 +1909,7 @@ async fn the_export_tab_lists_tables_and_reads() {
     // The page places the rows; its download links opt out of the
     // shell's hx-boost, which would otherwise swap the file's text
     // into the page, and the curl line names this dataset's door.
-    let page = text(get(&app, "/perf/app/docket/p/export").await).await;
+    let page = text(get(&app, "/perf/app/console/p/export").await).await;
     assert!(
         page.contains("hx-boost=\"false\" download href=\"{csv}\""),
         "{page}"
@@ -1917,7 +1917,7 @@ async fn the_export_tab_lists_tables_and_reads() {
     assert!(page.contains("/perf/query"), "{page}");
 
     // The landed table with its shape and its two files.
-    let tables = body_text(get(&app, "/perf/app/docket/frames/tables").await).await;
+    let tables = body_text(get(&app, "/perf/app/console/frames/tables").await).await;
     assert!(tables.contains("ledger\n"), "{tables}");
     assert!(tables.contains("3\ncolumns\n"), "{tables}");
     assert!(tables.contains("/perf/app/export/ledger.csv\n"), "{tables}");
@@ -1928,7 +1928,7 @@ async fn the_export_tab_lists_tables_and_reads() {
 
     // The served reads as their relations, with the definition's
     // meaning beside them, the kind as the chip, and the files.
-    let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=0").await).await;
+    let reads = body_text(get(&app, "/perf/app/console/frames/reads?stopped=0").await).await;
     let relation = |name: &str| format!("\n{name}\n");
     assert!(reads.contains(&relation("dso")), "{reads}");
     assert!(reads.contains("receivables outstanding"), "{reads}");
@@ -1939,10 +1939,10 @@ async fn the_export_tab_lists_tables_and_reads() {
     // A dataset with nothing landed serves empty frames, and the page
     // still stands with the bar's tabs.
     assert_eq!(
-        row_count(get(&app, "/second/app/docket/frames/tables").await).await,
+        row_count(get(&app, "/second/app/console/frames/tables").await).await,
         0
     );
-    let second = text(get(&app, "/second/app/docket/p/export").await).await;
+    let second = text(get(&app, "/second/app/console/p/export").await).await;
     assert!(second.contains(">Export</a>"), "{second}");
 }
 
@@ -2095,7 +2095,7 @@ async fn the_lineage_page_draws_the_record() {
         .await
         .unwrap();
 
-    let page = get(&app, "/perf/app/docket/p/lineage").await;
+    let page = get(&app, "/perf/app/console/p/lineage").await;
     assert_eq!(page.status(), StatusCode::OK);
     let page = text(page).await;
     assert!(
@@ -2103,13 +2103,13 @@ async fn the_lineage_page_draws_the_record() {
         "{page}"
     );
     // The other pages carry the fourth tab.
-    let open = text(get(&app, "/perf/app/docket").await).await;
-    assert!(open.contains("/perf/app/docket/p/lineage"), "{open}");
+    let open = text(get(&app, "/perf/app/console").await).await;
+    assert!(open.contains("/perf/app/console/p/lineage"), "{open}");
 
     // Nodes: the two tables' columns in order, and the grounding's
     // served fields under the metric; a grounding with only an
     // aggregate (payables) has no field to show.
-    let nodes = get(&app, "/perf/app/docket/frames/lineage_nodes").await;
+    let nodes = get(&app, "/perf/app/console/frames/lineage_nodes").await;
     assert_eq!(nodes.status(), StatusCode::OK);
     let bytes = to_bytes(nodes.into_body(), usize::MAX).await.unwrap();
     let reader =
@@ -2141,14 +2141,14 @@ async fn the_lineage_page_draws_the_record() {
     assert!(has("ledger", "cohort"), "{rows:?}");
     assert!(has("ledger", "value"), "{rows:?}");
     assert!(has("cohorts", "cohort"), "{rows:?}");
-    assert!(has("read.dso()", "month"), "{rows:?}");
-    assert!(has("read.dso()", "cohort"), "{rows:?}");
+    assert!(has("dso", "month"), "{rows:?}");
+    assert!(has("dso", "cohort"), "{rows:?}");
     assert!(
-        !rows.iter().any(|r| r.0 == "read.payables()"),
+        !rows.iter().any(|r| r.0 == "payables"),
         "an aggregate descends from no column:\n{rows:?}"
     );
     assert!(
-        rows.iter().any(|r| r.0 == "read.dso()" && r.1 == "metric"),
+        rows.iter().any(|r| r.0 == "dso" && r.1 == "metric"),
         "{rows:?}"
     );
     // The format's metadata tables sit beside every landed one in
@@ -2159,7 +2159,7 @@ async fn the_lineage_page_draws_the_record() {
     );
 
     // Edges: the declared key edge and the grounding's three reads.
-    let edges = get(&app, "/perf/app/docket/frames/lineage_edges").await;
+    let edges = get(&app, "/perf/app/console/frames/lineage_edges").await;
     assert_eq!(edges.status(), StatusCode::OK);
     let bytes = to_bytes(edges.into_body(), usize::MAX).await.unwrap();
     let reader =
@@ -2196,7 +2196,7 @@ async fn the_lineage_page_draws_the_record() {
     assert!(
         edges.contains(&(
             "ledger.month".into(),
-            "read.dso().month".into(),
+            "dso.month".into(),
             "reads".into()
         )),
         "{edges:?}"
@@ -2204,7 +2204,7 @@ async fn the_lineage_page_draws_the_record() {
     assert!(
         edges.contains(&(
             "ledger.value".into(),
-            "read.dso().value".into(),
+            "dso.value".into(),
             "reads".into()
         )),
         "{edges:?}"
@@ -2317,13 +2317,13 @@ async fn a_stopped_surface_folds_under_the_lists() {
         .await
         .unwrap();
 
-    let served = body_text(get(&app, "/perf/app/docket/frames/pulse?stopped=0").await).await;
+    let served = body_text(get(&app, "/perf/app/console/frames/pulse?stopped=0").await).await;
     assert!(served.contains("dso\n"), "{served}");
     assert!(
         !served.contains("old_dso"),
         "a stopped metric is not between the served:\n{served}"
     );
-    let stopped = body_text(get(&app, "/perf/app/docket/frames/pulse?stopped=1").await).await;
+    let stopped = body_text(get(&app, "/perf/app/console/frames/pulse?stopped=1").await).await;
     assert!(stopped.contains("old_dso\n"), "{stopped}");
     assert!(
         stopped.contains("stopped: superseded by dso, which reads the cohort\n"),
@@ -2334,11 +2334,11 @@ async fn a_stopped_surface_folds_under_the_lists() {
         "the served metric is not in the fold:\n{stopped}"
     );
 
-    let reads = body_text(get(&app, "/perf/app/docket/frames/reads?stopped=1").await).await;
+    let reads = body_text(get(&app, "/perf/app/console/frames/reads?stopped=1").await).await;
     let relation = |name: &str| format!("\n{name}\n");
     assert!(reads.contains(&relation("old_dso")), "{reads}");
     assert!(!reads.contains(&relation("dso")), "{reads}");
-    let page = text(get(&app, "/perf/app/docket/p/metrics").await).await;
+    let page = text(get(&app, "/perf/app/console/p/metrics").await).await;
     assert!(
         page.contains("<details class=\"fold\">") && page.contains("frames/pulse?stopped=1"),
         "the fold under the list:\n{page}"
@@ -2357,7 +2357,7 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
     let page = text(
         get(
             &app,
-            "/perf/app/docket/p/metrics?metric=cleaned&kind=relation",
+            "/perf/app/console/p/metrics?metric=cleaned&kind=relation",
         )
         .await,
     )
@@ -2370,14 +2370,14 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
         ),
         "the pane, prefilled:\n{page}"
     );
-    let metric = text(get(&app, "/perf/app/docket/p/metrics?metric=dso").await).await;
+    let metric = text(get(&app, "/perf/app/console/p/metrics?metric=dso").await).await;
     assert!(
         !metric.contains("<gl-query"),
         "a metric's page carries no pane:\n{metric}"
     );
 
     let fields =
-        body_text(get(&app, "/perf/app/docket/frames/view_fields?metric=cleaned").await).await;
+        body_text(get(&app, "/perf/app/console/frames/view_fields?metric=cleaned").await).await;
     assert!(
         fields.contains("month\namount\ncohort\n"),
         "every served column in the view's order:\n{fields}"
@@ -2387,7 +2387,7 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
         "the column a renamed field descends from:\n{fields}"
     );
     let tables =
-        body_text(get(&app, "/perf/app/docket/frames/view_tables?metric=cleaned").await).await;
+        body_text(get(&app, "/perf/app/console/frames/view_tables?metric=cleaned").await).await;
     assert_eq!(tables, "ledger\n", "the one table the view reads");
 }
 
@@ -2438,7 +2438,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         .await
         .unwrap();
 
-    let page = text(get(&app, "/perf/app/docket/p/glossary").await).await;
+    let page = text(get(&app, "/perf/app/console/p/glossary").await).await;
     for frame in [
         "frames/vocabulary?kind=fact",
         "frames/vocabulary?kind=query",
@@ -2460,7 +2460,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     // the owed subjects spoken on and its speakers; a grounding; a
     // measurement with the function that lands it; the app's own
     // folded apart.
-    let facts = body_text(get(&app, "/perf/app/docket/frames/vocabulary?kind=fact").await).await;
+    let facts = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=fact").await).await;
     assert!(facts.contains("role\n"), "{facts}");
     assert!(
         facts.contains(
@@ -2482,13 +2482,13 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         !facts.contains("app_frame"),
         "the app's own fold apart:\n{facts}"
     );
-    let own = body_text(get(&app, "/perf/app/docket/frames/vocabulary?kind=own").await).await;
+    let own = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=own").await).await;
     assert!(own.contains("app_frame\n"), "{own}");
-    let queries = body_text(get(&app, "/perf/app/docket/frames/vocabulary?kind=query").await).await;
+    let queries = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=query").await).await;
     assert!(queries.contains("dso\n"), "{queries}");
     assert!(queries.contains("on the dataset\n"), "{queries}");
     let measurements =
-        body_text(get(&app, "/perf/app/docket/frames/vocabulary?kind=measurement").await).await;
+        body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=measurement").await).await;
     assert!(
         measurements.contains("temporal_profile\n"),
         "{measurements}"
@@ -2503,7 +2503,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     // The terms: the surfaces first by alphabet with the column's term
     // among them; the person's word wins and is marked, the when on
     // hover.
-    let terms = body_text(get(&app, "/perf/app/docket/frames/terms").await).await;
+    let terms = body_text(get(&app, "/perf/app/console/frames/terms").await).await;
     assert!(terms.contains("Booked value\n"), "{terms}");
     assert!(
         terms.contains("the cash\n"),
@@ -2513,19 +2513,19 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     assert!(terms.contains("ruled\n"), "{terms}");
     assert!(terms.contains("v-ruled\n"), "{terms}");
     assert!(
-        terms.contains("/perf/app/docket/p/glossary?column=ledger.value\n"),
+        terms.contains("/perf/app/console/p/glossary?column=ledger.value\n"),
         "a term opens its column:\n{terms}"
     );
     assert!(
-        terms.contains("/perf/app/docket/p/metrics?metric=cleaned&kind=relation\n"),
+        terms.contains("/perf/app/console/p/metrics?metric=cleaned&kind=relation\n"),
         "a view's page, under the dataset:\n{terms}"
     );
     assert!(!terms.contains("\nplan\n"), "a plan is no term:\n{terms}");
 
-    let query = text(get(&app, "/perf/app/docket/p/query").await).await;
+    let query = text(get(&app, "/perf/app/console/p/query").await).await;
     assert!(query.contains("<gl-query dataset=\"perf\""), "{query}");
     assert!(query.contains("frames/relations"), "{query}");
-    let relations = get(&app, "/perf/app/docket/frames/relations").await;
+    let relations = get(&app, "/perf/app/console/frames/relations").await;
     assert_eq!(relations.status(), StatusCode::OK);
     let relations = body_text(relations).await;
     // Column by column: the tables first, then the views, then the
@@ -2545,7 +2545,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
 
     // The tables: one row per landed table, its columns as lines, the
     // name opening the table's page.
-    let columns = body_text(get(&app, "/perf/app/docket/frames/columns").await).await;
+    let columns = body_text(get(&app, "/perf/app/console/frames/columns").await).await;
     assert!(columns.contains("ledger\n"), "the landed table:\n{columns}");
     assert!(
         columns.contains("month  \u{b7}  ") && columns.contains("value  \u{b7}  measure"),
@@ -2553,7 +2553,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     );
     assert!(columns.contains("?table=ledger\n"), "{columns}");
 
-    let conventions = get(&app, "/perf/app/docket/frames/conventions").await;
+    let conventions = get(&app, "/perf/app/console/frames/conventions").await;
     assert_eq!(conventions.status(), StatusCode::OK);
     let conventions = body_text(conventions).await;
     assert!(
@@ -2610,15 +2610,15 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .unwrap();
 
     // The table's page.
-    let page = text(get(&app, "/perf/app/docket/p/glossary?table=ledger").await).await;
+    let page = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
     assert!(page.contains("frames/table_head?table=ledger"), "{page}");
     assert!(page.contains("frames/table_columns?table=ledger"), "{page}");
     assert!(page.contains("frames/table_landing?table=ledger"), "{page}");
     assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/docket/p/glossary\">Glossary</a>"),
+        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">Glossary</a>"),
         "opening a table stays on the tab:\n{page}"
     );
-    let head = body_text(get(&app, "/perf/app/docket/frames/table_head?table=ledger").await).await;
+    let head = body_text(get(&app, "/perf/app/console/frames/table_head?table=ledger").await).await;
     assert!(head.contains("one ledger line\n"), "{head}");
     assert!(
         head.contains("a fact table \u{b7} one row per month, cohort \u{b7} time axis month\n"),
@@ -2630,7 +2630,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         "{head}"
     );
     let cols =
-        body_text(get(&app, "/perf/app/docket/frames/table_columns?table=ledger").await).await;
+        body_text(get(&app, "/perf/app/console/frames/table_columns?table=ledger").await).await;
     assert!(
         cols.starts_with("month\ncohort\nvalue\n"),
         "the columns in order:\n{cols}"
@@ -2644,16 +2644,16 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         "the person's meaning wins:\n{cols}"
     );
     assert!(
-        cols.contains("not yet said\n"),
+        cols.contains("not yet annotated\n"),
         "an owed meaning nobody filled:\n{cols}"
     );
     assert!(cols.contains("ruled\n"), "{cols}");
     assert!(cols.contains("month\n"), "{cols}");
     assert!(cols.contains("?column=ledger.value\n"), "{cols}");
     let landing =
-        body_text(get(&app, "/perf/app/docket/frames/table_landing?table=ledger").await).await;
+        body_text(get(&app, "/perf/app/console/frames/table_landing?table=ledger").await).await;
     assert!(
-        landing.starts_with("read\nlanded\nthe recipe\n"),
+        landing.starts_with("read\nloaded\nthe load query\n"),
         "{landing}"
     );
     // The landing names the source.
@@ -2666,7 +2666,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let what = body_text(
         get(
             &app,
-            "/perf/app/docket/frames/table_identities?table=ledger",
+            "/perf/app/console/frames/table_identities?table=ledger",
         )
         .await,
     )
@@ -2678,7 +2678,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     );
 
     // The column's page: every voice, the outranked one on record.
-    let page = text(get(&app, "/perf/app/docket/p/glossary?column=ledger.value").await).await;
+    let page = text(get(&app, "/perf/app/console/p/glossary?column=ledger.value").await).await;
     assert!(
         page.contains("frames/column_slots?column=ledger.value"),
         "{page}"
@@ -2686,7 +2686,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let head = body_text(
         get(
             &app,
-            "/perf/app/docket/frames/column_head?column=ledger.value",
+            "/perf/app/console/frames/column_head?column=ledger.value",
         )
         .await,
     )
@@ -2697,7 +2697,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let slots = body_text(
         get(
             &app,
-            "/perf/app/docket/frames/column_slots?column=ledger.value",
+            "/perf/app/console/frames/column_slots?column=ledger.value",
         )
         .await,
     )
@@ -2708,51 +2708,51 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let lead = "role\nmeaning\nmeaning\n";
     assert!(
         slots.starts_with(lead),
-        "both voices on the meaning, the person's first:\n{slots}"
+        "both annotations on the meaning, the person's first:\n{slots}"
     );
     assert!(slots.contains("the cash\nthe money\n"), "{slots}");
     assert!(slots.contains("a person\nthe agent\n"), "{slots}");
     assert!(slots.contains("current\noutranked\n"), "{slots}");
     assert!(
-        slots.contains("spoken by ada\n"),
+        slots.contains("written by ada\n"),
         "the who rides the hover:\n{slots}"
     );
 
     // The aspect's page: the declaration, then every value and every
     // owed subject by name.
-    let page = text(get(&app, "/perf/app/docket/p/glossary?aspect=meaning").await).await;
+    let page = text(get(&app, "/perf/app/console/p/glossary?aspect=meaning").await).await;
     assert!(
         page.contains("frames/aspect_values?aspect=meaning"),
         "{page}"
     );
     let head =
-        body_text(get(&app, "/perf/app/docket/frames/aspect_head?aspect=meaning").await).await;
+        body_text(get(&app, "/perf/app/console/frames/aspect_head?aspect=meaning").await).await;
     assert!(
-        head.starts_with("meaning\na fact: said by the agent or a person\n"),
+        head.starts_with("meaning\nasserted: written by the agent or a person\n"),
         "{head}"
     );
     // Where it is owed: the kit's word on a table, a column and a join.
     let owed_on = "on a table, a column, a join\n";
     assert!(head.contains(owed_on), "{head}");
     assert!(
-        head.contains("witness meaning_w by agent, human\n"),
+        head.contains("test meaning_w by agent, human\n"),
         "{head}"
     );
     // The owed subjects: the views' columns and the tables are owed too.
     let owed = "1 of 14";
     assert!(
-        head.contains(&format!("{owed} owed subjects carry a value\n")),
+        head.contains(&format!("{owed} required assets carry a value\n")),
         "{head}"
     );
     let values =
-        body_text(get(&app, "/perf/app/docket/frames/aspect_values?aspect=meaning").await).await;
+        body_text(get(&app, "/perf/app/console/frames/aspect_values?aspect=meaning").await).await;
     assert!(
         values.starts_with("ledger.value\n"),
         "spoken first, then owed by name:\n{values}"
     );
     assert!(values.contains("ledger.cohort\nledger.month\n"), "{values}");
     assert!(
-        values.contains("the cash\nnot yet said\nnot yet said\n"),
+        values.contains("the cash\nnot yet annotated\nnot yet annotated\n"),
         "{values}"
     );
     assert!(values.contains("a person\n"), "{values}");

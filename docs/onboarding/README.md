@@ -45,11 +45,11 @@ instead of following a staged arc.
   read) — rendered twice: the
   MCP door serves one form per record-reading call (stands as stated ·
   wrong · unclear, with a standing ruling on the same key offered
-  back), and the docket renders the same read as its open page. An
+  back), and the console renders the same read as its open page. An
   answer lands as the human ruling; the question retires by
   derivation — questions are ephemeral, a human `GLOSS` is the whole
   record. Claims a measurement can settle (behavior, unit, role) never
-  become human questions. The docket's ruling form is the one write
+  become human questions. The console's ruling form is the one write
   for the human who stepped away.
 - **The KPI kit.** The semantic vocabulary ships at boot beside the
   measurement library — grained, conditioned aspects and their

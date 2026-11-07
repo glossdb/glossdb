@@ -274,7 +274,7 @@ authoring). Routes: `/<dataset>/app` (the dataset's page),
 `POST /<dataset>/app/{app}/rule` and `.../remeasure`. The vendored
 assets are not dataset-scoped and serve at `/assets/{file}`.
 
-- **The dataset's page.** `/<dataset>/app` opens the docket, the
+- **The dataset's page.** `/<dataset>/app` opens the console, the
   built-in app: what waits on a person, the metrics, the quality of
   the data (each landing's account, the checks, the column coverage),
   the column lineage, and under Export every landed table (the newest

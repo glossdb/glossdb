@@ -1,0 +1,319 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+
+{% block main %}
+{% set metric = state.metric | default(value="") %}
+{% set dim = state.dim | default(value="") %}
+{% set kind = state.kind | default(value="") %}
+
+{% if metric %}
+{# ---- one metric: the number, then its reasons -------------------- #}
+{# Picking a metric is going deeper, not somewhere else: the Metrics
+   tab stays the current one, every tile names the metric, and the tab
+   is the way back to the list. A fact's link carries `kind=fact` and
+   a view's `kind=relation`, and the page draws either without the
+   series tiles — there is no window, no story and no slice over one
+   number or over rows. A view's page shows what a view is instead:
+   the columns it serves with their roles, the tables it reads, and
+   its rows through the pane, before its assumptions and its SQL. #}
+<div class="tiles">
+  {# The re-measure banner: every write moves the pin, and a function
+     voice landed at an earlier pin is served and marked — the numbers
+     are current, the judged axes and the check verdicts stand on
+     those voices — and a measurement the cube or a witness reads may
+     never have been made. One row while either holds; the button
+     runs them, the frames refetch on the write event, and the next
+     cube read rebuilds. #}
+  <gl-rows frame="frames/remeasure" empty="">
+    <template>
+      <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">
+        <span class="hint">{hint}</span>
+        <button type="submit" class="wbtn">Re-measure</button>
+      </form>
+    </template>
+  </gl-rows>
+
+  {# The viewer's window: grain and span are page params, bound into
+     the frames as $grain and $span — the frame SQL is the filter. The
+     references below carry the defaults; the URL overrides them. The
+     control reads the cube's fact row so it offers only the grains
+     the metric's cells can answer, and changing one is navigation:
+     only the frames whose URL changed refetch. #}
+  {% if kind != "fact" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
+
+  {# A declared fact: one number, no series. `frames/fact` serves a
+     row only when this metric is a declared fact with a number, so
+     the tile renders only then — `empty=""` states nothing for a
+     series or a relation. #}
+  <gl-rows frame="frames/fact" empty="">
+    <template>
+      <section class="tile kpi">
+        <header><span class="eyebrow" title="One number with no date of its own, as of the newest load of the tables it reads. A value with a date belongs in a metric, which charts.">Single value · {{ metric }}</span>
+          <code class="chip">fact_values()</code></header>
+        <span class="kpi-num">{value}</span><span class="r-meta"> {unit}</span>
+        <p class="hint">{meaning}</p>
+        <p class="r-meta">{asof}</p>
+      </section>
+    </template>
+  </gl-rows>
+
+  {% if kind != "fact" and kind != "relation" %}
+  {{ tiles::chart(frame="frames/trend?grain=month&span=24", spec="specs/series.vl.json",
+       title="The story · " ~ metric, chip="metric_series()",
+       empty="no values at this grain — Why these axes, below, says what is served; a grain finer than the metric's own serves nothing",
+       note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing. Where metric_forecast has run, the forecast continues as the dashed line named forecast: the newest run's medians at the metric's own resolution, never clipped by the span. The shaded area is its 80% band; a point's tooltip says how often such a band held and whose count that is: this metric's own history, the dataset's, or the service's held-out data.") }}
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Each plan on this metric, period by period at the plan&#x27;s own grain: the planned number, the actual where the period has begun, and the variance (actual minus plan) once it is complete. Where a forecast covers the rest, its median and 80% range show beside it, with how often such a range has held. A plan outside the range goes to review. A year only partly covered says how much and has no range.">The plan · {{ metric }}</span>
+      <code class="chip">plan_points()</code></header>
+    <gl-rows frame="frames/plan" empty="no plan is declared on this metric — a budget is loaded as a table and annotated as a plan, one per edition; the plan goal in the next steps gives the statement">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem 6rem 7rem 7rem 7rem 13rem 1fr">
+          <span class="r-subj asp">{plan}</span>
+          <span class="r-meta">{label}</span>
+          <span class="r-num">{planned}</span>
+          <span class="r-num">{actual}</span>
+          <span class="r-num">{variance}</span>
+          <span class="r-meta">{expected}</span>
+          <span class="r-meta"><code class="chip {scls}">{stands}</code> {held}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">What moved · {{ metric }}</span>
+      <code class="chip">metric_series()</code></header>
+    <gl-rows frame="frames/drivers?grain=month" empty="no member moves at this grain: there are fewer than two periods here, or no dimension is admitted">
+      <template>
+        <div class="rrow" style="grid-template-columns:8rem 1fr 7rem 9rem 12rem">
+          <span class="r-subj asp">{dimension}</span>
+          <span class="r-what">{member}</span>
+          <span class="r-num">{delta}</span>
+          <span class="r-meta">{from_value} → {to_value}</span>
+          <span class="r-meta">{prev_period} → {last_period}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% endif %}
+
+  {% if kind == "relation" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every column of the metric&#x27;s view, with the column it comes from and that column&#x27;s role. A column computed from several names them all; one with no source column shows its type.">What it serves · {{ metric }}</span>
+      <code class="chip">information_schema · metric_sources()</code></header>
+    <gl-rows frame="frames/view_tables" empty="">
+      <template><p class="hint">Built from {tables}.</p></template>
+    </gl-rows>
+    <gl-rows frame="frames/view_fields" empty="no view named {{ metric }} stands in the catalog — a stopped grounding serves no columns">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(9rem,14rem) 10rem minmax(0,1fr)">
+          <span class="r-subj">{field}</span>
+          <span class="r-meta">{role}</span>
+          <span class="r-meta">{sources}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The first fifty rows of the view, through the query endpoint. Change the query and run it again: the filter and sort run on the whole view; a column header sorts what came back.">The rows · {{ metric }}</span>
+      <code class="chip">/{{ dataset }}/query</code></header>
+    <p class="hint">The first fifty rows of the view. Change the query and run it again; a column header sorts what came back.</p>
+    <gl-query dataset="{{ dataset }}" rows="50" sql="SELECT * FROM {{ metric }} LIMIT 50"></gl-query>
+  </section>
+  {% endif %}
+
+  <div{% if kind != "fact" and kind != "relation" %} class="half"{% endif %}>
+  <section class="tile">
+    <header><span class="eyebrow" title="The decided definition: an expression over sibling metrics, with the window w as its only variable. It covers every window, so drilling into this metric recomputes its parts by this formula instead of regrouping its rows.">The formula · {{ metric }}</span>
+      <code class="chip">formulas</code></header>
+    <gl-rows frame="frames/metric" empty="no metric surface named {{ metric }}">
+      <template>
+        <div class="rrow" style="grid-template-columns:1fr">
+          <span class="r-subj" style="font-size:1rem">{formula}</span>
+          <span class="r-meta">{meaning}</span>
+          <span class="r-meta">{stopped}</span>
+          <span class="r-meta">{meta}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  </div>
+
+  {% if kind != "fact" and kind != "relation" %}
+  <div class="half">
+  <section class="tile">
+    <header><span class="eyebrow" title="The dimensions this metric may be sliced by, most relevant first. A wide dimension shows its largest members and &#x27;other&#x27;.">Slice</span>
+      <code class="chip">metric_series()</code></header>
+    <p class="hint">pick a dimension: the slice is in the URL, so what you see is a link you can share.</p>
+    <gl-rows frame="frames/dims?grain=month&span=24" empty="no dimensions admitted: the metric definition serves no dimension column with a role, or no time column with a role anchors it (metric_axes() says which)">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:1fr auto">
+          <span class="r-subj">{dimension}</span>
+          <span class="r-num">{members} members</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+  </div>
+
+  {% if dim %}
+  {{ tiles::chart(frame="frames/slices?grain=month&span=24", spec="specs/series.vl.json",
+       title="By " ~ dim, chip="metric_series()",
+       empty="no member cells at this grain",
+       note="The members of one dimension at the grain you chose, regrouped on the server by the metric's additivity; a ratio member divides its own summed parts.") }}
+  {% endif %}
+
+  <section class="tile">
+    <header><span class="eyebrow" title="What the metric is served at and why: its time grain (its measured cadence, never finer than the declared floor), the window, the additivity, the dimensions, and the outcome of the alternative reading. A metric that serves nothing says why.">Why these axes · {{ metric }}</span>
+      <code class="chip">metric_axes()</code></header>
+    <gl-rows frame="frames/axes" empty="no current grounding named {{ metric }}">
+      <template>
+        <div class="rrow" style="grid-template-columns:1fr">
+          <span class="r-meta">resolution {resolution} · window {window} · {behavior} · axes: {dims}</span>
+          <span class="r-meta">{reason} {alternative_error}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% endif %}
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The assumptions the agent disclosed in the current metric definition, each with the review decision on it, if any.">The assumptions behind it</span>
+      <code class="chip">agent_assumptions</code></header>
+    <p class="hint">● decided · ◐ still open. A review decision is stored as the decision alone; the agent then records the definition again.</p>
+    <div class="scroll">
+    <gl-rows frame="frames/assumptions" empty="this metric definition discloses no assumptions">
+      <template>
+        <div class="rrow" style="grid-template-columns:1.2rem 8rem 1fr">
+          <span class="g {gcls}">{glyph}</span>
+          <span class="r-subj asp">{dim}</span>
+          <span class="r-what">{what}<br>
+            <span class="r-meta">basis: {basis} · {ruling}</span>
+            <details class="contest"><summary>the SQL</summary><pre class="statement">{statement}</pre></details>
+          </span>
+        </div>
+      </template>
+    </gl-rows>
+    </div>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The query this metric expands to. It must keep matching the formula.">The stored result</span>
+      <code class="chip">GLOSSARY()</code></header>
+    <gl-rows frame="frames/metric">
+      <template>
+        <pre class="statement">{sql}</pre>
+      </template>
+    </gl-rows>
+  </section>
+</div>
+
+{% else %}
+{# ---- the surfaces list ------------------------------------------- #}
+<div class="tiles">
+  {# The re-measure banner: every write moves the pin, and a function
+     voice landed at an earlier pin is served and marked — the numbers
+     are current, the judged axes and the check verdicts stand on
+     those voices — and a measurement the cube or a witness reads may
+     never have been made. One row while either holds; the button
+     runs them, the frames refetch on the write event, and the next
+     cube read rebuilds. #}
+  <gl-rows frame="frames/remeasure" empty="">
+    <template>
+      <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">
+        <span class="hint">{hint}</span>
+        <button type="submit" class="wbtn">Re-measure</button>
+      </form>
+    </template>
+  </gl-rows>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every metric with its review state, or why it charts nothing, beside the newest period, the change into it and its dimensions. A review decision refreshes the first part and leaves the numbers alone.">Metrics</span>
+      <code class="chip">metric_surfaces · metric_axes() · metric_series()</code></header>
+    <gl-rows frame="frames/pulse?stopped=0" join="frames/latest" on="name" empty="no metric surfaces declared yet">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:11rem 7rem 5rem 1fr 11rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{mkind}</em></span></span>
+          <span class="r-num">{latest}<br><span class="r-meta">{unit} {period}</span></span>
+          <span class="r-num">{delta}</span>
+          <span class="r-meta">{axes}</span>
+          <code class="chip {scls}">{status}</code>
+        </a>
+      </template>
+    </gl-rows>
+    {# A grounding its author stopped serves no number and stays on
+       record with the reason — retired, superseded, or waiting on
+       data the author named. Folded, closed by default: out of the
+       way, never gone. #}
+    <details class="fold">
+      <summary>stopped</summary>
+      <gl-rows frame="frames/pulse?stopped=1" empty="none stopped: a metric definition its author stops is listed here with the reason">
+        <template>
+          <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+            <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{mkind}</em></span></span>
+            <span class="r-meta">{axes}</span>
+            <code class="chip {scls}">{status}</code>
+          </a>
+        </template>
+      </gl-rows>
+    </details>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every derived view of the dataset: shared SQL the metrics build on. A view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every metric built on it. The Export tab serves each as a file.">Views</span>
+      <code class="chip">metric_surfaces</code></header>
+    <gl-rows frame="frames/views?stopped=0" empty="no view is declared: a derived view is a QUERY aspect with x-kind relation, defined by SQL the metrics build on">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+          <span class="r-what">{meaning}</span>
+          <code class="chip {scls}">{status}</code>
+        </a>
+      </template>
+    </gl-rows>
+    <details class="fold">
+      <summary>stopped</summary>
+      <gl-rows frame="frames/views?stopped=1" empty="none stopped: a view its author stops is listed here with the reason">
+        <template>
+          <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+            <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+            <span class="r-what">{meaning}</span>
+            <code class="chip {scls}">{status}</code>
+          </a>
+        </template>
+      </gl-rows>
+    </details>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every single value with its number and the newest load of the tables it reads. No period and no change: a single value has no date of its own, so the data&#x27;s date is the one shown.">Single values</span>
+      <code class="chip">metric_surfaces · fact_values()</code></header>
+    <gl-rows frame="frames/facts?stopped=0" empty="no single value is declared: a value with no date of its own is annotated with x-kind fact, and is served whole">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 9rem 11rem 11rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+          <span class="r-what">{meaning}</span>
+          <span class="r-num">{value}<br><span class="r-meta">{unit}</span></span>
+          <span class="r-meta">{asof}{note}</span>
+          <code class="chip {scls}">{status}</code>
+        </a>
+      </template>
+    </gl-rows>
+    <details class="fold">
+      <summary>stopped</summary>
+      <gl-rows frame="frames/facts?stopped=1" empty="none stopped: a single value its author stops is listed here with the reason">
+        <template>
+          <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+            <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+            <span class="r-what">{meaning}</span>
+            <code class="chip {scls}">{status}</code>
+          </a>
+        </template>
+      </gl-rows>
+    </details>
+  </section>
+</div>
+{% endif %}
+{% endblock main %}

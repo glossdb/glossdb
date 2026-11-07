@@ -71,13 +71,13 @@ async fn body_json(response: Response<Body>) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_docket_app_ships_in_the_binary() {
+async fn the_console_app_ships_in_the_binary() {
     // The workspace carries no apps — the built-in answers for the name,
     // on whichever dataset the URL names.
     let (app, _dir) = app_on_fin().await;
     let response = app
         .oneshot(
-            Request::get("/fin/app/docket")
+            Request::get("/fin/app/console")
                 .header(header::AUTHORIZATION, common::bearer("dev-human"))
                 .body(Body::empty())
                 .unwrap(),
@@ -87,7 +87,7 @@ async fn the_docket_app_ships_in_the_binary() {
     assert_eq!(response.status(), StatusCode::OK);
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let html = String::from_utf8(bytes.to_vec()).unwrap();
-    assert!(html.contains("Docket"));
+    assert!(html.contains("Console"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -100,7 +100,7 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
     let response = app
         .clone()
         .oneshot(
-            Request::get("/nope/app/docket/frames/census")
+            Request::get("/nope/app/console/frames/census")
                 .header(header::AUTHORIZATION, common::bearer("dev-human"))
                 .body(Body::empty())
                 .unwrap(),
@@ -604,7 +604,7 @@ async fn a_browser_without_a_token_is_sent_to_sign_in() {
     let (app, _dir) = app().await;
     let response = app
         .oneshot(
-            Request::get("/fin/app/docket?page=2")
+            Request::get("/fin/app/console?page=2")
                 .header(header::ACCEPT, "text/html,application/xhtml+xml")
                 .body(Body::empty())
                 .unwrap(),
@@ -614,7 +614,7 @@ async fn a_browser_without_a_token_is_sent_to_sign_in() {
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         response.headers()[header::LOCATION],
-        "/auth/login?next=%2Ffin%2Fapp%2Fdocket%3Fpage%3D2"
+        "/auth/login?next=%2Ffin%2Fapp%2Fconsole%3Fpage%3D2"
     );
 }
 
@@ -668,7 +668,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     let going = app
         .clone()
         .oneshot(
-            Request::get("/auth/login?next=/fin/app/docket")
+            Request::get("/auth/login?next=/fin/app/console")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -735,7 +735,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     let said =
         String::from_utf8_lossy(&to_bytes(back.into_body(), usize::MAX).await.unwrap()).to_string();
     assert_eq!(status, StatusCode::SEE_OTHER, "{said}");
-    assert_eq!(headers[header::LOCATION], "/fin/app/docket");
+    assert_eq!(headers[header::LOCATION], "/fin/app/console");
     let cookies: Vec<String> = headers
         .get_all(header::SET_COOKIE)
         .iter()
@@ -795,17 +795,17 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
         .await
         .unwrap();
     assert_eq!(as_agent.status(), StatusCode::UNAUTHORIZED);
-    let docket = app
+    let console = app
         .clone()
         .oneshot(
-            Request::get("/fin/app/docket")
+            Request::get("/fin/app/console")
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(docket.status(), StatusCode::OK);
+    assert_eq!(console.status(), StatusCode::OK);
 
     // And logout takes it away — on a POST, the person's own act; a
     // GET, which any page could send with the cookie riding along, is
@@ -840,7 +840,7 @@ async fn the_login_brings_a_person_back_to_this_server_alone() {
     // `next` as the browser sends it (the request line is encoded) and
     // the path the pending cookie keeps.
     let cases = [
-        ("%2Ffin%2Fapp%2Fdocket%3Fpage%3D2", "/fin/app/docket?page=2"),
+        ("%2Ffin%2Fapp%2Fconsole%3Fpage%3D2", "/fin/app/console?page=2"),
         ("http%3A%2F%2F127.0.0.1%3A8080%2Ffin", "/fin"),
         ("", "/"),
         ("%2F%5Cevil.example", "/"),

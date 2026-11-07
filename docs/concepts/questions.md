@@ -24,7 +24,7 @@ is one form with three stances — stands as stated, wrong (with a
 correction), unclear: ask differently — plus, where the human already
 ruled the same key under another aspect, that ruling offered back as
 a fourth choice, so agreeing costs a click and differing stays open.
-On the app door, the docket renders the same rows as cards, with the
+On the app door, the console renders the same rows as cards, with the
 ruling form — the one write the app door takes.
 
 What waits on an act is a different read, `owed` — an approved recipe

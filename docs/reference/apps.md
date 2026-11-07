@@ -20,7 +20,7 @@ is read from disk: an app lives in the record or in the binary.
    of `app_release` on `<name>` — and the newest parts under `?draft`;
    an app nobody released serves its draft (`app_releases` says what
    is released).
-2. **The built-in** — the docket ships in the binary and resolves the
+2. **The built-in** — the console ships in the binary and resolves the
    same way, after the record.
 
 A glossed part under a built-in's name is refused: one part would
@@ -31,7 +31,7 @@ happens where its source is, in the repository.
 ## The manifest
 
 ```glossql
-GLOSS app ON docket_mine AS $${"title": "My docket"}$$;
+GLOSS app ON console_mine AS $${"title": "My console"}$$;
 ```
 
 **A manifest names no dataset.** The URL does — `/<dataset>/app/<name>` —
@@ -148,7 +148,7 @@ The other tiles:
   Columns nothing touches fold under a count; hover follows a column;
   a click puts it in the URL as `focus`.
 
-After the docket's two writes the door answers with an event, never a
+After the console's two writes the door answers with an event, never a
 navigation: a ruling with `HX-Trigger: glossql:written`, on which the
 frame store drops its record-class caches; re-measure (every
 measurement standing from before the last change re-run, and every
@@ -158,9 +158,9 @@ glossql:written`, on which the data-class caches drop too — a
 re-measure can change the numbers, a ruling cannot. Every
 connected tile refetches in place; instruments keep their DOM.
 
-## The built-in docket
+## The built-in console
 
-`crates/apps/builtin/docket/` — the reference app and the standing
+`crates/apps/builtin/console/` — the reference app and the standing
 example, and the dataset's own page (`/<dataset>/app` opens it). Two
 groups of tabs. The first shows what the record says: Questions (what
 stands open for a human to judge, what has been settled, what waits

@@ -89,7 +89,7 @@ pub async fn frame(
 
 /// One open question, as the workspace currently derives it.
 ///
-/// The docket's ruling write is gated on this: a posted answer is
+/// The console's ruling write is gated on this: a posted answer is
 /// accepted only if `open_questions` still carries that exact
 /// `(subject, aspect, key)`, and the prose it records is this read's,
 /// never the browser's. A tab left open across a fold-in posts a

@@ -16,12 +16,12 @@ is the last thing you build, not the first: an app over numbers nobody
 has defined is a picture of nothing.
 
 **Add an app; don't fork the built-in.** The console (the built-in
-app `docket`) ships in the binary, with tests that run against it. A
+app `console`) ships in the binary, with tests that run against it. A
 workspace that wants a different view of the same rows authors its own
 app beside it — the server serves as many as you write, and yours does
 not inherit anyone else's assumptions.
 
-A part annotated under a built-in's name — `docket` — is refused: a
+A part annotated under a built-in's name — `console` — is refused: a
 single part resolves the whole app, and every other page the built-in
 ships would stop serving. Give yours its own name.
 

@@ -12,4 +12,4 @@ belongs to the extension's SPEC.md and `grammar.ebnf`.
 - [`imports.md`](imports.md) — sources, probes, recipes, the typed table
 - [`relationships.md`](relationships.md) — declared edges and their health
 - [`questions.md`](questions.md) — the question round and rulings
-- [`apps.md`](apps.md) — data apps and the docket
+- [`apps.md`](apps.md) — data apps and the console

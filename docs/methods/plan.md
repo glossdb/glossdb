@@ -122,7 +122,7 @@ run or stale, then the comparison read, `plan_points()` for the plan's
 row beside `scenario_points()` for the estimate and the service's word
 on the lever, and the decision. Either way what follows is the same
 statement: the decision as an assumption under the key `plan-<year>` in
-the plan's own grounding body, at confidence 0.7. The docket asks the
+the plan's own grounding body, at confidence 0.7. The console asks the
 human; while the question stands the goal is blocked, and a ruling
 under that key closes it. With no gap, the goal is done.
 

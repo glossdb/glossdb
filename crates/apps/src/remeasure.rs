@@ -1,4 +1,4 @@
-//! The docket's second write, a compute act: re-run every measurement
+//! The console's second write, a compute act: re-run every measurement
 //! that stands from before the last change.
 //!
 //! Every write moves the pin, and a function voice landed at an earlier

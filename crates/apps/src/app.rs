@@ -138,7 +138,7 @@ impl AppDef {
         let files = crate::glossed::files_of(glossed, name);
         // Add an app, don't fork the built-in. A glossed part carries no
         // manifest requirement, so a single `GLOSS app_frame ON
-        // docket.mine` would resolve the whole app to that one file and
+        // console.mine` would resolve the whole app to that one file and
         // 404 every page the built-in ships — the hazard reached by the
         // route an MCP-only agent actually takes.
         if !files.is_empty() && builtin::builtin(name).is_some() {
