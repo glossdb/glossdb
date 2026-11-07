@@ -78,7 +78,7 @@ GLOSS role ON spend.object AS $${"value": "dimension"}$$;
 query TTTT
 SELECT applicable, reason, dims, wanted FROM metric_axes();
 ----
-false	no cadence stands on period: SELECT temporal() FROM fin.spend.period, or gloss ladder with a floor	[fund, object]	[temporal over fin.spend.period]
+false	no cadence is known on period: SELECT temporal() FROM fin.spend.period, or gloss ladder with a floor	[fund, object]	[temporal over fin.spend.period]
 
 statement ok
 SELECT temporal() FROM spend.period;
@@ -93,7 +93,7 @@ true	period	value	month	month	48	NULL	none	[fund, object]	true
 statement error
 SELECT * FROM metric_series();
 ----
-no behaviour stands on fin.spend.value, and spend serves several rows in one period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
+no behavior is annotated on fin.spend.value, and spend serves several rows in one period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
 
 statement ok
 GLOSS behavior ON spend.value AS $${"value": "flow"}$$;

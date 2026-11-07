@@ -1,5 +1,5 @@
 -- The metrics kit: a metric is a view, its columns carry the vocabulary,
--- and the reads are SQL over the collapsed slots and the view. Loaded after
+-- and the reads are SQL over the collapsed annotations and the view. Loaded after
 -- the KPI kit, whose words the columns carry (role, behavior, dimension),
 -- and the quality kit, whose temporal profile measures a time column's
 -- cadence. What an actor must learn about these words is SKILL.md beside
@@ -9,19 +9,19 @@
 --   FROM glossql_kit('kits/quality/kit.sql');
 --   FROM glossql_kit('kits/metrics/kit.sql');
 --
--- A grounding's view is a table of its dataset: the column that carries
+-- A metric definition's view is a table of its dataset: the column that carries
 -- role timestamp is the metric's period, the column that carries role
 -- measure its value (the one named value where several do), the columns
 -- that carry role dimension its slices. The behavior on the value column
 -- says how a number combines over periods and members. Nothing is
--- re-marked at read: a claim older than its data is stale by the record's
--- own rule, and the reads serve it as the record does.
+-- re-marked at read: a claim older than its data is stale by the
+-- catalog's own rule, and the reads serve it as the catalog does.
 
 --===------------------------------------------------------------------===--
--- The ladder: how a time column's periods are walked. floor is the grain
+-- The time grains (aspect `ladder`): how a time column's periods are walked. floor is the grain
 -- the series is served at, by default the measured cadence; windows is the
 -- rung per grain, how many whole buckets a read serves, measured back from
--- the data's edge, by default the kit's. Owed where the role is timestamp.
+-- the data's edge, by default the kit's. Required where the role is timestamp.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT ladder WITH $${
@@ -53,26 +53,26 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 
 --===------------------------------------------------------------------===--
 -- metric_axes(): one row per metric of the bound dataset — a QUERY aspect
--- whose grounding stands as a view — what the record says its columns are
+-- whose metric definition is a view — what the catalog says its columns are
 -- and whether a series can be served: metric, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
 -- against), stopped (the author's text), applicable, reason (the road out
 -- when it is not), period_column, value_column, numerator and denominator
 -- (a ratio's halves), cadence (the period column's measured granularity),
--- floor (the ladder's, else the cadence), rung (how many buckets the floor serves), behavior
+-- floor (the time grains', else the cadence), rung (how many buckets the floor serves), behavior
 -- and behavior_state (the collapsed claim on the value column, NULL and
--- 'none' where nobody spoke, 'contested' where the witness withholds it),
+-- 'none' where nobody annotated it, 'contested' where the test withholds it),
 -- dims (the slicing columns, primary first), unranked (the dimension
--- columns no dimension gloss ranks), unadmitted (the served columns no
--- role stands on), owed (the gloss each of those wants),
+-- columns no dimension gloss ranks), unadmitted (the served columns with
+-- no role), owed (the gloss each of those wants),
 -- wanted (the measurement the row reads and nobody ran), judged_current
--- (the profile stands at the data's own version). A plan (x-kind plan) is
+-- (the profile is current at the data's own version). A plan (x-kind plan) is
 -- read through the metric it names: its period and value are the columns
 -- named as that metric's, or period and value, its behaviour the metric's,
 -- its floor the grain its rows are booked against where the declaration
 -- says so (x-covers); nothing is glossed on a plan's own columns. A served
 -- plan's row wants the judgement the futures kit measures on the plan
--- (metric_plan over the plan) until one stands, as a metric's row wants
+-- (metric_plan over the plan) until one exists, as a metric's row wants
 -- the profile over its period column.
 --===------------------------------------------------------------------===--
 
@@ -172,7 +172,7 @@ rows_ AS (
 judged AS (
   SELECT *,
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-         WHEN NOT served THEN 'the grounding serves no view'
+         WHEN NOT served THEN 'the metric definition serves no view'
          WHEN kind = 'fact' THEN 'a fact serves one number, read through fact_values()'
          WHEN kind = 'relation' THEN 'a relation serves rows, not a series'
          WHEN period_column IS NULL AND len(period_cols) > 1 THEN
@@ -184,7 +184,7 @@ judged AS (
          WHEN value_column IS NULL THEN
               'no column carries role measure: gloss role on the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
          WHEN floor IS NULL AND NOT profiled THEN
-              'no cadence stands on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss ladder with a floor'
+              'no cadence is known on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss ladder with a floor'
          WHEN floor IS NULL THEN
               'the profile finds no cadence on ' || period_column || ': gloss ladder with a floor, GLOSS ladder ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<grain>"}$$'
     END AS reason,
@@ -209,7 +209,7 @@ judged_plans AS (
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
          WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
          WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no QUERY aspect declares on this dataset'
-         WHEN NOT served THEN 'the grounding serves no view'
+         WHEN NOT served THEN 'the metric definition serves no view'
          WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
          WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
          WHEN period_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_period, 'period') || ' (its metric''s period) nor period'
@@ -244,19 +244,19 @@ ORDER BY metric;
 -- flow sums and fills its total's empty periods with zero up to the data's
 -- edge (the last instant any served metric reaches, so a flow whose rows
 -- stopped early shows its zeros, not an older window);
--- a stock keeps the bucket's last level, summed over what stands at that
+-- a stock keeps the bucket's last level, summed over what holds at that
 -- instant; a ratio re-divides its summed halves. A dimension wider than 24
 -- members serves its top 23 by weight and 'other'. The actual world is
 -- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
 -- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
 -- '<name>') are the futures kit's, served under the metric through
--- world_cells(), which stands empty until that kit is loaded.
+-- world_cells(), which is empty until that kit is loaded.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
--- the floor, or several rows in one period — and no behaviour stands on
+-- the floor, or several rows in one period — and no behaviour is annotated on
 -- the value column, the read refuses and names the gloss. It defaults
 -- nothing. A list over every metric asks unclaimed := 'skip' instead:
--- such a metric serves no cell, and its fact row says what it owes.
+-- such a metric serves no cell, and its fact row says what it needs.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
@@ -294,7 +294,7 @@ refused AS (
   SELECT CASE WHEN count(*) > 0 AND unclaimed = 'refuse' THEN error(string_agg(
            CASE WHEN behavior_state = 'contested' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is contested'
                 WHEN behavior = 'none' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is none, so its rows do not combine'
-                ELSE 'no behaviour stands on ' || current_schema() || '.' || metric || '.' || value_column END
+                ELSE 'no behavior is annotated on ' || current_schema() || '.' || metric || '.' || value_column END
            || CASE WHEN coarser THEN ', and ' || metric || ' is asked at a coarser grain than its floor' ELSE ', and ' || metric || ' serves several rows in one period' END
            || ': gloss it — GLOSS behavior ON ' || current_schema() || '.' || metric || '.' || value_column || ' AS $${"value": "<flow|stock|ratio>"}$$', '; ')) END AS refusal
   FROM combining WHERE coarser OR shared),
@@ -321,7 +321,7 @@ edges AS (
 windowed AS (
   SELECT b.* FROM bucketed b JOIN edges e USING (metric)
   WHERE b.period > e.edge - main.grain_step(e.at_grain) * e.rung),
--- a stock's level in a bucket is what stands at the bucket's last instant: that instant, per stock metric and bucket,
+-- a stock's level in a bucket is what holds at the bucket's last instant: that instant, per stock metric and bucket,
 -- grouped rather than windowed, since a window over every row of every flow costs the read more than the rest
 levels AS (
   SELECT metric, period, max(instant) AS last_at FROM windowed WHERE behavior = 'stock' GROUP BY metric, period),
@@ -387,7 +387,7 @@ ORDER BY f.metric;
 
 --===------------------------------------------------------------------===--
 -- metric_sources(for_metric := NULL): what feeds each metric of the bound
--- dataset, or one — one row per served field and the landed column it
+-- dataset, or one — one row per served field and the loaded column it
 -- descends from, through the views' lineage: metric, field, source
 -- (table.column), table_name; a computed field with no column behind it
 -- has no row; beside those, one row per table the view reads, table_name
@@ -415,19 +415,19 @@ SELECT metric, field, source, table_name, NULL::VARCHAR AS reason FROM sources
 UNION ALL
 SELECT metric, NULL, NULL, table_name, NULL FROM tables
 UNION ALL
-SELECT metric, NULL, NULL, NULL, 'the grounding does not plan' FROM lineage WHERE field IS NULL
+SELECT metric, NULL, NULL, NULL, 'the metric definition does not plan' FROM lineage WHERE field IS NULL
 ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 
 --===------------------------------------------------------------------===--
--- The two goals this kit answers for a door's next read. A route is its
--- steps in order, one arm per step; an arm serves a row when its
--- condition holds on the record, and the lowest step that serves decides
--- the goal. The door composes one next read from every routes_<kit>()
+-- The two goals this kit answers for the `next` read. A goal's next
+-- steps are in order, one arm per step; an arm serves a row when its
+-- condition holds on the catalog, and the lowest step that serves decides
+-- the goal. The server composes one next read from every routes_<kit>()
 -- macro: this one serves its CTEs and its arms as SQL text over the
--- relations the door reads once — ds (the bound dataset), axes (the
--- fact rows), bodies (the standing grounding per metric). Columns of an
--- arm: surface, step, state (next, blocked, done), act, say, why,
--- statement (the act as a statement, filled from the record; <...>
+-- relations the server reads once — ds (the bound dataset), axes (the
+-- fact rows), bodies (the current metric definition per metric). Columns
+-- of an arm: surface, step, state (next, blocked, done), act, say, why,
+-- statement (the action as a statement, filled from the catalog; <...>
 -- marks what only the author can fill), "then".
 --
 -- metrics: every metric the dataset claims is served, or stopped.
@@ -458,21 +458,21 @@ metrics_unread AS (
 $ctes$ AS ctes, $arms$
 SELECT 'metrics' AS surface, 1 AS step, 'next' AS state, 'GLOSS definitions' AS act,
        'claim ' || a.name || ' for ' || ds.dataset AS say,
-       a.name || ' is declared and no dataset claims it: its definitions entry or its grounding makes it this dataset''s' AS why,
+       a.name || ' is declared and no dataset claims it: its definitions entry or its metric definition makes it this dataset''s' AS why,
        'GLOSS definitions ON ' || ds.dataset || ' AS $${"definitions": {"' || a.name || '": {"unit": "<unit>", "meaning": "<what it measures, in the business''s words>"}}}$$;' AS statement,
-       'GLOSS ' || a.name || ' ON ' || ds.dataset || ' AS $${"sql": "<the grounding>"}$$;' AS "then"
+       'GLOSS ' || a.name || ' ON ' || ds.dataset || ' AS $${"sql": "<the metric definition>"}$$;' AS "then"
 FROM metrics_declared a, ds
 WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
 SELECT 'metrics', 2, 'next', 'DECLARE ASPECT query',
        'declare the first concept',
-       'no metric is claimed by this dataset: a declared QUERY aspect is this dataset''s once its definitions entry or its grounding stands; the names are the human''s',
+       'no metric is claimed by this dataset: a declared QUERY aspect is this dataset''s once its definitions entry or its metric definition exists; the names are the person''s to choose',
        '', ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
 SELECT 'metrics', 3, 'next', 'GLOSS query',
-       'ground ' || c.name || ', or stop it',
-       c.name || ' is declared and not grounded: a declaration nobody grounds holds this goal — ground it, or stop it with the reason no number is served',
+       'define ' || c.name || ', or stop it',
+       c.name || ' is declared and has no metric definition: a declaration nobody defines holds this goal — define it, or stop it with the reason no number is served',
        'GLOSS ' || c.name || ' ON ' || ds.dataset || ' AS $${' || chr(10)
          || '  "sql": "SELECT <period column> AS period, <measure> AS value, <slicing columns> FROM <table>",' || chr(10)
          || '  "assumptions": [{"dimension": "<scope|definition>", "key": "<stable-key>", "assumption": "<the judgment call, and the reading you rejected>", "basis": "<what it rests on>", "confidence": 0.7}]' || chr(10)
@@ -500,9 +500,9 @@ WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('f
   AND len(a.wanted) = 0 AND len(a.owed) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
 UNION ALL
 SELECT 'metrics', 6, 'next', 'GLOSS query',
-       're-record ' || a.metric || ' — ' || split_part(a.reason, ':', 1),
+       'record ' || a.metric || ' again' || ' — ' || split_part(a.reason, ':', 1),
        a.reason,
-       'GLOSS ' || a.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;',
+       'GLOSS ' || a.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
        ''
 FROM axes a LEFT JOIN bodies b ON b.metric = a.metric, ds
 WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('fact', 'relation', 'plan')
@@ -510,19 +510,19 @@ WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('f
 UNION ALL
 SELECT 'metrics', 7, 'next', 'GLOSS behavior',
        'say how ' || a.metric || ' combines',
-       'no behaviour stands on ' || a.value_column || ' of ' || a.metric || ': a coarser grain than ' || a.floor || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves',
+       'no behavior is annotated on ' || a.value_column || ' of ' || a.metric || ': a coarser grain than ' || a.floor || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves',
        'GLOSS behavior ON ' || ds.dataset || '.' || a.metric || '.' || a.value_column || ' AS $${"value": "<flow|stock|ratio>", "grounds": "<why, in the business''s words>"}$$;',
        'SELECT * FROM metric_series(grain := ' || chr(39) || a.floor || chr(39) || ') WHERE metric = ' || chr(39) || a.metric || chr(39)
 FROM axes a, ds
 WHERE a.applicable AND coalesce(a.kind, '') <> 'plan' AND a.behavior IS NULL AND a.behavior_state = 'none'
 UNION ALL
 SELECT 'metrics', 8, 'done', '', '',
-       'every metric the dataset claims is served or stopped; the next concept is the human''s to name'
+       'every metric the dataset claims is served or stopped; the next concept is the person''s to name'
          || coalesce(' — unread: ' || u.tables, ''),
        '', ''
 FROM ds CROSS JOIN metrics_unread u
 UNION ALL
-SELECT 'slices', 1, 'blocked', '', '', 'no applicable metric stands', '', ''
+SELECT 'slices', 1, 'blocked', '', '', 'no applicable metric exists', '', ''
 FROM ds
 WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable)
 UNION ALL

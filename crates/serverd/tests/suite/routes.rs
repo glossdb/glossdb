@@ -179,7 +179,7 @@ async fn a_fresh_dataset_routes_every_goal() {
     for surface in ["bands", "plan"] {
         let row = goal(&app, surface).await;
         assert_eq!(text(&row, "state"), "blocked", "{row}");
-        assert_eq!(text(&row, "why"), "no applicable metric stands", "{row}");
+        assert_eq!(text(&row, "why"), "no applicable metric exists", "{row}");
     }
 }
 
@@ -203,7 +203,7 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
     // Claimed and not grounded: the grounding, or a stop.
     say(&app, r#"GLOSS definitions ON fin AS $${"definitions": {"spend": {"unit": "EUR", "meaning": "what was booked"}}}$$;"#).await;
     let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "say"), "ground spend, or stop it", "{row}");
+    assert_eq!(text(&row, "say"), "define spend, or stop it", "{row}");
     assert!(text(&row, "statement").contains("\"stopped\""), "{row}");
 
     // Grounded: the write answers with the metric's row, and the
@@ -256,7 +256,7 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
     )
     .await;
     assert!(
-        refusal.contains("no behaviour stands on fin.spend.value"),
+        refusal.contains("no behavior is annotated on fin.spend.value"),
         "{refusal}"
     );
     assert!(

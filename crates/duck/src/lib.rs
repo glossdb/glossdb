@@ -151,12 +151,12 @@ impl From<arrow::error::ArrowError> for SessionError {
     }
 }
 
-/// What landed and what never ran, for a refusal at `index` of `total`.
+/// What ran and what never ran, for a refusal at `index` of `total`.
 fn sequence_context(index: usize, total: usize) -> String {
     let landed = match index {
-        1 => "nothing landed before it".to_string(),
-        2 => "statement 1 landed".to_string(),
-        _ => format!("statements 1–{} landed", index - 1),
+        1 => "nothing ran before it".to_string(),
+        2 => "statement 1 ran".to_string(),
+        _ => format!("statements 1–{} ran", index - 1),
     };
     let tail = if index == total {
         String::new()

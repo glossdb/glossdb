@@ -16,7 +16,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
         return format!("situation: refused — {first}");
     }
     let Some(fact) = outcome.filter(|o| o.get("metric").is_some()) else {
-        return "situation: landed".to_string();
+        return "situation: done".to_string();
     };
     let list = |field: &str| -> String {
         fact.get(field)
@@ -30,7 +30,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             .unwrap_or_default()
     };
     let metric = fact.get("metric").and_then(Value::as_str).unwrap_or("");
-    let mut line = format!("situation: landed — {metric}: ");
+    let mut line = format!("situation: done — {metric}: ");
     // A re-record says first what it changed against the writing it
     // supersedes — the totals over their shared periods: the line is
     // read left to right, and a moved total unsays the axes after it.
@@ -53,21 +53,21 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
                 );
                 let by_verdict = tagged(fact, &["closed over verdict"]);
                 let by_gloss = tagged(fact, &["closed over gloss"]);
-                let mut word = String::from(" (the grounding's word");
+                let mut word = String::from(" (as the definition says");
                 if !closed.is_empty() {
                     word.push_str(&format!(" — closes {}", closed.join(", ")));
                 }
                 if !by_verdict.is_empty() {
-                    word.push_str(&format!("; a verdict admits {}", by_verdict.join(", ")));
+                    word.push_str(&format!("; a measurement admits {}", by_verdict.join(", ")));
                 }
                 if !by_gloss.is_empty() {
-                    word.push_str(&format!("; a gloss admits {}", by_gloss.join(", ")));
+                    word.push_str(&format!("; an annotation admits {}", by_gloss.join(", ")));
                 }
                 word.push(')');
                 word
             }
             Some("measured over authored") => format!(
-                " (measured over the authored empty list — a {} keeps its verdicts; the empty \
+                " (measured over the definition's empty list — a {} keeps its verdicts; the empty \
                  list closes a distinct count or a ratio)",
                 fact.get("behavior")
                     .and_then(Value::as_str)
@@ -141,7 +141,7 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
         out.push_str(&format!("## {surface}: {state}\n\n"));
         if state == "next" {
             out.push_str(&format!(
-                "**act:** {} — {}\n\n**why:** {}\n",
+                "**action:** {} — {}\n\n**why:** {}\n",
                 field(row, "act"),
                 field(row, "say"),
                 field(row, "why"),

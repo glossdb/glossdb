@@ -1,7 +1,7 @@
 -- The futures kit: the worlds beside the actual — the walk's bands and the
 -- forecast, each what the model service answers; the plan, judged against
--- them — each landed as a measurement with its pin and reads, and read
--- back as SQL, so that a door's next read judges from the record and
+-- them — each stored as a measurement with its provenance, and read
+-- back as SQL, so that the `next` read judges from the catalog and
 -- never computes over the data. Loaded after the metrics kit, whose
 -- series the requests are built from. The service is named once for the instance
 -- (glossql_service_url, glossql_service_token); every call goes through
@@ -28,7 +28,7 @@ CREATE OR REPLACE MACRO main.service_soft(route, body) AS glossql_service(route,
 -- whether the walk can take it: seven complete months at least, so that
 -- one origin has the six known values the service needs. band_body(): the
 -- request as the service's contract spells it, one table and a
--- specification, with the witness's threshold as the walk's red line.
+-- specification, with the test's threshold as the walk's red line.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.band_series() AS TABLE
@@ -53,7 +53,7 @@ SELECT a.metric, a.behavior, coalesce(c.months, 0) AS months,
        a.applicable AND coalesce(c.months, 0) >= 7 AS walkable,
        CASE WHEN NOT a.applicable THEN a.reason
             WHEN c.metric IS NULL THEN 'the month read serves no cell: ' || coalesce(a.reason,
-              'no behaviour stands on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
+              'no behavior is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
             WHEN c.months < 7 THEN 'the walk needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
 FROM main.metric_axes() a LEFT JOIN counted c USING (metric)
 WHERE coalesce(a.kind, '') NOT IN ('fact', 'plan', 'scenario')
@@ -149,9 +149,9 @@ DECLARE FUNCTION metric_bands FOR GLOBAL AS $$
           FROM per_metric) AS metrics
 $$ RETURNS metric_bands;
 
--- The breach is the service's verdict, repeated by the witness's detector
--- over the measurement's own voice, so that ATTEST() carries it and the
--- checks goal routes on it; the threshold is the red line the walk is
+-- The breach is the service's verdict, repeated by the test's detector
+-- over the measurement's own result, so that ATTEST() carries it and the
+-- checks goal's next steps use it; the threshold is the red line the walk is
 -- asked with.
 DECLARE FUNCTION band_breach FOR GLOBAL AS $$
   SELECT subject, body->>'band' AS band, (body->>'score')::DOUBLE AS score
@@ -240,7 +240,7 @@ judged AS (
               WHEN a.floor IN ('minute', 'hour') THEN 'a ' || a.floor || ' grain is finer than the grains the service measured its coverage at'
               WHEN a.floor = 'year' THEN 'a year grain has too few periods to forecast'
               WHEN h.metric IS NULL THEN 'the series read serves no cell: ' || coalesce(a.reason,
-                'no behaviour stands on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ' — gloss it')
+                'no behavior is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ' — gloss it')
               WHEN h.n < 6 THEN h.n || ' ' || a.floor || 's of history: a forecast needs 6' END AS reason
   FROM axes a LEFT JOIN hist h USING (metric)),
 ahead AS (
@@ -358,8 +358,8 @@ DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
           FROM per_metric) AS metrics
 $$ RETURNS metric_forecast;
 
--- The forecast's witness says a forecast stands: green once one landed,
--- so that the forecast is owed while none has, and re-owed once stale.
+-- The forecast's test says a forecast exists: green once one is stored,
+-- so that the forecast is required while none is, and again once stale.
 DECLARE FUNCTION forecast_stands FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
@@ -369,19 +369,19 @@ DECLARE WITNESS forecast_w ON metric_forecast DETECTOR forecast_stands;
 --===------------------------------------------------------------------===--
 -- forecast_record(): every forecast run's points as rows, from the
 -- measurements alone. forecast_runs(): the same with the actual joined
--- from the actual world where it has landed (for a span, the sum over its
--- periods where every one has). forecast_coverage(): the record's tally —
+-- from the actual world where it has been loaded (for a span, the sum over its
+-- periods where every one has). forecast_coverage(): the catalog's tally —
 -- per metric and for the dataset ('' the metric), per grain, step, span
 -- and to_go (a span of one length under two names tallied under each)
--- where a point has landed: points landed, inside_80, inside_90, held_80,
+-- where a point's actual is loaded: points loaded, inside_80, inside_90, held_80,
 -- held_90.
 -- forecast_points(): the newest run, flattened — one row per metric and
 -- point: seq, metric, applicable, reason, behavior, grain, origin,
 -- served_by, computed_at, current, point_seq, step, span, to_go, period,
 -- p05 to p95, service_80, service_90, actual, landed (below, low, inside,
 -- high, above against p05, p10, p90 and p95), held_80 and held_90 (how
--- often such a band held: the record's own share where it holds thirty
--- landed points at this grain, step and span for the metric, else for the
+-- often such a band held: the catalog's own share where it holds thirty
+-- loaded points at this grain, step and span for the metric, else for the
 -- dataset, else the service's) and held_from (metric, dataset, service). A
 -- metric the forecast found inapplicable is one row with its reason.
 --===------------------------------------------------------------------===--
@@ -443,7 +443,7 @@ newest AS (SELECT max(run) AS run FROM runs),
 current_ AS (
   SELECT coalesce(bool_and(current), true) AS current
   FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' AND aspect = 'metric_forecast'),
--- the record's tally behind held, over every run: per metric, and for the dataset
+-- the catalog's tally behind held, over every run: per metric, and for the dataset
 tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points,
          count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80,
@@ -502,7 +502,7 @@ ORDER BY r.seq, r.point_seq NULLS FIRST;
 -- ({"<scenario>|<metric>|<lever>": [{period, value}]}, its last median
 -- held past its reach), else the lever's last actual value held. The
 -- estimate's measurement forecasts each lever first and passes the
--- paths; a plain read of scenario_bodies() holds. No grounding is
+-- paths; a plain read of scenario_bodies() holds. No metric definition is
 -- replayed over the data: the scenario world is the estimate ahead.
 --===------------------------------------------------------------------===--
 
@@ -685,7 +685,7 @@ moves AS (
   GROUP BY scenario, metric, lever),
 unmoved AS (
   SELECT scenario, metric,
-         string_agg(lever || ' stands at ' || coalesce(planned_at_first::VARCHAR, 'nothing') || ' as planned over the periods ahead, and a factor on nothing is nothing', '; ' ORDER BY lever) AS reason
+         string_agg(lever || ' is at ' || coalesce(planned_at_first::VARCHAR, 'nothing') || ' as planned over the periods ahead, and a factor on nothing is nothing', '; ' ORDER BY lever) AS reason
   FROM moves WHERE NOT moves GROUP BY scenario, metric
   HAVING NOT bool_or(moves)),
 base AS (
@@ -713,7 +713,7 @@ ORDER BY r.scenario, r.metric;
 -- basis, explains and error, the points ahead (period, low, value, high
 -- at the 10, 50 and 90 levels; the history's own reading with its 90%
 -- interval) and the parts (per lever, what it alone does by the
--- history). Stale once the data or the record it read moves, which a new
+-- history). Stale once the data or the catalog it read moves, which a new
 -- scenario gloss does. scenario_points(s): the newest estimate, one row
 -- per scenario (or every one, NULL), metric and period ahead, with how
 -- often such a band held, the forecast service's share at that grain and
@@ -752,7 +752,7 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
     FROM req r, unnest(r.levers) AS u(l)
     LEFT JOIN lf ON lf.scenario = r.scenario AND lf.metric = r.metric AND lf.lever = u.l.lever
     LEFT JOIN paths p ON p.scenario = r.scenario AND p.metric = r.metric AND p.lever = u.l.lever),
-  -- a body stands only where an input moves; a NULL body makes no call
+  -- a body exists only where an input moves; a NULL body makes no call
   b AS (SELECT scenario, metric, grain, unmoved, CASE WHEN body IS NOT NULL THEN main.service('/whatif', body) END AS a
         FROM main.scenario_bodies(paths := (SELECT j FROM planned_json))),
   rows_ AS (
@@ -823,8 +823,8 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
           FROM per_scenario) AS scenarios
 $$ RETURNS metric_scenario;
 
--- The estimate's witness says an estimate stands: green once one landed,
--- so that it is owed while none has, and re-owed once stale.
+-- The estimate's test says an estimate exists: green once one is stored,
+-- so that it is required while none is, and again once stale.
 DECLARE FUNCTION scenario_stands FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
@@ -851,7 +851,7 @@ stepped AS (
   SELECT computed_at, served_by, scenario, m.metric, m.grain, m.origin, m.applicable, m.reason, m.levers, m.sign, m.confidence, m.basis, m.explains, m.error,
          unnest(m.points) AS p, unnest(generate_series(1, cardinality(m.points)::BIGINT)) AS step
   FROM mets WHERE cardinality(m.points) > 0),
--- how often such a band held: the service's share at that grain and step, from the newest forecast run (the record's own
+-- how often such a band held: the service's share at that grain and step, from the newest forecast run (the catalog's own
 -- tally reads the series, which reads the worlds, which read this)
 held AS (
   SELECT r.metric, r.grain, r.step, r.service_80 AS held_80, CASE WHEN r.service_80 IS NOT NULL THEN 'service' END AS held_from
@@ -983,7 +983,7 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 -- rows cover part of the period, no band; open: begun, no band covers the
 -- rest; ahead: not begun), covers (on the year row of a plan whose rows
 -- cover part of the year: how much), held_80, held_from, origin (the
--- forecast's). Computed at read; metric_plan lands it per plan.
+-- forecast's). Computed at read; metric_plan stores it per plan.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.plan_points() AS TABLE
@@ -1044,7 +1044,7 @@ verdict AS (
     CASE WHEN j.part THEN j.last_end <= j.origin_end ELSE j.period_end <= j.origin_end END AS complete,
     CASE WHEN j.part THEN j.first <= j.origin ELSE j.begun END AS has_begun
   FROM judged j LEFT JOIN part_actual pa ON pa.plan = j.plan AND pa.year = j.period),
--- the newest forecast's bands, with how often such a band held: the record's own share where it holds thirty points, else the
+-- the newest forecast's bands, with how often such a band held: the catalog's own share where it holds thirty points, else the
 -- service's; the actual behind each run as forecast_runs() joins it, over this read's own cells
 runs AS MATERIALIZED (
   SELECT r.*,
@@ -1107,11 +1107,11 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- plan_points() serves for it as of the data, with the forecast run they
 -- were judged against (forecast_run, the newest metric_forecast
 -- measurement's seq, and its origin). Wanted on the plan's row until one
--- stands; stale by the pin once the data or the record it read moves; the
--- plan goal asks for it again once a newer forecast stands, which the pin
--- does not see, measurements being no leg. plan_record(): the newest
+-- exists; stale by the pin once the data or the catalog it read moves; the
+-- plan goal asks for it again once a newer forecast exists, which the pin
+-- does not see, measurements being no input of a pin. plan_record(): the newest
 -- judgement per plan from the measurements alone, one row per point, the
--- read a door's next arm takes; plan_points() stays the live read.
+-- read an arm of the `next` read takes; plan_points() stays the live read.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_plan WITH $${
@@ -1142,8 +1142,8 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
           FROM pts) AS points
 $$ RETURNS metric_plan;
 
--- The gap is read by the witness's detector over the judgement's own
--- voice: red where a banded period lies below or above the forecast's
+-- The gap is read by the test's detector over the judgement's own
+-- result: red where a banded period lies below or above the forecast's
 -- band, the score the share of banded periods that do, so that ATTEST()
 -- carries it and the brief counts it.
 DECLARE FUNCTION plan_gap FOR GLOBAL AS $$
@@ -1188,14 +1188,14 @@ FROM judged WHERE coalesce(cardinality(points), 0) = 0
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
 --===------------------------------------------------------------------===--
--- The two goals this kit answers for a door's next read. bands: the walk
--- stands and no band is red. plan: the plan served, the forecast at the
--- current origin, the plan judged against it, every gap judged by the
--- human — with a scenario's estimate where one is glossed. Served as
--- CTEs and arms over the relations the door reads once (ds, axes, owed,
--- reds, bodies, applicable); every CTE reads the record, none the data:
+-- The two goals this kit answers for the `next` read. bands: the walk
+-- exists and no band is red. plan: the plan served, the forecast at the
+-- current origin, the plan judged against it, every gap judged by a
+-- person — with a scenario's estimate where one is annotated. Served as
+-- CTEs and arms over the relations the server reads once (ds, axes, owed,
+-- reds, bodies, applicable); every CTE reads the catalog, none the data:
 -- futures_red is the metric whose newest point the red verdict scores,
--- futures_judged the plans' judgements as they stand, futures_gaps the
+-- futures_judged the plans' current judgements, futures_gaps the
 -- plan years the forecast's band does not hold, futures_estimate what
 -- the newest estimate says per scenario and metric.
 --===------------------------------------------------------------------===--
@@ -1233,7 +1233,7 @@ futures_levers AS (
 futures_estimate AS (
   SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM main.scenario_points(NULL))
 $ctes$ AS ctes, $arms$
-SELECT 'bands' AS surface, 1 AS step, 'blocked' AS state, '' AS act, '' AS say, 'no applicable metric stands' AS why, '' AS statement, '' AS "then"
+SELECT 'bands' AS surface, 1 AS step, 'blocked' AS state, '' AS act, '' AS say, 'no applicable metric exists' AS why, '' AS statement, '' AS "then"
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind, '') <> 'plan')
 UNION ALL
 SELECT 'bands', 2, 'next', 'metric_bands', 'run the walk', o.why,
@@ -1245,22 +1245,22 @@ SELECT 'bands', 3, 'next', 'metric_bands', 'run the walk again', o.why,
 FROM owed o CROSS JOIN ds WHERE o.kind = 're-measure' AND o.subject = 'metric_bands'
 UNION ALL
 SELECT 'bands', 4, 'done', '', '',
-       'the walk stands; the red on ' || red.metric || ' at ' || red.period || ' carries the human''s ruling', '', ''
+       'the walk exists; the red on ' || red.metric || ' at ' || red.period || ' carries a person''s review decision', '', ''
 FROM futures_red red CROSS JOIN ds
 WHERE EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = red.metric AND r.key = 'band-' || red.period)
 UNION ALL
 SELECT 'bands', 5, 'blocked', '', '',
-       red.metric || ' is red at ' || red.period || ' and the question stands for the human', '', ''
+       red.metric || ' is red at ' || red.period || ' and the question is waiting for a person', '', ''
 FROM futures_red red CROSS JOIN ds
 WHERE EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = red.metric AND q.key = 'band-' || red.period)
 UNION ALL
 SELECT 'bands', 6, 'next', 'band_points',
        'judge ' || red.metric || ', red at ' || red.period,
        'the newest walked point of ' || red.metric || ' sits outside its corridor at ' || red.period
-         || '; a shift and a defect breach alike. A defect is the grounding''s to fix; a shift is the human''s to hear — record it as an assumption under the key band-' || red.period || ', and the docket asks',
+         || '; a shift and a defect breach alike. A defect is the metric definition''s to fix; a shift is a person''s to hear — record it as an assumption under the key band-' || red.period || ', and the console asks',
        'SELECT period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = ''' || red.metric || ''' ORDER BY point_seq',
-       '-- append to "assumptions" of the standing body: {"dimension": "definition", "key": "band-' || red.period || '", "assumption": "<a shift at ' || red.period || ', in the business''s words — or the defect and its fix>", "basis": "<what it rests on>", "confidence": 0.7}' || chr(10)
-         || 'GLOSS ' || red.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;'
+       '-- append to "assumptions" of the current body: {"dimension": "definition", "key": "band-' || red.period || '", "assumption": "<a shift at ' || red.period || ', in the business''s words — or the defect and its fix>", "basis": "<what it rests on>", "confidence": 0.7}' || chr(10)
+         || 'GLOSS ' || red.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
 FROM futures_red red LEFT JOIN bodies b ON b.metric = red.metric CROSS JOIN ds
 UNION ALL
 SELECT 'bands', 7, 'next', 'band_points',
@@ -1270,28 +1270,28 @@ SELECT 'bands', 7, 'next', 'band_points',
 FROM reds CROSS JOIN ds WHERE reds.witness = 'bands_w' AND NOT EXISTS (SELECT 1 FROM futures_red)
 UNION ALL
 SELECT 'bands', 8, 'blocked', '', '',
-       'the walk stands and took no metric: ' || string_agg(p.metric || ' — ' || p.reason, '; ' ORDER BY p.metric), '', ''
+       'the walk exists and took no metric: ' || string_agg(p.metric || ' — ' || p.reason, '; ' ORDER BY p.metric), '', ''
 FROM main.band_points() p
 WHERE NOT EXISTS (SELECT 1 FROM main.band_points() WHERE applicable)
 HAVING count(*) > 0
 UNION ALL
-SELECT 'bands', 9, 'done', '', '', 'the walk stands and no band is red, or the red carries a question or a ruling', '', ''
+SELECT 'bands', 9, 'done', '', '', 'the walk exists and no band is red, or the red carries a question or a review decision', '', ''
 FROM ds
 UNION ALL
-SELECT 'plan', 1, 'blocked', '', '', 'no applicable metric stands', '', ''
+SELECT 'plan', 1, 'blocked', '', '', 'no applicable metric exists', '', ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind, '') <> 'plan')
 UNION ALL
 SELECT 'plan', 2, 'next', 'DECLARE ASPECT plan',
        'declare the first plan',
-       'no plan is declared on ' || m.metrics || ': a plan is a QUERY aspect with x-kind plan and x-plan-of naming the metric it plans, grounded by SQL over the landed budget table, one aspect per edition, x-covers year where a row is booked against the year; which metrics the budget covers, and its name, are the human''s',
+       'no plan is declared on ' || m.metrics || ': a plan is a QUERY aspect with x-kind plan and x-plan-of naming the metric it plans, defined by SQL over the loaded budget table, one aspect per edition, x-covers year where a row is booked against the year; which metrics the budget covers, and its name, are the person''s to choose',
        'DECLARE ASPECT <name> WITH $${"title": "<Budget>", "x-kind": "plan", "x-plan-of": "<metric>"}$$ AS QUERY;',
        'GLOSS <name> ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;'
 FROM applicable m CROSS JOIN ds
 WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM futures_plans)
 UNION ALL
 SELECT 'plan', 3, 'next', 'GLOSS plan',
-       'ground ' || p.plan || ', or stop it',
-       p.plan || ' plans ' || p.metric || ' and is not grounded: its SQL over the landed budget table serves the plan world, or a stop says why no number is served',
+       'define ' || p.plan || ', or stop it',
+       p.plan || ' plans ' || p.metric || ' and has no definition: its SQL over the loaded budget table serves the plan world, or a stop says why no number is served',
        'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;' || chr(10)
          || '-- or, where no number should be served: GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;',
        ''
@@ -1299,9 +1299,9 @@ FROM futures_plans p LEFT JOIN main.metric_surfaces s ON s.name = p.plan CROSS J
 WHERE NOT coalesce(s.grounded, false) AND coalesce(s.stopped, '') = ''
 UNION ALL
 SELECT 'plan', 4, 'next', 'GLOSS plan',
-       're-record ' || p.plan || ' — ' || split_part(split_part(p.reason, '. ', 1), ': ', 1),
-       p.plan || ' is grounded and the plan read refuses it — ' || p.reason || '. Re-record it, or stop it with the reason no number is served',
-       'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;' || chr(10)
+       'record ' || p.plan || ' again' || ' — ' || split_part(split_part(p.reason, '. ', 1), ': ', 1),
+       p.plan || ' is defined and the plan read refuses it — ' || p.reason || '. Re-record it, or stop it with the reason no number is served',
+       'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;' || chr(10)
          || '-- or, where no number should be served: GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;',
        ''
 FROM futures_plans p JOIN main.metric_surfaces s ON s.name = p.plan LEFT JOIN bodies b ON b.metric = p.plan CROSS JOIN ds
@@ -1319,14 +1319,14 @@ WHERE o.kind = 're-measure' AND o.subject = 'metric_forecast' AND EXISTS (SELECT
 UNION ALL
 SELECT 'plan', 7, 'next', 'metric_plan',
        'judge ' || p.plan,
-       p.plan || ' is served and nobody judged it against the actual and the forecast''s band: run the function over it, or the docket''s re-measure — the plan goal reads the judgement from the record',
+       p.plan || ' is served and nobody judged it against the actual and the forecast''s band: run the function over it, or use Re-measure in the console — the plan goal reads the judgement from the catalog',
        'SELECT metric_plan() FROM ' || ds.dataset || '.' || p.plan, ''
 FROM futures_plans p CROSS JOIN ds
 WHERE p.applicable AND NOT EXISTS (SELECT 1 FROM futures_judged j WHERE j.plan = p.plan)
 UNION ALL
 SELECT 'plan', 8, 'next', 'metric_plan',
        'judge ' || p.plan || ' again',
-       'the judgement of ' || p.plan || CASE WHEN NOT j.current THEN ' predates a change to what it read: run the function over it again, or the docket''s re-measure'
+       'the judgement of ' || p.plan || CASE WHEN NOT j.current THEN ' predates a change to what it read: run the function over it again, or use Re-measure in the console'
                                              ELSE ' predates the newest forecast: run the function over it again' END,
        'SELECT metric_plan() FROM ' || ds.dataset || '.' || p.plan, ''
 FROM futures_plans p JOIN futures_judged j USING (plan) CROSS JOIN ds CROSS JOIN futures_forecast f
@@ -1337,12 +1337,12 @@ SELECT 'plan', 9, 'next', 'GLOSS scenario',
        g.plan || ' at ' || g.label || ' is ' || CAST(round(g.value, 2) AS VARCHAR)
          || ' and the forecast''s 80% band for ' || g.metric || ' runs ' || CAST(round(g.low, 2) AS VARCHAR) || ' to ' || CAST(round(g.high, 2) AS VARCHAR)
          || ': the plan lies ' || g.stands || ' it' || coalesce(' (levers glossed: ' || l.columns || ')', '')
-         || '. A scenario on a lever says what closes the gap; without one, record the gap as the plan''s assumption under plan-' || g.label || ', and the docket asks',
+         || '. A scenario on a lever says what closes the gap; without one, record the gap as the plan''s assumption under plan-' || g.label || ', and the console asks',
        'GLOSS lever ON <table>.<column> AS $${"value": true, "grounds": "<who sets it>"}$$;' || chr(10)
          || 'DECLARE ASPECT <scenario> WITH $${"title": "<what moves>", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;' || chr(10)
          || 'GLOSS <scenario> ON ' || ds.dataset || ' AS $${"levers": [{"column": "<table>.<column>", "factor": {"<YYYY-MM>": <factor>}, "basis": "<what it rests on>"}]}$$;',
-       '-- append to "assumptions" of the plan''s standing body: {"dimension": "definition", "key": "plan-' || g.label || '", "assumption": "<the gap at ' || g.label || ' and what closes it, in the business''s words — a lever moved, or the plan held>", "basis": "<what it rests on>", "confidence": 0.7}' || chr(10)
-         || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;'
+       '-- append to "assumptions" of the plan''s current body: {"dimension": "definition", "key": "plan-' || g.label || '", "assumption": "<the gap at ' || g.label || ' and what closes it, in the business''s words — a lever moved, or the plan held>", "basis": "<what it rests on>", "confidence": 0.7}' || chr(10)
+         || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
 FROM futures_gaps g LEFT JOIN bodies b ON b.metric = g.plan CROSS JOIN futures_levers l CROSS JOIN ds
 WHERE NOT EXISTS (SELECT 1 FROM futures_scenarios)
   AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
@@ -1364,8 +1364,8 @@ SELECT 'plan', 12, 'next', 'GLOSS plan',
          || CASE WHEN e.metric IS NULL THEN s.name || ' does not reach ' || g.metric || ': its levers move other metrics — record the gap as the plan''s assumption, or declare a scenario on a lever of ' || g.metric
                  WHEN NOT e.applicable THEN s.name || ' gives no estimate for ' || g.metric || ' (' || coalesce(e.reason, 'no reason') || ') — record the gap as the plan''s assumption'
                  ELSE s.name || ' moves ' || g.metric || ' ' || coalesce(e.confidence, '?') || ' (' || coalesce(e.sign, '?') || ': ' || coalesce(e.basis, '') || ') — read scenario_points(''' || s.name || ''') and record the gap with the scenario''s reading as the plan''s assumption' END,
-       '-- append to "assumptions" of the plan''s standing body: {"dimension": "definition", "key": "plan-' || g.label || '", "assumption": "<the gap at ' || g.label || ' and what ' || s.name || ' says closes it, or does not>", "basis": "' || s.name || '", "confidence": 0.7}' || chr(10)
-         || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the standing body>') || '$$;',
+       '-- append to "assumptions" of the plan''s current body: {"dimension": "definition", "key": "plan-' || g.label || '", "assumption": "<the gap at ' || g.label || ' and what ' || s.name || ' says closes it, or does not>", "basis": "' || s.name || '", "confidence": 0.7}' || chr(10)
+         || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
        'SELECT metric, period, value, low, high, sign, basis FROM scenario_points(''' || s.name || ''') WHERE metric = ''' || g.metric || ''''
 FROM futures_gaps g CROSS JOIN futures_scenarios s LEFT JOIN futures_estimate e ON e.scenario = s.name AND e.metric = g.metric
 LEFT JOIN bodies b ON b.metric = g.plan CROSS JOIN ds
@@ -1374,15 +1374,15 @@ WHERE NOT EXISTS (SELECT 1 FROM owed o WHERE o.subject = 'metric_scenario')
   AND NOT EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 13, 'blocked', '', '',
-       g.plan || ' at ' || g.label || ' lies ' || g.stands || ' the forecast''s band and the question stands for the human', '', ''
+       g.plan || ' at ' || g.label || ' lies ' || g.stands || ' the forecast''s band and the question is waiting for a person', '', ''
 FROM futures_gaps g CROSS JOIN ds
 WHERE EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'plan', 14, 'done', '', '',
-       'the plan stands; the gap on ' || g.plan || ' at ' || g.label || ' carries the human''s ruling', '', ''
+       'the plan exists; the gap on ' || g.plan || ' at ' || g.label || ' carries a person''s review decision', '', ''
 FROM futures_gaps g CROSS JOIN ds
 WHERE EXISTS (SELECT 1 FROM main.ruling_entries r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
 UNION ALL
-SELECT 'plan', 15, 'done', '', '', 'every plan is served and judged, no plan period lies outside the forecast''s band, or the gap carries a question or a ruling', '', ''
+SELECT 'plan', 15, 'done', '', '', 'every plan is served and judged, no plan period lies outside the forecast''s band, or the gap carries a question or a review decision', '', ''
 FROM ds
 $arms$ AS arms;

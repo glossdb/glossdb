@@ -1,27 +1,28 @@
 ---
 name: glossql-functions
-description: Write a function for a glossql workspace — measurements (RETURNS an aspect, query over data), check voices, and detectors (no RETURNS, query over the witness's slots). Every body is one SQL query. Use when a shipped measurement does not fit this dataset, when a validation needs its measuring half, or when debugging a function that abstains.
+description: Write a function for a glossql workspace — measurements (RETURNS an aspect, a query over the data), computed values for FACT aspects, and detectors (no RETURNS, a query over the values a test collects). Every body is one SQL query. Use when a shipped measurement does not fit this dataset, when a validation needs its measuring half, or when debugging a function that abstains.
 ---
 
 # Writing functions
 
-A function is declared over the door and run by the server. Every
+A function is declared through the MCP interface and run by the server. Every
 body is **one SQL query** the engine plans and runs (read-only). Two
 roles, told apart by shape:
 
-- **A measurement or a voice** — it `RETURNS` an aspect, and its output
+- **A measurement or a computed value** — it `RETURNS` an aspect, and its output
   is validated against that aspect's schema. Its query runs over data,
   composing everything a read can. Filling a MEASUREMENT aspect makes
-  it a measurement; filling a FACT aspect makes it a **voice** in that
-  aspect's slots, beside the agent's and the human's. The check half of
-  a validation is a voice.
-- **A detector** — no `RETURNS`. Named in a witness's `DETECTOR`
-  clause; its query runs over the witness's `slots` relation.
+  it a measurement; filling a FACT aspect makes it a **computed value**: one
+  more value for that aspect, beside the agent's and the person's. The
+  measuring half of a validation is a computed value.
+- **A detector** — no `RETURNS`. Named in a test's (`WITNESS`)
+  `DETECTOR` clause; its query runs over the test's `slots` relation,
+  the values it collects.
 
 ## Read the closest one first
 
 The reference library ships in every workspace and the body is a
-column, so the library is readable through the door:
+column, so the library is readable through the tool:
 
 ```sql
 SELECT name, returns FROM functions ORDER BY name
@@ -39,8 +40,9 @@ Read the one nearest your task before writing:
   aggregate inline (its fences derive from `profile(v)` in the same
   statement).
 - `slot_entropy` — a detector.
-- `rate_tolerance` — a detector over slot voices (authored expectation
-  against check voice), which is the usual validation shape.
+- `rate_tolerance` — a detector over the collected values (a written
+  expectation against a computed value), which is the usual validation
+  shape.
 
 ## Declaration
 
@@ -60,20 +62,20 @@ $$ RETURNS on_time_completion;
 
 - `FOR` scopes to a dataset, or `GLOBAL`.
 - `RETURNS` names the aspect the output fills, validated against that
-  aspect's JSON Schema at extraction.
-- The body composes anything a read can, inline: tables, groundings
-  by their names, the declaration relations as plain
+  aspect's JSON Schema when the measurement runs.
+- The body composes anything a read can, inline: tables, metric
+  definitions by their names, the catalog tables as plain
   tables, and the shipped `profile` aggregate beside the engine's own
   (`mad` and `entropy` ride inside its struct:
-  `profile(v)['numeric']['mad']`, `profile(v)['entropy']`). A glossed
-  value is a read over the glossary; another measurement's landed
+  `profile(v)['numeric']['mad']`, `profile(v)['entropy']`). An annotated
+  value is a read over the glossary; another measurement's stored
   value, a read over `measurements`; a statistic, the same aggregate
   computed in place.
 - `$subject` arrives as a string literal wherever the body writes it;
   `subject_column($subject)` is the subject's column as a relation
   named `v`, for column-grain functions whose body cannot know the
   column's name.
-- The result lands by a fixed rule: one row × one column → the value;
+- The result is stored by a fixed rule: one row × one column → the value;
   one row → an object of its columns; many rows → an array of row
   objects. NULL keys are omitted. Size it like a claim — something that
   wants to be a table is a read, not a measurement.
@@ -81,10 +83,10 @@ $$ RETURNS on_time_completion;
 
 The name is the key, workspace-wide: one row per name, and a
 re-declare **replaces** it — old measurements sit at pins that no
-longer resolve, so the next extraction recomputes. Take a shipped
-name only on purpose: the library's own body survives nowhere else
-in the workspace, so replacing `profile` costs the tested one until
-a rebuild lands it again. For a MEASUREMENT this is the only route
+longer resolve, so the next run recomputes. Take a shipped name only
+on purpose: the library's own body is kept nowhere else in the
+workspace, so replacing `profile` costs the tested one until a
+rebuild installs it again. For a MEASUREMENT this is the only route
 (a second name returning the same aspect is refused); for anything
 else, use your own name.
 
@@ -92,8 +94,8 @@ else, use your own name.
 
 When the subject does not fit, the answer is a fact, not a failure:
 `applicable: false` with a `reason` — a text column has no outliers,
-and the reason names the lead (a date landed as text is a typing gap
-in the recipe, not a dead end). Keep `applicable` in the aspect's
+and the reason names the lead (a date loaded as text is a typing gap
+in the load query, not a dead end). Keep `applicable` in the aspect's
 `required`. An abstention that is *starvation* rather than a
 mismatch is worth saying in the read-back — it is a finding about
 the data's shape.
@@ -101,26 +103,27 @@ the data's shape.
 ## Detectors
 
 A detector's query plans over the **`slots`** relation — one row per
-slot on the witness's aspect:
+author's value on the test's aspect:
 `(subject, aspect, kind, witness, actor, speaker, current, written_at, body)`.
 `speaker` is `human` | `agent` | `function`; `current` is false for a
-function voice landed before the last write — it still speaks, and
-`ATTEST()` marks the verdict. `body` arrives **typed**:
-when every slot body is a JSON object (an aspect's slots share its
+function's value stored before the last write — it still counts, and
+`ATTEST()` marks the result. `body` arrives **typed**:
+when every body is a JSON object (an aspect's slots share its
 schema, so they do), the column is a struct and fields read as
 `body['tolerance']`, nested arrays through `unnest(body['metrics'])`;
-anything else leaves `body` as text. A field no slot carries is a
-plan-time error naming it — which is the read telling you what is owed
-(an expectation gloss, usually), not a case to code around.
+anything else leaves `body` as text. A field no value carries is a
+plan-time error naming it — which is the read telling you what is
+missing (an expectation annotation, usually), not a case to code
+around.
 
-The witness's `THRESHOLD` binds as `$threshold` (NULL when the witness
+The test's `THRESHOLD` binds as `$threshold` (NULL when the test
 declares none — coalesce your default). The query returns one row per
 subject with `subject`, `band` (green|yellow|orange|red), and `score`
-(0..1); the engine completes the attest row with the witness, its
+(0..1); the engine completes the result row with the test, its
 aspect, and its own clock. One query answers every subject — group by
-`subject`, and keep a row for subjects whose slots say nothing (a
+`subject`, and keep a row for subjects whose values say nothing (a
 LEFT JOIN back to `SELECT DISTINCT subject FROM slots`), because no
-row means no verdict, not green.
+row means no result, not green.
 
 ```glossql
 DECLARE FUNCTION spread_bands FOR ops AS $$
@@ -140,7 +143,7 @@ $$;
 ```
 
 Judgment lives in detectors and in read policy, never in results — no
-measurement writes a verdict into data.
+measurement writes a judgment into data.
 
 ```glossql
 DECLARE WITNESS on_time_w ON on_time_completion BY (AGENT, HUMAN)
@@ -162,8 +165,8 @@ re-runnable, and its abstentions stay as honest as the library's.
 SELECT outlier_profile() FROM work_orders.duration_min;
 ```
 
-Extraction computes at the read's pin — the data and declarations the
-statement resolved — and lands a `measurements` row; the same pin serves
+A run computes at the read's pin — the data and declarations the
+statement resolved — and stores a `measurements` row; the same pin serves
 it back, and any input moving recomputes. A body carrying a `summary`
 object serves the summary alone — the full body reads back through
 `GLOSSARY(subject::aspect)`, uncapped.

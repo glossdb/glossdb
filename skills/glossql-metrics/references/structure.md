@@ -3,7 +3,7 @@
 ## Say what each table is
 
 Before the columns. Every correct aggregate downstream depends on this
-verdict, and it is judged from the data, never from the name.
+judgment, and it is judged from the data, never from the name.
 
 - **value** — what one row is, in business words.
 - **role** — `fact` (events at volume, carrying numbers) or
@@ -24,7 +24,7 @@ GLOSS entity ON work_orders AS $${"value": "one site visit on a work order", "ro
   "grain": ["order_id", "visit_no"], "time_axis": "completed_at"}$$;
 ```
 
-The subject follows the aspect's grain: `entity` is ON TABLE, so the
+The asset (subject) follows the aspect's scope (its grain): `entity` is ON TABLE, so the
 subject is a table, never the dataset; `relationship_candidates` is a
 measurement ON DATASET, so its subject is the dataset, never a table.
 `SELECT name, grains FROM aspects` says which for any aspect.
@@ -35,7 +35,7 @@ measurement ON DATASET, so its subject is the dataset, never a table.
 included, you are the precision. Per candidate, before declaring:
 
 - **Anti-join both directions and *read* what doesn't resolve.** An
-  orphan count is a question, not a verdict: orphans that are exactly
+  orphan count is a question, not a judgment: orphans that are exactly
   a business population (the cancelled orders, the pre-migration
   records) confirm the edge; random misses argue against it.
 - **Distrust coincidence.** Two unique integer columns overlap
@@ -44,13 +44,13 @@ included, you are the precision. Per candidate, before declaring:
   agree.
 - **A reference that switches targets by type is not an edge.** A
   column paired with a type column matches several tables partially
-  and none fully. Declare no relationship on it. Gloss the meaning
+  and none fully. Declare no relationship on it. Annotate the meaning
   with the type map; a frame joins the typed subset it needs.
-- **Judge a composite on all its legs.** Anti-join anchor *and* scope
+- **Judge a composite on all its parts.** Anti-join anchor *and* scope
   together; the anchor alone fans out and over-counts, which is what
   the composite exists to collapse. Declare it as a tuple, never the
-  anchor leg alone.
-- **Ground the verdict, not the story.** Why the data looks this way
+  anchor part alone.
+- **Base the judgment on evidence, not on a story.** Why the data looks this way
   is a hypothesis — verify it or label it. A correct rejection with a
   wrong causal story misleads everyone reading the grounds later.
 
@@ -62,7 +62,7 @@ GLOSS meaning ON work_orders.site_id -> sites.id AS
 ```
 
 Rejected candidates stay in the measurement — visible and undeclared
-is the record that they were seen and judged. Once edges are declared,
+shows that they were seen and judged. Once edges are declared,
 `relationship_coherence` watches them: orphan rate (exact, and it
 catches shapes no column statistic can, including a single repeated
 invented key) and the temporal read — a child event dated before its
@@ -71,12 +71,12 @@ child event before a *deadline* is ordinary. Re-run after new batches.
 
 ## Score the slice axes
 
-An axis is a served column you gloss `role` dimension and rank with a
-`dimension` gloss, `primary` first; `column_profile()` says whether
+An axis is a served column you annotate `role` dimension and rank with a
+`dimension` annotation, `primary` first; `column_profile()` says whether
 it is usable — how many rows name a bucket, how evenly — and
 **interest is yours**. A near-key is an identifier, not an axis, a
-constant resolves nothing, and a null-dominated column speaks for a
-minority: gloss them `none` with the grounds.
+constant resolves nothing, and a null-dominated column describes only a
+minority: annotate them `none` with the grounds.
 
 `detect_hierarchies` screens within-table dependencies at high recall.
 Judge each:

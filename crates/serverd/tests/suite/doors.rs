@@ -1308,7 +1308,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("statement 2 of 3 refused"), "{text}");
-    assert!(text.contains("statement 1 landed"), "{text}");
+    assert!(text.contains("statement 1 ran"), "{text}");
     assert!(text.contains("statement 3 not run"), "{text}");
     // What landed rides beside the refusal, in the usual shape — the
     // first statement's rows are not discarded with the second's error.
@@ -1741,7 +1741,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(
-        instructions.contains("1 ruling awaits the fold-in"),
+        instructions.contains("1 review decision waits to be applied"),
         "{instructions}"
     );
     let fold_in = r#"GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -1754,7 +1754,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(
-        !instructions.contains("fold-in"),
+        !instructions.contains("to be applied"),
         "the debt must clear on the re-record: {instructions}"
     );
 }
@@ -2324,7 +2324,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     // Debt before presence: what owes an act leads, the record's size
     // closes — a count of human writings is never read as work.
     assert!(
-        brief.find("judgment question") < brief.find("Record: 0 human writings"),
+        brief.find("judgment question") < brief.find("Catalog: 0 human annotations"),
         "{brief}"
     );
 
@@ -2804,7 +2804,7 @@ async fn the_opening_names_where_to_begin() {
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(
-        instructions.contains("No dataset stands yet"),
+        instructions.contains("No dataset exists yet"),
         "{instructions}"
     );
     assert!(instructions.contains("workspace_next"), "{instructions}");
@@ -2830,7 +2830,7 @@ async fn the_opening_names_where_to_begin() {
     );
     assert!(instructions.contains("not a gate"), "{instructions}");
     assert!(
-        !instructions.contains("No dataset stands yet"),
+        !instructions.contains("No dataset exists yet"),
         "{instructions}"
     );
 }

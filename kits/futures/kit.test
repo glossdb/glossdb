@@ -617,7 +617,7 @@ promo_on	true	NULL
 query TT
 SELECT scenario, unmoved FROM scenario_bodies() WHERE scenario = 'promo_on';
 ----
-promo_on	priced.promo stands at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
+promo_on	priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
 
 statement ok
 SELECT metric_scenario() FROM fin;
@@ -625,7 +625,7 @@ SELECT metric_scenario() FROM fin;
 query TTTT
 SELECT scenario, metric, applicable, reason FROM scenario_points('promo_on');
 ----
-promo_on	priced	false	the scenario moves no input of priced: priced.promo stands at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
+promo_on	priced	false	the scenario moves no input of priced: priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
 
 # the routes: the estimate asked for, asked again, and the gap judged under the scenario
 query III

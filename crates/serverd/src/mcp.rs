@@ -35,23 +35,26 @@ async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
     plane.brief_counts().await.map_err(|e| e.to_string())
 }
 
-const INSTRUCTIONS: &str = "glossql workspace server — one SQL-shaped surface over a \
-workspace's data and its context, behind one tool, `glossql`, which runs statements and \
-plain SQL; its description is the contract for every call. Start here, in this order. \
-1. Read the two skill pages through the tool: `SELECT body FROM pages() WHERE uri IN \
-('skill://glossql/SKILL.md', 'skill://glossql-metrics/SKILL.md')` — the door and the \
+const INSTRUCTIONS: &str = "glossdb — a harness for data agents. One tool, `glossql`, \
+runs glossql statements and plain SQL over the workspace's data and its catalog; its \
+description is the contract for every call. Start here, in this order. \
+1. Read the two skills through the tool: `SELECT body FROM pages() WHERE uri IN \
+('skill://glossql/SKILL.md', 'skill://glossql-metrics/SKILL.md')` — the interface and the \
 language, then the eight goals; each names its references (`skill://<name>/references/…`) \
-for the moment they matter, and every page the door serves is a row of `pages()`. \
+for when they matter, and every page this server serves is a row of `pages()`. \
 2. `SELECT * FROM datasets`, then what the brief below names. \
-The objects: a dataset holds tables, landed by recipes from sources; an aspect is a named \
-JSON contract; a gloss speaks an aspect's value on a subject (a table, a column, the \
-dataset itself), and a QUERY aspect's gloss is SQL, served back as a view under the \
-aspect's name — a \
-metric, a current fact, or a derived relation, which the metrics skill tells apart; \
-functions measure, and their measurements are the evidence; witnesses adjudicate the \
-voices on a slot; a human's ruling outranks every agent gloss. Live state is read through \
-the tool, never assumed. Every result closes with `next:`, one act per goal — structure, metrics, slices, bands, checks, app, plan, rulings — and the work is done when every goal is done or blocked; a goal's link hands you the statement that moves it. The docs pages are `doc://docs/…`, the language `doc://SPEC.md` \
-and `doc://grammar.ebnf` — rows of `pages()` too.";
+The objects: a dataset holds tables, loaded from sources by load queries (recipes); an \
+aspect is a property the harness requires, with a JSON Schema; a gloss is an annotation: \
+an aspect's value on an asset (a table, a column, the dataset itself). A QUERY aspect's \
+gloss is SQL, served as a view under the aspect's name — a metric, a single value, or a \
+derived relation, which the metrics skill tells apart. Functions measure the data, and \
+their measurements are the evidence. Tests (WITNESS) score where measurements, agents and \
+people disagree. A person's review decision outranks every agent's annotation. Read live \
+state through the tool; never assume it. Every result ends with `next:`, one action per \
+goal — structure, metrics, slices, bands, checks, app, plan, rulings (the review) — and \
+the work is done when every goal is done or blocked; a goal's link gives the statement \
+that moves it. The docs are `doc://docs/…`, the language `doc://SPEC.md` and \
+`doc://grammar.ebnf` — rows of `pages()` too.";
 
 /// What the brief is decided on: the store's counts plus the open
 /// question count. Movement is a comparison of these FACTS — never of
@@ -149,13 +152,14 @@ impl GlossqlMcp {
         // `owed`, `GLOSSARY(d)` and `ATTEST(d)` all need one — and
         // the metrics skill's landing page is where it starts.
         let opening = if datasets == 0 {
-            "No dataset stands yet, so there is no brief to sweep: `SELECT * FROM \
-             workspace_next` is the whole of the live state, and \
-             `skill://glossql-metrics/SKILL.md` with its landing page is where to begin."
+            "No dataset exists yet, so there is nothing to brief: `SELECT * FROM \
+             workspace_next` is the whole live state, and \
+             `skill://glossql-metrics/SKILL.md` is where to begin."
         } else {
-            "Open with the brief the glossql skill teaches — `USE` a dataset, then human \
-             slots, contested, red bands, `owed` — once, before the first write. It is a \
-             read, not a gate: what it counts waits for the human while the work goes on."
+            "Open with the brief the glossql skill teaches — `USE` a dataset, then the \
+             human annotations, contested values, red bands, `owed` — once, before the \
+             first write. It is a read, not a gate: what waits for a person waits while \
+             the work goes on."
         }
         .to_string();
         match brief_counts(plane).await {
@@ -168,8 +172,8 @@ impl GlossqlMcp {
                 let mut owed = Vec::new();
                 if counts.rulings_owed > 0 {
                     owed.push(format!(
-                        "{} ruling{} await{} the fold-in — re-record each ruled grounding \
-                         citing its ruling",
+                        "{} review decision{} wait{} to be applied — record each decided metric \
+                         definition again, citing its decision",
                         counts.rulings_owed,
                         if counts.rulings_owed == 1 { "" } else { "s" },
                         if counts.rulings_owed == 1 { "s" } else { "" },
@@ -177,7 +181,7 @@ impl GlossqlMcp {
                 }
                 if counts.approvals_pending > 0 {
                     owed.push(format!(
-                        "{} approved recipe change{} await{} the re-declare",
+                        "{} approved load-query change{} wait{} to be declared again",
                         counts.approvals_pending,
                         if counts.approvals_pending == 1 {
                             ""
@@ -193,24 +197,24 @@ impl GlossqlMcp {
                 }
                 if questions > 0 {
                     owed.push(format!(
-                        "{} judgment question{} wait{} for the human (assumptions below \
+                        "{} judgment question{} wait{} for a person (assumptions below \
                          full confidence — conventions and definitions, never \
-                         statistics): each is served once as a form on a record read \
+                         statistics): each is served once as a form on a catalog read \
                          (glossary, GLOSSARY(), ATTEST()), or relayed in chat where \
-                         forms are absent, and stays open until the human rules — the \
-                         work goes on meanwhile",
+                         forms are absent, and stays open until the person decides — \
+                         the work goes on meanwhile",
                         questions,
                         if questions == 1 { "" } else { "s" },
                         if questions == 1 { "s" } else { "" },
                     ));
                 }
                 let mut line = if owed.is_empty() {
-                    "Live now: nothing owed, the round is quiet".to_string()
+                    "Live now: nothing open, the review queue is empty".to_string()
                 } else {
                     format!("Live now: {}", owed.join("; "))
                 };
                 line.push_str(&format!(
-                    ". Record: {} human writing{}{}.",
+                    ". Catalog: {} human annotation{}{}.",
                     counts.human_writings,
                     if counts.human_writings == 1 { "" } else { "s" },
                     match &counts.latest_human_at {
@@ -326,13 +330,13 @@ impl GlossqlMcp {
         // unclear box with the words beside it, which lands and buys a
         // reformulation.
         if answer.action != ElicitationAction::Accept {
-            return format!("question-round: `{key}` deferred — unanswered, it stands open");
+            return format!("review: `{key}` deferred — unanswered, it stays open");
         }
         let Some(content) = answer.content else {
-            return format!("question-round: `{key}` deferred — nothing said, it stands open");
+            return format!("review: `{key}` deferred — no answer given, it stays open");
         };
         let Some(question) = self.question_for_key(session, key).await else {
-            return "question-round: the question no longer stands — nothing landed".into();
+            return "review: the question is no longer open — nothing was stored".into();
         };
         let Question {
             dataset,
@@ -387,7 +391,7 @@ impl GlossqlMcp {
         // human typed replace it.
         if ticked(RATHER) {
             let Some(rival) = alternative else {
-                return "question-round: no rival stands on that claim to take".into();
+                return "review: there is no alternative reading on that claim to take".into();
             };
             let note = typed.clone().unwrap_or(rival);
             let landed = self
@@ -401,7 +405,7 @@ impl GlossqlMcp {
                     },
                 )
                 .await;
-            return format!("{landed} — the rival taken: {note}");
+            return format!("{landed} — the alternative taken: {note}");
         }
         // The sibling ruling, replayed onto this aspect: the same
         // stance and the same words the human wrote next door, now
@@ -409,7 +413,7 @@ impl GlossqlMcp {
         // human chose it.
         if ticked(SAME_AS) {
             let Some(stance) = sibling_stance.as_deref() else {
-                return "question-round: nothing stands on that key to repeat".into();
+                return "review: no earlier decision on that key to repeat".into();
             };
             let landed = self
                 .land_ruling(
@@ -422,7 +426,7 @@ impl GlossqlMcp {
                     },
                 )
                 .await;
-            return format!("{landed} — repeated from the ruling already standing on that key");
+            return format!("{landed} — repeated from the earlier decision on that key");
         }
         if ticked(STANDS) {
             return self
@@ -453,12 +457,12 @@ impl GlossqlMcp {
                     },
                 )
                 .await;
-            return format!("{landed} — the human's correction: {correction}");
+            return format!("{landed} — the person's correction: {correction}");
         }
         // Saved with nothing ticked and nothing typed. An empty form
         // says as little as a dismissed one, so it is the same defer.
         format!(
-            "question-round: `{subject}:{aspect}:{key}` deferred — nothing said, it stands open"
+            "review: `{subject}:{aspect}:{key}` deferred — no answer given, it stays open"
         )
     }
 
@@ -513,7 +517,7 @@ impl GlossqlMcp {
             .await
         {
             Ok(session) => session,
-            Err(e) => return format!("question-round: refused: {e}"),
+            Err(e) => return format!("review: refused: {e}"),
         };
         match crate::engine::rulings::land(
             &human,
@@ -529,8 +533,8 @@ impl GlossqlMcp {
         )
         .await
         {
-            Ok(said) => format!("question-round: {said}"),
-            Err(e) => format!("question-round: refused: {e}"),
+            Ok(said) => format!("review: {said}"),
+            Err(e) => format!("review: refused: {e}"),
         }
     }
 
@@ -567,15 +571,15 @@ impl GlossqlMcp {
                  for a client that reads those. \
                  {opens} \
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
-                 {} (GLOSSARY(), ATTEST() and the store relations are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
-                 QUERY aspect — a metric's grounding — answers with the metric's fact row in \
-                 the `metric_axes()` shape: whether the SQL plans, its behavior verb and where \
+                 {} (GLOSSARY(), ATTEST() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
+                 QUERY aspect — a metric definition — answers with the metric's summary row in \
+                 the `metric_axes()` shape: whether the SQL plans, its additivity and where \
                  that came from, the axes admitted, and every served column not admitted with \
-                 the road back in — read it before the next write. A refused statement is an \
-                 error naming its place; what landed before it stayed landed (`{{landed}}`). \
-                 While the workspace holds open questions, a call that only reads the record \
-                 (glossary, GLOSSARY(), ATTEST(), the store relations) carries the human's \
-                 question forms; landings and data reads never do.",
+                 how to admit it — read it before the next write. A refused statement is an \
+                 error naming its place; what was stored before it stays stored \
+                 (`{{landed}}`). While the workspace holds open questions, a call that only \
+                 reads the catalog (glossary, GLOSSARY(), ATTEST(), the catalog tables) \
+                 carries the person's question forms; loads and data reads never do.",
                 self.plane.row_cap()
             ),
             schema,
@@ -769,7 +773,7 @@ impl Question {
             ..
         } = self;
         let mut schema = ElicitationSchema::builder().optional_bool_with(STANDS, |b| {
-            b.title("Stands as stated")
+            b.title("Correct as stated")
                 .description(format!("{assumption}\nbasis: {basis}"))
                 .with_default(false)
         });
@@ -922,8 +926,8 @@ impl ServerHandler for GlossqlMcp {
             resource_templates: vec![
                 ResourceTemplate::new("next://{dataset}/{surface}", "next")
                     .with_description(
-                        "Where the record stands toward one goal on a dataset — structure, \
-                         metrics, slices, bands, checks, app, plan, rulings — and the one act \
+                        "Where one goal stands on a dataset — structure, metrics, slices, \
+                         bands, checks, app, plan, rulings (the review) — and the one action \
                          that moves it, as a statement to send. `next://{dataset}` serves every \
                          goal; the same rows through the tool are \
                          `SELECT * FROM next WHERE surface = '<surface>'`.",
@@ -1133,18 +1137,18 @@ impl GlossqlMcp {
     ) -> Option<String> {
         let responses = request.input_responses.as_ref()?;
         let note = if request.request_state.as_deref() != Some(ROUND_STATE) {
-            "question-round: a retry without the echoed state".to_string()
+            "review: a retry without the echoed state".to_string()
         } else if !responses.is_empty() {
             let mut notes = Vec::new();
             for (key, raw) in responses.iter() {
                 notes.push(match serde_json::from_value::<ElicitResult>(raw.clone()) {
                     Ok(answer) => Box::pin(self.digest_round(key, answer, session)).await,
-                    Err(e) => format!("question-round: the answer does not parse: {e}"),
+                    Err(e) => format!("review: the answer does not parse: {e}"),
                 });
             }
             notes.join("\n")
         } else {
-            "question-round: the retry carries no answer".into()
+            "review: the retry carries no answer".into()
         };
         // The account can carry the human's typed words and a rival's
         // prose, so it is a `debug` event like a call's text; `info`
@@ -1503,7 +1507,7 @@ mod tests {
         let q = question();
         let (_, schema) = form(&q);
         let stands = &schema["properties"][STANDS];
-        assert_eq!(stands["title"], "Stands as stated");
+        assert_eq!(stands["title"], "Correct as stated");
         let said = stands["description"].as_str().expect("a description");
         assert!(said.contains(&q.assumption), "{schema}");
         assert!(said.contains(&q.basis), "{schema}");

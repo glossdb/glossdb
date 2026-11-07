@@ -1,21 +1,22 @@
--- The record's own words, declared by the engine at every open, before
--- any kit: what the doors write and read on their own account. A kit
--- brings vocabulary about the data; these are about the record.
+-- The catalog's own words, declared by the engine at every open, before
+-- any kit: what the interfaces write and read on their own account. A
+-- kit brings vocabulary about the data; these are about the catalog.
 
--- The reads the doors derive from the record, as views beside it.
+-- The reads the interfaces derive from the catalog, as views beside it.
 -- Replaced at every open so a view follows the build, never a lake's
 -- age; each open is one snapshot of the lake for it.
 
 -- The bound dataset as a relation: the schema in use when it is a
--- dataset's, no row on an unbound channel. The doors join it.
+-- dataset's, no row on an unbound channel. The interfaces join it.
 CREATE OR REPLACE VIEW main.current_dataset AS
   SELECT current_schema() AS dataset
   WHERE current_schema() IN (SELECT name FROM main.datasets);
 
 -- The agent's current assumptions, one row each: the latest agent
--- gloss per slot, its `assumptions` unnested, `idx` from 0. Derived
--- from the agent's CURRENT body, never a frozen copy, so an answered
--- question drops out when the fold-in raises its confidence.
+-- annotation per (subject, aspect), its `assumptions` unnested, `idx`
+-- from 0. Derived from the agent's CURRENT body, never a frozen copy, so
+-- an answered question drops out once the decision is applied and its
+-- confidence raised.
 CREATE OR REPLACE VIEW main.agent_assumptions AS
   WITH latest AS (
     SELECT * FROM (
@@ -31,9 +32,9 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
          l.body
   FROM latest l, unnest(coalesce(json_extract(l.body, '$.assumptions')::JSON[], []::JSON[])) WITH ORDINALITY AS t(a, i);
 
--- The human's standing rulings, one row per entry of the latest ruling
--- body on a subject; `folded_in` once no agent assumption below full
--- confidence carries the ruled key under the ruled aspect.
+-- A person's current review decisions, one row per entry of the latest
+-- `ruling` body on a subject; `folded_in` once no agent assumption below
+-- full confidence carries the decided key under the decided aspect.
 CREATE OR REPLACE VIEW main.ruling_entries AS
   WITH latest AS (
     SELECT * FROM (
@@ -58,12 +59,12 @@ CREATE OR REPLACE VIEW main.ruling_entries AS
    AND a.key = e.key AND a.conf < 1.0
   GROUP BY ALL;
 
--- What still stands open for a human to judge: a keyed assumption
--- below full confidence on a grounding, in a dimension no function
--- owns (behavior, sign and grain are statistics), with no standing
--- ruling on its (dataset, subject, aspect, key). `sibling` carries a
--- ruling on the same key under another aspect, so the round can offer
--- it back. No ORDER BY: order where you consume.
+-- What is still open for a person to judge: a keyed assumption below
+-- full confidence in a metric definition, in a dimension no function
+-- owns (behavior, sign and grain are statistics), with no current
+-- review decision on its (dataset, subject, aspect, key). `sibling`
+-- carries a decision on the same key under another aspect, so the
+-- review can offer it back. No ORDER BY: order where you consume.
 CREATE OR REPLACE VIEW main.open_questions AS
   WITH groundings AS (
     SELECT name FROM (
@@ -91,7 +92,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
 -- manifest, `app_page` on `<dataset>.<app>.<page>` a page, `app_frame` a
 -- query, `app_spec` a chart spec. Two collapses: the newest writing per
 -- (dataset, subject, aspect, actor kind), then the human's over the
--- agent's. This is the draft; the door serves the app at its release.
+-- agent's. This is the draft; the console serves the app at its release.
 CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
     SELECT * FROM (
@@ -133,12 +134,12 @@ CREATE OR REPLACE VIEW main.app_releases AS
          actor_kind, written_at::VARCHAR AS released_at
   FROM winning;
 
--- Every metric the bound dataset claims, with where it stands: one row
--- per QUERY aspect a grounding stands on here, served or stopped, or
+-- Every metric the bound dataset claims, with its state: one row per
+-- QUERY aspect with a metric definition here, served or stopped, or
 -- whose definitions entry names it — name, title, kind (the aspect's
 -- x-kind), unit and meaning from the definitions handbook, grounded
--- (a grounding with sql was written), stopped (the collapsed
--- grounding's own text, '' where it serves). The numbers are
+-- (a definition with sql was written), stopped (the collapsed
+-- definition's own text, '' where it serves). The numbers are
 -- metric_axes() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.metric_surfaces AS
   WITH ds AS (SELECT current_schema() AS dataset),
@@ -179,7 +180,7 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
      OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
--- What this workspace can be extended through, and where it stands on
+-- What this workspace can be extended through, and its state on
 -- each: `stands` counts what exists, `open` what is unfinished on the
 -- surface, `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
@@ -230,30 +231,30 @@ CREATE OR REPLACE VIEW main.workspace_next AS
   FROM counts c
   CROSS JOIN (VALUES
     ('sources', 'DECLARE SOURCE, then PROBE it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
-    ('tables', 'author a recipe and extract it — typing is the recipe''s work, this is not ETL'),
+    ('tables', 'write a load query (recipe) and load it — typing is the load query''s work, this is not ETL'),
     ('relationships', 'DECLARE RELATIONSHIP between two endpoints — detect_relationships proposes, you judge'),
     ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or QUERY, grained with ON'),
-    ('claims', 'GLOSS a subject with an aspect — the write verb; a human writing outranks the agent slot at every read'),
+    ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
     ('metrics', 'GLOSS a QUERY aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE WITNESS with a DETECTOR banding them — ATTEST() serves the verdicts'),
+    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE WITNESS (the test) with a DETECTOR scoring them — ATTEST() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the futures kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS QUERY with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the landed budget table — the futures kit serves the plan world'),
-    ('rulings', 'a human rules a disclosed assumption; the agent owes the re-record that folds it in'),
+    ('plans', 'DECLARE ASPECT ... AS QUERY with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the futures kit serves the plan world'),
+    ('rulings', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
     ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
   ) AS s(surface, how);
 
--- A recipe change a human approved for a table: the brief counts it as
--- pending until a landing of that table is newer than the approval.
+-- A load-query change a person approved for a table: the brief counts it
+-- as pending until a load of that table is newer than the approval.
 DECLARE ASPECT recipe_change WITH $${
   "type": "object", "required": ["table", "sql", "reason"],
   "properties": {"table": {"type": "string"}, "sql": {"type": "string"},
                  "reason": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
--- The ruling channel: each human judgment the question round lands, the
--- claim it rules by key, confirmed or corrected; the ruled aspect's
--- slots stay agent-authored and the agent owes the fold-in. Witness-free
+-- Review decisions: each answer a person gives in the review, the
+-- claim it decides by key, confirmed or corrected; the decided aspect's
+-- values stay agent-authored and the agent applies the decision. No test
 -- on purpose: the actor kind stamps the writer.
 DECLARE ASPECT ruling WITH $${
   "type": "object", "required": ["rulings"],
@@ -268,7 +269,7 @@ DECLARE ASPECT ruling WITH $${
 }$$ AS FACT;
 
 -- Apps as glosses: one gloss per part, the aspect the kind of file, the
--- subject where it goes. Grainless and witness-free: a part is no claim
+-- subject where it goes. Grainless and without a test: a part is no claim
 -- about the data.
 DECLARE ASPECT app WITH $${
   "type": "object", "required": ["title"],
