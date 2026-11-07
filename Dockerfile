@@ -58,7 +58,7 @@ RUN arch="$(uname -m)" && case "$arch" in x86_64) platform=linux_amd64 ;; aarch6
 # stores are all reached over https — and a /tmp for the engine's spill
 # files. The distroless C-runtime image is exactly that, with an
 # unprivileged user and no shell or package manager.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:3ee00291cf386ec52a552e6a858d555debd74776eb4bfa53fa3df2cd6677515e
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:08476c244888bfb425bae1ae4dd7c17f093e972aab8426883d97f3c6f280f7c1
 COPY --from=build /out/bin/glossdb /usr/local/bin/glossdb
 COPY --from=build /out/share/glossdb /usr/local/share/glossdb
 USER nonroot
