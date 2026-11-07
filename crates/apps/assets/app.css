@@ -584,6 +584,9 @@ a.rrow:hover { background: var(--panel); }
 
 gl-value { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2rem; }
 .kpi-num { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+/* A count inside a sentence reads as a word of it. */
+.hint gl-value { display: inline; min-height: 0; }
+.hint gl-value .kpi-num { font-size: inherit; font-weight: 600; letter-spacing: 0; }
 
 /* ---- charts and tables -------------------------------------------- */
 
@@ -739,6 +742,12 @@ details.fold[open] summary { color: var(--muted); }
    in the row's last track. */
 .rrow .wgroup { justify-content: flex-end; }
 
+/* ---- filters as links (the history page) ---------------------------- */
+.filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.8rem; }
+.filters .chip { margin-left: 0; text-decoration: none; }
+.filters .chip:hover { color: var(--ink); border-color: var(--faint); }
+.filters .chip.on { color: var(--ink); border-color: var(--open); }
+
 /* ---- the lineage graph (gl-graph) --------------------------------- */
 
 /* Tables as column boxes placed by dagre, metrics as a stack on the
@@ -754,6 +763,8 @@ gl-graph svg { display: block; font-family: var(--mono); }
 .n-box { fill: var(--panel); stroke: var(--rule); }
 .n-box.metric { fill: var(--raised); }
 .n-head { fill: var(--ink); font-size: 12px; font-weight: 600; }
+a:hover > .n-head { text-decoration: underline; }
+.n-sub { fill: var(--faint); font-size: 10px; }
 .n-rule { stroke: var(--rule); }
 .col text { fill: var(--muted); font-size: 11px; }
 .col.keyed text { fill: var(--ink); }

@@ -1,0 +1,35 @@
+{% extends "shell.html" %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{% set kind = state.kind | default(value="") %}
+{% set obj = state.object | default(value="") %}
+{{ object::crumbs(dataset=dataset, section="History") }}
+{# One timeline of the dataset, newest first. The filters are URL
+   params, so a filtered view is a link. #}
+<div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="Every load, annotation, review decision and declaration, newest first.">History</span>
+      <code class="chip">imports · glossary · aspects · tests · recipes · relationships</code></header>
+    <nav class="filters" aria-label="filter by kind">
+      <a class="chip{% if kind == "" %} on{% endif %}" href="?{% if obj %}object={{ obj }}{% endif %}">all</a>
+      {% for k in ["load", "annotation", "decision", "declaration"] %}
+      <a class="chip{% if kind == k %} on{% endif %}" href="?kind={{ k }}{% if obj %}&object={{ obj }}{% endif %}">{{ k }}s</a>
+      {% endfor %}
+      {% if obj %}<a class="chip on" href="?{% if kind %}kind={{ kind }}{% endif %}" title="show every object">{{ obj }} ✕</a>{% endif %}
+    </nav>
+    <p class="hint"><gl-value frame="frames/history?kind=&object=" field="total" format="text"></gl-value> events match; the newest 300 are shown.</p>
+    <gl-rows frame="frames/history?kind=&object=" empty="nothing has happened here yet">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:9rem 7rem minmax(8rem,14rem) 9rem minmax(0,1fr)">
+          <span class="r-meta">{at}</span>
+          <span class="r-meta">{kind}</span>
+          <span class="r-subj">{object}</span>
+          <span class="r-meta">{who}</span>
+          <span class="r-meta dict">{summary}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+</div>
+{% endblock main %}

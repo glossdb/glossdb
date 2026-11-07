@@ -738,7 +738,7 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
             };
             // Extra params are ignored by frames that bind none of them.
             let uri = format!(
-                "/perf/app/{}/frames/{stem}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none",
+                "/perf/app/{}/frames/{stem}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none&object=ledger",
                 builtin.name
             );
             let response = get(&app, &uri).await;
@@ -2817,3 +2817,90 @@ async fn the_overview_shows_the_scorecard_and_the_review_has_its_own_page() {
     let card = body_text(get(&app, "/perf/app/console/frames/scorecard").await).await;
     assert!(card.contains(" of "), "{card}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_model_draws_each_table_as_its_entity() {
+    // The model page: each table with what one row is under its name,
+    // and each column with what it carries — role, additivity, unit,
+    // the grain, the time axis. Both new pages sit in the tree.
+    let (app, plane, _dir) = workspace().await;
+    let agent = plane
+        .channel(
+            Actor {
+                kind: ActorKind::Agent,
+                id: "builder".into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    agent
+        .execute(
+            r#"USE perf;
+               GLOSS entity ON ledger AS $${"value": "one booking", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}$$;
+               GLOSS role ON ledger.value AS $${"value": "measure"}$$;
+               GLOSS behavior ON ledger.value AS $${"value": "flow"}$$;
+               GLOSS unit ON ledger.value AS $${"value": "EUR"}$$;"#,
+        )
+        .await
+        .unwrap();
+    let nodes = body_text(get(&app, "/perf/app/console/frames/model_nodes").await).await;
+    for line in [
+        "one booking\n",
+        "measure · flow · EUR\n",
+        "grain · time axis\n",
+        "/perf/app/console/p/glossary?table=ledger\n",
+    ] {
+        assert!(nodes.contains(line), "{line:?} in the model:\n{nodes}");
+    }
+    let page = text(get(&app, "/perf/app/console/p/model").await).await;
+    assert!(page.contains("frames/model_nodes"), "{page}");
+    assert!(page.contains("node-width=\"250\""), "{page}");
+    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
+    assert!(tree.contains("/perf/app/console/p/model\n"), "{tree}");
+    assert!(tree.contains("/perf/app/console/p/history\n"), "{tree}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_history_lists_loads_annotations_and_declarations_newest_first() {
+    let (app, plane, _dir) = workspace().await;
+    let agent = plane
+        .channel(
+            Actor {
+                kind: ActorKind::Agent,
+                id: "builder".into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    agent
+        .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;"#)
+        .await
+        .unwrap();
+    let all = body_text(get(&app, "/perf/app/console/frames/history?kind=&object=").await).await;
+    for line in [
+        "load\n",
+        "annotation\n",
+        "declaration\n",
+        "meaning: the money\n",
+        "load query for ledger from erp\n",
+    ] {
+        assert!(all.contains(line), "{line:?} in the history:\n{all}");
+    }
+    // The newest first: the annotation was written after the load query.
+    assert!(
+        all.find("meaning: the money").unwrap() < all.find("load query for ledger").unwrap(),
+        "{all}"
+    );
+    // Filters narrow by kind and by object; a table includes its columns.
+    let loads = body_text(get(&app, "/perf/app/console/frames/history?kind=load&object=").await).await;
+    assert!(loads.contains("load\n") && !loads.contains("annotation\n"), "{loads}");
+    let ledger =
+        body_text(get(&app, "/perf/app/console/frames/history?kind=annotation&object=ledger").await).await;
+    assert!(ledger.contains("ledger.value\n"), "{ledger}");
+    let page = text(get(&app, "/perf/app/console/p/history?kind=load").await).await;
+    assert!(page.contains("frames/history?kind="), "{page}");
+    assert!(page.contains("class=\"chip on\" href=\"?kind=load\""), "{page}");
+}
+

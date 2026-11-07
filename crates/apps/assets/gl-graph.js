@@ -6,6 +6,12 @@
 // `table.col` or `metric.field`, a composite endpoint as
 // `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
 //
+// Optional, for the model page: a node row may carry `sub` (a line
+// under the node's name) and `link` (the node's page); a column row
+// may carry `detail` (shown in place of the bare role, and enough to
+// keep the column unfolded). `node-width` on the element widens the
+// boxes. A frame without them draws as lineage always has.
+//
 // dagre places the tables, reading left to right along the keys — a
 // parent holds left of the table that points at it. The metrics are
 // not ranked with them: they are the right-hand column, one stack
@@ -20,7 +26,8 @@
 (function () {
   'use strict';
 
-  const W = 190;
+  const NODE_W = 190;
+  const SUB = 14;
   const HEAD = 30;
   const ROW = 17;
   const FOLD = 17;
@@ -84,6 +91,7 @@
     }
 
     draw() {
+      const W = Number(this.getAttribute('node-width')) || NODE_W;
       if (!window.dagre) {
         this.replaceChildren(glStore.errorBox('dagre did not load — the graph cannot lay out'));
         return;
@@ -103,8 +111,10 @@
       // ordinal order.
       const byNode = new Map();
       for (const r of nodeRows) {
-        if (!byNode.has(r.node)) byNode.set(r.node, { name: r.node, kind: r.kind, columns: [] });
-        byNode.get(r.node).columns.push([r.col, r.role || '']);
+        if (!byNode.has(r.node)) {
+          byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', link: r.link || '', columns: [] });
+        }
+        byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
       }
       const NODES = [...byNode.values()];
 
@@ -124,13 +134,14 @@
       const shown = new Map();
       for (const n of NODES) {
         const keep = n.columns.filter(
-          ([c, role]) => touched.has(n.name + '.' + c) || role || this.open.has(n.name)
+          ([c, role, detail]) => touched.has(n.name + '.' + c) || role || detail || this.open.has(n.name)
         );
         shown.set(n.name, { cols: keep, hidden: n.columns.length - keep.length });
       }
+      const head = (n) => HEAD + (n.sub ? SUB : 0);
       const height = (n) => {
         const s = shown.get(n.name);
-        return HEAD + s.cols.length * ROW + (s.hidden ? FOLD : 0) + PAD;
+        return head(n) + s.cols.length * ROW + (s.hidden ? FOLD : 0) + PAD;
       };
 
       const g = new dagre.graphlib.Graph();
@@ -180,7 +191,7 @@
         height: totalH,
         viewBox: `0 0 ${totalW} ${totalH}`,
         role: 'img',
-        'aria-label': 'column lineage',
+        'aria-label': this.getAttribute('label') || 'column lineage',
       });
       // A graph a little wider than the band scales down to fit —
       // the whole picture beats a scrollbar as long as the type stays
@@ -203,23 +214,40 @@
         const y = p.y - p.height / 2;
         const grp = el('g', { class: 'node', transform: `translate(${x},${y})` });
         grp.append(el('rect', { class: 'n-box ' + n.kind, width: p.width, height: p.height, rx: 2 }));
-        grp.append(el('text', { class: 'n-head', x: 10, y: 19 }, n.name));
-        grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: HEAD - 4, y2: HEAD - 4 }));
-        s.cols.forEach(([c, role], i) => {
+        const name = el('text', { class: 'n-head', x: 10, y: 19 }, n.name);
+        if (n.link) {
+          const a = el('a', { href: n.link });
+          a.append(name);
+          grp.append(a);
+        } else {
+          grp.append(name);
+        }
+        if (n.sub) {
+          // About 6px a character at the subtitle's size: trim to the
+          // box, the whole line on hover.
+          const fit = Math.floor((p.width - 20) / 6);
+          const line = n.sub.length > fit ? n.sub.slice(0, fit - 1) + '…' : n.sub;
+          const t = el('text', { class: 'n-sub', x: 10, y: 33 }, line);
+          if (line !== n.sub) t.append(el('title', {}, n.sub));
+          grp.append(t);
+        }
+        const top = head(n);
+        grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: top - 4, y2: top - 4 }));
+        s.cols.forEach(([c, role, detail], i) => {
           const id = n.name + '.' + c;
-          const cy = HEAD + i * ROW;
+          const cy = top + i * ROW;
           const col = el('g', { class: 'col' + (touched.has(id) ? ' keyed' : ''), 'data-id': id });
           col.append(el('rect', { x: 1, y: cy - 1, width: p.width - 2, height: ROW }));
           col.append(el('text', { x: 10, y: cy + 11 }, c));
-          if (role) {
-            col.append(el('text', { class: 'role ' + role, x: p.width - 10, y: cy + 11, 'text-anchor': 'end' }, role));
+          if (role || detail) {
+            col.append(el('text', { class: 'role ' + role, x: p.width - 10, y: cy + 11, 'text-anchor': 'end' }, detail || role));
           }
           grp.append(col);
           anchors.set(id, { x0: x, x1: x + p.width, y: y + cy + ROW / 2 });
         });
         if (s.hidden) {
           const fold = el('g', { class: 'fold', 'data-node': n.name });
-          fold.append(el('text', { x: 10, y: HEAD + s.cols.length * ROW + 11 }, '+ ' + s.hidden + ' more'));
+          fold.append(el('text', { x: 10, y: top + s.cols.length * ROW + 11 }, '+ ' + s.hidden + ' more'));
           grp.append(fold);
         }
         layerN.append(grp);

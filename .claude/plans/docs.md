@@ -23,7 +23,7 @@ out in the old words.
 | 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | done on `readme-harness` |
 | 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | done on `readme-harness` |
 | 12. The console's navigation: a tree, a breadcrumb, one page shape per object with sub-tabs, the overview with the scorecard, units beside numbers | Medium | `crates/apps/` | done on `readme-harness` |
-| 12b. The console's Model view (entities, keys, joins, measures, dimensions, time grains in one picture) and History view (loads, annotations and review decisions over time) | Medium: new frames over recorded rows, a graph | `crates/apps/` | drafted below |
+| 12b. The console's Model view (entities, keys, joins, measures, dimensions, time grains in one picture) and History view (loads, annotations and review decisions over time) | Medium: new frames over recorded rows, a graph | `crates/apps/` | done on `readme-harness` |
 | 13. The websites from the two docs trees | Low | `../dataraum-website` | |
 
 ## The analogy
@@ -103,21 +103,5 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### The console shows the model and the history
-
-- **What it buys.** A person sees the semantic layer and the ontology
-  as one picture, and what changed when, without reading tables.
-- **What is there.** Lineage draws tables, keys and the columns a
-  metric reads (`gl-graph`, `frames/lineage_*`); the object pages have
-  a History tab per object (`frames/obj_history.sql`); nothing shows
-  entities with their grain, measures with their additivity,
-  dimensions and time grains together, or the workspace's changes as
-  one timeline.
-- **Done when.** A Model page draws each table as its entity (grain,
-  time axis), its measures (additivity, unit) and dimensions, the keys
-  between tables and the metrics on top with their time grains; a
-  History page lists loads, annotations and review decisions newest
-  first, filterable by kind and object; both in the tree; apps tests
-  for their frames; a walk on a seeded workspace.
-
-(The results page, step 4, waits on the glossval rerun.)
+The next row is the results page (step 4); it waits on the glossval
+rerun. The websites (step 13) follow it.

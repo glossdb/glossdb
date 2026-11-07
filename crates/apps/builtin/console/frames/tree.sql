@@ -1,4 +1,4 @@
--- The console's tree: the dataset's sources, its tables with their
+-- The console's tree: the dataset's model and history, its sources, its tables with their
 -- columns, its metrics, its views and its tests, one row per entry.
 -- `section` groups the entries, `parent` names the table a column
 -- belongs to (empty otherwise), `link` is the entry's page. The
@@ -26,6 +26,10 @@ test AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
 SELECT section, parent, name, label, link
 FROM (
+  SELECT 0 AS s, 'Dataset' AS section, '' AS parent, page AS name, page AS label,
+         (SELECT * FROM base) || lower(page) AS link, o
+  FROM (VALUES ('Model', 1), ('History', 2)) AS p(page, o)
+  UNION ALL
   SELECT 1 AS s, 'Sources' AS section, '' AS parent, source AS name, source AS label,
          (SELECT * FROM base) || 'glossary?source=' || source AS link, 0 AS o
   FROM (SELECT DISTINCT source FROM recipe)
@@ -53,4 +57,4 @@ FROM (
            WHEN 'rate_tolerance' THEN 'rate'
            ELSE 'verdicts' END, 0
   FROM test)
-ORDER BY s, CASE WHEN parent = '' THEN name ELSE parent END, parent <> '', o, name
+ORDER BY s, CASE WHEN s = 0 THEN o END, CASE WHEN parent = '' THEN name ELSE parent END, parent <> '', o, name
