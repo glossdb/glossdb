@@ -41,6 +41,9 @@ test it.
    Where the data cannot answer, the agent asks a person, and the answer
    closes the gap for every later query.
 
+The harness part by part, beside the coding harness: [how the harness
+works](docs/harness.md); every word: [terms](docs/terms.md).
+
 ## What ships
 
 **glossql**, the language and its catalog:

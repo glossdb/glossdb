@@ -17,6 +17,10 @@ app parts, the landings — is rows of one record, and the data is
 parquet under the warehouse ([workspace](concepts/workspace.md));
 reads are served as Arrow over plain HTTP ([connect](start/connect.md)).
 
+- [How the harness works](harness.md) — the data harness beside the
+  coding harness, part by part.
+- [Terms](terms.md) — every word glossdb and glossql use, beside the
+  industry's.
 - [`start/`](start/README.md) — install, connect, and the walkthrough:
   a company's exports to served metrics in one session.
 - [`concepts/`](concepts/README.md) — the mental model, one page per

@@ -13,7 +13,7 @@ out in the old words.
 | Step | Risk | What it touches | Issue |
 |---|---|---|---|
 | 1. House rules: the prose skill's list of protected terms is replaced by the terms table below; CLAUDE.md and the build skills use the plain words | Low. Without it every agent session writes the old words again | `.claude/skills/glossql-prose/`, `CLAUDE.md`, `.claude/skills/` | done on `readme-harness` |
-| 2. One terms page and one analogy page (the coding harness table below), in both repositories | Low | `docs/terms.md`, `docs/harness.md`, the extension's `docs/` | drafted below |
+| 2. One terms page and one analogy page (the coding harness table below), in both repositories | Low | `docs/terms.md`, `docs/harness.md`, the extension's `docs/` | done on `readme-harness` |
 | 3. The READMEs in the shape DuckLake and SurrealDB use: category sentence, the coding-harness analogy, features in industry words, a quick look, status per feature (stable, preview, planned). Out: "proof-of-concept", "working draft", the research file, "not built on purpose", the corpus and the DuckDB mapping table (to the docs) | Low | `README.md` here and in the extension | |
 | 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | |
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | |
@@ -103,13 +103,16 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### One terms page and one analogy page
+### The READMEs open like a product
 
-- **What it buys.** A reader looks up any word once, in industry terms,
-  and finds the harness explained by the coding harness they know.
-- **What is there.** The terms table and the analogy live in
-  `.claude/skills/glossql-prose/SKILL.md`; `docs/` has no terms page;
-  `docs/README.md` opens with "the curated statement".
-- **Done when.** `docs/terms.md` and `docs/harness.md` carry the two
-  tables for a reader; the extension's `docs/` links them; both are
-  `doc://` resources; the suite passes.
+- **What it buys.** An evaluator reads one screen and can say what
+  glossdb is, what it does for their agents, and what is stable.
+- **What is there.** Both READMEs open with the one-liner. glossdb's
+  closes with "a working proof-of-concept" and "a working draft"; the
+  extension's carries the research file, "not built on purpose", the
+  corpus and the 20-row DuckDB mapping table.
+- **Done when.** Each opens with the category sentence, the coding-
+  harness analogy in three lines, features in industry words, a quick
+  look, and a status table per feature (stable, preview, planned);
+  the mapping table and the corpus move to the extension's docs; the
+  extension's examples run on its build; the suite passes.
