@@ -61,7 +61,7 @@ SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() W
 `metric_bands` stores the service's verdict over every metric walked and,
 per metric, whether it was applicable and why not, its behaviour, the
 months walked, the share of points inside the 80% and the 90% band, the
-newest point and every walked point. The test `bands_w` repeats the
+newest point and every walked point. The test `bands_test` repeats the
 verdict through `band_breach` at 0.98. A metric too short for the walk
 serves one row with its reason.
 
@@ -83,7 +83,7 @@ read joins the actual once it is loaded, says where it fell against the
 band (`below`, `low`, `inside`, `high`, `above`) and how often such a
 band held: the catalog's own share once thirty points have an actual for
 the metric, else for the dataset, else the service's.
-`forecast_coverage()` is that tally. The test `forecast_w` says whether
+`forecast_coverage()` is that tally. The test `forecast_test` says whether
 a current forecast exists.
 
 ## The scenario
@@ -112,7 +112,7 @@ the periods ahead twice, as planned and under the scenario. A lever
 whose forecast the service refuses is held at its last value, and the
 estimate still holds. Nothing is replayed over the data: the scenario
 world is the estimate ahead. `scenario_levers(s)` serves the parts,
-what each lever alone does. The test `scenario_w` says whether a
+what each lever alone does. The test `scenario_test` says whether a
 current estimate exists. A new scenario annotation makes the estimate
 stale.
 
@@ -139,7 +139,7 @@ variance on a complete period, the forecast's 80% band, and `planned`:
 it was judged against. The plan's row asks for it until a current one
 exists; it goes stale once the data or the catalog rows it read change.
 `plan_record()` is the newest judgement from the measurements alone,
-the read the `next` step for the plan takes. The test `plan_w` names
+the read the `next` step for the plan takes. The test `plan_test` names
 the gap.
 
 ## The reads

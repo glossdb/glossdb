@@ -110,7 +110,7 @@ FROM band_body();
 
 # the test's threshold is the red line the walk is asked with
 statement ok
-DECLARE TEST bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
+DECLARE TEST bands_test ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
 
 query R
 SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM band_body();
@@ -161,9 +161,9 @@ SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WH
 
 # the result is the service's, repeated by the test's detector
 query TTTR
-SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_w';
+SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_test';
 ----
-fin	bands_w	red	1.0
+fin	bands_test	red	1.0
 
 # --- a repeat is served; a change to what the walk read owes a new one
 
@@ -179,7 +179,7 @@ statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-04', 3.0, 'water');
 
 query T
-SELECT current FROM TESTS() WHERE test = 'bands_w';
+SELECT current FROM TESTS() WHERE test = 'bands_test';
 ----
 false
 
@@ -187,7 +187,7 @@ statement ok
 SELECT metric_bands() FROM fin;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_bands' AND a.test = 'bands_w';
+SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_bands' AND a.test = 'bands_test';
 ----
 2	true
 
@@ -412,16 +412,16 @@ ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 2025-12	above	1000.0
 
 query TTTR
-SELECT subject, test, band, round(score, 2) FROM TESTS() WHERE test = 'plan_w';
+SELECT subject, test, band, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
 ----
-fin.sales_budget	plan_w	red	0.27
+fin.sales_budget	plan_test	red	0.27
 
 # a change to what the judgement read owes it again
 statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-05', 2.0, 'water');
 
 query T
-SELECT current FROM TESTS() WHERE test = 'plan_w';
+SELECT current FROM TESTS() WHERE test = 'plan_test';
 ----
 false
 
@@ -429,7 +429,7 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_w';
+SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_test';
 ----
 2	true
 
@@ -577,9 +577,9 @@ SELECT * FROM metric_series(world := 'scenario', scenario := 'nothing');
 no scenario of that name is declared
 
 query TTTT
-SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_w';
+SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_test';
 ----
-fin	scenario_w	green	true
+fin	scenario_test	green	true
 
 # a lever whose forecast the service refuses is held, and the estimate holds
 statement ok

@@ -198,7 +198,7 @@ DECLARE ASPECT duration_present WITH $${
 }$$ AS FACT ON TABLE WHEN entity = 'one site visit on a work order';
 GLOSS duration_present ON work_orders AS $${
   "outcome": "Closed orders carry a positive on-site duration.", "tolerance": 0.01}$$;
-DECLARE TEST duration_w ON duration_present BY (AGENT, HUMAN)
+DECLARE TEST duration_test ON duration_present BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.01;
 
 DECLARE FUNCTION duration_present_check FOR ops AS $$

@@ -158,7 +158,7 @@ DECLARE FUNCTION band_breach FOR GLOBAL AS $$
   FROM slots WHERE speaker = 'function' AND body->>'band' IS NOT NULL
 $$;
 
-DECLARE TEST bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
+DECLARE TEST bands_test ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
 
 --===------------------------------------------------------------------===--
 -- band_verdict(): the newest walk's result — served_by, grain, score,
@@ -364,7 +364,7 @@ DECLARE FUNCTION forecast_exists FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE TEST forecast_w ON metric_forecast DETECTOR forecast_exists;
+DECLARE TEST forecast_test ON metric_forecast DETECTOR forecast_exists;
 
 --===------------------------------------------------------------------===--
 -- forecast_record(): every forecast run's points as rows, from the
@@ -829,7 +829,7 @@ DECLARE FUNCTION scenario_exists FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE TEST scenario_w ON metric_scenario DETECTOR scenario_exists;
+DECLARE TEST scenario_test ON metric_scenario DETECTOR scenario_exists;
 
 CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH newest AS (
@@ -1158,7 +1158,7 @@ DECLARE FUNCTION plan_gap FOR GLOBAL AS $$
               FROM slots WHERE speaker = 'function'))
 $$;
 
-DECLARE TEST plan_w ON metric_plan DETECTOR plan_gap;
+DECLARE TEST plan_test ON metric_plan DETECTOR plan_gap;
 
 CREATE OR REPLACE MACRO main.plan_record() AS TABLE
 WITH newest AS (
@@ -1267,7 +1267,7 @@ SELECT 'bands', 7, 'next', 'band_points',
        'read the walk behind the red verdict on ' || reds.subject,
        reds.test || ' bands ' || reds.subject || ' red and the walk names no point',
        'SELECT metric, period, displacement FROM band_points() ORDER BY displacement DESC NULLS LAST', ''
-FROM reds CROSS JOIN ds WHERE reds.test = 'bands_w' AND NOT EXISTS (SELECT 1 FROM futures_red)
+FROM reds CROSS JOIN ds WHERE reds.test = 'bands_test' AND NOT EXISTS (SELECT 1 FROM futures_red)
 UNION ALL
 SELECT 'bands', 8, 'blocked', '', '',
        'the walk exists and took no metric: ' || string_agg(p.metric || ' — ' || p.reason, '; ' ORDER BY p.metric), '', ''

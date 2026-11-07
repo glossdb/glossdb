@@ -90,7 +90,7 @@ are sent.
 The service answers with the model's quantiles under the scenario, a
 sign, a confidence and a basis, and the history's own reading beside
 them. The estimate is stored as `metric_scenario`, a measurement on the
-dataset over every annotated scenario, with its test `scenario_w`. It
+dataset over every annotated scenario, with its test `scenario_test`. It
 is due while none has been made, and due again once the data or the
 catalog rows it read change, which a new scenario annotation does.
 

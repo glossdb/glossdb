@@ -17,7 +17,7 @@ DECLARE ASPECT hours_reconcile WITH $${
 }$$ AS FACT ON TABLE WHEN entity = 'work log line';
 GLOSS hours_reconcile ON work_logs AS $${
   "outcome": "Logged minutes match the order's recorded duration, exactly.", "tolerance": 0.0}$$;
-DECLARE TEST hours_w ON hours_reconcile BY (AGENT, HUMAN)
+DECLARE TEST hours_test ON hours_reconcile BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 

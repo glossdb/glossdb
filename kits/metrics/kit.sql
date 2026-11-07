@@ -37,7 +37,7 @@ DECLARE ASPECT ladder WITH $${
   }
 }$$ AS FACT ON COLUMN WHEN role = 'timestamp';
 
-DECLARE TEST ladder_w ON ladder BY (AGENT, HUMAN);
+DECLARE TEST ladder_test ON ladder BY (AGENT, HUMAN);
 
 -- The grains in order, a bucket's step, and the kit's rung per grain.
 CREATE OR REPLACE MACRO main.grain_rank(g) AS

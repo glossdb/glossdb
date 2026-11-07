@@ -2601,7 +2601,7 @@ async fn the_workspace_says_what_it_affords() {
         DECLARE ASPECT price_hike WITH $${"title": "Price +15%", "x-kind": "scenario"}$$ AS FACT ON DATASET;
         DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS VIEW;
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
-        DECLARE TEST ar_tie_w ON ar_tie BY (AGENT, HUMAN);
+        DECLARE TEST ar_tie_test ON ar_tie BY (AGENT, HUMAN);
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 160, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");

@@ -153,7 +153,7 @@ SELECT 'checks', 3, 'next', 'TESTS', 'read the red test results',
        'SELECT subject, aspect, test, band, score FROM TESTS(' || ds.dataset || ') WHERE band = ''red'' ORDER BY test, subject',
        ''
 FROM reds v, ds
-WHERE v.test IS DISTINCT FROM 'bands_w'
+WHERE v.test IS DISTINCT FROM 'bands_test'
 UNION ALL
 SELECT 'checks', 4, 'next', 'DECLARE TEST',
        'turn a reconciliation into a permanent test',

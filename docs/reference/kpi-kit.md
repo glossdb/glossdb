@@ -35,7 +35,7 @@ for judgment only.
 The other kits add theirs beside these: `ladder` on a time column, the
 metrics kit's (the finest grain a series is served at and how many
 periods per grain, required where `role = 'timestamp'`, test
-`ladder_w`); `lever` on a column, the outlook kit's (`value` true: a
+`ladder_test`); `lever` on a column, the outlook kit's (`value` true: a
 column someone sets, the input a scenario moves, with `grounds`; no
 test). The core kit declares `recipe_change`, `review_decision` and the app
 properties before any other kit.
@@ -51,15 +51,15 @@ open work reach zero.
 
 | Test | On | Who may annotate | Detector |
 | --- | --- | --- | --- |
-| `meaning_w` | `meaning` | AGENT, HUMAN | — |
-| `entity_w` | `entity` | AGENT, HUMAN | — |
-| `role_w` | `role` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `behavior_w` | `behavior` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `unit_w` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `dimension_w` | `dimension` | AGENT, HUMAN | — |
+| `meaning_test` | `meaning` | AGENT, HUMAN | — |
+| `entity_test` | `entity` | AGENT, HUMAN | — |
+| `role_test` | `role` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
+| `behavior_test` | `behavior` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
+| `unit_test` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
+| `dimension_test` | `dimension` | AGENT, HUMAN | — |
 
 A test (`DECLARE TEST`) says who may annotate a property and
 makes it required; its detector scores the values written, a band and
 a score. The tests come last in the kit, since a test names a property
 and a detector that must already exist. The outlook kit adds its own:
-`bands_w`, `forecast_w`, `scenario_w`, `plan_w` ([functions](functions.md)).
+`bands_test`, `forecast_test`, `scenario_test`, `plan_test` ([functions](functions.md)).

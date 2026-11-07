@@ -17,7 +17,7 @@ leaves the workspace, walk this map and run what answers it:
 | which axes are worth slicing | the served columns that carry `role` dimension; a `dimension` annotation ranks them, `primary` first, `none` closes one |
 | hierarchies inside dimensions | `detect_hierarchies()` |
 | two metrics accidentally identical | `detect_grounding_collisions()` |
-| whether a metric's month is surprising | `metric_bands()`, the service's verdict carried by `bands_w` |
+| whether a metric's month is surprising | `metric_bands()`, the service's verdict carried by `bands_test` |
 | the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `metric_axes()` says what the catalog says of its columns, and what each still needs |
 | whether a written expectation holds | a check function's value and the detector you bind, read via `TESTS()` |
 

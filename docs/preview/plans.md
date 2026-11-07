@@ -112,7 +112,7 @@ FROM plan_points() WHERE grain = 'year' ORDER BY plan, period
 `metric_plan` judges a plan: `SELECT metric_plan() FROM
 brla.revised_budget` stores the rows `plan_points()` returns for it as
 a measurement on the plan, with the forecast run it was judged against.
-The test `plan_w` reads the gap from that measurement: red where a
+The test `plan_test` reads the gap from that measurement: red where a
 period with a range lies below or above the forecast's range, scored as
 the share of such periods. The measurement is stale once the data or
 the catalog rows it read change; a newer forecast asks for it again.

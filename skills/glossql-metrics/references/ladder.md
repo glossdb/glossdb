@@ -80,7 +80,7 @@ came before, what would this month have had to be for nobody to be
 surprised? PIT says where the actual fell in that corridor — 0.5 is
 on the trajectory, past 0.95 or under 0.05 is outside what the
 metric's own history can explain. The service's result scores the
-newest point of every metric walked, and the test `bands_w` carries it. Each
+newest point of every metric walked, and the test `bands_test` carries it. Each
 point's fit saw only the months before it.
 
 - **The walk is the `bands` goal.** `SELECT metric_bands() FROM
@@ -204,7 +204,7 @@ amended one both exist.
   compares to that month's band.
 - `SELECT metric_plan() FROM <dataset>.<plan>` judges the plan: the
   same rows stored as a measurement on the plan with the forecast run
-  they were judged against, `plan_w` reading the gap off them. The
+  they were judged against, `plan_test` reading the gap off them. The
   plan goal reads the judgement and never the data. Its next steps:
   the first plan to declare, a declared plan to define, the forecast
   to run while due, the plan to judge, then per plan year the band does

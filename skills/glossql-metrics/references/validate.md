@@ -12,7 +12,7 @@ DECLARE ASPECT hours_reconcile WITH $${
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"},
                  "breach_rate": {"type": "number"}}
 }$$ AS FACT ON TABLE WHEN entity = 'work log line';
-DECLARE TEST hours_w ON hours_reconcile BY (AGENT, HUMAN)
+DECLARE TEST hours_test ON hours_reconcile BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 GLOSS hours_reconcile ON work_logs AS $${
   "outcome": "Logged minutes match the order's recorded duration, exactly.", "tolerance": 0.0}$$;

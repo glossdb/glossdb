@@ -1237,11 +1237,11 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         .execute(
             r#"USE perf;
                DECLARE ASPECT meaning WITH $${"type": "object"}$$ AS FACT ON COLUMN;
-               DECLARE TEST meaning_w ON meaning BY (AGENT, HUMAN);
+               DECLARE TEST meaning_test ON meaning BY (AGENT, HUMAN);
                GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;
                DECLARE FUNCTION probe_check FOR GLOBAL AS
                  $$SELECT DISTINCT subject, 'orange' AS band, 0.42 AS score FROM slots$$;
-               DECLARE TEST dso_w ON dso DETECTOR probe_check THRESHOLD 0.9;"#,
+               DECLARE TEST dso_test ON dso DETECTOR probe_check THRESHOLD 0.9;"#,
         )
         .await
         .unwrap();
@@ -1259,7 +1259,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     }
     let checks = body_text(checks).await;
     assert_eq!(
-        checks.matches("dso_w\n").count(),
+        checks.matches("dso_test\n").count(),
         1,
         "one test row for the detector, and the meaning voice is not a check:\n{checks}"
     );
@@ -1268,7 +1268,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         "the test row counts its verdicts by band:\n{checks}"
     );
     assert!(
-        checks.contains("?check=dso_w&kind=verdicts\n"),
+        checks.contains("?check=dso_test&kind=verdicts\n"),
         "the row opens the check, with the detector's kind:\n{checks}"
     );
     assert!(
@@ -1279,20 +1279,20 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // The check's page: the declaration and the result as one row,
     // then the evidence — every result, for a detector the page has
     // no shape for.
-    let page = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts").await).await;
+    let page = text(get(&app, "/perf/app/console/p/quality?check=dso_test&kind=verdicts").await).await;
     assert!(page.contains("frames/check\""), "{page}");
-    let evidence = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts&tab=measurements").await).await;
+    let evidence = text(get(&app, "/perf/app/console/p/quality?check=dso_test&kind=verdicts&tab=measurements").await).await;
     assert!(evidence.contains("frames/check_verdicts"), "{evidence}");
     assert!(
         page.contains("aria-current=\"page\" href=\"/perf/app/console/p/quality\">Quality</a>"),
         "opening a check stays on the tab:\n{page}"
     );
-    let check = body_text(get(&app, "/perf/app/console/frames/check?check=dso_w").await).await;
+    let check = body_text(get(&app, "/perf/app/console/frames/check?check=dso_test").await).await;
     assert!(check.contains("probe_check\n"), "{check}");
     assert!(check.contains("0.9\n"), "the threshold:\n{check}");
     assert!(check.contains("1 result: 1 orange\n"), "{check}");
     let verdicts =
-        body_text(get(&app, "/perf/app/console/frames/check_verdicts?check=dso_w").await).await;
+        body_text(get(&app, "/perf/app/console/frames/check_verdicts?check=dso_test").await).await;
     assert!(verdicts.contains("perf\n"), "the subject:\n{verdicts}");
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
@@ -1303,7 +1303,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     agent
         .execute(
             r#"USE perf;
-               DECLARE TEST value_w ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+               DECLARE TEST value_test ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
                GLOSS meaning ON ledger.month AS $${"value": "the month"}$$;"#,
         )
         .await
@@ -1323,11 +1323,11 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         .unwrap();
     let checks = body_text(get(&app, "/perf/app/console/frames/checks").await).await;
     assert!(
-        checks.contains("?check=value_w&kind=voices\n"),
+        checks.contains("?check=value_test&kind=voices\n"),
         "a voice check opens to its voices:\n{checks}"
     );
     let slots =
-        body_text(get(&app, "/perf/app/console/frames/check_slots?check=value_w").await).await;
+        body_text(get(&app, "/perf/app/console/frames/check_slots?check=value_test").await).await;
     assert!(
         slots.contains("ledger.value\n"),
         "the column whose voices differ:\n{slots}"
@@ -1340,7 +1340,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         !slots.contains("ledger.month"),
         "an agreeing column is not listed:\n{slots}"
     );
-    let points = get(&app, "/perf/app/console/frames/check_points?check=value_w").await;
+    let points = get(&app, "/perf/app/console/frames/check_points?check=value_test").await;
     assert_eq!(
         row_count(points).await,
         0,
@@ -2741,7 +2741,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let owed_on = "on a table, a column, a join\n";
     assert!(head.contains(owed_on), "{head}");
     assert!(
-        head.contains("test meaning_w by agent, human\n"),
+        head.contains("test meaning_test by agent, human\n"),
         "{head}"
     );
     // The required subjects: the views' columns and the tables are required too.

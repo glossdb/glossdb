@@ -197,7 +197,7 @@ again once a newer forecast exists ([plans](../preview/plans.md)).
 
 ### slot_entropy
 
-Used by the KPI kit's tests `role_w`, `behavior_w` and `unit_w`
+Used by the KPI kit's tests `role_test`, `behavior_test` and `unit_test`
 (threshold 0.7). The score is the share of extra distinct values among
 the values for the aspect: 0.0 when all agree. Green at 0, yellow up
 to the threshold, red above it.
@@ -211,7 +211,7 @@ also catch over-cleaning declares its own detector
 
 ### band_breach
 
-Used by the outlook kit's test `bands_w` on `metric_bands` (threshold
+Used by the outlook kit's test `bands_test` on `metric_bands` (threshold
 0.98). Repeats the service's verdict over the walk: the worst
 displacement, |2·PIT − 1|, across the newest point of every metric
 walked, raised to the number of metrics scored. `TESTS()` carries it
@@ -220,12 +220,12 @@ measurement's own output; `band_points()` returns them as rows.
 
 ### forecast_exists, scenario_exists
 
-Used by `forecast_w` and `scenario_w`: green once a run exists, so a
+Used by `forecast_test` and `scenario_test`: green once a run exists, so a
 forecast and an estimate are expected while none exists, and again
 once they go stale.
 
 ### plan_gap
 
-Used by `plan_w` on `metric_plan`: red where a period with a band lies
+Used by `plan_test` on `metric_plan`: red where a period with a band lies
 below or above the forecast's band; the score is the share of such
 periods.

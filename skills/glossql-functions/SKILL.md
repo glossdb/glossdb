@@ -146,7 +146,7 @@ Judgment lives in detectors and in read policy, never in results — no
 measurement writes a judgment into data.
 
 ```glossql
-DECLARE TEST on_time_w ON on_time_completion BY (AGENT, HUMAN)
+DECLARE TEST on_time_test ON on_time_completion BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 

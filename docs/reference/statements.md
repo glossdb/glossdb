@@ -179,7 +179,7 @@ agree; `THRESHOLD` is the score above which differing values read as
 takes only a detector ([data tests](../usage/data-tests.md)).
 
 ```glossql
-DECLARE TEST currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
 ```
 
 ## Running a measurement

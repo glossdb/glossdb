@@ -14,7 +14,7 @@ everything before it. It runs on a dataset
   model's own distribution, from 0 to 1;
 - the service's result over the walk.
 
-The test `bands_w` carries the result; the measurement reports.
+The test `bands_test` carries the result; the measurement reports.
 
 ## Why a forecast model
 
