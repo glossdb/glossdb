@@ -1,5 +1,5 @@
--- The measurement aspects nobody has run: owed on their subjects by
--- grain and condition, with no landed body on any. The agent's backlog,
+-- The measurement aspects nobody has run: required on their subjects by
+-- grain and condition, with no loaded body on any. The agent's backlog,
 -- not a question for a person; folded under the measured.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition FROM aspects

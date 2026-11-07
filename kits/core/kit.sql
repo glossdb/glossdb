@@ -35,7 +35,7 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
 -- A person's current review decisions, one row per entry of the latest
 -- `ruling` body on a subject; `folded_in` once no agent assumption below
 -- full confidence carries the decided key under the decided aspect.
-CREATE OR REPLACE VIEW main.ruling_entries AS
+CREATE OR REPLACE VIEW main.review_decisions AS
   WITH latest AS (
     SELECT * FROM (
       SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
@@ -77,12 +77,12 @@ CREATE OR REPLACE VIEW main.open_questions AS
          max(s.note) AS sibling_note
   FROM main.agent_assumptions o
   JOIN groundings a ON a.name = o.aspect
-  LEFT JOIN main.ruling_entries s
+  LEFT JOIN main.review_decisions s
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
     AND coalesce(o.dimension, '-') NOT IN ('behavior', 'sign', 'grain')
-    AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r
+    AND NOT EXISTS (SELECT 1 FROM main.review_decisions r
                     WHERE r.dataset = o.dataset AND r.subject = o.subject
                       AND r.aspect = o.aspect AND r.key = o.key)
   GROUP BY ALL;
@@ -186,7 +186,7 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_next AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM main.ruling_entries),
+  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
     SELECT name, kind, schema FROM (
@@ -223,11 +223,11 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            WHEN 'claims' THEN c.n_claims WHEN 'functions' THEN c.n_functions
            WHEN 'metrics' THEN c.n_metrics WHEN 'validations' THEN c.n_validations
            WHEN 'scenarios' THEN c.n_scenarios WHEN 'plans' THEN c.n_plans
-           WHEN 'rulings' THEN c.n_rulings ELSE c.n_apps END AS stands,
+           WHEN 'review' THEN c.n_rulings ELSE c.n_apps END AS stands,
          CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
            WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
-           WHEN 'rulings' THEN c.open_rulings ELSE 0 END AS open
+           WHEN 'review' THEN c.open_rulings ELSE 0 END AS open
   FROM counts c
   CROSS JOIN (VALUES
     ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
@@ -238,9 +238,9 @@ CREATE OR REPLACE VIEW main.workspace_next AS
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
     ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
     ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST (the test) with a DETECTOR scoring them — TESTS() serves the test results'),
-    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the futures kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the futures kit serves the plan world'),
-    ('rulings', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
+    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
+    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
+    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
     ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
   ) AS s(surface, how);
 

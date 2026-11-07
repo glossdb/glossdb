@@ -1,5 +1,5 @@
--- A check's verdicts, every one: subject, band and score as TESTS()
--- holds them, the worst first. A verdict from before the last change
+-- A check's results, every one: subject, band and score as TESTS()
+-- holds them, the worst first. A result from before the last change
 -- says so.
 SELECT a.subject,
        a.aspect,

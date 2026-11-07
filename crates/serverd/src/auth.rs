@@ -1,7 +1,7 @@
 //! Who is speaking, proved rather than declared.
 //!
 //! SPEC.md §1 says the actor rides the transport. This module is the
-//! transport's half of that: every door sits behind one gate, and the
+//! transport's half of that: every interface sits behind one gate, and the
 //! gate reads a bearer token the same way for all of them.
 //!
 //! The server is an OAuth 2.1 **resource server** (MCP authorization,
@@ -11,12 +11,12 @@
 //! It issues nothing: the login, the consent, the client registration
 //! are the issuer's.
 //!
-//! **Identity is the token's; standing is the door's.** A token names a
+//! **Identity is the token's; standing is the interface's.** A token names a
 //! subject (`sub`) — the person who consented. Whether that person is
 //! speaking as themselves or through an agent is not a claim anyone
-//! signs; it is which door the request came through. `/mcp` is the
-//! agent door, everything else is a human door, and the gate stamps the
-//! door's kind on the caller. That is the supersession key's third leg
+//! signs; it is which interface the request came through. `/mcp` is the
+//! agent interface, everything else is a human interface, and the gate stamps the
+//! interface's kind on the caller. That is the supersession key's third leg
 //! (subject, aspect, actor kind), settled by the transport as §1 says.
 //!
 //! **What binds a token to this server.** RFC 8707, which the MCP
@@ -26,8 +26,8 @@
 //! names none at all, is refused: an audience is what tells a token
 //! minted for this server apart from one minted for any other.
 //!
-//! Standing the server *witnesses* is a separate matter and is not
-//! governed here: an answer elicited mid-call lands with human standing
+//! Standing the server *tests* is a separate matter and is not
+//! governed here: an answer elicited mid-call is stored with human standing
 //! under the same subject, because the server saw the act.
 
 use std::sync::{Mutex, RwLock};
@@ -333,12 +333,12 @@ fn algorithm_of(jwk: &Jwk) -> Option<Algorithm> {
     }
 }
 
-/// The gate, one layer above a door, carrying that door's standing.
+/// The gate, one layer above an interface, carrying that interface's standing.
 ///
-/// Every door is behind one of these, so identity is read the same way
+/// Every interface is behind one of these, so identity is read the same way
 /// for all of them and no handler can forget to. The kind is the
-/// door's: `/mcp` says agent, the others say human. The cookie is a
-/// browser's, so only a human door reads it: at the agent door it
+/// interface's: `/mcp` says agent, the others say human. The cookie is a
+/// browser's, so only a human interface reads it: at the agent interface it
 /// would give a person's session an agent's standing.
 pub async fn gate(
     State((gate, kind)): State<(std::sync::Arc<Gate>, ActorKind)>,

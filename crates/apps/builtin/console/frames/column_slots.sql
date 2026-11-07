@@ -1,8 +1,8 @@
--- One column's slots, every one: each authored aspect with every voice
+-- One column's values, every one: each authored aspect with every value
 -- on it — a person's first, then the agent's — its value in words, who
--- spoke, when, and the slot's standing from the collapsed read; each
--- measurement a function landed, summarised from its body; and each
--- slot the record owes and nobody filled, said so.
+-- spoke, when, and the value's standing from the collapsed read; each
+-- measurement a function loaded, summarised from its body; and each
+-- value the catalog owes and nobody filled, said so.
 WITH d AS (SELECT dataset FROM current_dataset),
 subj AS (SELECT d.dataset || '.' || CAST($column AS VARCHAR) AS subject FROM d),
 states AS (SELECT aspect, state FROM GLOSSARY() WHERE subject = (SELECT subject FROM subj)),

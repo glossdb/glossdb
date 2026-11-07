@@ -81,7 +81,7 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("metric.sql"),
         frame!("movers.sql"),
         frame!("open.sql"),
-        frame!("owed.sql"),
+        frame!("open_items.sql"),
         frame!("plan.sql"),
         frame!("pulse.sql"),
         frame!("reads.sql"),

@@ -12,7 +12,7 @@
   'use strict';
 
   // A spec runs in vega's interpreter, never compiled to code: the
-  // door's content security policy allows no eval, and a spec is an
+  // interface's content security policy allows no eval, and a spec is an
   // author's text. The module loads once, at the first chart.
   const interpreter = import('/assets/vendor/vega-interpreter.js').then(
     (m) => m.expressionInterpreter

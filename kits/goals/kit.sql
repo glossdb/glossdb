@@ -5,22 +5,22 @@
 -- order, the lowest step deciding each.
 
 -- What waits on an action in the bound dataset, from the data
--- alone: `recipe`, an approved load-query change with no load since;
+-- alone: `recipe-change`, an approved load-query change with no load since;
 -- `formula`, a person's formula answer newer than the metric's recorded
--- definition; `contest`, a value withheld at read; `re-measure`, a
+-- definition; `conflict`, a value withheld at read; `re-measure`, a
 -- measurement stored before the last change; `never measured`, a
 -- measurement a metric's row reads and nobody ran, or a tested
 -- measurement on the dataset with no result while a metric is defined;
--- `fold-in`, a review decision whose key is still below full confidence.
+-- `apply-decision`, a review decision whose key is still below full confidence.
 -- Each row resolves by the action it names, never by a flag.
-CREATE OR REPLACE VIEW main.owed AS
+CREATE OR REPLACE VIEW main.open_items AS
   WITH ds AS (SELECT current_schema() AS dataset),
   approvals AS (
     SELECT h.dataset, json_extract_string(h.body, '$.table') AS tbl, h.written_at
     FROM main.glossary h, ds
     WHERE h.dataset = ds.dataset AND h.aspect = 'recipe_change' AND h.actor_kind = 'human'),
   recipes AS (
-    SELECT 'recipe' AS kind, a.tbl AS subject, 'recipe change on ' || a.tbl AS what,
+    SELECT 'recipe-change' AS kind, a.tbl AS subject, 'recipe change on ' || a.tbl AS what,
            'approved — not yet declared again' AS why, a.written_at::VARCHAR AS since
     FROM approvals a
     WHERE a.tbl IS NOT NULL
@@ -47,7 +47,7 @@ CREATE OR REPLACE VIEW main.owed AS
     WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   contests AS (
-    SELECT 'contest' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
+    SELECT 'conflict' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
            'withheld at read — a detector crossed its threshold or the values differ' AS why, '' AS since
     FROM collapsed c WHERE c.state = 'contested'),
   remeasures AS (
@@ -77,9 +77,9 @@ CREATE OR REPLACE VIEW main.owed AS
       AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
     QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.seq DESC) = 1),
   foldins AS (
-    SELECT 'fold-in' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
+    SELECT 'apply-decision' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
            'decided (' || r.stance || ') — not yet applied to the definition' AS why, r.written_at::VARCHAR AS since
-    FROM main.ruling_entries r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
+    FROM main.review_decisions r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
   SELECT * FROM recipes
   UNION ALL SELECT * FROM formulas
   UNION ALL SELECT * FROM contests
@@ -89,10 +89,10 @@ CREATE OR REPLACE VIEW main.owed AS
   UNION ALL SELECT * FROM foldins;
 
 -- The goals the interfaces' own reads answer, as next steps each: structure,
--- checks, app, rulings; the metrics kit answers metrics and slices, the
--- futures kit bands and plan. Served as the arms' SQL text, like a kit's
+-- checks, app, review; the metrics kit answers metrics and slices, the
+-- outlook kit bands and plan. Served as the arms' SQL text, like a kit's
 -- next steps, over the relations the engine's next read takes once: ds,
--- axes, owed, reds, bodies, applicable.
+-- axes, open_items, reds, bodies, applicable.
 CREATE OR REPLACE MACRO main.routes_core() AS TABLE
 SELECT '' AS ctes, $arms$
 SELECT 'structure' AS surface, 1 AS step, 'next' AS state, 'DECLARE SOURCE' AS act,
@@ -140,12 +140,12 @@ FROM ds
 UNION ALL
 SELECT 'checks', 1, 'next', 'EXTRACT', 're-run ' || o.subject, o.why,
        'SELECT ' || o.subject || '() FROM ' || ds.dataset, ''
-FROM owed o, ds
+FROM open_items o, ds
 WHERE o.kind = 're-measure'
 UNION ALL
 SELECT 'checks', 2, 'next', 'EXTRACT', 'run ' || o.subject, o.why,
        'SELECT ' || o.subject || '() FROM ' || ds.dataset, ''
-FROM owed o, ds
+FROM open_items o, ds
 WHERE o.kind = 'never measured' AND o.what LIKE '% over ' || ds.dataset
 UNION ALL
 SELECT 'checks', 3, 'next', 'TESTS', 'read the red test results',
@@ -205,27 +205,27 @@ UNION ALL
 SELECT 'app', 5, 'done', '', '', 'an app exists', '', ''
 FROM ds
 UNION ALL
-SELECT 'rulings', 1, 'next', 'GLOSS query',
+SELECT 'review', 1, 'next', 'GLOSS query',
        'apply the review decision on ' || r.aspect || ' (' || r.key || ': ' || r.stance || ')',
        coalesce(r.note, ''),
-       '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "human-ruled"; an unclear answer means rewording the question under a new key' || chr(10)
+       '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "decided-by-person"; an unclear answer means rewording the question under a new key' || chr(10)
          || 'GLOSS ' || r.aspect || ' ON ' || r.subject || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
        ''
-FROM main.ruling_entries r LEFT JOIN bodies b ON b.metric = r.aspect, ds
+FROM main.review_decisions r LEFT JOIN bodies b ON b.metric = r.aspect, ds
 WHERE r.dataset = ds.dataset AND NOT r.folded_in
 UNION ALL
-SELECT 'rulings', 2, 'next', 'DECLARE RECIPE', 'declare ' || o.subject || ' again as approved', o.why,
+SELECT 'review', 2, 'next', 'DECLARE RECIPE', 'declare ' || o.subject || ' again as approved', o.why,
        'DECLARE RECIPE ' || o.subject || ' ON ' || ds.dataset || ' FROM <source> AS $$<the approved sql>$$;',
        ''
-FROM owed o, ds
-WHERE o.kind = 'recipe'
+FROM open_items o, ds
+WHERE o.kind = 'recipe-change'
 UNION ALL
-SELECT 'rulings', 3, 'next', 'GLOSSARY', 'read the contested value on ' || o.subject, o.why,
+SELECT 'review', 3, 'next', 'GLOSSARY', 'read the contested value on ' || o.subject, o.why,
        'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || o.subject || ', all => true)',
        ''
-FROM owed o, ds
-WHERE o.kind = 'contest'
+FROM open_items o, ds
+WHERE o.kind = 'conflict'
 UNION ALL
-SELECT 'rulings', 4, 'done', '', '', 'nothing open', '', ''
+SELECT 'review', 4, 'done', '', '', 'nothing open', '', ''
 FROM ds
 $arms$ AS arms;

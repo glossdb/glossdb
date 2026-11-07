@@ -20,12 +20,12 @@ SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
          WHEN expected IS NULL THEN ''
          ELSE fmt_number(expected) || ' (' || fmt_number(low)
               || ' to ' || fmt_number(high) || ')' END AS expected,
-       CASE stands
+       CASE planned
          WHEN 'inside' THEN 'inside the band'
          WHEN 'below' THEN 'below the band'
          WHEN 'above' THEN 'above the band'
-         ELSE stands END || coalesce(', covers ' || covers, '') AS stands,
-       CASE stands WHEN 'below' THEN 'warn' WHEN 'above' THEN 'warn' ELSE 'ok' END AS scls,
+         ELSE planned END || coalesce(', covers ' || covers, '') AS planned,
+       CASE planned WHEN 'below' THEN 'warn' WHEN 'above' THEN 'warn' ELSE 'ok' END AS scls,
        coalesce(
          CAST(CAST(round(held_80 * 100) AS INT) AS VARCHAR) || '% of such bands held (' || held_from || ')',
          '') AS held

@@ -25,12 +25,12 @@ same rows the forms serve and the console renders. Filter it like any
 table (`WHERE o.aspect = 'cycle_time'`); order it where you read it,
 since a read carries no ordering of its own. The join is what scopes
 it to the dataset you bound — drop it and you are reading every
-dataset in the workspace. `ruling_entries` is what the person has
+dataset in the workspace. `review_decisions` is what the person has
 decided; both build on it.
 
 **One key decided two ways is yours to reconcile.** The review names
 the sibling decision on the form when it asks about a key the person
-already decided under another aspect; `ruling_entries` shows both
+already decided under another aspect; `review_decisions` shows both
 afterwards. Nothing pairs or resolves them: decide whether the aspects
 genuinely differ, and record the reconciliation in the metric
 definitions themselves. Applying both literally is how a decided
@@ -62,7 +62,7 @@ Then close what waits on an action, in the same session:
 - **A review decision not yet applied** (the brief counts these):
   record the decided metric definition again — the decided assumption
   **under the same key**, at confidence 1.0 with `basis:
-  "human-ruled"`, or redefined per the correction note in the
+  "decided-by-person"`, or redefined per the correction note in the
   decision. It clears the moment your current body carries that key
   at full confidence; until then the decision keeps the question
   closed for you both. Keep the key and rewrite the prose as freely as
@@ -70,12 +70,12 @@ Then close what waits on an action, in the same session:
   moves the pin: the series reads the newest claims at its next read,
   `metric_axes().judged_current` says whether the profile is current
   at the data's version, and the walk is stored at the pin it runs at.
-  The `rulings`, `slices` and `bands` goals on the `next:` line carry
+  The `review`, `slices` and `bands` goals on the `next:` line carry
   the order — the decisions applied, then the profile once, then the
   walk once. **That closing re-measure is the audit of the batch, not
   hygiene**: a review decision outranks your judgment, never the
   measurements — and the batch moved the pin, so every check function's
-  value is stale until it runs again (`owed` counts them as
+  value is stale until it runs again (`open_items` counts them as
   `re-measure` rows). Re-run them, then read the results back on the
   metrics the batch touched: `TESTS()` on their check aspects,
   `metric_axes().alternative_divergence` where an alternative reading
@@ -92,7 +92,7 @@ Then close what waits on an action, in the same session:
   rewording — rewrite the assumption plainly (its note says what
   confused them) **under a new key** and record it again; the clearer
   wording derives its own question, and dropping the old key clears
-  what it owed.
+  what it needed.
 - **A person's formula answer newer than the metric's stored
   annotation**: the two are one definition in two forms — record the
   materialization again to match (or carry the difference as a

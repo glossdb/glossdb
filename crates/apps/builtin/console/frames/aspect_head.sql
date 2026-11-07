@@ -1,6 +1,6 @@
 -- One aspect's declaration: its kind, what it holds from its schema,
--- where it is owed from its grain and condition, who may speak it, the
--- test that stands on it with its detector and threshold, the
+-- where it is required from its grain and condition, who may speak it, the
+-- test that holds on it with its detector and threshold, the
 -- schema's own description where it has one, and the schema itself.
 -- One row, or none for a name no aspect carries.
 WITH a AS (
@@ -15,7 +15,7 @@ WITH a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 w AS (
   SELECT string_agg(
-           name || coalesce(' by ' || lower(array_to_string(speakers, ', ')), '')
+           name || coalesce(' by ' || lower(array_to_string(actors, ', ')), '')
              || coalesce(', tested by ' || detector || coalesce(' at ' || CAST(threshold AS VARCHAR), ''), ''),
            ' · ' ORDER BY name) AS tests
   FROM (SELECT * FROM tests WHERE aspect = CAST($aspect AS VARCHAR)

@@ -1,7 +1,7 @@
 -- The vocabulary: every declared aspect of the kind the page asks for —
 -- `fact`, `query`, `measurement`, or `own` for the workspace's own
--- words — with what it holds from its schema, where it is owed from its
--- grain and condition, how many owed subjects carry a value and how
+-- words — with what it holds from its schema, where it is required from its
+-- grain and condition, how many required subjects carry a value and how
 -- many are contested, who may speak it, and whether a test judges
 -- it. A row opens the aspect's page.
 WITH a AS (
@@ -18,7 +18,7 @@ counts AS (
 w AS (
   SELECT aspect,
          max(CASE WHEN detector IS NOT NULL THEN 1 ELSE 0 END) AS judged,
-         max(array_to_string(speakers, ', ')) AS speakers
+         max(array_to_string(actors, ', ')) AS actors
   FROM (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
   GROUP BY aspect),
 f AS (
@@ -47,9 +47,9 @@ SELECT a.name AS aspect,
        CASE WHEN coalesce(c.owed, 0) > 0 AND c.spoken = c.owed THEN 'full' ELSE '' END AS full,
        CASE
          WHEN a.kind = 'measurement' THEN coalesce(f.fns, 'no function returns it')
-         WHEN w.speakers IS NOT NULL THEN replace(replace(lower(w.speakers), 'human', 'a person'), 'agent', 'the agent')
+         WHEN w.actors IS NOT NULL THEN replace(replace(lower(w.actors), 'human', 'a person'), 'agent', 'the agent')
          ELSE 'the agent, a person' END
-         || CASE WHEN coalesce(w.judged, 0) = 1 THEN ' · tested' ELSE '' END AS speakers,
+         || CASE WHEN coalesce(w.judged, 0) = 1 THEN ' · tested' ELSE '' END AS actors,
        '?aspect=' || a.name AS link
 FROM a
 LEFT JOIN counts c ON c.aspect = a.name

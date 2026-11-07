@@ -1,7 +1,7 @@
 -- One aspect's values: every subject the collapsed read serves for it
--- — the value in words, who spoke it, the slot's standing and when —
--- and every subject it is owed on where nobody spoke, said so. The
--- contested first, then the stale, then the spoken, then the owed; a
+-- — the value in words, who spoke it, the value's standing and when —
+-- and every subject it is required on where nobody spoke, said so. The
+-- contested first, then the stale, then the spoken, then the required; a
 -- subject opens its page where it has one. Subjects are shown without
 -- the dataset's own prefix.
 WITH d AS (SELECT dataset FROM current_dataset),

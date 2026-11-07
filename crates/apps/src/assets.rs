@@ -1,6 +1,6 @@
 //! Embedded static assets: the wrapper's own JS and CSS plus the
 //! vendored libraries (see assets/vendor/README.md). Everything the
-//! browser runs ships in the binary — the door works offline.
+//! browser runs ships in the binary — the interface works offline.
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::LazyLock;

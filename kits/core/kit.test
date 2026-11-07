@@ -1,5 +1,5 @@
 # name: kits/core/kit.test
-# description: the core kit — the workspace's own vocabulary, the ruling and the app aspects, and the door's reads over the record; run again, it stands
+# description: the core kit — the workspace's own vocabulary, the review decision and the app aspects, and the interface's reads over the catalog; run again, it holds
 # group: [sql]
 
 require glossql
@@ -43,11 +43,11 @@ SELECT count(*) FROM open_questions;
 0
 
 query I
-SELECT count(*) FROM ruling_entries;
+SELECT count(*) FROM review_decisions;
 ----
 0
 
-# the same text again, as the opener runs it at every start-up: the kit stands, nothing runs
+# the same text again, as the opener runs it at every start-up: the kit holds, nothing runs
 query TT
 FROM glossql_kit('{KITS}/core/kit.sql');
 ----

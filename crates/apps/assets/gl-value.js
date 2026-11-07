@@ -5,7 +5,7 @@
 
   function fmt(value, format) {
     if (value == null) return '\u2013';
-    // A value that is already a word — a band, a verdict, a state. It
+    // A value that is already a word — a band, a result, a state. It
     // reached the number formatter before this branch existed and the
     // console's corridor tile rendered NaN.
     if (format === 'text') return String(value);

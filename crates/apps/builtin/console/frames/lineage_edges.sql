@@ -1,7 +1,7 @@
 -- The lineage graph's edges: every declared key edge of the bound
 -- dataset, spelled without the dataset's prefix, and for every current
--- grounding the table columns its served fields descend from. `m2o` is
--- `->`, `o2o` is `<->`, `reads` is a grounding reading the column.
+-- metric definition the table columns its served fields descend from. `m2o` is
+-- `->`, `o2o` is `<->`, `reads` is a metric definition reading the column.
 WITH d AS (SELECT dataset FROM current_dataset)
 SELECT substr(r.left_side, len(d.dataset) + 2) AS src,
        substr(r.right_side, len(d.dataset) + 2) AS dst,

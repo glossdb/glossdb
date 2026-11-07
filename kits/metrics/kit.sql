@@ -64,14 +64,14 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- 'none' where nobody annotated it, 'contested' where the test withholds it),
 -- dims (the slicing columns, primary first), unranked (the dimension
 -- columns no dimension gloss ranks), unadmitted (the served columns with
--- no role), owed (the gloss each of those wants),
+-- no role), required (the gloss each of those wants),
 -- wanted (the measurement the row reads and nobody ran), judged_current
 -- (the profile is current at the data's own version). A plan (x-kind plan) is
 -- read through the metric it names: its period and value are the columns
 -- named as that metric's, or period and value, its behaviour the metric's,
 -- its floor the grain its rows are booked against where the declaration
 -- says so (x-covers); nothing is glossed on a plan's own columns. A served
--- plan's row wants the judgement the futures kit measures on the plan
+-- plan's row wants the judgement the outlook kit measures on the plan
 -- (metric_plan over the plan) until one exists, as a metric's row wants
 -- the profile over its period column.
 --===------------------------------------------------------------------===--
@@ -249,7 +249,7 @@ ORDER BY metric;
 -- members serves its top 23 by weight and 'other'. The actual world is
 -- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
 -- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
--- '<name>') are the futures kit's, served under the metric through
+-- '<name>') are the outlook kit's, served under the metric through
 -- world_cells(), which is empty until that kit is loaded.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than

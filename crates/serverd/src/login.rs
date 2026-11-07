@@ -1,10 +1,10 @@
 //! The browser's way in: this server as an OAuth client of the issuer,
-//! for the one door a browser uses.
+//! for the one interface a browser uses.
 //!
 //! A machine obtains its token itself and carries it. A browser cannot,
 //! so `/auth/login` sends it to the issuer's sign-in (authorization code
 //! with PKCE, RFC 7636), `/auth/callback` exchanges the code for the
-//! token — verified by the same gate every door verifies with — and
+//! token — verified by the same gate every interface verifies with — and
 //! hands it to the browser as the `glossql_token` cookie. From then on
 //! the browser is any other caller. The issuer does the signing in; this
 //! server never sees a password, and holds no session: what the browser
@@ -207,8 +207,8 @@ async fn finish(
             );
         }
     };
-    // The same verification every door applies, before the browser is
-    // handed anything: a token the doors would refuse is not a login.
+    // The same verification every interface applies, before the browser is
+    // handed anything: a token the interfaces would refuse is not a login.
     let access = token.access_token().secret();
     if let Err(e) = login.gate.verify(access).await {
         tracing::warn!(error = %e, "login: the issuer's token is refused");
@@ -247,7 +247,7 @@ async fn logout(State(login): State<Arc<Login>>) -> Response {
 }
 
 /// A path on this server, else `/`. `next` is read as a URL against
-/// the server's own and kept only when it lands on the same origin,
+/// the server's own and kept only when it is stored on the same origin,
 /// so a scheme-relative `//evil.example`, an absolute URL elsewhere,
 /// and a backslash a browser would read as a second slash all come
 /// back as `/`. A backslash, a control character or an encoded form

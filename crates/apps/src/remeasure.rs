@@ -1,17 +1,17 @@
 //! The console's second write, a compute act: re-run every measurement
-//! that stands from before the last change.
+//! that holds from before the last change.
 //!
-//! Every write moves the pin, and a function voice landed at an earlier
+//! Every write moves the pin, and a function's value loaded at an earlier
 //! pin is served and marked (SPEC.md §7): the numbers are current (a
-//! metric's view reads the data as it stands); the judged axes and the
-//! check verdicts stand on those voices until they run again. The banner counts them
-//! (the raw read's `current`), and this lands the next rows — the same
+//! metric's view reads the data as it holds); the judged axes and the
+//! check results stand on those values until they run again. The banner counts them
+//! (the raw read's `current`), and this writes the next rows — the same
 //! extractions an agent would run, nothing authored: the functions
 //! speak.
 //!
-//! The response is the write event, as the ruling's is — and it names
+//! The response is the write event, as the review decision's is — and it names
 //! itself: 204 with `HX-Trigger: glossql:remeasured, glossql:written`.
-//! A ruling cannot change a data frame, so the store keeps data frames
+//! A review decision cannot change a data frame, so the store keeps data frames
 //! across one; a re-measure can (the axes), so on `glossql:remeasured`
 //! the store drops them too, and every tile refetches in place.
 

@@ -14,7 +14,7 @@ use crate::Plane;
 /// Declare the shipped system into a workspace. Idempotent — every
 /// boot calls it.
 ///
-/// Nothing lands on disk: a function's body is data
+/// Nothing is stored on disk: a function's body is data
 /// (fixture 24), so the reference library arrives as
 /// fourteen ordinary declarations and reads back through the `functions`
 /// relation like anything else an agent wrote.

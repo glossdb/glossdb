@@ -40,7 +40,7 @@ the workspace does not hold is a 404 that lists the ones it does.
 - **Anything else** — several statements, declarations, writes —
   answers in the JSON shape of the [MCP results](mcp.md#results). A
   refused statement is a 422 with the reason; a refused sequence
-  carries the outcomes of the statements that ran under `landed`.
+  carries the outcomes of the statements that ran under `completed`.
 
 The query endpoint writes as a person.
 

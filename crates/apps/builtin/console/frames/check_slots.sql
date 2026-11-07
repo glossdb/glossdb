@@ -1,5 +1,5 @@
--- A voice check's evidence: every subject whose slots differ — the
--- test's verdicts that are not green — with every voice on the slot
+-- A value check's evidence: every subject whose values differ — the
+-- test's results that are not green — with every value on the value
 -- side by side, by actor kind, the human's first. Rows only for a
 -- test whose detector is slot_entropy.
 WITH d AS (SELECT dataset FROM current_dataset),

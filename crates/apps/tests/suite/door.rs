@@ -1,4 +1,4 @@
-//! The app door against a real plane and a landed table, driven
+//! The app interface against a real plane and a loaded table, driven
 //! in-process through the router (tower oneshot, mounted at `/app`
 //! exactly as serverd mounts it): pages render from the app's own
 //! directory, frames stream Arrow IPC with URL params bound as plan
@@ -76,8 +76,8 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
         .await
         .unwrap();
 
-    // In the binary the gate sits above this door and leaves the
-    // verified caller in the request; here the layer stands in for it,
+    // In the binary the gate sits above this interface and leaves the
+    // verified caller in the request; here the layer holds in for it,
     // with human standing, as the gate stamps on a human door.
     let router = Router::new()
         .merge(glossdb_apps::root_router(Arc::clone(&plane), ORIGIN))
@@ -115,7 +115,7 @@ fn shipped_ruling_declaration() -> &'static str {
 }
 
 /// The SHIPPED app aspects — `app`, `app_page`, `app_frame`,
-/// `app_spec` — cut from the core the same way, so the door serves the
+/// `app_spec` — cut from the core the same way, so the interface serves the
 /// parts a real workspace writes.
 fn shipped_app_declarations() -> &'static str {
     let kit = CORE;
@@ -273,7 +273,7 @@ async fn pages_render_and_frames_stream() {
     assert_eq!(values(filtered).await, vec![10.5, 4.0]);
 
     // An unbound placeholder is the read telling the author what the
-    // URL owed it.
+    // URL required it.
     let unbound = get(&app, "/perf/app/board/frames/by_cohort").await;
     assert_eq!(unbound.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let unbound = text(unbound).await;
@@ -293,7 +293,7 @@ async fn pages_render_and_frames_stream() {
     assert!(text(spec).await.contains("\"mark\""));
 }
 
-/// The door serves an app at its release: a part glossed after the
+/// The interface serves an app at its release: a part glossed after the
 /// release serves under `?draft` and not at the plain URL, the bar says
 /// which is on the page, a release naming an earlier one's time serves
 /// that cut, and an app nobody released serves its draft.
@@ -401,10 +401,10 @@ async fn the_door_refuses_what_it_should() {
     assert_eq!(escape.status(), StatusCode::NOT_FOUND);
 }
 
-/// A page body is markup. The door serves every page under a policy
+/// A page body is markup. The interface serves every page under a policy
 /// that runs the shell's own assets and nothing the page carries, so
 /// a script an author glosses — an agent's, rendered with the human
-/// viewer's standing on the query and rule doors — is served as text
+/// viewer's standing on the query and rule interfaces — is served as text
 /// the browser does not run.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_page_body_is_markup_not_script() {
@@ -466,7 +466,7 @@ async fn a_page_body_is_markup_not_script() {
 }
 
 /// The shell passes its own policy: every script a rendered page
-/// loads is one of the door's assets by `src` and served as such,
+/// loads is one of the interface's assets by `src` and served as such,
 /// nothing is inline, no element carries a handler attribute, no URL
 /// is `javascript:`, and htmx is told not to evaluate — over the
 /// workspace root, the built-in's every page, and a glossed app's.
@@ -665,9 +665,9 @@ fn assert_classic(dt: &arrow::datatypes::DataType, frame: &str, field: &str) {
     }
 }
 
-/// A ruling is a human act, signed with the caller's own name. This is
-/// a human door: the gate stamps human standing on whoever reaches it,
-/// and the record takes the token's subject — nothing anonymous stands
+/// A review decision is a human act, signed with the caller's own name. This is
+/// a human interface: the gate stamps human standing on whoever reaches it,
+/// and the catalog takes the token's subject — nothing anonymous holds
 /// in for the person.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ruling_is_signed_with_the_callers_own_name() {
@@ -700,7 +700,7 @@ async fn a_ruling_is_signed_with_the_callers_own_name() {
         .await
         .unwrap();
     assert_eq!(accepted.status(), StatusCode::NO_CONTENT);
-    // Signed with the name the gate carried in (`workspace()` stands
+    // Signed with the name the gate carried in (`workspace()` holds
     // in for it with `ada`), not with a stand-in.
     let signed = human
         .execute("SELECT actor_id FROM glossary WHERE aspect = 'ruling' AND actor_kind = 'human';")
@@ -774,12 +774,12 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // frame response carries `glossql-frame-class`, derived by the
     // session's pre-pass from what the frame's expansion actually
     // resolves — never a curated list. `record` frames read the
-    // glossary somewhere and can change under a ruling; `data` frames
+    // glossary somewhere and can change under a review decision; `data` frames
     // provably cannot, so the browser's store keeps them across
     // rulings. The class is about what a frame SERVES, not what its
     // build consumed: the cube's facts (`axes`) say what the judged
     // record admitted and are record; its cells (`slices`, `latest`,
-    // `drivers`) are the data at a grain and survive a ruling on
+    // `drivers`) are the data at a grain and survive a review decision on
     // screen. The trend joins the forecast record for the band and how
     // often it held, so it is record and is read again after a ruling.
     let (app, plane, _dir) = workspace().await;
@@ -788,7 +788,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     for (frame, expected) in [
         ("open", "record"),
         ("settled", "record"),
-        ("owed", "record"),
+        ("open_items", "record"),
         ("assumptions", "record"),
         ("pulse", "record"),
         ("views", "record"),
@@ -893,21 +893,21 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     // agent a re-alignment — the two forms of one definition. The
     // brief shows it until the agent re-records; nothing is a
     // maintained flag. The answer arrives through a session (the app
-    // carries no write besides the ruling form).
+    // carries no write besides the review decision form).
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
     // Seeded state: the agent's handbook entry with its formula, and the
     // agent's dso gloss — nothing waits
-    // but, on DuckDB, the futures kit's walk, forecast and estimate:
+    // but, on DuckDB, the outlook kit's walk, forecast and estimate:
     // tested measurements on the dataset nobody ran while a metric is
     // grounded.
     let walk = 3;
-    let before = get(&app, "/perf/app/console/frames/owed").await;
+    let before = get(&app, "/perf/app/console/frames/open_items").await;
     assert_eq!(before.status(), StatusCode::OK);
     assert_eq!(row_count(before).await, walk);
 
-    // The human's answer lands on their channel: newer than the
+    // The human's answer is stored on their channel: newer than the
     // recorded dso gloss.
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     let human = plane
@@ -924,7 +924,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         .execute(r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;"#)
         .await
         .unwrap();
-    let after = get(&app, "/perf/app/console/frames/owed").await;
+    let after = get(&app, "/perf/app/console/frames/open_items").await;
     assert_eq!(
         row_count(after).await,
         1 + walk,
@@ -952,7 +952,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
         )
         .await
         .unwrap();
-    let cleared = get(&app, "/perf/app/console/frames/owed").await;
+    let cleared = get(&app, "/perf/app/console/frames/open_items").await;
     // On DuckDB the re-record redefines the view, so the profile over
     // its period column reads stale and waits on a re-measure; the
     // formula answer itself no longer waits.
@@ -967,12 +967,12 @@ async fn the_brief_counts_what_waits_on_the_agent() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metric_faces_serve_the_winning_slot_once() {
-    // With two slots on `definitions` (human and
+    // With two values on `definitions` (human and
     // agent) the dossier rendered the formula and the materialization
-    // twice. The metric face reads the winning slot only — human
+    // twice. The metric face reads the winning value only — human
     // outranking agent, exactly like the collapsed read. The
     // assumptions ledger is different: it
-    // is the AGENT's working record (rulings annotate it, and a human
+    // is the AGENT's working record (review decisions annotate it, and a human
     // supersede of the metric governs reads without replacing it).
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
@@ -1024,10 +1024,10 @@ async fn the_metric_faces_serve_the_winning_slot_once() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
-    // A human ruling is its own record — the queue
-    // holds the ruled question closed by its declared key, and the
+    // A human review decision is its own record — the queue
+    // holds the decided question closed by its declared key, and the
     // assumptions ledger shows the judgment beside the assumption it
-    // rules ("the rulings that lead to the agreed facts").
+    // rules ("the review decisions that lead to the agreed facts").
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
@@ -1035,7 +1035,7 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
     let queue = get(&app, "/perf/app/console/frames/open").await;
     assert_eq!(row_count(queue).await, 1, "the loose assumption queues");
 
-    // The human's ruling lands (the door writes it in production; a
+    // The human's review decision is stored (the interface writes it in production; a
     // session write is the same statement).
     let human = plane
         .channel(
@@ -1057,7 +1057,7 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
         .await
         .unwrap();
 
-    // The queue holds the question closed; the ledger shows the ruling
+    // The queue holds the question closed; the ledger shows the review decision
     // beside its assumption, not yet applied.
     let queue = get(&app, "/perf/app/console/frames/open").await;
     assert_eq!(row_count(queue).await, 0, "the ruling closes the question");
@@ -1069,15 +1069,15 @@ async fn a_ruling_closes_its_question_and_annotates_the_ledger() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_console_takes_a_ruling_and_refuses_a_stale_one() {
-    // The door's one write. A human who
-    // steps away has no way back into the record at all: the MCP round
+    // The interface's one write. A human who
+    // steps away has no way back into the catalog at all: the MCP round
     // can only ask while they are watching, and an agent may never
     // speak for them. The console is already the page of open
     // questions, so answering there is the gesture it was drawn for.
     //
-    // Only the claim's identity is posted. The prose the ruling records
+    // Only the claim's identity is posted. The prose the review decision records
     // is re-derived from `open_questions` — so a tab left open across a
-    // fold-in is refused rather than believed, and a browser can never
+    // applying the decision is refused rather than believed, and a browser can never
     // put words in the workspace's mouth.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
@@ -1130,7 +1130,7 @@ async fn the_console_takes_a_ruling_and_refuses_a_stale_one() {
         Some("glossql:written")
     );
 
-    // The question closes and the ruling stands in the human's words.
+    // The question closes and the review decision holds in the human's words.
     assert_eq!(
         row_count(get(&app, "/perf/app/console/frames/open").await).await,
         0,
@@ -1144,8 +1144,8 @@ async fn the_console_takes_a_ruling_and_refuses_a_stale_one() {
     assert!(settled.contains("per order, not per line"), "{settled}");
     assert!(settled.contains("corrected"), "{settled}");
 
-    // The same post again: the question no longer derives, so the door
-    // refuses instead of writing a second ruling from a stale page —
+    // The same post again: the question no longer derives, so the interface
+    // refuses instead of writing a second review decision from a stale page —
     // and the refusal carries the trigger too, so the stale tab's
     // panels re-derive to the current state on their own.
     let response = post("subject=perf&aspect=dso&key=per-line&stance=confirmed").await;
@@ -1164,10 +1164,10 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
     // The third stance: the human refuses the
     // QUESTION, not the claim. Without it a sloppily worded question
     // can only be deferred, which re-asks the same words
-    // forever. `unclear` lands like any ruling — this key closes, what
+    // forever. `unclear` is stored like any review decision — this key closes, what
     // confused the reader rides as the note — and what the agent owes
     // is a reformulation under a NEW key (whose clearer wording derives
-    // its own question), never a fold-in.
+    // its own question), never an applied decision.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let human = plane
@@ -1217,8 +1217,8 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // A standing check is an TESTS row — a
-    // detector's live verdict beside its test's expectation. A
-    // test without a detector is a speaker gate; its spoken slots
+    // detector's live result beside its test's expectation. A
+    // test without a detector is a speaker gate; its spoken values
     // never render as checks (the old frame showed them with the
     // band column reading `current`).
     let (app, plane, _dir) = workspace().await;
@@ -1245,8 +1245,8 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         )
         .await
         .unwrap();
-    // The verdict computes at read — the detector's query answers over
-    // the dso grounding's slot.
+    // The result computes at read — the detector's query answers over
+    // the dso metric definition's slot.
 
     let checks = get(&app, "/perf/app/console/frames/checks").await;
     let status = checks.status();
@@ -1276,8 +1276,8 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         "a detector of the workspace's own is asked by name:\n{checks}"
     );
 
-    // The check's page: the declaration and the verdict as one row,
-    // then the evidence — every verdict, for a detector the page has
+    // The check's page: the declaration and the result as one row,
+    // then the evidence — every result, for a detector the page has
     // no shape for.
     let page = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts").await).await;
     assert!(page.contains("frames/check\""), "{page}");
@@ -1296,8 +1296,8 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
 
-    // A voice check: the kit's detector over a slot two actors
-    // disagree on. The evidence lists that column with both voices,
+    // A value check: the kit's detector over a value two actors
+    // disagree on. The evidence lists that column with both values,
     // the human's first; the agreeing columns are counted, not listed.
     agent
         .execute(
@@ -1351,8 +1351,8 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
 async fn the_metrics_faces_serve_the_cube() {
     // The business surface end to end from the cube: nothing is
     // planted — the frames read `metric_series()` and `metric_axes()`,
-    // which build the cube from the grounding and the judged verdicts
-    // the workspace carries. The pulse is the record, its numbers a
+    // which build the cube from the metric definition and the judged results
+    // the workspace carries. The pulse is the catalog, its numbers a
     // data frame joined in the browser by the metric's name; the
     // picker lists the admitted axis, a picked slice serves its
     // members, the trend carries the disclosed rival beside the chosen
@@ -1389,8 +1389,8 @@ async fn the_metrics_faces_serve_the_cube() {
         "the newest period of the one series; a fact has no period"
     );
 
-    // The facts list: the fact with its one value, as of the landing
-    // of the table its grounding reads, linked with its kind.
+    // The facts list: the fact with its one value, as of the load
+    // of the table its metric definition reads, linked with its kind.
     let facts = get(&app, "/perf/app/console/frames/facts?stopped=0").await;
     assert_eq!(facts.status(), StatusCode::OK);
     let facts = body_text(facts).await;
@@ -1472,10 +1472,10 @@ async fn the_metrics_faces_serve_the_cube() {
         "cohort a moved between the two months; cohort b has one period"
     );
 
-    // The axes banner is silent while the verdicts stand at this pin.
-    // On DuckDB the futures kit's walk and forecast are owed from the
-    // first grounding: the banner counts them in one row, the re-measure
-    // runs them, and with too short a history each lands its reasons
+    // The axes banner is silent while the results stand at this pin.
+    // On DuckDB the outlook kit's walk and forecast are required from the
+    // first metric definition: the banner counts them in one row, the re-measure
+    // runs them, and with too short a history each stores its reasons
     // without a call.
     let walk = 1;
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
@@ -1483,7 +1483,7 @@ async fn the_metrics_faces_serve_the_cube() {
     assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
 
     // A gloss moves the pin. The cube rebuilds at the next read with
-    // the same numbers — and the verdicts measured the data's columns,
+    // the same numbers — and the results measured the data's columns,
     // which the gloss did not touch, so they still stand and the
     // banner stays silent: glossing work does not churn the record.
     plane
@@ -1517,7 +1517,7 @@ async fn the_metrics_faces_serve_the_cube() {
     );
 
     // Re-measure — the console's second write, a compute act: with
-    // nothing stale it lands nothing, and the response is still the
+    // nothing stale it stores nothing, and the response is still the
     // write event the browser's frame store hears.
     let response = app
         .clone()
@@ -1530,14 +1530,14 @@ async fn the_metrics_faces_serve_the_cube() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     // The write names itself beside the write event: a re-measure can
-    // change the cube, which a ruling cannot, so the store drops data
+    // change the cube, which a review decision cannot, so the store drops data
     // frames on the first and record frames on the second.
     assert_eq!(
         response.headers()["HX-Trigger"],
         "glossql:remeasured, glossql:written"
     );
     // The re-measure ran the walk too: with no metric of seven whole
-    // months it called no service and landed its reasons, so nothing
+    // months it called no service and loaded its reasons, so nothing
     // stays owed.
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(row_count(banner).await, 0, "the verdicts still stand");
@@ -1552,8 +1552,8 @@ async fn the_metrics_faces_serve_the_cube() {
 /// The plan on DuckDB: a plan declared on dso over the same ledger,
 /// read through the metric it plans (x-plan-of): the pulse lists no
 /// plan as a metric; the plan frame serves it period by period at its
-/// own grain and at the year — two months landed with their variance,
-/// and the year landed on those two of its twelve months, which the
+/// own grain and at the year — two months loaded with their variance,
+/// and the year loaded on those two of its twelve months, which the
 /// row says, with no band read over part of a year; the trend carries
 /// its cells as the plan world beside the reading.
 #[tokio::test(flavor = "multi_thread")]
@@ -1588,7 +1588,7 @@ async fn the_plan_stands_beside_its_metric() {
     assert_eq!(plan.status(), StatusCode::OK);
     let text = body_text(plan).await;
     assert!(
-        text.contains("landed") && text.contains("landed, covers 2 of 12 months"),
+        text.contains("complete") && text.contains("complete, covers 2 of 12 months"),
         "{text}"
     );
     assert!(text.contains("-12.5") && text.contains("2026"), "{text}");
@@ -1617,7 +1617,7 @@ async fn the_plan_stands_beside_its_metric() {
 }
 
 /// The same list on DuckDB: no fact declared, an undated measure that
-/// serves no series and says why in the axes slot, and a metric whose
+/// serves no series and says why in the axes value, and a metric whose
 /// period column nobody profiled — the banner counts the want, the
 /// console's re-measure runs the profile, and the series serves.
 #[tokio::test(flavor = "multi_thread")]
@@ -1670,12 +1670,12 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The futures kit's walk, forecast and estimate are owed beside the profile.
+    // The outlook kit's walk, forecast and estimate are required beside the profile.
     assert!(
         banner.contains("4 measurements that a metric or a test reads were never run (metric_bands, metric_forecast, metric_scenario, temporal)"),
         "{banner}"
     );
-    let owed = get(&app, "/perf/app/console/frames/owed").await;
+    let owed = get(&app, "/perf/app/console/frames/open_items").await;
     assert_eq!(
         row_count(owed).await,
         4,
@@ -1755,7 +1755,7 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
         .execute(shipped_ruling_declaration())
         .await
         .unwrap();
-    // One open question per case below: a ruling closes the question it
+    // One open question per case below: a review decision closes the question it
     // answered, so re-posting the same key would be refused as stale
     // and never reach the redirect at all.
     plane
@@ -1815,7 +1815,7 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
         }
     };
 
-    // The same contract wherever the reader ruled from — a metric's
+    // The same contract wherever the reader decided from — a metric's
     // page, a forged Referer, no Referer at all: 204, the trigger, and
     // no Location for anything to follow.
     for (key, referer) in [
@@ -1855,9 +1855,9 @@ async fn a_ruling_answers_with_the_write_event_never_a_navigation() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_root_lists_every_dataset_at_a_glance() {
-    // The workspace root: each dataset with what landed, what is served
+    // The workspace root: each dataset with what loaded, what is served
     // and what waits on a person, the apps with the datasets they
-    // serve, the doors, the connect line — every number the record's.
+    // serve, the interfaces, the connect line — every number the catalog's.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
@@ -1886,8 +1886,8 @@ async fn the_root_lists_every_dataset_at_a_glance() {
     assert!(!root.contains("href=\"/second/app/board\""), "{root}");
     assert!(root.contains("glossed"), "{root}");
     assert!(root.contains("built in"), "{root}");
-    // The doors and the connect line: an agent connects to a
-    // dataset's door, and the workspace door is named for what only it
+    // The interfaces and the connect line: an agent connects to a
+    // dataset's interface, and the workspace interface is named for what only it
     // does.
     assert!(root.contains("MCP, one dataset"), "{root}");
     assert!(root.contains("MCP, the whole workspace"), "{root}");
@@ -1916,7 +1916,7 @@ async fn the_export_tab_lists_tables_and_reads() {
     );
     assert!(page.contains("/perf/query"), "{page}");
 
-    // The landed table with its shape and its two files.
+    // The loaded table with its shape and its two files.
     let tables = body_text(get(&app, "/perf/app/console/frames/tables").await).await;
     assert!(tables.contains("ledger\n"), "{tables}");
     assert!(tables.contains("3\ncolumns\n"), "{tables}");
@@ -1936,8 +1936,8 @@ async fn the_export_tab_lists_tables_and_reads() {
     assert!(reads.contains("/perf/app/export/read.dso.csv\n"), "{reads}");
     assert!(reads.contains(&relation("payables")), "{reads}");
 
-    // A dataset with nothing landed serves empty frames, and the page
-    // still stands with the bar's tabs.
+    // A dataset with nothing loaded serves empty frames, and the page
+    // still holds with the bar's tabs.
     assert_eq!(
         row_count(get(&app, "/second/app/console/frames/tables").await).await,
         0
@@ -2066,11 +2066,11 @@ async fn a_download_refuses_what_it_should() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_lineage_page_draws_the_record() {
-    // The graph's two frames are the record as rows: every column of
-    // every landed table, every declared key edge, and for every
-    // grounding the columns its served fields descend from. A second
+    // The graph's two frames are the catalog as rows: every column of
+    // every loaded table, every declared key edge, and for every
+    // metric definition the columns its served fields descend from. A second
     // table and an edge between them give the key half something to
-    // say; the seeded groundings give the reads half.
+    // say; the seeded metric definitions give the reads half.
     let (app, plane, dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -2106,8 +2106,8 @@ async fn the_lineage_page_draws_the_record() {
     let open = text(get(&app, "/perf/app/console").await).await;
     assert!(open.contains("/perf/app/console/p/lineage"), "{open}");
 
-    // Nodes: the two tables' columns in order, and the grounding's
-    // served fields under the metric; a grounding with only an
+    // Nodes: the two tables' columns in order, and the metric definition's
+    // served fields under the metric; a metric definition with only an
     // aggregate (payables) has no field to show.
     let nodes = get(&app, "/perf/app/console/frames/lineage_nodes").await;
     assert_eq!(nodes.status(), StatusCode::OK);
@@ -2151,14 +2151,14 @@ async fn the_lineage_page_draws_the_record() {
         rows.iter().any(|r| r.0 == "dso" && r.1 == "metric"),
         "{rows:?}"
     );
-    // The format's metadata tables sit beside every landed one in
-    // information_schema; the record's tables are the nodes.
+    // The format's metadata tables sit beside every loaded one in
+    // information_schema; the catalog's tables are the nodes.
     assert!(
         !rows.iter().any(|r| r.0.contains('$')),
         "a metadata table leaked into the nodes:\n{rows:?}"
     );
 
-    // Edges: the declared key edge and the grounding's three reads.
+    // Edges: the declared key edge and the metric definition's three reads.
     let edges = get(&app, "/perf/app/console/frames/lineage_edges").await;
     assert_eq!(edges.status(), StatusCode::OK);
     let bytes = to_bytes(edges.into_body(), usize::MAX).await.unwrap();
@@ -2253,7 +2253,7 @@ async fn an_unchanged_asset_revalidates_without_its_body() {
 }
 
 /// Every tile the reference page and the apps skill name is a script
-/// the shell loads and an asset the door serves. The prose is the
+/// the shell loads and an asset the interface serves. The prose is the
 /// author's contract; a tile it names that the browser never defines
 /// renders as nothing, silently.
 #[tokio::test(flavor = "multi_thread")]
@@ -2293,7 +2293,7 @@ async fn every_documented_tile_is_shipped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_stopped_surface_folds_under_the_lists() {
-    // A grounding its author stopped serves no number and no file;
+    // A metric definition its author stopped serves no number and no file;
     // it stays on record with the reason. The lists serve the
     // served surfaces, and the fold under each the stopped ones —
     // the same frame, `stopped` picking the side.
@@ -2394,8 +2394,8 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     // The Glossary: the vocabulary first — every declared aspect in
-    // three groups by kind with what it holds, where it is owed, how
-    // many owed subjects carry a value and who may speak it — then the
+    // three groups by kind with what it holds, where it is required, how
+    // many required subjects carry a value and who may speak it — then the
     // terms (every metric, view and fact with its agreed meaning, and
     // every column whose meaning names a term), the tables with their
     // columns as lines, the joins and the sources. A person's word is
@@ -2457,8 +2457,8 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     );
 
     // The vocabulary, by kind: a fact aspect with its enum, its grain,
-    // the owed subjects spoken on and its speakers; a grounding; a
-    // measurement with the function that lands it; the app's own
+    // the required assets with a value and who may annotate; a metric definition; a
+    // measurement with the function that stored it; the app's own
     // folded apart.
     let facts = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=fact").await).await;
     assert!(facts.contains("role\n"), "{facts}");
@@ -2469,7 +2469,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         "what the aspect holds, from its schema:\n{facts}"
     );
     assert!(facts.contains("on a column\n"), "{facts}");
-    // The owed columns spoken on: the views' columns are owed too, and
+    // The required columns spoken on: the views' columns are required too, and
     // the seed spoke on the ledger's and dso's.
     let spoken = "4 of 10\n";
     assert!(
@@ -2493,7 +2493,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         measurements.contains("temporal_profile\n"),
         "{measurements}"
     );
-    // The function that lands the profile: the quality kit's.
+    // The function that stored the profile: the quality kit's.
     let lands = "temporal\n";
     assert!(
         measurements.contains(lands),
@@ -2543,7 +2543,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         "the pick is a read in the URL:\n{relations}"
     );
 
-    // The tables: one row per landed table, its columns as lines, the
+    // The tables: one row per loaded table, its columns as lines, the
     // name opening the table's page.
     let columns = body_text(get(&app, "/perf/app/console/frames/columns").await).await;
     assert!(columns.contains("ledger\n"), "the landed table:\n{columns}");
@@ -2569,10 +2569,10 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     // Three pages under the Glossary tab, each a page param: a table
-    // with its entity, its columns' slots and measurements, its joins,
-    // what holds among its columns and its landing; a column with every
-    // slot and every voice, the outranked one on record; an aspect with
-    // its declaration and every value under it, the owed ones by name.
+    // with its entity, its columns' values and measurements, its joins,
+    // what holds among its columns and its load; a column with every
+    // value and every value, the outranked one on record; an aspect with
+    // its declaration and every value under it, the required ones by name.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -2656,7 +2656,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         landing.starts_with("read\nloaded\nthe load query\n"),
         "{landing}"
     );
-    // The landing names the source.
+    // The load names the source.
     assert!(landing.contains("from the source erp\n"), "{landing}");
     assert!(landing.contains("3 rows on "), "{landing}");
     assert!(
@@ -2677,7 +2677,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         "{what}"
     );
 
-    // The column's page: every voice, the outranked one on record.
+    // The column's page: every value, the outranked one on record.
     let page = text(get(&app, "/perf/app/console/p/glossary?column=ledger.value").await).await;
     assert!(
         page.contains("frames/column_slots?column=ledger.value"),
@@ -2702,8 +2702,8 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .await,
     )
     .await;
-    // Both voices on the meaning, the person's first; the kit's test
-    // owes the role on every column, and the unfilled role slot leads
+    // Both values on the meaning, the person's first; the kit's test
+    // owes the role on every column, and the unfilled role value leads
     // the list.
     let lead = "role\nmeaning\nmeaning\n";
     assert!(
@@ -2719,7 +2719,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     );
 
     // The aspect's page: the declaration, then every value and every
-    // owed subject by name.
+    // required subject by name.
     let page = text(get(&app, "/perf/app/console/p/glossary?aspect=meaning").await).await;
     assert!(
         page.contains("frames/aspect_values?aspect=meaning"),
@@ -2731,14 +2731,14 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         head.starts_with("meaning\nasserted: written by the agent or a person\n"),
         "{head}"
     );
-    // Where it is owed: the kit's word on a table, a column and a join.
+    // Where it is required: the kit's word on a table, a column and a join.
     let owed_on = "on a table, a column, a join\n";
     assert!(head.contains(owed_on), "{head}");
     assert!(
         head.contains("test meaning_w by agent, human\n"),
         "{head}"
     );
-    // The owed subjects: the views' columns and the tables are owed too.
+    // The required subjects: the views' columns and the tables are required too.
     let owed = "1 of 14";
     assert!(
         head.contains(&format!("{owed} required assets carry a value\n")),

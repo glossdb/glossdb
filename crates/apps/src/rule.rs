@@ -1,19 +1,19 @@
-//! The console's one write: a human ruling on a claim that stands open.
+//! The console's one write: a human review decision on a claim that holds open.
 //!
-//! The gate is the derivation itself. A posted ruling is accepted only
+//! The gate is the derivation itself. A posted review decision is accepted only
 //! if `open_questions` still carries that exact `(subject, aspect,
-//! key)` — so the page cannot rule something already ruled, already
+//! key)` — so the page cannot rule something already decided, already
 //! folded in, or never disclosed, and a stale tab is refused rather
-//! than believed. The prose the ruling records comes from that read,
+//! than believed. The prose the review decision records comes from that read,
 //! not from the form: what the human agreed with is what the workspace
 //! says, never what a browser posted.
 //!
 //! Nothing else about the page changes. It still holds no other write,
-//! and the ruling lands exactly where the round's would — the human's
-//! own slot, on the human's own channel, witnessed by this server.
+//! and the review decision is stored exactly where the round's would — the human's
+//! own value, on the human's own channel, witnessed by this server.
 //!
 //! Who that human is comes from the token the request carries; that
-//! the caller is human comes from the door, which stamps the kind on
+//! the caller is human comes from the interface, which stamps the kind on
 //! every request it admits.
 //!
 //! The response is an event, not a navigation (not a 303 back to
@@ -22,7 +22,7 @@
 //! anyway). Success is 204 with `HX-Trigger: glossql:written`; the
 //! store hears the event, drops its frame caches, and every connected
 //! component refetches in place. The stale-tab 409 carries the same
-//! trigger, so a tab that ruled a dead question re-derives to the
+//! trigger, so a tab that decided a dead question re-derives to the
 //! current state instead of asking for a reload.
 
 use crate::engine::Caller;
@@ -44,11 +44,11 @@ pub struct Answer {
     key: String,
     /// `confirmed`, `corrected`, or `unclear` — the stances the round
     /// serves. `unclear` refuses the question rather than the claim:
-    /// the agent owes a reformulation, not a fold-in. Admission is the
-    /// one gate: the ruling aspect's schema holds the enum, so an
+    /// the agent owes a reformulation, not an applied decision. Admission is the
+    /// one gate: the review decision aspect's schema holds the enum, so an
     /// unknown stance answers with the store's own refusal.
     stance: String,
-    /// The human's own words, empty allowed — the MCP door writes the
+    /// The human's own words, empty allowed — the MCP interface writes the
     /// same act the same way.
     #[serde(default)]
     note: String,
@@ -80,7 +80,7 @@ pub async fn rule(
     };
 
     // The question must still stand, and its own words are what the
-    // ruling records.
+    // review decision records.
     let standing = match crate::frames::one_open_question(
         &human,
         &answer.subject,

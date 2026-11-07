@@ -58,7 +58,7 @@ The result is a JSON array, one outcome per statement:
 - **A refusal:** a tool error whose text is the refusal. In a sequence
   it names its place, `statement 2 of 7 refused: … — statement 1 ran;
   3–7 not run`, and a second block carries the outcomes of the
-  statements that ran (`{"landed": […]}`). What ran stays; what came
+  statements that ran (`{"completed": […]}`). What ran stays; what came
   after was not attempted.
 
 ### Row cap
@@ -77,7 +77,7 @@ Every result ends with two lines:
   definition it adds the summary row: the slicing columns admitted, the
   columns not admitted, the measurements wanted.
 - `next:` names one action per goal — `structure`, `metrics`,
-  `slices`, `bands`, `checks`, `app`, `plan`, `rulings` — each with a
+  `slices`, `bands`, `checks`, `app`, `plan`, `review` — each with a
   link, `next://<dataset>/<goal>`. A blocked goal says what blocks it;
   a finished one says `done`. The goal is the caller's choice, never
   stored. How the goals work: [next steps](../extending/next-steps.md).

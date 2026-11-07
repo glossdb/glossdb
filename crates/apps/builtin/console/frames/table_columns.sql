@@ -1,7 +1,7 @@
--- One table's columns, every slot the record holds on each: the judged
+-- One table's columns, every value the catalog holds on each: the judged
 -- role with the slice rank beside a dimension (the engine's type where
--- none is judged), the unit and behaviour where owed, the meaning or
--- `not yet said` where the meaning is owed and nobody spoke, and what
+-- none is judged), the unit and behaviour where required, the meaning or
+-- `not yet said` where the meaning is required and nobody spoke, and what
 -- was measured on the column. The mark is the column's worst standing
 -- across its authored slots. A row opens the column's page.
 WITH d AS (SELECT dataset FROM current_dataset),

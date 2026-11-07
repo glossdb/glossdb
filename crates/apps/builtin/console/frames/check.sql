@@ -1,8 +1,8 @@
 -- One check, both faces: the test's own declaration — the aspect it
 -- adjudicates, who may speak on it, its detector and threshold — and
--- its verdicts as TESTS() holds them now: how many, by band, the worst
+-- its results as TESTS() holds them now: how many, by band, the worst
 -- as the chip, the highest score, when the newest was measured and
--- whether every one stands at this pin.
+-- whether every one holds at this pin.
 WITH w AS (
   SELECT * FROM tests WHERE name = $check
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
@@ -24,7 +24,7 @@ folded AS (
   FROM v)
 SELECT w.name AS test,
        w.aspect,
-       coalesce(nullif(array_to_string(w.speakers, ', '), ''), 'measurements alone') AS speakers,
+       coalesce(nullif(array_to_string(w.actors, ', '), ''), 'measurements alone') AS actors,
        coalesce(w.detector, '') AS detector,
        coalesce(CAST(w.threshold AS VARCHAR), 'none') AS threshold,
        CASE w.detector

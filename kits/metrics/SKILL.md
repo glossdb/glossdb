@@ -83,6 +83,6 @@ serves what the view returns.
 ## What is not here
 
 A plan, a forecast and a scenario are worlds on the same cells; the
-futures kit (preview) brings them. The behaviour evidence a detector
+outlook kit (preview) brings them. The behaviour evidence a detector
 measures on a value column is a measurement of its own; where none was
 run, the refusal names the annotation alone.

@@ -250,7 +250,7 @@ decision, in the person's words, and the question closes. The agent
 then records the metric definition again with the decision applied:
 
 ```sql
-SELECT aspect, key, stance, folded_in FROM ruling_entries ORDER BY written_at DESC
+SELECT aspect, key, stance, folded_in FROM review_decisions ORDER BY written_at DESC
 ```
 
 More: [the review queue](../usage/review.md).
@@ -266,11 +266,11 @@ the data over. More: [the console](../usage/console.md).
 Every tool result ends with two lines; the last one reads:
 
 ```text
-next: structure: done · metrics: done · slices: done · bands → run the walk (next://ops/bands) · checks: done · app → write the first page over 1 metric (next://ops/app) · plan → declare the first plan (next://ops/plan) · rulings: done
+next: structure: done · metrics: done · slices: done · bands → run the walk (next://ops/bands) · checks: done · app → write the first page over 1 metric (next://ops/app) · plan → declare the first plan (next://ops/plan) · review: done
 ```
 
 One action per goal: structure, metrics, slices, bands, checks, app,
-plan, rulings. The work is done when every goal is done or blocked.
+plan, review. The work is done when every goal is done or blocked.
 The link is an MCP resource; the same rows come through the tool, with
 the statement to send:
 

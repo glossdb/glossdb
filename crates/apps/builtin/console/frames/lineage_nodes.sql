@@ -1,6 +1,6 @@
--- The lineage graph's nodes: one row per column of every landed table
+-- The lineage graph's nodes: one row per column of every loaded table
 -- of the bound dataset, in ordinal order, with the column's judged role
--- — and one row per served field of every current grounding, the
+-- — and one row per served field of every current metric definition, the
 -- metric by its name and the field's role taken from the column
 -- it descends from.
 WITH d AS (SELECT dataset FROM current_dataset),
@@ -16,7 +16,7 @@ cols AS (
   JOIN landed l ON l.table_name = c.table_name
   LEFT JOIN roles r ON r.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
   WHERE c.table_catalog = current_database()),
--- a served field's role: the view's own column's where one stands, else
+-- a served field's role: the view's own column's where one holds, else
 -- the column's it descends from
 fields AS (
   SELECT s.metric AS node, 'metric' AS kind, s.field AS col,

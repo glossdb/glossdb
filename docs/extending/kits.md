@@ -19,13 +19,13 @@ From glossdb:
 
 | Kit | Adds |
 |---|---|
-| `core` | the server's own properties (review decisions, load-query approval, apps as annotations) and the catalog's views: `open_questions`, `ruling_entries`, `current_dataset`, … |
+| `core` | the server's own properties (review decisions, load-query approval, apps as annotations) and the catalog's views: `open_questions`, `review_decisions`, `current_dataset`, … |
 | `metrics` | the metric series: `metric_series()`, `metric_axes()`, `metric_sources()`; the `ladder` on a period column |
-| `futures` | preview: forecasts, expected ranges, plans and scenarios through the model service |
-| `door` | `owed`, what waits on an action, and the next steps of the core goals |
+| `outlook` | preview: forecasts, expected ranges, plans and scenarios through the model service |
+| `goals` | `open_items`, what waits on an action, and the next steps of the core goals |
 
 The server loads them at every open, in order: `core`, `kpi`,
-`quality`, `metrics`, `futures`, `door`. A kit whose text the lake
+`quality`, `metrics`, `outlook`, `goals`. A kit whose text the lake
 already recorded is current and runs nothing, so an unchanged workspace
 opens fast. The views and functions each kit declares:
 [views and table functions](../reference/reads.md),

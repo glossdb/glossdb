@@ -1,6 +1,6 @@
 -- One column's head: its table, its engine type, its judged role and
 -- meaning (a person's over the agent's), and the metrics that read it.
--- One row, or none for a name no landed column carries. `$column` is
+-- One row, or none for a name no loaded column carries. `$column` is
 -- `table.column`, spelled without the dataset.
 WITH d AS (SELECT dataset FROM current_dataset),
 slots AS (

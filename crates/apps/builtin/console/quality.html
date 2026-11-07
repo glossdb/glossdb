@@ -6,12 +6,12 @@
 {% set ckind = state.kind | default(value="") %}
 
 {% if check %}
-{# ---- one check: the declaration, the verdict, the evidence -------- #}
+{# ---- one check: the declaration, the result, the evidence -------- #}
 {# Opening a check is going deeper, not somewhere else: the Quality
    tab stays current and is the way back. The link carried the
    detector's kind, so the page knows which evidence to draw: the
-   corridor's points, a voice check's differing columns, a
-   validation's rates, or every verdict for a detector of the
+   corridor's points, a value check's differing columns, a
+   validation's rates, or every result for a detector of the
    workspace's own. #}
 <div class="tiles">
   <gl-rows frame="frames/check" empty="no check named {{ check }} — a check is a test with a detector">
@@ -21,7 +21,7 @@
           <code class="chip {bcls}">{band}</code></header>
         <div class="rrow" style="grid-template-columns:1fr">
           <span class="r-what">{asks}</span>
-          <span class="r-meta">{detector} @ {threshold} on {aspect} · who may annotate: {speakers}</span>
+          <span class="r-meta">{detector} @ {threshold} on {aspect} · who may annotate: {actors}</span>
           <span class="r-meta">{measured} · {score} · {at}{stale}</span>
         </div>
       </section>
@@ -100,14 +100,14 @@
 {% else %}
 {# ---- what is wrong, then the instruments --------------------------- #}
 {# Findings first: what is wrong right now, worst first, each a
-   sentence from the record's fields with the numbers behind it, what
+   sentence from the catalog's fields with the numbers behind it, what
    reads the subject and where it came from — a test's result that
    is not green, a load whose casts refused cells, a defect a function
    measured. A breached corridor shows its months against the
    corridor and where the move is. Then the instruments, in words: the
    standing checks, what the functions measured, each table's newest
    load, and what the vocabulary still owes by name. Everything here
-   is measured — a test's live result, the landing's own account,
+   is measured — a test's live result, the load's own account,
    the measurement's own body — never assumed, and nothing is a count
    standing in for a sentence. #}
 <div class="tiles">
@@ -117,7 +117,7 @@
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
 
     {# A breached corridor: the metric whose newest complete point
-       landed outside. The picture and the movers are the metric's own
+       loaded outside. The picture and the movers are the metric's own
        frames, keyed by its name through the row's field. #}
     <gl-rows frame="frames/breaches" empty="">
       <template>

@@ -1,11 +1,11 @@
-//! A human's ruling landed as a gloss: the standing ruling body on the
+//! A human's review decision loaded as a gloss: the standing review decision body on the
 //! subject, the entry for the key replaced, the body re-glossed under
 //! human standing. The statement is the language's; this module only
 //! shapes the body.
 
 use crate::{Session, SessionError, rows_as_text};
 
-/// One ruling as the app door takes it.
+/// One review decision as the app interface takes it.
 pub struct Ruling<'a> {
     pub subject: &'a str,
     pub aspect: &'a str,
@@ -95,15 +95,15 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         .map(|_| {
             if stance == "unclear" {
                 format!(
-                    "ruled (unclear) on `{key}` — the question missed: \
-                     reformulate the assumption in `{aspect}` under a new \
-                     key and re-record; the clearer wording derives its \
-                     own question"
+                    "decided (unclear) on `{key}` — the question missed: \
+                     reword the assumption in `{aspect}` under a new key \
+                     and record it again; the clearer wording becomes a new \
+                     question"
                 )
             } else {
                 format!(
-                    "ruled ({stance}) on `{key}` — the fold-in is yours: \
-                     re-record `{aspect}` carrying that key, citing the ruling"
+                    "decided ({stance}) on `{key}` — apply it: record \
+                     `{aspect}` again carrying that key, citing the decision"
                 )
             }
         })

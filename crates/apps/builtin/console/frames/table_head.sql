@@ -1,8 +1,8 @@
 -- One table's head: what one row is, its grain and time axis from the
 -- entity entry (a person's over the agent's), whether it is a fact or a
 -- dimension table, how many rows and columns it holds, when it last
--- landed and from which source, and the metrics that read it. One row,
--- or none for a name no landed table carries.
+-- loaded and from which source, and the metrics that read it. One row,
+-- or none for a name no loaded table carries.
 WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
   SELECT g.body, g.actor_kind, g.written_at,

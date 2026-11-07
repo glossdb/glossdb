@@ -1,5 +1,5 @@
--- The console's open band: what stands open for a human to judge,
--- straight from `open_questions` — the same rows the door asks as
+-- The console's open band: what holds open for a human to judge,
+-- straight from `open_questions` — the same rows the interface asks as
 -- forms. Display only: the confidence, the link, the order. `pct` fills
 -- the confidence rail.
 SELECT o.conf,

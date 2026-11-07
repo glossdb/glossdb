@@ -1,5 +1,5 @@
--- One metric surface: the recorded grounding that serves — the winning
--- slot, a human writing over the agent's — with the definitions entry's
+-- One metric surface: the recorded metric definition that serves — the winning
+-- value, a human writing over the agent's — with the definitions entry's
 -- unit, meaning and formula, the kind, the SQL or the stop, who wrote it
 -- and when, and the statement that re-records it.
 WITH a AS (

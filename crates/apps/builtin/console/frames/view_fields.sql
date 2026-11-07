@@ -1,6 +1,6 @@
--- What a view serves: every column of the page's grounding — the view
+-- What a view serves: every column of the page's metric definition — the view
 -- the catalog holds under the metric's name — in its own order, with
--- the judged role on the column itself where one stands, else the role
+-- the judged role on the column itself where one holds, else the role
 -- of the column it descends from, and that column. A field no one
 -- column reaches says so and shows the engine's type in place of a
 -- role.

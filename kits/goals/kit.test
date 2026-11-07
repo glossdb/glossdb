@@ -1,5 +1,5 @@
-# name: kits/door/kit.test
-# description: the door kit — what stands waiting on an act (`owed`) and the core routes of `next`, on the kits before it; run again, it stands
+# name: kits/goals/kit.test
+# description: the goals kit — what waits on an action (`open_items`) and the core next steps of `next`, on the kits before it; run again, it holds
 # group: [sql]
 
 require glossql
@@ -11,7 +11,7 @@ require parquet
 require ducklake
 
 statement ok
-ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/glossql_kit_door_lake/');
+ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/glossql_kit_goals_lake/');
 
 statement ok
 USE ws;
@@ -32,13 +32,13 @@ statement ok
 FROM glossql_kit('{KITS}/metrics/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/futures/kit.sql');
+FROM glossql_kit('{KITS}/outlook/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/door/kit.sql');
+FROM glossql_kit('{KITS}/goals/kit.sql');
 
 query I
-SELECT count(*) FROM owed;
+SELECT count(*) FROM open_items;
 ----
 0
 
@@ -48,9 +48,9 @@ SELECT count(*) > 0 FROM routes_core();
 true
 
 query TT
-FROM glossql_kit('{KITS}/door/kit.sql');
+FROM glossql_kit('{KITS}/goals/kit.sql');
 ----
-door	stands
+goals	stands
 
 query I
 SELECT count(*) FROM kits;

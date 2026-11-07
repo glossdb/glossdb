@@ -1,13 +1,13 @@
 -- The facts: every VIEW aspect declared `x-kind: scalar` with the one
--- number its grounding serves (`fact_values()`) and an as-of: the
--- newest landing of the tables the grounding reads. Status and colour
+-- number its metric definition serves (`fact_values()`) and an as-of: the
+-- newest load of the tables the metric definition reads. Status and colour
 -- follow the pulse's rule. `$stopped` picks the served facts (0) or
 -- the stopped ones (1).
 WITH asked AS (
   SELECT q.aspect, count(*) AS n FROM open_questions q
   JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.aspect),
 ruled AS (
-  SELECT r.aspect, max(r.written_at) AS ruled_at FROM ruling_entries r
+  SELECT r.aspect, max(r.written_at) AS ruled_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect),
 reads AS (SELECT DISTINCT metric, table_name AS t FROM metric_sources() WHERE table_name IS NOT NULL),
 landed AS (

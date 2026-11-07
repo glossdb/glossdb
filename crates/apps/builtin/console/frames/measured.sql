@@ -1,4 +1,4 @@
--- What the functions measured: one row per landed measurement aspect
+-- What the functions measured: one row per loaded measurement aspect
 -- with what it found, in words from its own body, how many subjects it
 -- reached and when. The shipped aspects have their own sentence;
 -- another is counted.

@@ -68,7 +68,7 @@ A frame is one SQL query served as Arrow IPC.
   overrides them, and only frames whose URL changed are fetched again.
 
 Display logic (glyphs, classes, links) belongs in the frame's SQL, not
-the template. The views and table functions (`open_questions`, `owed`,
+the template. The views and table functions (`open_questions`, `open_items`,
 `metric_surfaces`, `metric_series()`, …) are the natural sources
 ([views and table functions](reads.md)); narrow a workspace-wide one
 by joining `current_dataset`. `fmt_number(x)` and `fmt_change(p)`
@@ -167,7 +167,7 @@ server answers each with an event, never a navigation: a decision with
 `HX-Trigger: glossql:written`, on which the browser drops its cached
 catalog frames; a re-measure (every measurement stored before the last
 change run again, and every one a metric or a test reads that was never
-made, `owed`'s `never measured` rows) with `glossql:remeasured,
+made, `open_items`' `never measured` rows) with `glossql:remeasured,
 glossql:written`, on which the cached data frames drop too, since a
 re-measure can change the numbers and a decision cannot. Every tile
 fetches again in place.

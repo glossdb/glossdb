@@ -95,7 +95,7 @@ fn blocks() -> Vec<Block> {
 }
 
 /// Every fenced example parses on the engine, the language's grammar
-/// on: the extension's parser is the one the door runs.
+/// on: the extension's parser is the one the interface runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_doc_example_parses() {
     let (_dir, plane) = common::scratch_plane().await;
@@ -153,7 +153,7 @@ async fn every_doc_function_body_compiles() {
 }
 
 /// A missing table is fine: an example may name a customer's data, or a
-/// grounding a fresh workspace has none of. A missing column is not.
+/// metric definition a fresh workspace has none of. A missing column is not.
 fn missing_table(error: &str) -> bool {
     error.contains("Table with name") && error.contains("does not exist")
 }
@@ -229,7 +229,7 @@ async fn every_doc_read_names_columns_that_exist() {
     );
 }
 
-/// The engine's SQL guide under `vendor/` is served as it stands on
+/// The engine's SQL guide under `vendor/` is served as it holds on
 /// disk, for the release the lock resolves: `vendor/duckdb/VERSION`
 /// against Cargo.lock's `libduckdb-sys` package, whose version spells
 /// the DuckDB release it downloads. A pin move that skips

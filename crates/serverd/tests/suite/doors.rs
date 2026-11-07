@@ -1,6 +1,6 @@
-//! The doors against a real plane, driven in-process through the router
+//! The interfaces against a real plane, driven in-process through the router
 //! (tower's oneshot — no sockets): `/query` streams Arrow IPC a reader
-//! round-trips; the MCP door initializes, lists the one tool, executes
+//! round-trips; the MCP interface initializes, lists the one tool, executes
 //! statements, and answers a failed statement as a tool error, not a
 //! protocol error.
 
@@ -43,7 +43,7 @@ async fn app() -> (Router, tempfile::TempDir) {
     app_with(DoorConfig::default(), common::login()).await
 }
 
-/// The same doors over a workspace that already holds one dataset.
+/// The same interfaces over a workspace that already holds one dataset.
 /// `/query` and `/app` are dataset-scoped and 404 on a name the
 /// workspace does not hold — only `/mcp` may bring one into being.
 async fn app_on_fin() -> (Router, tempfile::TempDir) {
@@ -123,8 +123,8 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
     assert!(body["error"].as_str().unwrap().contains("fin"), "{body}");
 }
 
-/// A refusal answers by its class: a name the record does not hold is
-/// not found, a door whose service is not named is unavailable, and
+/// A refusal answers by its class: a name the catalog does not hold is
+/// not found, an interface whose service is not named is unavailable, and
 /// the statement's own fault is unprocessable.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refusal_answers_by_its_class() {
@@ -208,7 +208,7 @@ async fn the_query_door_refuses_a_read_the_engine_cannot_start() {
     assert!(error.contains("'x'"), "{error}");
 }
 
-/// The door's gate: a human at the query door is a standard actor
+/// The interface's gate: a human at the query interface is a standard actor
 /// unless the deployment names them root, so a `SET` that would take
 /// another standing is closed with its reason, and so is an `ATTACH`.
 #[tokio::test(flavor = "multi_thread")]
@@ -262,7 +262,7 @@ async fn the_query_door_answers_a_statement_sequence_in_json() {
     assert_eq!(outcomes[1]["rows"][0]["b"], json!(2));
 }
 
-/// The pages the door serves as resources are rows of `pages()` too —
+/// The pages the interface serves as resources are rows of `pages()` too —
 /// the read for a client that has the statement tool and nothing else.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_door_pages_are_rows_of_pages() {
@@ -315,13 +315,13 @@ async fn the_query_door_answers_a_refusal_in_the_body() {
 }
 
 /// The gate. A bearer token from the issuer names who is speaking; the
-/// door names with which standing. Nothing in the tree signs a token
+/// interface names with which standing. Nothing in the tree signs a token
 /// except the test issuer in `common`.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_token_names_the_subject_and_the_door_names_the_standing() {
     let (app, _dir) = app().await;
 
-    // Over the agent door: agent standing, the token's subject as the
+    // Over the agent interface: agent standing, the token's subject as the
     // id — never the handshake's `clientInfo` name, which a client
     // picks for itself on every request.
     let request = Request::post("/mcp")
@@ -354,9 +354,9 @@ async fn the_token_names_the_subject_and_the_door_names_the_standing() {
     assert_eq!(last["rows"][0]["actor_id"], json!("ada"), "{outcomes}");
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"), "{outcomes}");
 
-    // The same token over a human door: the same subject, human
+    // The same token over a human interface: the same subject, human
     // standing. Both rows stand — the supersession key's third leg is
-    // the kind, and the door set it.
+    // the kind, and the interface set it.
     let response = app
         .oneshot(
             Request::post("/fin/query")
@@ -382,16 +382,16 @@ async fn the_token_names_the_subject_and_the_door_names_the_standing() {
 }
 
 /// The explicit open arrangement (`Access::Open`, the
-/// GLOSSDB_INSECURE_OPEN switch): no door asks for a token, and the
+/// GLOSSDB_INSECURE_OPEN switch): no interface asks for a token, and the
 /// record still names who spoke — the well-known dev actor, with the
-/// door's standing. No login and no discovery document are served;
+/// interface's standing. No login and no discovery document are served;
 /// with no 401 to answer, a client is never sent to authenticate.
 #[tokio::test(flavor = "multi_thread")]
 async fn open_doors_ask_no_token_and_stamp_the_dev_actor() {
     let (_dir, plane) = common::scratch_plane().await;
     let app = router(Arc::new(plane), DoorConfig::default(), Access::Open);
 
-    // The agent door, bare: agent standing, the dev actor as the id.
+    // The agent interface, bare: agent standing, the dev actor as the id.
     let request = Request::post("/mcp")
         .header(header::HOST, "127.0.0.1")
         .header(header::CONTENT_TYPE, "application/json")
@@ -421,8 +421,8 @@ async fn open_doors_ask_no_token_and_stamp_the_dev_actor() {
     assert_eq!(last["rows"][0]["actor_id"], json!(INSECURE_DEV_MODE));
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"));
 
-    // A human door, bare: the same id, human standing — the
-    // supersession key's third leg still works, the door still sets it.
+    // A human interface, bare: the same id, human standing — the
+    // supersession key's third leg still works, the interface still sets it.
     let response = app
         .clone()
         .oneshot(
@@ -488,7 +488,7 @@ async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
         "{challenge}"
     );
 
-    // The agent door refuses before the protocol ever sees the body.
+    // The agent interface refuses before the protocol ever sees the body.
     let agent_door = app
         .clone()
         .oneshot(
@@ -580,7 +580,7 @@ async fn only_a_token_that_names_this_server_opens_it() {
     assert_eq!(no_audience.status(), StatusCode::UNAUTHORIZED);
 
     // RFC 9068 spells that same application claim `client_id`; neither
-    // spelling stands in for an audience.
+    // spelling holds in for an audience.
     let rfc_9068 = query(common::token_with(json!({
         "iss": common::ISSUER, "aud": [], "client_id": common::CLIENT_ID,
         "sub": "ada", "exp": common::far_future(), "iat": 1
@@ -596,7 +596,7 @@ async fn only_a_token_that_names_this_server_opens_it() {
     assert_eq!(elsewhere.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// A person in a browser holds no token, so a navigation to a door is
+/// A person in a browser holds no token, so a navigation to an interface is
 /// sent to sign in and brought back afterwards; a machine's call gets
 /// the 401 it can act on.
 #[tokio::test(flavor = "multi_thread")]
@@ -777,7 +777,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
 
     // The cookie opens a human door.
     let cookie = token_cookie.split(';').next().unwrap().to_string();
-    // And no agent door: a browser's session never speaks as an agent.
+    // And no agent interface: a browser's session never speaks as an agent.
     let as_agent = app
         .clone()
         .oneshot(
@@ -832,7 +832,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
 /// Where a sign-in comes back to is a path on this server and nothing
 /// else: a `next` that a browser would read as another host — a
 /// scheme-relative URL, a backslash after the slash, an absolute URL
-/// elsewhere — or that carries a control character lands on `/`.
+/// elsewhere — or that carries a control character is stored on `/`.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_login_brings_a_person_back_to_this_server_alone() {
     use base64::Engine as _;
@@ -958,7 +958,7 @@ async fn mcp_at(app: Router, host: &str, payload: Value) -> Response<Body> {
     mcp_on(app, "/mcp", host, payload).await
 }
 
-/// The call at `path` — the workspace door or a dataset's bound door.
+/// The call at `path` — the workspace interface or a dataset's bound door.
 async fn mcp_on(app: Router, path: &str, host: &str, payload: Value) -> Response<Body> {
     let method = payload["method"].as_str().unwrap().to_string();
     let mut request = Request::post(path)
@@ -1015,7 +1015,7 @@ async fn expect_ok(response: Response<Body>) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
-/// The agent door's `Host` guard: the transport's loopback default
+/// The agent interface's `Host` guard: the transport's loopback default
 /// refuses a public hostname — the DNS-rebinding guard of a laptop
 /// server — and a config that names the host, the deployment's own
 /// URL, answers it.
@@ -1052,7 +1052,7 @@ async fn the_mcp_door_initializes_and_lists_the_one_tool() {
     assert_eq!(tools[0]["name"], "glossql");
     // The revision's full tools/list contract, validated by shipping
     // clients (Claude Code): the SEP-2322
-    // discriminator plus the list-caching fields the door injects
+    // discriminator plus the list-caching fields the interface injects
     // until rmcp models them.
     assert_eq!(body["result"]["resultType"], "complete", "{body}");
     assert!(body["result"]["ttlMs"].is_number(), "{body}");
@@ -1219,7 +1219,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
         "{body}"
     );
 
-    // A URI this door does not hold is refused, never served as an
+    // A URI this interface does not hold is refused, never served as an
     // empty page. The 2026-07-28 revision spells resource-not-found
     // as invalid params (rmcp rewrites the older -32002), and the
     // transport answers the handler's refusal in band: HTTP 200, the
@@ -1270,7 +1270,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     assert_eq!(outcomes[0]["truncated"], json!(false));
     // Every read carries its shape as (name, type) — and the shape
     // survives an empty result: the LIMIT 0 rehearsal's whole point
-    // (the workaround otherwise is landing a rehearsal
+    // (the workaround otherwise is load a rehearsal
     // recipe just to DESCRIBE it).
     assert_eq!(
         outcomes[0]["columns"],
@@ -1294,7 +1294,7 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("nothing"), "{text}");
 
-    // A refusal mid-sequence names its place, what landed, and what
+    // A refusal mid-sequence names its place, what loaded, and what
     // never ran — after a silent abort the only recourse is reading
     // `imports` to learn what stood.
     let body = expect_ok(
@@ -1310,28 +1310,28 @@ async fn the_mcp_door_executes_and_reports_refusals_as_tool_errors() {
     assert!(text.contains("statement 2 of 3 refused"), "{text}");
     assert!(text.contains("statement 1 ran"), "{text}");
     assert!(text.contains("statement 3 not run"), "{text}");
-    // What landed rides beside the refusal, in the usual shape — the
+    // What ran rides beside the refusal, in the usual shape — the
     // first statement's rows are not discarded with the second's error.
     let landed = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(
-        landed.contains("\"landed\"") && landed.contains("\"a\""),
+        landed.contains("\"completed\"") && landed.contains("\"a\""),
         "{landed}"
     );
 
     // The connect-time brief: every initialize after
     // a call serves live counts in its instructions — an agent
-    // connecting now hears what stands before it acts.
+    // connecting now hears what holds before it acts.
     let body = expect_ok(mcp(app, initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("Live now:"), "{instructions}");
 }
 
-/// The bound agent door: `/{dataset}/mcp` opens every call on the
+/// The bound agent interface: `/{dataset}/mcp` opens every call on the
 /// dataset its URL names, the way `/{dataset}/query` does, so a call
 /// needs no `USE` to read the dataset's relations and gets the
-/// dataset's `next` line on every result. The workspace door keeps
+/// dataset's `next` line on every result. The workspace interface keeps
 /// opening unbound, and a dataset the workspace does not hold is the
-/// same 404 the human doors answer.
+/// same 404 the human interfaces answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     let (app, _dir) = app_on_fin().await;
@@ -1362,7 +1362,7 @@ async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     .await;
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
 
-    // The workspace door opens unbound: the relation serves no row and
+    // The workspace interface opens unbound: the relation serves no row and
     // no `next` line rides the result.
     let body = expect_ok(mcp(app.clone(), read(3)).await).await;
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
@@ -1371,7 +1371,7 @@ async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(!window.contains("next:"), "{window}");
 
-    // Each door describes its own opening on the one tool, and the
+    // Each interface describes its own opening on the one tool, and the
     // handshake's opening says the same.
     let list = |id| json!({"jsonrpc": "2.0", "id": id, "method": "tools/list", "params": {"_meta": meta()}});
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", list(4)).await).await;
@@ -1382,7 +1382,7 @@ async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     assert!(description.contains("opens unbound"), "{description}");
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
-    assert!(instructions.contains("`owed` on `fin`"), "{instructions}");
+    assert!(instructions.contains("`open_items` on `fin`"), "{instructions}");
     assert!(!instructions.contains("`USE` a dataset"), "{instructions}");
 
     let response = mcp_on(app, "/nope/mcp", "127.0.0.1", read(6)).await;
@@ -1399,7 +1399,7 @@ fn call_with(meta_value: Value, id: u64, statements: &str, retry: Option<(&str, 
     });
     if let Some((key, answer)) = retry {
         params["inputResponses"] = json!({ key: answer });
-        params["requestState"] = json!("question-round:v1");
+        params["requestState"] = json!("review:v1");
     }
     json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params})
 }
@@ -1415,7 +1415,7 @@ fn meta_elicit() -> Value {
 
 /// The same round on DuckDB: the kits are declared at open, a source
 /// and a recipe land the table, and the role gloss leaves the behavior
-/// claim owed — the tested claim a measurement settles, never a
+/// claim required — the tested claim a measurement settles, never a
 /// question for the human.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_asks_the_human_for_statistics() {
@@ -1465,8 +1465,8 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
     // the practice skill says to, and was then asked about
     // `days-in-period` three times. Fanning one answer across every
     // aspect is the obvious cure and the wrong one — run 2's human
-    // ruled `goods-only` two ways on purpose, and that must stay
-    // possible. So the second ask offers the first ruling back as an
+    // decided `goods-only` two ways on purpose, and that must stay
+    // possible. So the second ask offers the first review decision back as an
     // answer: agreeing costs a click, differing is still there.
     let (app, _dir) = app().await;
     let setup = r#"
@@ -1514,7 +1514,7 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
 
     // dio asks first (aspect order) and the human corrects it. With
-    // nothing yet ruled on this key, there is no box to repeat one.
+    // nothing yet decided on this key, there is no box to repeat one.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 182, review, None)).await).await;
     let first = &body["result"]["inputRequests"]["loose:fin:dio:days-in-period"];
     assert!(first.is_object(), "{body}");
@@ -1541,12 +1541,12 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // dso asks next. The same key is already ruled next door, so the
+    // dso asks next. The same key is already decided next interface, so the
     // form both names it and offers it back.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 184, review, None)).await).await;
     let second = &body["result"]["inputRequests"]["loose:fin:dso:days-in-period"];
     assert!(second.is_object(), "{body}");
-    // The prior ruling is its own box, and its title says which one.
+    // The prior review decision is its own box, and its title says which one.
     // The message carries identity only — it is the one surface the
     // client clips.
     let repeat = &second["params"]["requestedSchema"]["properties"]["3_same_as"];
@@ -1577,11 +1577,11 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
     assert!(
         body["result"]["content"]
             .to_string()
-            .contains("ruled (corrected)"),
+            .contains("decided (corrected)"),
         "{body}"
     );
 
-    // Nothing stands open now, and each aspect carries its own entry.
+    // Nothing holds open now, and each aspect carries its own entry.
     assert!(open(186).await.is_empty());
     let body = expect_ok(
         mcp(
@@ -1589,7 +1589,7 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
             call_with(
                 meta(),
                 187,
-                "SELECT aspect, stance, note, assumption FROM ruling_entries ORDER BY aspect;",
+                "SELECT aspect, stance, note, assumption FROM review_decisions ORDER BY aspect;",
                 None,
             ),
         )
@@ -1616,11 +1616,11 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_rules_a_loose_assumption_on_retry() {
     // A judged assumption below full confidence becomes a
-    // confirm/correct form; "stands as stated" lands a RULING entry —
+    // confirm/correct form; "holds as stated" stores a review decision entry —
     // the judgment alone, never a copy of the agent's body (a
     // frozen copy would outrank every later correction).
-    // The ruling holds the question closed, the brief counts the
-    // fold-in debt, and the agent's re-record clears it.
+    // The review decision holds the question closed, the brief counts the
+    // applying the decision debt, and the agent's re-record clears it.
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'loose test');
@@ -1685,12 +1685,12 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     assert!(
         body["result"]["content"]
             .to_string()
-            .contains("ruled (confirmed)"),
+            .contains("decided (confirmed)"),
         "{body}"
     );
 
-    // The human slot is the ruling record alone — the judgment, never
-    // the agent's grounding; the dso aspect stays agent-authored.
+    // The human value is the review decision record alone — the judgment, never
+    // the agent's metric definition; the dso aspect stays agent-authored.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -1720,7 +1720,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
         "the ruling froze a body copy: {human_body}"
     );
 
-    // The ruling holds the question closed on the next review…
+    // The review decision holds the question closed on the next review…
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -1736,8 +1736,8 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     .await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 
-    // …and the brief counts the fold-in debt until the agent
-    // re-records the grounding at full confidence, citing the ruling.
+    // …and the brief counts applying the decision debt until the agent
+    // re-records the metric definition at full confidence, citing the ruling.
     let body = expect_ok(mcp(app.clone(), initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(
@@ -1746,7 +1746,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
     );
     let fold_in = r#"GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
         "assumptions": [
-          {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "human-ruled", "confidence": 1.0},
+          {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "decided-by-person", "confidence": 1.0},
           {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
         ]}$$;"#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 65, fold_in, None)).await).await;
@@ -1831,7 +1831,7 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
             call_with(
                 meta(),
                 id + 1,
-                "SELECT count(*) AS n FROM ruling_entries;",
+                "SELECT count(*) AS n FROM review_decisions;",
                 None,
             ),
         )
@@ -1849,8 +1849,8 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_interrupts_a_working_call() {
     // Cadence: forms ride
-    // only calls that read the record. A landing call and a plain data
-    // read run uninterrupted even while a question stands open; the
+    // only calls that read the record. A load call and a plain data
+    // read run uninterrupted even while a question holds open; the
     // review-shaped call carries the form.
     let (app, _dir) = app().await;
     let setup = r#"
@@ -1865,7 +1865,7 @@ async fn the_round_never_interrupts_a_working_call() {
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 90, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // A writing call: the question stands, the landing runs through.
+    // A writing call: the question holds, the load runs through.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -1923,7 +1923,7 @@ async fn the_round_never_interrupts_a_working_call() {
 }
 
 /// The handshake's own name never reaches the record. `clientInfo`
-/// carries one here and the token carries another; the record takes
+/// carries one here and the token carries another; the catalog takes
 /// the token's, because a caller names itself on every request and the
 /// string proves nothing.
 #[tokio::test(flavor = "multi_thread")]
@@ -2102,9 +2102,9 @@ async fn the_mcp_door_caps_rows_and_declares_it() {
 #[tokio::test(flavor = "multi_thread")]
 async fn sequential_rulings_compose_instead_of_reverting() {
     // Ruling a second assumption must not revert the
-    // first. Rulings accumulate as entries in the human's
-    // one ruling slot — each append carries the earlier entries along,
-    // and no ruling ever touches the agent's body.
+    // first. Review decisions accumulate as entries in the human's
+    // one review decision value — each append carries the earlier entries along,
+    // and no review decision ever touches the agent's body.
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'sequential rulings');
@@ -2138,12 +2138,12 @@ async fn sequential_rulings_compose_instead_of_reverting() {
         assert!(
             body["result"]["content"]
                 .to_string()
-                .contains("ruled (confirmed)"),
+                .contains("decided (confirmed)"),
             "{key}: {body}"
         );
     }
 
-    // Both rulings stand as entries in the one ruling slot — the first
+    // Both review decisions stand as entries in the one review decision value — the first
     // did not revert — and the agent's dso body is untouched.
     let body = expect_ok(
         mcp(
@@ -2199,14 +2199,14 @@ async fn sequential_rulings_compose_instead_of_reverting() {
 async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     // Run 2 produced this: `purchases`'s goods-only assumption was
     // confirmed in the same session where `dpo`'s goods-only
-    // assumption was corrected. The two groundings word the claim
+    // assumption was corrected. The two metric definitions word the claim
     // differently on purpose — pairing rests on the declared key,
     // never on the prose (STRING EQUALITY ON NON-KEYS IS FORBIDDEN).
     //
     // The form is the whole mechanism: when the round asks about a key
-    // the human already ruled under another aspect, the message names
-    // that sibling ruling, and the human decides with both in view.
-    // Nothing pairs the rulings afterwards — two aspects may genuinely
+    // the human already decided under another aspect, the message names
+    // that sibling review decision, and the human decides with both in view.
+    // Nothing pairs the review decisions afterwards — two aspects may genuinely
     // differ, and an agent that needs it settled again asks again.
     let (app, _dir) = app().await;
     let setup = r#"
@@ -2249,7 +2249,7 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // purchases asks next, and the form offers what was already ruled
+    // purchases asks next, and the form offers what was already decided
     // on that same key as an answer — the `sibling` column, carried by
     // the read, standing as its own box with the prior words beneath.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 103, review, None)).await).await;
@@ -2283,8 +2283,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // Both rulings stand, each on its own aspect, and the round is
-    // quiet — the record needs no third act.
+    // Both review decisions stand, each on its own aspect, and the round is
+    // quiet — the catalog needs no third act.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 105, review, None)).await).await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 }
@@ -2306,9 +2306,9 @@ async fn the_brief_rides_the_call_that_moved_it() {
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 120, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let blocks = body["result"]["content"].as_array().unwrap();
-    // The grounding's write answers with its fact row through the
-    // door — the `metric_axes()` shape, abstaining here with its
-    // reason (this app declares no `cube` aspect) and landed all the
+    // The metric definition's write answers with its fact row through the
+    // interface — the `metric_axes()` shape, abstaining here with its
+    // reason (this app declares no `cube` aspect) and loaded all the
     // same.
     let outcomes = blocks[0]["text"].as_str().unwrap();
     assert!(
@@ -2321,7 +2321,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     let brief = brief.unwrap_or_else(|| panic!("the landing moved the brief: {body}"));
     let brief = brief["text"].as_str().unwrap();
     assert!(brief.contains("judgment question"), "{body}");
-    // Debt before presence: what owes an act leads, the record's size
+    // Debt before presence: what owes an act leads, the catalog's size
     // closes — a count of human writings is never read as work.
     assert!(
         brief.find("judgment question") < brief.find("Catalog: 0 human annotations"),
@@ -2364,8 +2364,8 @@ async fn the_brief_rides_the_call_that_moved_it() {
 async fn an_unkeyed_assumption_is_never_asked() {
     // A KNOWN, ACCEPTED GAP. Identity is the
     // declared `key`; an assumption disclosed without one cannot be
-    // held closed by a ruling, so the round would re-ask it forever.
-    // It is therefore never asked at all — the record still shows it,
+    // held closed by a review decision, so the round would re-ask it forever.
+    // It is therefore never asked at all — the catalog still shows it,
     // and the skills make the key part of the disclosure shape. The
     // alternative — pairing on the prose — is forbidden.
     let (app, _dir) = app().await;
@@ -2402,7 +2402,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_open_questions_read_composes_like_a_table() {
     // The point of the read library: the round's derivation is a
-    // relation anyone can select from, so the door, the app's queue and
+    // relation anyone can select from, so the interface, the app's queue and
     // any ad-hoc query share one file instead of three copies. Filters
     // ride WHERE — the same posture `read.<aspect>()` and
     // `metric_series()` take.
@@ -2490,9 +2490,9 @@ async fn the_open_questions_read_composes_like_a_table() {
         .await,
     )
     .await;
-    // A round is one grounding: the least confident open claim picks
+    // A round is one metric definition: the least confident open claim picks
     // the aspect, and every open claim on THAT aspect travels together.
-    // dpo and dso are two groundings, so only dpo's is asked — and the
+    // dpo and dso are two metric definitions, so only dpo's is asked — and the
     // message says how many stand open in the whole, so the end of a
     // round never reads as the end of the work.
     let asked = body["result"]["inputRequests"].as_object().unwrap();
@@ -2588,7 +2588,7 @@ async fn an_agent_authors_an_app_over_the_tool() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_workspace_says_what_it_affords() {
     // The map that replaces the staged manuals: what this workspace can
-    // be extended through, how much of each stands, and what is open on
+    // be extended through, how much of each holds, and what is open on
     // it. Not an order to follow — the agent judges what to do next;
     // this only says what the system affords.
     let (app, _dir) = app().await;
@@ -2632,7 +2632,7 @@ async fn the_workspace_says_what_it_affords() {
         "metrics",
         "plans",
         "relationships",
-        "rulings",
+        "review",
         "scenarios",
         "sources",
         "tables",
@@ -2654,16 +2654,16 @@ async fn the_workspace_says_what_it_affords() {
     assert_eq!(row("metrics")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("metrics")["open"], json!(1), "{rows:?}");
     assert_eq!(row("claims")["open"], json!(1), "{rows:?}");
-    // The scenarios and the sample frames. The sample door is a planner door, not a row
+    // The scenarios and the sample frames. The sample interface is a planner interface, not a row
     // in `functions`, so this map is the only place an agent meets them
     // at all. Each is declared here and never glossed — vocabulary
     // standing with no body, which is exactly what `open` means.
     assert_eq!(row("scenarios")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
-    // Nothing ruled yet, so nothing owes a fold-in.
-    assert_eq!(row("rulings")["stands"], json!(0), "{rows:?}");
-    assert_eq!(row("rulings")["open"], json!(0), "{rows:?}");
-    // A validation stands with its test and is open while nobody
+    // Nothing decided yet, so no decision waits to be applied.
+    assert_eq!(row("review")["stands"], json!(0), "{rows:?}");
+    assert_eq!(row("review")["open"], json!(0), "{rows:?}");
+    // A validation holds with its test and is open while nobody
     // has spoken on the tested aspect. The DuckDB build opens with
     // its kits declared, whose tests stand open here too.
     let kit_witnesses = 11;
@@ -2679,7 +2679,7 @@ async fn the_workspace_says_what_it_affords() {
     );
 
     // The authored expectation is speech on the aspect: the validation
-    // stops being owed the moment somebody speaks.
+    // stops being required the moment somebody speaks.
     let speak = r#"USE fin;
         GLOSS ar_tie ON fin AS $${"outcome": "the subledger ties to its control account", "tolerance": 0.01}$$;"#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 162, speak, None)).await).await;
@@ -2784,10 +2784,10 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     assert_eq!(surfaces, vec!["sources", "tables"], "{some_rows:?}");
 }
 
-/// The opening names where to begin, from what stands: a workspace
+/// The opening names where to begin, from what holds: a workspace
 /// before its first dataset has no brief to sweep — the brief's
-/// reads all need one — and the door says so instead of sending the
-/// agent to them. Once a dataset stands, the brief is the opening,
+/// reads all need one — and the interface says so instead of sending the
+/// agent to them. Once a dataset holds, the brief is the opening,
 /// and it is a read, never a gate.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_opening_names_where_to_begin() {

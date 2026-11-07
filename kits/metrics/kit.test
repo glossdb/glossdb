@@ -1,5 +1,5 @@
 # name: kits/metrics/kit.test
-# description: the metrics kit — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over the collapsed slots and the view, the no-claim refusal, the ladder, facts, sources
+# description: the metrics kit — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over the collapsed values and the view, the no-claim refusal, the ladder, facts, sources
 # group: [sql]
 
 require glossql
@@ -182,7 +182,7 @@ spend	fund	ledger.fund	ledger
 spend	object	ledger.object	ledger
 spend	period	ledger.booked	ledger
 
-# --- a stock: the period's last level, summed over what stands at that instant
+# --- a stock: the period's last level, summed over what holds at that instant
 
 statement ok
 CREATE TABLE fin.levels AS SELECT * FROM (VALUES

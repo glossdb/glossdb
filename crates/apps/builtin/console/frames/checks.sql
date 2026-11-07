@@ -1,6 +1,6 @@
 -- The standing checks: the adjudication plane, read whole and folded
 -- per test. Each test with a detector is one row — what it asks,
--- in words; its detector and threshold; its verdicts counted by band;
+-- in words; its detector and threshold; its results counted by band;
 -- its worst band as the chip — linked to the check's own page, where
 -- the evidence is listed by the detector's kind.
 WITH v AS (

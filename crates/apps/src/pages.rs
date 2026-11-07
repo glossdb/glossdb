@@ -1,6 +1,6 @@
 //! Pages: tera over two template tiers. The shell and the module
 //! macros ship embedded in the binary; an app's own pages come from
-//! the record or the binary on every request. A page's context is the
+//! the catalog or the binary on every request. A page's context is the
 //! app with its pages (the bar's tabs) and which of them this is, the
 //! workspace's app list and its datasets (the bar's two pickers), the
 //! dataset the URL bound, the server's own address, and the URL's
@@ -19,7 +19,7 @@ use crate::app::AppDef;
 use crate::overview;
 
 /// The policy every page is served under. A page is markup an author
-/// glossed — an agent, as often as not — and the human door renders
+/// glossed — an agent, as often as not — and the human interface renders
 /// it with the viewer's standing, so what runs in a page is the
 /// shell's own assets and nothing the page carries: no inline script,
 /// no handler attribute, no `javascript:` URL, no eval. A vega-lite
@@ -86,8 +86,8 @@ async fn admit(door: &AppDoor, dataset: &str) -> Result<Vec<String>, Response> {
 }
 
 /// The workspace root: every dataset at a glance and the way into
-/// each, the apps, the doors, and how an agent connects. Read from
-/// the record at each visit — one workspace read for the datasets,
+/// each, the apps, the interfaces, and how an agent connects. Read from
+/// the catalog at each visit — one workspace read for the datasets,
 /// one bound read per dataset for its counts.
 pub async fn datasets(State(door): State<AppDoor>) -> Response {
     let (mut datasets, error) = match overview::rows(&door, None, overview::DATASETS, &[]).await {
@@ -269,7 +269,7 @@ fn render(name: &str, ctx: tera::Context, tera: Result<Tera, tera::Error>) -> Re
     match rendered {
         // Never cached. A page is a live view of a mutable record, and
         // with no Cache-Control at all the browser applies heuristic
-        // freshness — so after a ruling POST redirected back here, the
+        // freshness — so after a review decision POST redirected back here, the
         // browser would serve the pre-ruling copy from cache and the
         // change would only appear on a manual reload.
         // The redirect was correct; the caching was the bug.

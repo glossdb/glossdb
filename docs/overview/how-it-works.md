@@ -83,7 +83,7 @@ semantic layer's vocabulary; the `quality` kit holds the screens. See
 
 **Next steps.** Every result over MCP ends with a `next:` line: one
 action per goal (structure, metrics, slices, bands, checks, app, plan,
-rulings), each filled from the catalog. The agent does not need the
+review), each filled from the catalog. The agent does not need the
 chat history to know what is left. See [reads](../reference/reads.md).
 
 **The console.** People see the same catalog in the browser: the

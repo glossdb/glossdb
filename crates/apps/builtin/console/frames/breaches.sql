@@ -1,7 +1,7 @@
 -- The findings' first rows: every walked metric whose newest point
--- landed outside the corridor its own history predicted — the point
--- the walk's verdict scores — as one finding: a sentence from the
--- record's fields, the numbers behind it, the bands test's verdict
+-- loaded outside the corridor its own history predicted — the point
+-- the walk's result scores — as one finding: a sentence from the
+-- record's fields, the numbers behind it, the bands test's result
 -- as the chip, and the axis that moved most for the link to the metric
 -- sliced by it. The corridor picture and the movers under the finding
 -- are the metric's own frames, keyed by its name. `band_points()` is

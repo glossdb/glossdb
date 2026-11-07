@@ -1,5 +1,5 @@
 -- The metric's assumptions ledger: `agent_assumptions` narrowed to this
--- metric, each row joined to its standing ruling on the declared key.
+-- metric, each row joined to its standing review decision on the declared key.
 -- Full confidence renders fixed (●), less renders loose (◐). The
 -- contest statement is the whole metric gloss: an assumption is a row
 -- inside it, edited in place.
@@ -18,7 +18,7 @@ SELECT CASE WHEN a.conf >= 1.0 THEN '●' ELSE '◐' END AS glyph,
        'GLOSS ' || a.aspect || ' ON ' || (SELECT dataset FROM current_dataset)
          || ' AS $$' || a.body::VARCHAR || '$$;' AS statement
 FROM agent_assumptions a
-LEFT JOIN ruling_entries r
+LEFT JOIN review_decisions r
   ON r.dataset = a.dataset AND r.subject = a.subject AND r.aspect = a.aspect AND r.key = a.key
 WHERE a.aspect = $metric
   AND a.dataset = (SELECT dataset FROM current_dataset)

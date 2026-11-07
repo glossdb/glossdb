@@ -1,15 +1,15 @@
 -- The pulse: every metric surface that is a series with its chip. The
 -- facts, the views and the plans have their own lists. `$stopped` picks
 -- the served surfaces (0) or the ones their author stopped (1). The rows
--- are `metric_surfaces`, the record; the numbers beside them are
--- `frames/latest`, joined in the browser by `name`. The axes slot
+-- are `metric_surfaces`, the catalog; the numbers beside them are
+-- `frames/latest`, joined in the browser by `name`. The axes value
 -- carries, until the data arrives, the fact row's own reason where the
 -- metric serves no series — what its columns still owe.
 WITH asked AS (
   SELECT q.aspect, count(*) AS n FROM open_questions q
   JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.aspect),
 ruled AS (
-  SELECT r.aspect, max(r.written_at) AS ruled_at FROM ruling_entries r
+  SELECT r.aspect, max(r.written_at) AS ruled_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect)
 SELECT s.title,
        s.name,

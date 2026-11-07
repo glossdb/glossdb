@@ -1,5 +1,5 @@
 -- Every read the dataset serves, for the Export tab: one row per VIEW
--- aspect that stands here, with the files the download door serves for
+-- aspect that holds here, with the files the download interface serves for
 -- its view. The chip says kind and standing in one word. `$stopped`
 -- picks the served reads (0) or the stopped ones (1).
 SELECT s.name,

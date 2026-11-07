@@ -18,7 +18,7 @@ to measure, what to ask.
 says where you are on each after every call, on the `next:` line:
 
 ```text
-next: structure: done · metrics → define churn (next://ops/metrics) · slices → record churn again — serving one of region, channel (next://ops/slices) · bands → blocked: no applicable metric exists · checks → run metric_bands (next://ops/checks) · app → write the first page over 3 metrics (next://ops/app) · plan → declare the first plan (next://ops/plan) · rulings: done
+next: structure: done · metrics → define churn (next://ops/metrics) · slices → record churn again — serving one of region, channel (next://ops/slices) · bands → blocked: no applicable metric exists · checks → run metric_bands (next://ops/checks) · app → write the first page over 3 metrics (next://ops/app) · plan → declare the first plan (next://ops/plan) · review: done
 ```
 
 A goal that is neither done nor blocked is yours to move. Read its
@@ -40,7 +40,7 @@ order, and the line is never one.
 | `checks` | a check of your own exists, every check ran, none is red | `references/validate.md` |
 | `app` | a page exists over the defined metrics | the `glossql-apps` skill |
 | `plan` | every plan is served and judged against the forecast at the current origin, and no plan year lies outside the forecast's band — or the gap carries your question or a review decision | `references/ladder.md`, the plan world |
-| `rulings` | every review decision is applied and nothing is open | `skill://glossql/references/rulings.md` |
+| `review` | every review decision is applied and nothing is open | `skill://glossql/references/review.md` |
 
 **When every goal is done or blocked, offer one next step of each
 kind, as a proposal.** The metrics done row's why names what the

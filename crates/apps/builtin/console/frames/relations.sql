@@ -1,8 +1,8 @@
--- The Query tab's relations: every landed table (the newest landing is
+-- The Query tab's relations: every loaded table (the newest load is
 -- the table) and every served read of the dataset, each with its rows
--- where the record counts them, and a read that puts the first fifty
+-- where the catalog counts them, and a read that puts the first fifty
 -- rows in the pane. A stopped read serves nothing and is not offered;
--- a plan stands on its metric's page.
+-- a plan holds on its metric's page.
 WITH latest AS (
   SELECT i.table_name, i.rows AS n,
          row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn

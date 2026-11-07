@@ -4,7 +4,7 @@
 // cell. With join="frames/y" on="key" a second frame's row with the
 // same key merges into each row — its fields win — which is how a
 // record frame and a data frame meet in one list without becoming one
-// fetch: the pulse's surfaces are the record, its numbers the cube. Display logic — glyphs, classes, links — belongs to the
+// fetch: the pulse's surfaces are the catalog, its numbers the cube. Display logic — glyphs, classes, links — belongs to the
 // frame's SQL; the template stays dumb and substitution is literal,
 // so a frame that feeds an href emits a URL-ready value — with one
 // guard: a substituted href/src carrying a script-capable scheme

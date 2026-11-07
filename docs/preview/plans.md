@@ -89,7 +89,7 @@ grain and at the year, with:
   the step's range at the metric's own grain, and at the year the
   actual to date plus the year to go.
 
-The row's `stands` column says where the plan is: `landed`, `inside`,
+The row's `planned` column says where the plan is: `complete`, `inside`,
 `below` or `above` the range, or `open` or `ahead` where no range
 covers it ([views and table functions](../reference/reads.md)).
 
@@ -97,13 +97,13 @@ covers it ([views and table functions](../reference/reads.md)).
 much of the year its rows cover, in `covers`: `9 of 12 months` where a
 schedule runs to September, NULL where the rows cover the whole year.
 Where they cover part of it, the plan's number and the actual are over
-the covered months, the row is `landed` with its variance once those
+the covered months, the row is `complete` with its variance once those
 months are complete and `partial` while they are not, and no range is
 read: the forecast totals a year to go, never part of one. A plan
 booked against the year (`x-covers: year`) is read at the year alone.
 
 ```sql
-SELECT plan, label, value, actual, expected, low, high, stands
+SELECT plan, label, value, actual, expected, low, high, planned
 FROM plan_points() WHERE grain = 'year' ORDER BY plan, period
 ```
 
@@ -216,7 +216,7 @@ compared with.
   whole period. Where they cover part of it, the row carries `covers`
   and no range.
 - Where the table says no range, `plan_points()` still returns the row
-  with the actual and the variance, and `stands` says `open` or
+  with the actual and the variance, and `planned` says `open` or
   `ahead`.
 
 The planning goal reads the year rows. So it finds a gap on a flow at

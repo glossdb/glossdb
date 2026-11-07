@@ -1,4 +1,4 @@
--- The metric's fact row: what the record says its columns are and
+-- The metric's fact row: what the catalog says its columns are and
 -- whether a series can be served — the floor its cells stand at (the
 -- ladder's, else the measured cadence; served as `resolution` for the
 -- window control), the rung at that floor, the behaviour, the slices,

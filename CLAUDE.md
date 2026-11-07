@@ -20,18 +20,18 @@ process below. Words: the terms table in the glossql-prose skill.
 - The next steps the `next` read returns: per goal, its steps as
   query arms over the catalog, one action per goal as a statement
   filled from the catalog — each kit's `routes_<kit>()` in its kit
-  under `kits/`, the core's in `kits/door/kit.sql`, composed at open;
+  under `kits/`, the core's in `kits/goals/kit.sql`, composed at open;
   the two lines every result closes with, `crates/serverd/src/window.rs`.
 - `corpus/` — the two transcriptions behind the server's kits (19 and
   27), in the extension's corpus form; the serverd suite parses them
   on the engine.
 - `crates/` — the server, a Cargo workspace: `duck` · `apps` ·
   `serverd`. What each is and how it is built: the crate headers and
-  `docs/architecture/`. Directories unprefixed, packages `glossdb-*`;
+  `docs/internals/`. Directories unprefixed, packages `glossdb-*`;
   the engine is the glossql extension (`../gloss`, pinned by
   `crates/duck/glossql.ref`) on DuckDB, compiled into every binary;
   the arrow line is one (the workspace `Cargo.toml` comment).
-- `kits/` — the server's kits, core, metrics, futures and door: SQL
+- `kits/` — the server's kits, core, metrics, outlook and goals: SQL
   loaded at open in that order around the extension's kpi and quality
   kits, each with its `kit.test` suite beside it (DuckDB's
   sqllogictest form, run by the engine crate's suite). A kit whose

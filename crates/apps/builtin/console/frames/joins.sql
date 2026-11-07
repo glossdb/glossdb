@@ -1,4 +1,4 @@
--- The joins: every declared relationship with what the record says of
+-- The joins: every declared relationship with what the catalog says of
 -- it — the meaning entry on the pair path — and what the coherence
 -- measurement found: every row resolving, or how many do not. Two page
 -- params narrow the list: `table` to a table's joins, `column` to a

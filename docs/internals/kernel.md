@@ -66,7 +66,7 @@ extension's `kits/` and two from this repository's:
 - **The metrics kit** (`kits/metrics` here): time grains, the metric
   summary row, the cells, single values, lineage; the `metrics` and
   `slices` goals.
-- **The futures kit** (`kits/futures` here, preview): expected ranges,
+- **The outlook kit** (`kits/outlook` here, preview): expected ranges,
   forecasts, plan judgments and scenario estimates, each a measurement;
   the `bands` and `plan` goals.
 
@@ -108,7 +108,7 @@ A service turns rows into rows. An extension point works like this:
    and start-up logs it. Nothing stands in for a missing service.
 
 The model service is named once per instance, `GLOSSDB_SERVICE_URL`
-([configuration](../operations/configuration.md)). The futures kit
+([configuration](../operations/configuration.md)). The outlook kit
 calls its routes through the extension's `glossql_service`: expected
 ranges, forecasts and what-if. Every answer names the service and its
 version, and the measurement stores it as `served_by`.
@@ -135,7 +135,7 @@ The server is a Cargo workspace of three crates:
 - **`duck`** is the engine: the facade the interfaces use over the
   glossql extension and a DuckLake, and the actor types a call is
   stamped with. The catalog's own reads and the interfaces' reads are
-  the core and door kits under `kits/`.
+  the core and goals kits under `kits/`.
 - **`apps`** serves the console and the data apps.
 - **`serverd`** is the binary with its interfaces.
 
@@ -143,7 +143,7 @@ The language belongs to the extension: SPEC.md, `grammar.ebnf` and the
 corpus live in its repository, and the server serves the two documents
 from the extension's share. The kits are SQL loaded at open, each one
 skipped when its text is the one the lake already recorded: core,
-metrics, futures and door from `kits/` here, around the extension's
+metrics, outlook and door from `kits/` here, around the extension's
 `kpi` and `quality` kits. `kits/README.md` says what they add.
 
 ## Known limits

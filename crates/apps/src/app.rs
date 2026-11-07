@@ -1,8 +1,8 @@
 //! An app is a named set of parts — pages (`*.html`, tera),
 //! `frames/*.sql`, `specs/*.vl.json`, a manifest — authored as glosses
-//! into the record (`glossed.rs`: one gloss per part, the shape an
+//! into the catalog (`glossed.rs`: one gloss per part, the shape an
 //! agent over MCP writes and a human supersedes) or shipped in the
-//! binary (`builtin.rs`). Nothing is read from disk: the record and
+//! binary (`builtin.rs`). Nothing is read from disk: the catalog and
 //! the binary are the two sources, in that order. An app names no
 //! dataset — the URL does (`/<dataset>/app/<name>`), so one app serves
 //! every dataset in the workspace and the bar's pickers are links
@@ -15,7 +15,7 @@ use crate::builtin::{self, BuiltinApp};
 /// One tab of the bar: the page's name, the title the bar prints, and
 /// the group the manifest puts it in. The bar draws a hairline where
 /// the group changes from one page to the next — the pages that show
-/// what the record says, then the ones that hand the data over; pages
+/// what the catalog says, then the ones that hand the data over; pages
 /// without a group draw none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tab {
@@ -127,7 +127,7 @@ fn pages_by_name<'a>(files: impl Iterator<Item = &'a str>) -> Vec<Tab> {
 impl AppDef {
     /// The app's definition, or why there is none: `Ok(None)` is "no
     /// such app" (a 404), `Err` is an app that exists but cannot serve.
-    /// The record wins; a built-in answers for the name only when the
+    /// The catalog wins; a built-in answers for the name only when the
     /// record carries nothing under it. `glossed` is every app part
     /// the dataset carries, loaded once by the caller — apps are small
     /// and one read serves the whole door.

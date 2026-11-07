@@ -7,7 +7,7 @@
 // `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
 //
 // dagre places the tables, reading left to right along the keys — a
-// parent stands left of the table that points at it. The metrics are
+// parent holds left of the table that points at it. The metrics are
 // not ranked with them: they are the right-hand column, one stack
 // ordered by where their sources sit, so the graph is as wide as its
 // longest key chain and no wider. The element draws the rest as SVG

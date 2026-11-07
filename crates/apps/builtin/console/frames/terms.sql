@@ -1,13 +1,13 @@
 -- The terms: every metric and view with its agreed meaning — the
 -- definitions registry as metric_surfaces serves it — and every column
--- whose meaning entry names a term, in one alphabet. A person's ruling
+-- whose meaning entry names a term, in one alphabet. A person's review decision
 -- on a metric's definition, or a person's meaning on a column, shows as
 -- a mark; a contested meaning shows as one. A row opens the metric's
 -- page or the column's.
 WITH d AS (SELECT dataset FROM current_dataset),
 rulings AS (
   SELECT r.aspect, max(r.written_at) AS ruled_at, count(*) AS n
-  FROM ruling_entries r JOIN d ON d.dataset = r.dataset
+  FROM review_decisions r JOIN d ON d.dataset = r.dataset
   WHERE r.stance IN ('confirmed', 'corrected')
   GROUP BY r.aspect),
 slots AS (

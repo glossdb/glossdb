@@ -1,7 +1,7 @@
--- The landed tables of the bound dataset: the newest landing per table
+-- The loaded tables of the bound dataset: the newest load per table
 -- is the table, with its rows, the rows the recipe dropped, and when.
 -- Column counts come from the engine's own schema surface. The file
--- links are the download door's paths.
+-- links are the download interface's paths.
 WITH latest AS (
   SELECT i.table_name, i.rows, i.dropped_rows_count, i.imported_at,
          row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn

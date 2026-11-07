@@ -35,13 +35,13 @@ per statement:
 - a refused statement — a tool error whose text is the refusal. It
   names what was wrong and, in a sequence, its place: `statement 2 of
   7 refused: … — statement 1 ran; 3–7 not run`, with a
-  `{"landed": [...]}` block for what was stored. What was stored stays
+  `{"completed": [...]}` block for what was stored. What was stored stays
   stored.
 - two closing lines on every result. `situation:` says whether your
   last statement was done or refused, and for a metric definition
   what its summary row said. `next:` names one action per goal —
-  structure, metrics, slices, bands, checks, app, plan, rulings (the
-  review) — each with a link. To move a goal, read its link —
+  structure, metrics, slices, bands, checks, app, plan, review —
+  each with a link. To move a goal, read its link —
   `next://<dataset>/<goal>` as a resource, or `SELECT * FROM next
   WHERE surface = '<goal>'` through the tool — and send the statement
   it gives you, edited to your judgment; `<…>` marks what only you can
@@ -90,7 +90,7 @@ inside, nothing escaped — and closes as `}$$;`.
 A fresh workspace is not empty: the kits — the KPI kit's `meaning`,
 `role`, `behavior`, `unit`, `dimension`, `entity` and the rest with
 their tests, the quality kit's measurements, the metrics kit's
-`ladder`, the futures kit's worlds — are declared at open; read them
+`ladder`, the outlook kit's worlds — are declared at open; read them
 back before declaring anything.
 
 - The catalog tables, as plain tables — these columns and no others;
@@ -99,7 +99,7 @@ back before declaring anything.
   `glossary (seq, dataset, subject, aspect, actor_kind, actor_id, body,
   snapshot_id, written_at)` · `aspects (seq, name, kind, grains,
   condition, schema, declared_at)` · `tests (seq, name, aspect,
-  speakers, detector, threshold, declared_at)` · `functions (seq,
+  actors, detector, threshold, declared_at)` · `functions (seq,
   name, scope, script, returns, declared_at)` · `measurements (seq,
   dataset, function, subject, aspect, pin, value, computed_at, reads)`
   · `imports (seq, dataset, table_name, mode, rows, dropped_rows_count,
@@ -145,8 +145,8 @@ guessed column costs a refusal. A named argument spells `:=`.
 |---|---|
 | `workspace_next` | every goal, what is done and what is open — the counts behind the `next:` line |
 | `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
-| `ruling_entries` | the person's review decisions in force, with `folded_in` |
-| `owed` | what waits on an action: a load-query approval, a formula answer, a contested value, a measurement stale or never made, a review decision not yet applied |
+| `review_decisions` | the person's review decisions in force, with `folded_in` |
+| `open_items` | what waits on an action: a load-query approval, a formula answer, a contested value, a measurement stale or never made, a review decision not yet applied |
 | `agent_assumptions` | every assumption you currently disclose |
 | `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_axes()` |
 | `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
@@ -164,12 +164,12 @@ guessed column costs a refusal. A named argument spells `:=`.
 | `pages()` | every page this server serves — `uri`, `title`, `body`; needs no dataset |
 
 A shipped name is reserved: it shadows a table and a CTE of the same
-name. `open_questions`, `ruling_entries` and `agent_assumptions` carry
-a `dataset` column, so narrow them yourself; `owed` and
+name. `open_questions`, `review_decisions` and `agent_assumptions` carry
+a `dataset` column, so narrow them yourself; `open_items` and
 `metric_surfaces` narrow themselves.
 
 ```sql
-SELECT r.aspect, r.key, r.stance, r.folded_in FROM ruling_entries r
+SELECT r.aspect, r.key, r.stance, r.folded_in FROM review_decisions r
 JOIN current_dataset d ON d.dataset = r.dataset ORDER BY r.written_at DESC
 ```
 
@@ -178,7 +178,7 @@ JOIN current_dataset d ON d.dataset = r.dataset ORDER BY r.written_at DESC
 A person's answers arrive while you are away, as **review decisions**
 (`ruling` in the catalog) in the person's own annotation — the
 judgment alone, naming your claim by its `key`, never a copy of your
-body. The `rulings` goal on the `next:` line carries every action
+body. The `review` goal on the `next:` line carries every action
 that waits on you — a decision to apply, an approved load-query
 change, a formula answer, a contested value — and gives you the
 statement. A question is served once, through the MCP interface's
@@ -187,7 +187,7 @@ yours. A client without forms gets none: read `open_questions` and
 relay it in chat, multiple choice with your grounds, then run the
 statement the answer names. What a review decision is, what each kind
 asks of you, and what the confidence number means:
-`references/rulings.md` — open it before disclosing your first
+`references/review.md` — open it before disclosing your first
 assumption.
 
 ## Measure, then judge — never ask a person for a statistic

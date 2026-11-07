@@ -5,12 +5,12 @@
 //! directory is an app only a human with a shell can write. As glosses
 //! the parts travel the way every other writing does.
 //!
-//! What the door serves is the app at its release: a gloss of the
+//! What the interface serves is the app at its release: a gloss of the
 //! `app_release` aspect on the app's name, and each part as it stood
 //! when that gloss was written — or at the earlier release its `at`
 //! names. Every part written since is the draft, served under `?draft`
 //! on the same URLs; an app nobody released serves its draft. The
-//! collapses are the record's usual: the newest writing per (subject,
+//! collapses are the catalog's usual: the newest writing per (subject,
 //! aspect, actor kind), then the human's over the agent's. Loaded
 //! whole and cut in Rust — an app is a handful of small strings, and
 //! its history not many more.
@@ -38,14 +38,14 @@ pub struct Part {
     pub text: String,
 }
 
-/// The dataset's glossed apps as the door serves them: the parts, and
+/// The dataset's glossed apps as the interface serves them: the parts, and
 /// for each app served at a release, the time its parts are cut at.
 pub(crate) struct Loaded {
     pub parts: Vec<Part>,
     pub releases: BTreeMap<String, String>,
 }
 
-/// One writing on an app subject, as the record holds it.
+/// One writing on an app subject, as the catalog holds it.
 struct Row {
     subject: String,
     aspect: String,
@@ -137,7 +137,7 @@ pub(crate) async fn parts(door: &AppDoor, dataset: &str, draft: bool) -> Loaded 
     }
 }
 
-/// The writing that serves among `rows` of one slot: the newest per
+/// The writing that serves among `rows` of one value: the newest per
 /// actor kind, the human's over the agent's.
 fn serving<'a>(rows: impl Iterator<Item = &'a Row>) -> Option<&'a Row> {
     let mut human: Option<&Row> = None;
@@ -187,7 +187,7 @@ async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
     while let Some(Ok(batch)) = stream.next().await {
         out.extend(decode(&batch));
     }
-    // The record keeps a subject dataset-qualified; the app's name is
+    // The catalog keeps a subject dataset-qualified; the app's name is
     // the first segment after the dataset.
     for row in &mut out {
         if let Some(rest) = row.subject.strip_prefix(&format!("{dataset}.")) {
@@ -218,9 +218,9 @@ fn decode(batch: &RecordBatch) -> Vec<Row> {
     ) else {
         return Vec::new();
     };
-    // Each cell as every read of the door spells it, whatever array the
+    // Each cell as every read of the interface spells it, whatever array the
     // engine hands over: a release naming a time read back through the
-    // door then cuts where it says.
+    // interface then cuts where it says.
     (0..batch.num_rows())
         .filter(|&i| {
             [subject, aspect, kind, body, at]

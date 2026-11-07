@@ -1,9 +1,9 @@
 -- A corridor check's evidence: every walked metric's newest point —
--- the one the walk's verdict scores — with its actual, its corridor,
+-- the one the walk's result scores — with its actual, its corridor,
 -- how far out it sits and on which side, the farthest out first. The
--- band beside each point is the verdict's own rule on that one
+-- band beside each point is the result's own rule on that one
 -- displacement (green to 0.8, yellow to 0.9, orange to the threshold,
--- red past it); the verdict's score is the worst of them raised to
+-- red past it); the result's score is the worst of them raised to
 -- their number. A point whose PIT is withheld carries the service's
 -- reason; a metric the walk found inapplicable carries its reason and
 -- no numbers. `band_points()` is the recorded walk, no re-run. Rows

@@ -1,5 +1,5 @@
--- The loads, one line per table: the newest landing of each — what
--- landed and when, the rows the recipe dropped. The table opens its
+-- The loads, one line per table: the newest load of each — what
+-- loaded and when, the rows the recipe dropped. The table opens its
 -- page on the Glossary tab.
 WITH d AS (SELECT dataset FROM current_dataset),
 newest AS (

@@ -3,7 +3,7 @@
 //! (a skill's references, read on demand), every `.md` under `docs/`
 //! (the pages an agent working in this repository reads), and every
 //! `.md` under `vendor/` (the engine's own SQL guide at the pin). The
-//! door serves them as resources, so a connected agent holds what a
+//! interface serves them as resources, so a connected agent holds what a
 //! checkout holds — and what a build serves is what its suite tested:
 //! the first two trees sit under the docs and skills harnesses, the
 //! third is held to the lock's DuckDB release.

@@ -21,8 +21,8 @@ out in the old words.
 | 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | done on `readme-harness` |
 | 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | done on `readme-harness` |
 | 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | done on `readme-harness` |
-| 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | drafted below |
-| 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | |
+| 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | done on `readme-harness` |
+| 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | drafted below |
 | 13. The websites from the two docs trees | Low | `../dataraum-website` | |
 
 ## The analogy
@@ -102,21 +102,24 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### The names people and agents see say what they are
+### The console navigates like a catalog
 
-- **What it buys.** A column, a read, a goal or a value an agent types
-  or a person sees uses the same words as the docs.
-- **What is there.** Still in the old words: the goal `rulings`; the
-  read `ruling_entries`; the `owed` read and its kinds (`fold-in`,
-  `re-measure`, `recipe`, `contest`); the `stands` and `landed` columns
-  of the futures reads; the outcome key `landed` and the protocol token
-  `question-round:v1` (`crates/serverd/src/mcp.rs`); the kit
-  `kits/door`; the basis value `human-ruled`; the `speakers` column of
-  `tests`. Comments in `crates/` and `kits/` use door, the record,
-  grounding, slot and voice.
-- **Done when.** Each name above is renamed in the kit or code that
-  owns it and in every test, skill, doc and console frame that reads
-  it, with no alias; comments use the prose skill's words; both suites
-  pass.
+- **What it buys.** A person moves from the dataset to a source, a
+  table, a column or a metric and back, and every object's page answers
+  the same questions in the same place.
+- **What is there.** Seven tabs (Review, Metrics, Quality, Glossary,
+  Lineage, Export, Query) in `crates/apps/builtin/console/app.toml`;
+  depth on the table and metric pages; the glossary page is one long
+  page that opens with the harness schema; sources, joins, tests and
+  loads have no page; the metric page has no title and no way back; a
+  dataset with nothing open lands on three zeros; numbers carry no
+  unit.
+- **Done when.** A tree (dataset → sources → tables → columns; metrics;
+  views) and a breadcrumb on every page; one page shape per object
+  with the same sub-tabs (what is said, what is measured, tests, uses
+  and used by, history); a landing page with the harness scorecard
+  (required against known, per property); a metric's unit beside its
+  numbers; the apps suite passes and a walk on a seeded workspace shows
+  each page.
 
 (The results page, step 4, waits on the glossval rerun.)

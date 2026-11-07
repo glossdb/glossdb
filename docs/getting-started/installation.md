@@ -65,7 +65,7 @@ Opening a workspace loads the extension, installs and loads the lake's
 extensions, and attaches the lake, creating the catalog file and the
 `warehouse/` directory if they are missing. It declares the catalog's
 own views, then runs the kits in order: the KPI kit and the quality
-kit from the extension, then the server's metrics and futures kits.
+kit from the extension, then the server's metrics and outlook kits.
 Kits are ordinary declarations, readable through the `aspects`,
 `functions` and `tests` tables like anything an agent writes, and
 a kit the catalog already holds runs nothing. Last, the server declares

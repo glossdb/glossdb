@@ -1,6 +1,6 @@
 -- A metric's corridor as a picture: every walked point with its
 -- actual and the 10th-to-90th corridor the walk predicted for the
--- month, and whether the point landed outside it (displacement 0.95
+-- month, and whether the point loaded outside it (displacement 0.95
 -- and over). The spec draws the corridor as a band, the actuals as a
 -- line, an outside point in the breach hue. `band_points()` is the
 -- recorded walk, no re-run; the metric is a page param the finding's

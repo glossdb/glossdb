@@ -1,4 +1,4 @@
--- One table's landing, as lines: what landed and when, the rows the
+-- One table's load, as lines: what loaded and when, the rows the
 -- recipe dropped, what the source's conventions say, and the recipe's
 -- SQL. One row per line that has something to say.
 WITH d AS (SELECT dataset FROM current_dataset),

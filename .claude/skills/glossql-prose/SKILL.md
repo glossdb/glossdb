@@ -24,7 +24,7 @@ that harness inside the database, on the live data and its versions.
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
 | unit test | a measurement, a test | function, `TEST` |
-| test coverage | coverage of required annotations | `owed`, `unassessed` |
+| test coverage | coverage of required annotations | `open_items`, `unassessed` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
 | code review | the review queue | `open_questions` |
@@ -45,7 +45,7 @@ type it. Never a project word the reader cannot look up.
 | console | docket | the `console` path |
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
-| missing, required; coverage | owed | `owed` |
+| missing, required; coverage | owed | `open_items` |
 | metric definition | grounding | |
 | load | landing, land | `IMPORT` |
 | load query | recipe (in prose) | `RECIPE` |

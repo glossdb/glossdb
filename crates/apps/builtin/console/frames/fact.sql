@@ -1,8 +1,8 @@
 -- A declared fact's value (`x-kind: scalar`), served whole by
 -- `fact_values()` — one row when the view is one row with a `value`,
 -- none otherwise. Beside the number: the unit and meaning the
--- definition carries, and the as-of, the newest landing of the tables
--- the grounding reads.
+-- definition carries, and the as-of, the newest load of the tables
+-- the metric definition reads.
 WITH reads AS (
   SELECT DISTINCT table_name AS t FROM metric_sources()
   WHERE metric = CAST($metric AS VARCHAR) AND table_name IS NOT NULL),

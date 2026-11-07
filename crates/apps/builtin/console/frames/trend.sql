@@ -3,8 +3,8 @@
 -- the span clips the newest periods here. A grain finer than the floor
 -- serves nothing. The plan worlds ride beside the actuals, one series
 -- per plan at the viewer's grain, and the forecast world with its 80%
--- band at the metric's own grain — the futures kit's reads, the newest
--- forecast landed, nothing re-run.
+-- band at the metric's own grain — the outlook kit's reads, the newest
+-- forecast loaded, nothing re-run.
 WITH story AS (
   SELECT period, dimension, member, value, num, den, behavior, world,
          dense_rank() OVER (ORDER BY period DESC) AS recency

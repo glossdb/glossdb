@@ -1,9 +1,9 @@
--- The findings: every verdict that is not green from a test, and
+-- The findings: every result that is not green from a test, and
 -- every defect a function measured — a join that leaves rows
 -- unresolved, an identity that breaks. Each is a sentence from the
 -- record's fields, the numbers behind it, the metrics that read the
 -- subject, and a link. Worst first. A measurement proposes and never
--- judges: a measured defect carries no hue, only a verdict does.
+-- judges: a measured defect carries no hue, only a result does.
 WITH d AS (SELECT dataset FROM current_dataset),
 a AS (
   SELECT name, schema FROM aspects

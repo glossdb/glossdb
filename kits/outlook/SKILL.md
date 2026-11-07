@@ -1,9 +1,9 @@
 ---
-name: glossdb-futures
-description: The futures kit (preview) for a glossql workspace — the worlds beside the actual: expected ranges from a backtest, the forecast, the scenario's estimate and the plan's comparison, each a measurement the model service computes and the catalog serves back. Use after glossql_kit('kits/futures/kit.sql') with a service named, to judge metrics ahead of the data.
+name: glossdb-outlook
+description: The outlook kit (preview) for a glossql workspace — the worlds beside the actual: expected ranges from a backtest, the forecast, the scenario's estimate and the plan's comparison, each a measurement the model service computes and the catalog serves back. Use after glossql_kit('kits/outlook/kit.sql') with a service named, to judge metrics ahead of the data.
 ---
 
-# The futures kit: what it teaches
+# The outlook kit: what it teaches
 
 This kit is a preview. For an actor working in a DuckDB that has the
 glossql extension loaded, the KPI, quality and metrics kits declared and
@@ -22,7 +22,7 @@ computes over the data.
 FROM glossql_kit('kits/kpi/kit.sql');
 FROM glossql_kit('kits/quality/kit.sql');
 FROM glossql_kit('kits/metrics/kit.sql');
-FROM glossql_kit('kits/futures/kit.sql');
+FROM glossql_kit('kits/outlook/kit.sql');
 SET GLOBAL glossql_service_url = 'http://127.0.0.1:8100';  -- the service, named once for the instance; the server names it from GLOSSDB_SERVICE_URL
 SELECT * FROM band_request();                    -- one row per metric: can the walk take it
 ```
@@ -69,7 +69,7 @@ serves one row with its reason.
 
 ```sql
 SELECT metric_forecast() FROM fin;
-SELECT step, span, to_go, period, p10, p50, p90, actual, landed, held_80, held_from FROM forecast_points() WHERE metric = 'sales';
+SELECT step, span, to_go, period, p10, p50, p90, actual, actuals, held_80, held_from FROM forecast_points() WHERE metric = 'sales';
 SELECT * FROM forecast_coverage();
 ```
 
@@ -126,15 +126,15 @@ actual world; its numbers are read under the metric it names.
 ```sql
 DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
 GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
-SELECT plan, grain, label, value, actual, variance, low, expected, high, stands FROM plan_points() WHERE plan = 'sales_budget';
+SELECT plan, grain, label, value, actual, variance, low, expected, high, planned FROM plan_points() WHERE plan = 'sales_budget';
 SELECT metric_plan() FROM fin.sales_budget;
 ```
 
 `plan_points()` judges every served plan against the actual and the
 newest forecast, one row per period at the plan's own grain and, where
 that is finer, at the year: the plan's cell, the actual to date, the
-variance on a complete period, the forecast's 80% band, and `stands`:
-`landed`, `inside`, `below`, `above`, `partial`, `open` or `ahead`.
+variance on a complete period, the forecast's 80% band, and `planned`:
+`complete`, `inside`, `below`, `above`, `partial`, `open` or `ahead`.
 `metric_plan` stores that judgement on the plan with the forecast run
 it was judged against. The plan's row asks for it until a current one
 exists; it goes stale once the data or the catalog rows it read change.
@@ -158,7 +158,7 @@ the gap.
 
 ## The goals
 
-`routes_futures()` answers two goals for the server's `next` read.
+`routes_outlook()` answers two goals for the server's `next` read.
 Bands: a current walk exists and no band is red. Plan: the plan served,
 the forecast at the current origin, the plan judged against it, every
 gap judged by a person, with a scenario's estimate where one is

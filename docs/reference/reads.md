@@ -1,7 +1,7 @@
 # Views and table functions
 
 Every workspace serves these. The catalog's views are declared at
-every open; the kits' table functions load with the kits; `owed` and
+every open; the kits' table functions load with the kits; `open_items` and
 `next` belong to the server. Each is SQL over the catalog and the lake,
 and the same SQL answers the MCP interface, the console and the
 skills' examples.
@@ -12,10 +12,10 @@ Common rules:
   its rows.
 - A table function's named arguments use `:=` and come in any order.
 - Formatting, glyphs and links are the caller's business.
-- `open_questions`, `agent_assumptions`, `ruling_entries`, `app_parts`,
+- `open_questions`, `agent_assumptions`, `review_decisions`, `app_parts`,
   `app_releases` and `workspace_next` cover the whole workspace and
   carry `dataset` on every row; `current_dataset` names the dataset a
-  call is bound to. The kits' table functions and `owed` answer for the
+  call is bound to. The kits' table functions and `open_items` answer for the
   bound dataset and refuse a call bound to none.
 
 ## The catalog's views
@@ -30,7 +30,7 @@ no dataset. Join it to narrow a workspace-wide view.
 Where the workspace stands on each thing it can be extended with. Not
 a task list. Columns: `surface` (`sources`, `tables`, `relationships`,
 `aspects`, `claims`, `functions`, `metrics`, `validations`,
-`scenarios`, `plans`, `rulings`, `apps`), `how` (the statement that
+`scenarios`, `plans`, `review`, `apps`), `how` (the statement that
 extends it), `stands` (what exists), `open` (what is unfinished; 0
 where nothing can be). A table is open while its load dropped rows.
 Every count spans the workspace: the view to read first, with no
@@ -59,7 +59,7 @@ entry, `idx` from 0. Columns: `dataset`, `subject`, `aspect`, `idx`,
 `body`. An answered question drops out once the agent records the
 definition again with the confidence raised.
 
-### ruling_entries
+### review_decisions
 
 The person's review decisions, one row per entry of the latest
 decision on an asset. Columns: `dataset`, `subject`, `idx`, `aspect`,
@@ -136,7 +136,7 @@ period and value are the columns named as that metric's, or `period`
 and `value`; its additivity is the metric's; its floor is the grain its
 rows are booked at where the declaration says so (`x-covers`). Nothing
 is annotated on a plan's own columns. A served plan's row asks for the
-futures kit's `metric_plan` until one exists, as a metric's row asks
+outlook kit's `metric_plan` until one exists, as a metric's row asks
 for the profile of its period column.
 
 ```sql
@@ -211,7 +211,7 @@ table the view reads, with `table_name` alone. A view that does not
 plan returns one row with `reason`. The console's lineage page draws
 this beside the declared relationships.
 
-## The futures kit (preview)
+## The outlook kit (preview)
 
 Forecasts, expected ranges, plans and scenarios beside the actual,
 answered by the model service the deployment names
@@ -259,7 +259,7 @@ at), `p05` … `p95`, `service_80` and `service_90` (the service's
 held-out share of actuals inside the 80% and the 90% band at that
 grain, step and span), `actual` (joined from the actual world at read,
 once the period has data; a total's is the sum of its periods, once all
-have), `landed` (`below`, `low`, `inside`, `high` or `above` against
+have), `actuals` (`below`, `low`, `inside`, `high` or `above` against
 p05, p10, p90 and p95), `held_80`, `held_90` and `held_from` (how often
 such a band held, and whose count: this metric's own where 30 of its
 points have arrived at that grain, step and span, else the dataset's
@@ -325,7 +325,7 @@ period, to date), `variance` (actual minus plan, on a complete period),
 `low`, `expected`, `high` (the newest forecast's 80% band and median:
 the step's at the metric's own grain; at a coarser grain, for a flow
 the actual to date plus the total to the period's end, for a stock the
-band of the last period inside it), `stands` (`landed`: complete;
+band of the last period inside it), `planned` (`complete`: the period is complete;
 `inside`, `below`, `above`: where the plan lies against the band;
 `partial`: begun, and the rows cover part of the period, so no band;
 `open`: begun, no band covers the rest; `ahead`: not begun), `covers`
@@ -351,17 +351,17 @@ subdirectories too. A dry run loads nothing.
 
 ## The server's views
 
-### owed
+### open_items
 
 What waits on an action in the bound dataset, from the data alone.
 Columns: `kind`, `subject`, `what`, `why`, `since`. Six kinds:
-`recipe` (an approved load-query change with no load of that table
+`recipe-change` (an approved load-query change with no load of that table
 since), `formula` (a person's formula answer newer than the metric's
-recorded definition), `contest` (a value withheld at read: a detector
+recorded definition), `conflict` (a value withheld at read: a detector
 crossed its threshold or values differ), `re-measure` (a measurement
 stored before the last change it read), `never measured` (a measurement
 a metric's row reads and nobody ran, or a tested measurement on the
-dataset with no result while a metric is defined), `fold-in` (a review
+dataset with no result while a metric is defined), `apply-decision` (a review
 decision whose key is still below full confidence). Each row clears by
 the action it names, never by a flag. Refuses a call bound to no
 dataset; a workspace with no dataset yet reads `workspace_next`.
@@ -380,7 +380,7 @@ reads one. Needs no dataset.
 
 Where the bound dataset stands on each goal, and the one action that
 moves it. One row per goal — `structure`, `metrics`, `slices`, `bands`,
-`checks`, `app`, `plan`, `rulings` — or the one `WHERE surface = '…'`
+`checks`, `app`, `plan`, `review` — or the one `WHERE surface = '…'`
 names. Columns: `goal` (the goal's order), `surface`, `step`, `state`
 (`next`, `blocked`, `done`), `act` (the statement kind, function or
 view), `say` (the action in a clause), `why` (what in the catalog

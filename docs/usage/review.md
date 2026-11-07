@@ -68,8 +68,8 @@ A decision leaves the agent one action: record the metric definition
 again, with the decided assumption under the same key at full
 confidence and citing the decision, or rewritten as the correction
 says. Until then the decision keeps the question closed for both
-sides. `ruling_entries` shows each decision and whether it has been
-applied; the `rulings` goal on the `next:` line points to the ones
+sides. `review_decisions` shows each decision and whether it has been
+applied; the `review` goal on the `next:` line points to the ones
 that wait.
 
 ## Keys
@@ -86,9 +86,9 @@ So:
 ## What else waits
 
 What waits on an action rather than an answer is a different view,
-`owed`: an approved load-query change not yet loaded, a formula answer
+`open_items`: an approved load-query change not yet loaded, a formula answer
 newer than the stored result, a contested value, a measurement stale or
-never run, a decision not yet applied. `owed` covers the dataset in
+never run, a decision not yet applied. `open_items` covers the dataset in
 use ([views and table functions](../reference/reads.md)).
 
 The forms confirm or correct existing claims. Anything that decides

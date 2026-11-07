@@ -1,4 +1,4 @@
--- The Glossary's tables: every landed table with what one row is, its
+-- The Glossary's tables: every loaded table with what one row is, its
 -- grain and its time axis from the entity entry, then its columns
 -- folded as lines — the column, its judged role with the slice rank
 -- beside a dimension (the engine's type where no role is judged), its

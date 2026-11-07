@@ -44,7 +44,7 @@ mode; this file is so nobody has to rediscover it.
   with a `.test` suite beside it.
 - **The server** owns the plane (one instance per process, opened
   once), a channel per call (one connection, the actor and the
-  dataset set on it), the core and door kits (`kits/core`, `kits/door`),
+  dataset set on it), the core and goals kits (`kits/core`, `kits/goals`),
   the composed `next` read, the interfaces and the pages. Its suites open
   a copy of a golden workspace (`glossdb_duck::testing::golden`),
   built once per extension artifact and kit text, so a test pays the

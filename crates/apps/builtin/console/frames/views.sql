@@ -1,12 +1,12 @@
 -- The views: every derived relation of the dataset — a VIEW aspect
 -- declared `x-kind: relation` — with what each is and where its
--- judgment stands, by the pulse's chip rule. `$stopped` picks the
+-- judgment holds, by the pulse's chip rule. `$stopped` picks the
 -- served views (0) or the stopped ones (1).
 WITH asked AS (
   SELECT q.aspect, count(*) AS n FROM open_questions q
   JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.aspect),
 ruled AS (
-  SELECT r.aspect, max(r.written_at) AS ruled_at FROM ruling_entries r
+  SELECT r.aspect, max(r.written_at) AS ruled_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect)
 SELECT s.title,
        s.name,

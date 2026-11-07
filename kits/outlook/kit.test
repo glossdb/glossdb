@@ -1,5 +1,5 @@
-# name: kits/futures/kit.test
-# description: the futures kit — the walk's request from the metric series, complete months only and seven at least; the walk landed as a measurement carrying the service's verdict; the reads and the test over it
+# name: kits/outlook/kit.test
+# description: the outlook kit — the walk's request from the metric series, complete months only and seven at least; the walk loaded as a measurement carrying the service's result; the reads and the test over it
 # group: [sql]
 
 require glossql
@@ -29,10 +29,10 @@ statement ok
 FROM glossql_kit('{KITS}/metrics/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/futures/kit.sql');
+FROM glossql_kit('{KITS}/outlook/kit.sql');
 
 statement ok
-DECLARE DATASET fin SET (purpose: 'futures');
+DECLARE DATASET fin SET (purpose: 'outlook');
 
 statement ok
 USE fin;
@@ -159,7 +159,7 @@ SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WH
 ----
 6 known values of history: a forecast needs 7
 
-# the verdict is the service's, repeated by the test's detector
+# the result is the service's, repeated by the test's detector
 query TTTR
 SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_w';
 ----
@@ -287,7 +287,7 @@ SELECT grain, origin, served_by, current FROM forecast_points() WHERE metric = '
 ----
 month	2025-02-01	glossthesi test	true
 
-# nothing has landed past the origin: the record tallies no point yet, and says so with no row
+# nothing has loaded past the origin: the catalog tallies no point yet, and says so with no row
 query I
 SELECT count(*) FROM forecast_coverage();
 ----
@@ -304,7 +304,7 @@ sales	forecast	12	100.0
 statement ok
 DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
 
-# declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the grounding
+# declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the metric definition
 query I
 SELECT count(*) FROM metric_axes() WHERE metric = 'sales_budget';
 ----
@@ -365,15 +365,15 @@ SELECT * FROM metric_series(world := 'dream');
 the worlds are actual, plan, forecast and scenario
 
 # plan_points(): the year first — whole, begun, not complete: the actual to date plus the year to go bands it; then the months,
-# landed through the origin with their variance, the rest against their own step's band
+# loaded through the origin with their variance, the rest against their own step's band
 query TTTRRRRRRTTRT
-SELECT grain, label, period::DATE, value, actual, variance, low, expected, high, stands, covers, held_80, origin
+SELECT grain, label, period::DATE, value, actual, variance, low, expected, high, planned, covers, held_80, origin
 FROM plan_points() WHERE plan = 'sales_budget' AND (grain = 'year' OR label IN ('2025-01', '2025-02', '2025-03', '2025-04', '2025-12'))
 ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 ----
 year	2025	2025-01-01	2120.0	141.0	NULL	1141.0	1241.0	1541.0	above	NULL	0.79	2025-02-01
-month	2025-01	2025-01-01	120.0	124.0	4.0	NULL	NULL	NULL	landed	NULL	NULL	NULL
-month	2025-02	2025-02-01	10.0	17.0	7.0	NULL	NULL	NULL	landed	NULL	NULL	NULL
+month	2025-01	2025-01-01	120.0	124.0	4.0	NULL	NULL	NULL	complete	NULL	NULL	NULL
+month	2025-02	2025-02-01	10.0	17.0	7.0	NULL	NULL	NULL	complete	NULL	NULL	NULL
 month	2025-03	2025-03-01	90.0	NULL	NULL	80.0	100.0	120.0	inside	NULL	0.8	2025-02-01
 month	2025-04	2025-04-01	200.0	NULL	NULL	80.0	100.0	120.0	above	NULL	0.8	2025-02-01
 month	2025-12	2025-12-01	1000.0	NULL	NULL	80.0	100.0	120.0	above	NULL	NULL	2025-02-01
@@ -383,7 +383,7 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 ----
 13
 
-# --- the judgement lands on the plan: wanted on its row until one stands, measured over it, tested; the routes read it
+# --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the routes read it
 query T
 SELECT wanted FROM metric_axes() WHERE metric = 'sales_budget';
 ----
@@ -404,7 +404,7 @@ FROM plan_record() GROUP BY ALL;
 sales_budget	sales	month	true	13
 
 query TTR
-SELECT label, stands, value FROM plan_record() WHERE stands IN ('below', 'above')
+SELECT label, planned, value FROM plan_record() WHERE planned IN ('below', 'above')
 ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 ----
 2025	above	2120.0
@@ -433,12 +433,12 @@ SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.functi
 ----
 2	true
 
-# the routes judge the plan from the record: the judgement asked for, asked again, then the gap
+# the routes judge the plan from the catalog: the judgement asked for, asked again, then the gap
 query III
 SELECT count(*) FILTER (WHERE arms LIKE '%''plan'', 7, ''next'', ''metric_plan''%'),
        count(*) FILTER (WHERE arms LIKE '%''plan'', 8, ''next'', ''metric_plan''%'),
        count(*) FILTER (WHERE arms LIKE '%''plan'', 9, ''next'', ''GLOSS scenario''%')
-FROM routes_futures();
+FROM routes_outlook();
 ----
 1	1	1
 
@@ -494,7 +494,7 @@ SELECT scenario, metric, grain, origin::DATE, history, len(ahead) FROM scenario_
 ----
 price_up	priced	day	2025-02-05	402	23
 
-# a scenario whose factors are all one, or whose lever stands at nothing, moves no input: judged, never sent
+# a scenario whose factors are all one, or whose lever holds at nothing, moves no input: judged, never sent
 statement ok
 DECLARE ASPECT price_flat WITH $${"title": "Prices held", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
 
@@ -581,7 +581,7 @@ SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_w';
 ----
 fin	scenario_w	green	true
 
-# a lever whose forecast the service refuses is held, and the estimate stands
+# a lever whose forecast the service refuses is held, and the estimate holds
 statement ok
 CREATE OR REPLACE MACRO main.service_soft(route, body) AS '{"error": "the service answered 422 on /forecast: 3 periods of history, a forecast needs 6"}'::JSON;
 
@@ -596,7 +596,7 @@ SELECT lever, planned_from FROM scenario_levers('price_up');
 ----
 priced.price	held: the service answered 422 on /forecast: 3 periods of history, a forecast needs 6
 
-# a lever that stands at nothing as planned — held at zero, its forecast refused — moves nothing: judged in the measurement, no call
+# a lever that holds at nothing as planned — held at zero, its forecast refused — moves nothing: judged in the measurement, no call
 statement ok
 GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price, CASE WHEN booked >= DATE '2025-02-01' THEN 0.0 ELSE 1.0 END AS promo FROM fin.ledger"}$$;
 
@@ -632,6 +632,6 @@ query III
 SELECT count(*) FILTER (WHERE arms LIKE '%''plan'', 10, ''next'', ''metric_scenario''%'),
        count(*) FILTER (WHERE arms LIKE '%''plan'', 11, ''next'', ''metric_scenario''%'),
        count(*) FILTER (WHERE arms LIKE '%''plan'', 12, ''next'', ''GLOSS plan''%')
-FROM routes_futures();
+FROM routes_outlook();
 ----
 1	1	1

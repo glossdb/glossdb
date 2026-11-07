@@ -54,11 +54,11 @@ defined once here. How they fit together: [how it works](how-it-works.md).
 | MCP interface | MCP server | `/mcp` and `/<dataset>/mcp`: one tool for glossql and SQL |
 | query endpoint | Arrow over HTTP | `/<dataset>/query`: a query in the request body, an Arrow IPC stream back |
 | console | data catalog UI | `/<dataset>/app`: the review queue, metrics, quality, a page per table and column |
-| goal | objective | structure, metrics, slices, bands, checks, app, plan, rulings (review) |
+| goal | objective | structure, metrics, slices, bands, checks, app, plan, review |
 | `next` | next steps | The line every MCP result ends with: one action per goal |
 | review queue (`open_questions`) | review queue | Assumptions below full confidence, waiting for a person |
 | review decision | approval | A person's answer, stored as their annotation; it outranks every agent's |
-| `owed` | open items | What waits on an action: a required annotation, a load, a measurement |
+| `open_items` | open items | What waits on an action: a required annotation, a load, a measurement |
 
 ## Wider words
 

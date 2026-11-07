@@ -1,13 +1,13 @@
--- One row while any measurement in the dataset stands from before the
--- last change — a function voice landed at an earlier pin, served and
+-- One row while any measurement in the dataset holds from before the
+-- last change — a function's value loaded at an earlier pin, served and
 -- marked — or while one a metric's row or a test reads was never
--- made (`owed`'s `never measured` rows). Record-class: the banner
+-- made (`open_items`'s `never measured` rows). Record-class: the banner
 -- appears with the write that caused it and clears when re-measure
 -- lands.
 WITH stale AS (
   SELECT actor, count(*) AS n FROM GLOSSARY(all => true)
   WHERE NOT current AND lower(kind) = 'measurement' GROUP BY actor),
-unmade AS (SELECT subject AS actor FROM owed WHERE kind = 'never measured'),
+unmade AS (SELECT subject AS actor FROM open_items WHERE kind = 'never measured'),
 counts AS (
   SELECT (SELECT coalesce(sum(n), 0) FROM stale) AS n,
          (SELECT count(*) FROM unmade) AS m,

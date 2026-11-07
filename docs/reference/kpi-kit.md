@@ -4,7 +4,7 @@ The semantic layer's vocabulary: the properties every workspace starts
 with. It ships with the glossql extension and loads at every open,
 before the quality kit (whose screens read `role`), the metrics kit
 (whose reads read these properties on a view's columns) and the
-futures kit. The kit asks the questions — what a column means, how a
+outlook kit. The kit asks the questions — what a column means, how a
 number adds up, its unit, which columns slice, what a table is, where
 definitions live. The answers — your metrics, tests, scenarios, plans —
 are written per dataset. The kit is statements, so changing it is an
@@ -35,7 +35,7 @@ for judgment only.
 The other kits add theirs beside these: `ladder` on a time column, the
 metrics kit's (the finest grain a series is served at and how many
 periods per grain, required where `role = 'timestamp'`, test
-`ladder_w`); `lever` on a column, the futures kit's (`value` true: a
+`ladder_w`); `lever` on a column, the outlook kit's (`value` true: a
 column someone sets, the input a scenario moves, with `grounds`; no
 test). The core kit declares `recipe_change`, `ruling` and the app
 properties before any other kit.
@@ -61,5 +61,5 @@ open work reach zero.
 A test (`DECLARE TEST`) says who may annotate a property and
 makes it required; its detector scores the values written, a band and
 a score. The tests come last in the kit, since a test names a property
-and a detector that must already exist. The futures kit adds its own:
+and a detector that must already exist. The outlook kit adds its own:
 `bands_w`, `forecast_w`, `scenario_w`, `plan_w` ([functions](functions.md)).

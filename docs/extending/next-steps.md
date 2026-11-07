@@ -8,14 +8,14 @@ Kits add goals the same way.
 
 | Goal | Done when | From |
 |---|---|---|
-| `structure` | tables loaded, relationships declared and checked | `door` kit |
+| `structure` | tables loaded, relationships declared and checked | `goals` kit |
 | `metrics` | every metric the dataset claims is served or stopped | `metrics` kit |
 | `slices` | every applicable metric slices by its dimension columns | `metrics` kit |
-| `bands` | the expected-range walk exists and no band is red, or the red carries a question or a review decision (preview) | `futures` kit |
-| `checks` | the dataset's own tests exist, every test ran, none is red | `door` kit |
-| `app` | an app exists over the metrics | `door` kit |
-| `plan` | every plan is served and compared, none lies outside the forecast's band, or the gap carries a question or a review decision (preview) | `futures` kit |
-| `rulings` | nothing waits: review decisions applied, approved load queries declared again, contested values read | `door` kit |
+| `bands` | the expected-range walk exists and no band is red, or the red carries a question or a review decision (preview) | `outlook` kit |
+| `checks` | the dataset's own tests exist, every test ran, none is red | `goals` kit |
+| `app` | an app exists over the metrics | `goals` kit |
+| `plan` | every plan is served and compared, none lies outside the forecast's band, or the gap carries a question or a review decision (preview) | `outlook` kit |
+| `review` | nothing waits: review decisions applied, approved load queries declared again, contested values read | `goals` kit |
 
 The goal is the caller's: what the person asked for decides which one
 the agent follows. Nothing is stored about it, and no step is an order.
@@ -58,7 +58,7 @@ row decides. The last step of a goal is an unconditional `done`.
 At every open the server writes `next` from every `routes_<name>()`
 macro in the lake's `main` schema. The steps read the catalog, never
 the data, through relations the server computes once: `ds` (the bound
-dataset), `axes` (`metric_axes()`), `owed`, `reds` (red test results),
+dataset), `axes` (`metric_axes()`), `open_items`, `reds` (red test results),
 `bodies` (the current metric definition per metric) and `applicable`
 (the applicable metrics). Goals sort in the order of the table above;
 a goal the server does not know sorts last.

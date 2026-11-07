@@ -7,13 +7,13 @@
 {% set aspect = state.aspect | default(value="") %}
 
 {% if table %}
-{# ---- one table: everything the record holds on it ----------------- #}
+{# ---- one table: everything the catalog holds on it ----------------- #}
 {# Opening a table is going deeper, not somewhere else: the Glossary
    tab stays current and is the way back. The head is the entity
-   entry and the landing; then every column with its slots by aspect
+   entry and the load; then every column with its values by aspect
    and what was measured on it, each opening its page; the joins the
    table takes part in with their coherence; what holds among its
-   columns; and the landing as lines, the recipe folded. #}
+   columns; and the load as lines, the recipe folded. #}
 <p class="nav-sub"><a href="/{{ dataset }}/app/console/p/glossary">Glossary</a> › table</p>
 <gl-rows frame="frames/table_head?table={{ table }}" empty="no landed table is named {{ table }}">
   <template>
@@ -84,7 +84,7 @@
 </div>
 
 {% elif column %}
-{# ---- one column: every slot, every voice ---------------------------- #}
+{# ---- one column: every value, every value ---------------------------- #}
 <p class="nav-sub"><a href="/{{ dataset }}/app/console/p/glossary">Glossary</a> › column</p>
 <gl-rows frame="frames/column_head?column={{ column }}" empty="no landed column is named {{ column }}">
   <template>
@@ -163,10 +163,10 @@
 {# ---- the Glossary: the vocabulary, then the words ----------------- #}
 {# The dataset's words as the language holds them. First the
    vocabulary: every declared aspect with what it holds, where it is
-   owed, how many owed subjects carry a value and who may speak it —
+   required, how many required subjects carry a value and who may speak it —
    in three groups by kind, the workspace's own six folded. Then the
    terms, every table with its columns, the joins and the sources.
-   All of it the record read collapsed — a person's entry outranks
+   All of it the catalog read collapsed — a person's entry outranks
    the agent's, marked once and quietly. Nothing here is a write, and
    nothing here is data: the Query tab reads the rows. #}
 <div class="tiles">
@@ -182,7 +182,7 @@
           <span class="r-what">{holds}</span>
           <span class="r-meta">{owed_on}</span>
           <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
-          <span class="r-meta">{speakers}</span>
+          <span class="r-meta">{actors}</span>
         </a>
       </template>
     </gl-rows>
@@ -194,7 +194,7 @@
           <span class="r-what">{holds}</span>
           <span class="r-meta">{owed_on}</span>
           <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
-          <span class="r-meta">{speakers}</span>
+          <span class="r-meta">{actors}</span>
         </a>
       </template>
     </gl-rows>
@@ -206,7 +206,7 @@
           <span class="r-what">{holds}</span>
           <span class="r-meta">{owed_on}</span>
           <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
-          <span class="r-meta">{speakers}</span>
+          <span class="r-meta">{actors}</span>
         </a>
       </template>
     </gl-rows>
@@ -219,7 +219,7 @@
             <span class="r-what">{holds}</span>
             <span class="r-meta">{owed_on}</span>
             <span class="r-meta">{spoken}</span>
-            <span class="r-meta">{speakers}</span>
+            <span class="r-meta">{actors}</span>
           </a>
         </template>
       </gl-rows>
@@ -228,7 +228,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="The words as the business uses them: every metric and view with its agreed meaning (the business glossary), and every column whose meaning names a term. A person&#x27;s decision or word shows as a mark, with the date on hover. A row opens the metric&#x27;s or the column&#x27;s page.">Terms</span>
-      <code class="chip">definitions · metric_surfaces · meaning.term · ruling_entries</code></header>
+      <code class="chip">definitions · metric_surfaces · meaning.term · review_decisions</code></header>
     <p class="hint">The words as the business uses them, and what each one means here. A row opens its page.</p>
     <gl-rows frame="frames/terms" empty="no metric, view or term is declared yet: a definition is written when a metric is defined">
       <template>

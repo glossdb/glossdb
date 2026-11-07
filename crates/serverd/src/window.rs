@@ -1,15 +1,15 @@
 //! The two lines on every result: where the call left the agent, on
-//! its last outcome (`situation:`), and one act per goal the record
+//! its last outcome (`situation:`), and one act per goal the catalog
 //! affords from there (`next:`), each a link into `next://` and the
 //! `next` read. The representation carries the links; the client
 //! holds the goal. Nothing rides the instructions or the stable
-//! prefix, and nothing is an order: the skills say how, the record
+//! prefix, and nothing is an order: the skills say how, the catalog
 //! says what is admissible now.
 
 use serde_json::Value;
 
 /// The `situation:` line: refused, with the refusal's first line, or
-/// landed — and for a grounding what its fact row said.
+/// loaded — and for a metric definition what its fact row said.
 pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     if let Some(text) = refusal {
         let first = text.lines().next().unwrap_or(text);
@@ -42,8 +42,8 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
         line.push_str(&format!("{drift}; "));
     }
     if fact.get("applicable") == Some(&Value::Bool(true)) {
-        // The grounding's word on its axes, where it spoke: what the
-        // list closed and what a verdict or a gloss would have
+        // The metric definition's word on its axes, where it spoke: what the
+        // list closed and what a result or a gloss would have
         // admitted, or that the empty list did not hold.
         let word = match fact.get("axes_basis").and_then(Value::as_str) {
             Some("authored") => {
@@ -146,7 +146,7 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
                 field(row, "say"),
                 field(row, "why"),
             ));
-            // A step the record cannot fill hands no statement — the
+            // A step the catalog cannot fill hands no statement — the
             // names are the author's.
             let statement = field(row, "statement");
             if !statement.is_empty() {
