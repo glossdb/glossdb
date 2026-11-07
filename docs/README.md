@@ -21,8 +21,6 @@ reads are served as Arrow over plain HTTP ([connect](start/connect.md)).
   coding harness, part by part.
 - [Terms](terms.md) — every word glossdb and glossql use, beside the
   industry's.
-- [Evaluate glossdb](start/evaluate.md) — for an architect or a
-  security reviewer: where it runs, what data goes where, sign-in.
 - [`start/`](start/README.md) — install, connect, and the walkthrough:
   a company's exports to served metrics in one session.
 - [`concepts/`](concepts/README.md) — the mental model, one page per

@@ -132,8 +132,6 @@ is at `http://127.0.0.1:8080/<dataset>/app`. On Linux, run the image
 - Claude, ChatGPT and other MCP clients: [connect](docs/start/connect.md).
 - One session from raw exports to served metrics:
   [walkthrough](docs/start/walkthrough.md).
-- For an architect or a security reviewer: where it runs, what data
-  goes where, sign-in: [evaluate](docs/start/evaluate.md).
 
 ## Interfaces
 
