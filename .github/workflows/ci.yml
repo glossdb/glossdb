@@ -36,7 +36,7 @@ jobs:
         with:
           shared-key: ci
           cache-on-failure: true
-      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: cargo-nextest,cargo-deny,cargo-machete
       - run: cargo fmt --all --check
