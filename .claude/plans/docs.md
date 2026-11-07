@@ -1,116 +1,115 @@
-# The docs plan
+# The positioning plan
 
-How the two repositories say what glossdb and glossql are, and how the
-console shows it. glossdb is a harness framework for data agents;
-glossql is the language for writing data harnesses. Agents hallucinate
-on company data because of information asymmetry: the meaning is not
-in the rows. The harness closes the gap by making the agent establish
-what must be known (the semantic layer, the ontology, the quality
-record) and by serving it back. glossql.org and glossdb.com are built
-from the two repositories. Build order is risk order: what keeps a
-reader from the story comes first.
+glossdb is a harness framework for data agents. glossql is the language
+for writing data harnesses. The software works, and glossval measured it
+against agents without the harness. What holds it back is the words:
+the docs, skills, comments, console and some keywords speak a private
+vocabulary that buyers can't repeat. This plan changes the words, not
+the behaviour. Order: first the things that make every later page come
+out in the old words.
 
 ## The table
 
-| Element | Risk | What it touches | When | Issue |
-|---|---|---|---|---|
-| The READMEs' first screens | Built on `readme-harness` in both repositories | `README.md` here and in the extension | Merge is the lead's | |
-| glossdb's docs around the story: what it is, how the harness works, what ships, other harnesses, actors and grants, getting started, the console, running it, reference; `onboarding/` and `system/` folded in; the futures pages under a Preview heading; a terms page | Low: the pages exist and the suite parses their examples; every page is also an agent's `doc://` resource, so a moved page changes what a connected agent reads | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | Next | drafted below |
-| The console's defects: lineage's metric end behind an unmarked scroll and labelled `read.<metric>()`; raw numbers (`21205673.3`, a 0.1% ratio shown as `0.0`); "glossql." in the bar; a one-line dataset summary above the review queue | Low | `crates/apps/builtin/docket/` (frames, pages), `crates/apps/assets/` | Beside the docs rows | |
-| The console's name: Docket becomes Console, the app's title and its path | Low to medium: the path rides the links in the `next` line, the skills and the docs | `crates/apps/builtin/docket/`, `skills/`, `docs/`, the apps suite | With the defects | |
-| glossql's docs, laid out like DuckLake's: overview, getting started, concepts (usage, not normative), the catalog (one page per table, held to `STORE_RELATIONS`), functions, kits, building a door, specification and conformance; a terms page | Medium: the concept, store, storage, KPI-kit and quality-method pages move from here; a moved page must stay on the MCP door, served from the extension's share as `SPEC.md` is; the extension's suite parses their examples | the extension's `docs/` and `test/sql/`; `docs/` here; the share the server reads at boot | After the glossdb docs | |
-| The console's navigation: a tree (dataset → sources → tables → columns; metrics; views); the same sub-tabs on every object's page (what is said, what is measured, checks, uses and used by, history); a breadcrumb; plain section names with the reads' names behind a toggle; the harness scorecard on the landing page (known against owed per aspect, the goals: `chat.md`'s goals tile) | Medium: a new page set over reads that exist | `crates/apps/builtin/docket/`, `crates/apps/src/` | After the docs rows | |
-| The console's two new views: Model (entities, keys, joins, measures, dimensions, time grains: the ontology and the semantic layer in one picture) and History (loads, glosses and review decisions over time) | Medium: new frames over recorded rows, a graph | `crates/apps/` | After the navigation | |
+| Step | Risk | What it touches | Issue |
+|---|---|---|---|
+| 1. House rules: the prose skill's list of protected terms is replaced by the terms table below; CLAUDE.md and the build skills use the plain words | Low. Without it every agent session writes the old words again | `.claude/skills/glossql-prose/`, `CLAUDE.md`, `.claude/skills/` | done on `readme-harness` |
+| 2. One terms page and one analogy page (the coding harness table below), in both repositories | Low | `docs/terms.md`, `docs/harness.md`, the extension's `docs/` | drafted below |
+| 3. The READMEs in the shape DuckLake and SurrealDB use: category sentence, the coding-harness analogy, features in industry words, a quick look, status per feature (stable, preview, planned). Out: "proof-of-concept", "working draft", the research file, "not built on purpose", the corpus and the DuckDB mapping table (to the docs) | Low | `README.md` here and in the extension | |
+| 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | |
+| 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | |
+| 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | |
+| 7. An evaluator's page: what it is, where it runs, what data leaves, sign-in, deployment, support | Low | `docs/start/evaluate.md` | |
+| 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | |
+| 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | |
+| 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | |
+| 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | |
+| 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | |
+| 13. The websites from the two docs trees | Low | `../dataraum-website` | |
 
-## What stands
+## The analogy
 
-- **The READMEs.** Here: the one-liner, why agents get data wrong, how
-  it works in five points, what ships (glossql's and glossdb's
-  features; forecasts and plans as preview; grants as planned), other
-  harnesses, actors and grants, then getting started, interfaces,
-  building, layout, status. The extension: the one-liner, declare what
-  must be known, record what is, read it, the kits, then the whole
-  session, status, the mapping onto DuckDB, the doors, building. The
-  extension's new examples run on its build.
-- **glossdb's docs.** 40 pages, 4,326 lines (measured). About 1,200
-  lines explain what the extension owns: eight of the ten `concepts/`
-  pages, `architecture/store.md` and `storage.md`,
-  `reference/kpi-kit.md`, and the four quality-method pages.
-  `onboarding/README.md` and `system/README.md` restate what stands in
-  the project's words. The futures pages (`methods/bands.md`,
-  `forecast.md`, `scenario.md`, `plan.md`; 574 lines) carry no preview
-  mark. Every page is embedded in the binary and served as a `doc://`
-  resource (`crates/serverd/src/skills.rs:127`); the suite parses and
-  binds every fenced example (`crates/serverd/tests/suite/docs.rs`).
-- **The extension's docs.** For a person: README, SPEC.md,
-  CONFORMANCE.md, `kits/README.md`. The catalog's eleven tables exist
-  only in `STORE_RELATIONS` (`src/glossql_store.cpp:294`); the
-  functions (`glossql_kit`, `glossql_lineage`, `glossql_columns`,
-  `dataset_cells`, `subject_column`, `json_schema_check`,
-  `glossql_service`) only in README and CONFORMANCE prose.
-  `docs/UPDATING.md` is the extension template's.
-- **The console** (walked on a demo workspace). Depth where it was
-  built: the table page and the metric page. Sections labelled with the
-  reads' names; the catalog page is one 6,500-pixel page that opens with
-  the vocabulary; sources, joins, checks and loads have no page; the
-  metric page has no title and no way back; a dataset with nothing open
-  lands on three zeros. The known-against-owed table that opens the
-  catalog page is the harness's scorecard.
+Coding agents work inside a harness: types, compiler, linters, tests,
+CI, review. Data never had one; its meaning exists only in production.
+glossdb builds that harness inside the database, on the live data and
+its versions.
+
+| Coding harness | Data harness | glossql today |
+|---|---|---|
+| type system | the harness schema: what must be known per dataset, table, column, metric | aspect |
+| type annotations, docstrings | annotations: what a row is, a column's unit, a measure's additivity | gloss |
+| compiler error | validation on write against a JSON Schema | admission |
+| linter | quality screens: keys, joins, hierarchies, stock or flow | quality kit |
+| unit test | a measurement or a check on the data | function, witness |
+| test coverage | coverage of required annotations | owed, unassessed |
+| CI on every commit | recomputed on every load; stale when the data changes | pin, stale |
+| git history | snapshots of data and catalog together | DuckLake, the record |
+| code review | the review queue: a person decides | open questions, ruling |
+| rule packs (lint configs, test plugins) | kits | kit |
+| the failing test that says what to fix next | next steps after every call | `next`, routes |
+| IDE | the console | docket |
+
+One line: glossdb gives data agents what compilers, tests and CI give
+coding agents.
 
 ## Terms
 
-Our words stay; each is explained once beside the industry's.
+Plain words in prose, UI and agent text now. Keywords only through step 10.
 
-| Ours | The industry's |
-|---|---|
-| aspect | property of the harness schema |
-| an aspect's grain | what it applies to |
-| `FACT` / `MEASUREMENT` / `QUERY` | asserted / computed / metric definition |
-| gloss | assertion |
-| subject | asset |
-| witness (after Dawid–Skene's observers) | check |
-| `unassessed` / `contested` / `stale` | missing / conflict / stale |
-| owed | required, open; coverage as the KPI |
-| pin, reads | provenance |
-| the record | the catalog: append-only, versioned with the data |
-| recipe, landing, `PROBE` | load query, load, dry run |
-| grounding | metric definition |
-| `behavior`: flow / stock / ratio | additivity: additive / semi-additive / non-additive |
-| `entity`, `definitions`, ladder | entity (the table's grain and key), business glossary, time grains |
-| door | interface |
-| `next`, routes | goals, next steps |
-| open questions, ruling | review queue, review decision |
-| the docket | the console |
+| Today | Plain | Where it stays |
+|---|---|---|
+| door | interface, endpoint | nowhere |
+| docket | console | nowhere |
+| ruling | review decision | nowhere |
+| open questions | review queue | the read's name |
+| owed | required, missing; coverage | the read's name |
+| grounding | metric definition | nowhere |
+| landing, land | load | nowhere |
+| the record | the catalog | nowhere |
+| slot, voice | (subject, aspect) value; source of an annotation | nowhere |
+| pin, reads | provenance | the column names |
+| band | confidence | the column name |
+| ladder | time grains | nowhere |
+| stands | is current | nowhere |
+| subject | asset (table, column, dataset) | the grammar |
+| gloss | annotation (the verb: annotate) | the keyword: the product's name |
+| `GLOSSARY()` | the glossary | the keyword |
+| aspect | property of the harness schema | the keyword (prior art in metadata catalogs) |
 
-"Ontology" names what agents establish (entities, relationships,
-terms); the declared level is the harness schema.
+Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
+
+| Keyword | New | State |
+|---|---|---|
+| `PROBE` | `PREVIEW` | agreed |
+| `WITNESS` | `TEST` | agreed; `BY` and `DETECTOR` open |
+| `ATTEST()` → `CHECKS()` | `TESTS()` | agreed |
+| kind `QUERY` | `VIEW` | agreed |
+| `x-kind: fact` | `scalar` | agreed |
+| `RECIPE` | `PIPELINE`, kept | open |
+
+## How DuckLake and SurrealDB say it
+
+- One sentence, category first: "a lakehouse format built on SQL";
+  "a multi-model database written in Rust".
+- Features in words a buyer already uses: snapshots, time travel,
+  schema evolution, ACID transactions, access control, live queries.
+  No coined term on the first screen.
+- New things named by what they do: SurrealQL's `DEFINE TABLE`,
+  `DEFINE FIELD`, `DEFINE ACCESS`, `LIVE SELECT`.
+- Docs by reader: overview, specification, the extension
+  (installation, usage, maintenance, advanced features, migrations,
+  guides, unsupported features); SurrealDB adds security and
+  "in production".
+- Status per feature, never for the whole project.
 
 ## Issue, drafted
 
-### glossdb's docs tell the harness story
+### One terms page and one analogy page
 
-- **What it buys.** The pages a reader reaches from the README say what
-  the README says: a harness framework for data agents, what ships, how
-  to run it, in the same terms; the console has a page for people.
-- **What stands.** The README's first screen (`readme-harness`).
-  `docs/README.md` indexes start, concepts, reference, methods,
-  architecture, system, onboarding and quality; `onboarding/README.md`
-  and `system/README.md` restate what stands; the futures pages carry
-  no preview mark; every page is a `doc://` resource
-  (`crates/serverd/src/skills.rs:127`) and its examples are held by
-  `crates/serverd/tests/suite/docs.rs`.
-- **Done when.** `docs/README.md` opens with what glossdb is, how the
-  harness works, what ships, other harnesses, actors and grants,
-  getting started, the console, running it and reference, the language
-  linked to the extension; `onboarding/` and `system/` are folded in and
-  gone; the futures pages sit under Preview; `docs/terms.md` carries the
-  terms table; the suite passes.
-
-## For the other repos
-
-- **The extension**: its docs row above, on a branch of its own.
-- **glossval**: a naive agent against a harness-driven one on the same
-  tasks, numbers right and questions answered, once the story stands.
-- **The websites**: glossql.org from the extension's docs, glossdb.com
-  from the story; `../dataraum-website` has the docs sync and the sample
-  checks, and its copy predates the engine.
+- **What it buys.** A reader looks up any word once, in industry terms,
+  and finds the harness explained by the coding harness they know.
+- **What is there.** The terms table and the analogy live in
+  `.claude/skills/glossql-prose/SKILL.md`; `docs/` has no terms page;
+  `docs/README.md` opens with "the curated statement".
+- **Done when.** `docs/terms.md` and `docs/harness.md` carry the two
+  tables for a reader; the extension's `docs/` links them; both are
+  `doc://` resources; the suite passes.
