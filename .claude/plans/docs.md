@@ -19,8 +19,8 @@ out in the old words.
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | done on `readme-harness` |
 | 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | done on `readme-harness` |
 | 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | done on `readme-harness` |
-| 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | drafted below |
-| 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | |
+| 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | done on `readme-harness` |
+| 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | drafted below |
 | 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | |
 | 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | |
 | 13. The websites from the two docs trees | Low | `../dataraum-website` | |
@@ -102,25 +102,23 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### glossql's docs in the shape of DuckLake's
+### The keywords say what they do
 
-- **What it buys.** The language reads like DuckLake: an overview, a
-  specification with one page per catalog table, the extension's
-  installation and usage, reference, and conformance.
-- **What is there.** README, SPEC.md, CONFORMANCE.md, `kits/README.md`,
-  `docs/terms.md`, `docs/duckdb.md`, `docs/interfaces.md`;
-  `docs/UPDATING.md` is the extension template's. The eleven catalog
-  tables exist only in `STORE_RELATIONS` (`src/glossql_store.cpp`);
-  the table functions (`glossql_kit`, `glossql_lineage`,
-  `glossql_columns`, `dataset_cells`, `subject_column`,
-  `json_schema_check`, `glossql_service`) only in README and
-  CONFORMANCE prose. glossdb's `reference/statements.md` and the
-  language pages of its usage section describe the same statements.
-- **Done when.** The extension's `docs/` holds overview, installation,
-  usage (one page per statement family), specification (one page per
-  catalog table, held to `STORE_RELATIONS` by a test), functions,
-  kits, interfaces, conformance; glossdb's statement reference links
-  there instead of restating it; the extension's suite parses every
-  example.
+- **What it buys.** A reader of a statement knows the word: `TEST`
+  where a property's values are scored for agreement, `TESTS()` for its
+  results, `VIEW` for SQL served as a view, `PREVIEW` for a dry run,
+  `scalar` for a view with one value and no date.
+- **What is there.** `grammar.ebnf` and SPEC.md §3, §5, §7 name
+  `WITNESS`, `ATTEST()`, the kind `QUERY`, `PROBE`; the metrics skill
+  and kits mark a single value `x-kind: fact`; the catalog table
+  `witnesses`; every example in both repositories, the corpus, the kits
+  and the skills. SPEC §3 still registers `try_to_date` and
+  `try_to_timestamp`, which neither DuckDB nor the extension has; the
+  grammar's `DELETE FROM [lake.][glossql.]glossary` names a schema the
+  views are not in (`ws.main`).
+- **Done when.** The SPEC.md diff, the grammar, the corpus and the
+  extension's code and tests carry the new keywords, with no alias;
+  `witnesses` follows if the lead says so; the server's kits, skills,
+  docs and examples follow at the new pin; both suites pass.
 
 (The results page, step 4, waits on the glossval rerun.)
