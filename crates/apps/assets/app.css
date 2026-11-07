@@ -295,7 +295,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 
 /* A finding is one matter on the Quality tab: a sentence for what, a
    paragraph for why, the evidence under it. The left rule carries the
-   verdict's hue where a witness gave one; a measured defect and a
+   verdict's hue where a test gave one; a measured defect and a
    load's refusal carry no hue — they are evidence, not judgment. The
    sentences are the record's fields composed, so sans like any other
    authored line; the numbers inside stay mono. */
@@ -670,7 +670,7 @@ details.fold[open] summary { color: var(--muted); }
 .rrow.rhead { padding: 0.5rem 0 0.35rem; border-bottom: 1px solid var(--rule); }
 .rrow.rhead > * { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.04em; }
 
-/* The checks' band bar: one witness's verdicts counted by band, each
+/* The checks' band bar: one test's verdicts counted by band, each
    count a share of the bar. Green is settled and red is breached, the
    two verdict hues; yellow and orange are the amber at two strengths —
    a verdict asking for a look, which is what amber means here. */

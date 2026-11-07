@@ -14,10 +14,10 @@
    validation's rates, or every verdict for a detector of the
    workspace's own. #}
 <div class="tiles">
-  <gl-rows frame="frames/check" empty="no check named {{ check }} — a check is a witness with a detector">
+  <gl-rows frame="frames/check" empty="no check named {{ check }} — a check is a test with a detector">
     <template>
       <section class="tile">
-        <header><span class="eyebrow">{witness}</span>
+        <header><span class="eyebrow">{test}</span>
           <code class="chip {bcls}">{band}</code></header>
         <div class="rrow" style="grid-template-columns:1fr">
           <span class="r-what">{asks}</span>
@@ -49,7 +49,7 @@
   {% elif ckind == "voices" %}
   <section class="tile">
     <header><span class="eyebrow" title="Test results that are not green, with every annotation on the column, a person&#x27;s first. The score is the share of extra distinct values among them.">Columns where annotations disagree</span>
-      <code class="chip">ATTEST() · glossary</code></header>
+      <code class="chip">TESTS() · glossary</code></header>
     <p class="hint">Only the columns whose annotations disagree are listed, every annotation side by side, a person's first; the ones that agree are counted above.</p>
     <gl-rows frame="frames/check_slots" empty="every annotation agrees: no column has differing values">
       <template>
@@ -65,7 +65,7 @@
   {% elif ckind == "rate" %}
   <section class="tile">
     <header><span class="eyebrow" title="Per asset: the expected outcome and tolerance a person or the agent wrote, the breach rate a measurement found, and the band the test gave the pair.">Expectation against measurement</span>
-      <code class="chip">ATTEST() · glossary</code></header>
+      <code class="chip">TESTS() · glossary</code></header>
     <p class="hint">Per asset: the expected outcome with its tolerance, and the breach rate a measurement found. Green at or under the tolerance, red above, yellow while nothing has been measured.</p>
     <gl-rows frame="frames/check_rates" empty="no subject carries this expectation yet">
       <template>
@@ -82,7 +82,7 @@
   {% else %}
   <section class="tile">
     <header><span class="eyebrow" title="Every result of this test, worst first. A test with a scoring function of the workspace&#x27;s own shows only these rows.">Every result</span>
-      <code class="chip">ATTEST()</code></header>
+      <code class="chip">TESTS()</code></header>
     <gl-rows frame="frames/check_verdicts" empty="no result yet: the test has not run">
       <template>
         <div class="rrow" style="grid-template-columns:minmax(10rem,14rem) minmax(0,1fr) 5rem 5rem">
@@ -101,19 +101,19 @@
 {# ---- what is wrong, then the instruments --------------------------- #}
 {# Findings first: what is wrong right now, worst first, each a
    sentence from the record's fields with the numbers behind it, what
-   reads the subject and where it came from — a witness's verdict that
+   reads the subject and where it came from — a test's result that
    is not green, a load whose casts refused cells, a defect a function
    measured. A breached corridor shows its months against the
    corridor and where the move is. Then the instruments, in words: the
    standing checks, what the functions measured, each table's newest
    load, and what the vocabulary still owes by name. Everything here
-   is measured — a witness's live verdict, the landing's own account,
+   is measured — a test's live result, the landing's own account,
    the measurement's own body — never assumed, and nothing is a count
    standing in for a sentence. #}
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their band; measurements carry none, since a measurement reports and never judges. A month outside its predicted range comes first, with its chart and the members that moved it. When nothing is wrong, the page says so.">Findings</span>
-      <code class="chip">ATTEST() · imports · measurements</code></header>
+      <code class="chip">TESTS() · imports · measurements</code></header>
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
 
     {# A breached corridor: the metric whose newest complete point
@@ -156,12 +156,12 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="One row per test: what it asks, its scoring function and threshold, its results counted by band (the bar shows the shares), and its worst band. A row opens the test, with its declaration, its result and the evidence. A new load makes the result stale; the next read computes it again.">The tests</span>
-      <code class="chip">witnesses · ATTEST()</code></header>
+      <code class="chip">tests · TESTS()</code></header>
     <p class="hint">The tests on this dataset, and how their results fell. Open a row for what the test saw.</p>
     <gl-rows frame="frames/checks" empty="no test has a scoring function yet, so nothing is tested; the checks goal in the next steps gives the statement">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr) 10rem 10rem 5rem">
-          <span class="r-subj">{witness}<br><span class="r-meta">{expectation}</span></span>
+          <span class="r-subj">{test}<br><span class="r-meta">{expectation}</span></span>
           <span class="r-what">{asks}</span>
           <span class="bands" title="{measured}"><i class="b-green" style="flex-grow:{green}"></i><i class="b-yellow" style="flex-grow:{yellow}"></i><i class="b-orange" style="flex-grow:{orange}"></i><i class="b-red" style="flex-grow:{red}"></i><i class="b-error" style="flex-grow:{errors}"></i></span>
           <span class="r-meta">{measured}</span>

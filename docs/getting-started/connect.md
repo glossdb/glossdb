@@ -56,7 +56,7 @@ sequence; the result is a JSON array, one outcome per statement:
   DuckDB's types even at zero rows, so a `LIMIT 0` query returns the
   schema. Data rows stop at `--row-cap`; `truncated: true` means refine
   the query, not that the result is complete. Catalog reads,
-  `GLOSSARY()`, `ATTEST()` and the catalog tables, arrive whole.
+  `GLOSSARY()`, `TESTS()` and the catalog tables, arrive whole.
 - **a write**: `{"affected": n}` or `{"done": true}`.
 - **a refusal**: a tool error whose text names what was wrong and, in a
   sequence, its place. The statements before it ran; the rest did not.

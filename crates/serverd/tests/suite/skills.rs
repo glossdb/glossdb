@@ -154,7 +154,7 @@ async fn every_skill_function_body_compiles() {
     let mut broken = Vec::new();
     let mut checked = 0usize;
     for b in blocks() {
-        // Anchored on DECLARE FUNCTION: PROBE, RECIPE and GLOSS bodies
+        // Anchored on DECLARE FUNCTION: PREVIEW, RECIPE and GLOSS bodies
         // ride the same dollar quoting and are SQL or JSON, so a bare
         // scan for `AS $$` compiles the wrong thing. Within a function
         // statement, `AS $$` opens the body and the next `$$` closes
@@ -234,12 +234,12 @@ async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, 
             .join("\n");
         let head = trimmed.trim_start().to_lowercase();
         // Reads only: a write example is held to parsing alone, and a
-        // read of the language's own — GLOSSARY(), ATTEST(), a
+        // read of the language's own — GLOSSARY(), TESTS(), a
         // measurement over a subject — binds in the extension, not in
         // a plan.
         if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
             || head.contains("glossary(")
-            || head.contains("attest(")
+            || head.contains("tests(")
             || head.starts_with("select temporal(")
         {
             continue;

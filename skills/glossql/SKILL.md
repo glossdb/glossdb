@@ -27,10 +27,10 @@ per statement:
   "row_count": n, "truncated": bool}`. `columns` is present even with
   zero rows — a `LIMIT 0` dry run returns the schema. `truncated:
   true` means the result held more than the cap: refine, never read a
-  capped result as complete. `GLOSSARY()`, `ATTEST()` and the catalog
+  capped result as complete. `GLOSSARY()`, `TESTS()` and the catalog
   tables are uncapped.
 - a write — `{"affected": n}` or `{"done": "…"}`. One write answers
-  with rows: a `GLOSS` on a QUERY aspect returns the metric's summary
+  with rows: a `GLOSS` on a VIEW aspect returns the metric's summary
   row in the `metric_axes()` shape — read it before the next write.
 - a refused statement — a tool error whose text is the refusal. It
   names what was wrong and, in a sequence, its place: `statement 2 of
@@ -65,19 +65,19 @@ is what `SELECT * FROM datasets` wants; a qualified
 | `USE ops;` | bind the statements after it in this call to a dataset — the way in on the workspace endpoint; a dataset's endpoint opens bound |
 | `DECLARE DATASET ops SET (…);` | create a dataset |
 | `DECLARE SOURCE erp SET (type: parquet, location: 'root');` | register a source; the location is a root — a directory on the server's machine, or an object-store URL it may read — and globs belong in the load query's SQL; `type` describes the export, the load query's `read_parquet`/`read_csv`/`read_json` picks the reader |
-| `PROBE erp AS $$sql$$;` | a dry run: run load-query-shaped SQL at the source, loading nothing |
+| `PREVIEW erp AS $$sql$$;` | a dry run: run load-query-shaped SQL at the source, loading nothing |
 | `DECLARE RECIPE work_orders ON ops FROM erp [SET (key: id)] AS $$sql$$;` | declare a load query: the table the SQL produces is loaded, typed as the SQL types it; a key, a column of the result, makes every import merge by it, and the result carries each key once or the load refuses by name |
 | `IMPORT work_orders;` | a data update: the table becomes its load query's result as the source is now, in one commit — new files appended where that is the result, the table replaced whole otherwise, the rows merged by the key where the load query names one; `unchanged` when there is nothing new |
 | `DROP TABLE work_orders;` | remove a table — refused while it holds data |
 | `DECLARE RELATIONSHIP a.col -> b.col;` | declare a join edge (`<->` both ways); a composite endpoint is a tuple, `a.(x, y) -> b.(x, y)`; both endpoints must be loaded columns |
-| `DECLARE ASPECT name WITH $$json-schema$$ AS MEASUREMENT\|FACT\|QUERY [ON TABLE, COLUMN, … [WHEN aspect = 'value']];` | add a property to the vocabulary; the schema is the contract every value is validated against; `ON` is the grain — the asset classes it applies to, absent = all; `WHEN` narrows it to assets whose sibling aspect carries the value |
-| `GLOSS aspect ON subject AS $$json$$;` | annotate: write your value for the aspect on the asset; an aspect ON TABLE or ON COLUMN takes only a loaded one; a QUERY aspect is annotated on the dataset (`GLOSS revenue ON fin AS …`), the outcome is the metric's summary row, and the metric definition is then served as a view under the aspect's name (`FROM revenue`) |
+| `DECLARE ASPECT name WITH $$json-schema$$ AS MEASUREMENT\|FACT\|VIEW [ON TABLE, COLUMN, … [WHEN aspect = 'value']];` | add a property to the vocabulary; the schema is the contract every value is validated against; `ON` is the grain — the asset classes it applies to, absent = all; `WHEN` narrows it to assets whose sibling aspect carries the value |
+| `GLOSS aspect ON subject AS $$json$$;` | annotate: write your value for the aspect on the asset; an aspect ON TABLE or ON COLUMN takes only a loaded one; a VIEW aspect is annotated on the dataset (`GLOSS revenue ON fin AS …`), the outcome is the metric's summary row, and the metric definition is then served as a view under the aspect's name (`FROM revenue`) |
 | `SELECT … FROM GLOSSARY(subject);` | the collapsed view of what is known, one row per aspect |
 | `SELECT … FROM GLOSSARY(subject, all => true);` | every value from every author, raw; `all => true` is the call's second argument, never a WHERE condition |
 | `DECLARE FUNCTION f FOR ops\|GLOBAL AS $$body$$ [RETURNS aspect];` | register a function — with `RETURNS` one SQL query the engine plans, without it a detector script; `SELECT script FROM functions` reads the shipped library back as worked examples (`glossql-functions` teaches writing one) |
 | `SELECT f() FROM work_orders.duration_min;` | run a measurement — it computes at the read's pin (the versions it reads) and stores a `measurements` row; the same pin serves the row back, `computed` says which happened; a body with a `summary` serves the summary alone, the full body reads back via `GLOSSARY(subject::aspect)` |
-| `DECLARE WITNESS w ON aspect [BY (AGENT, HUMAN)] [DETECTOR f THRESHOLD x];` | declare a test: who may annotate the aspect, and which detector scores their agreement |
-| `SELECT … FROM ATTEST(subject \| ops::aspect);` | test results: bands and scores; sweeps are WHERE clauses |
+| `DECLARE TEST w ON aspect [BY (AGENT, HUMAN)] [DETECTOR f THRESHOLD x];` | declare a test: who may annotate the aspect, and which detector scores their agreement |
+| `SELECT … FROM TESTS(subject \| ops::aspect);` | test results: bands and scores; sweeps are WHERE clauses |
 
 There is no ordering statement: send statements in the order you need
 them. Schema-altering engine DDL — `CREATE VIEW` included — is
@@ -98,7 +98,7 @@ back before declaring anything.
   columns of any readable name, the shipped reads included:
   `glossary (seq, dataset, subject, aspect, actor_kind, actor_id, body,
   snapshot_id, written_at)` · `aspects (seq, name, kind, grains,
-  condition, schema, declared_at)` · `witnesses (seq, name, aspect,
+  condition, schema, declared_at)` · `tests (seq, name, aspect,
   speakers, detector, threshold, declared_at)` · `functions (seq,
   name, scope, script, returns, declared_at)` · `measurements (seq,
   dataset, function, subject, aspect, pin, value, computed_at, reads)`
@@ -114,13 +114,13 @@ back before declaring anything.
   unassessed`; a contested value is withheld, and a missing value is a
   visible row. A subject is a bare path, never a string:
   `GLOSSARY(orders)`, `GLOSSARY(orders.amount)`, `GLOSSARY(fin::revenue)`
-  for one aspect; `ATTEST(fin::revenue)` likewise.
+  for one aspect; `TESTS(fin::revenue)` likewise.
   **`GLOSSARY(subject, all => true)` is a different shape**: one row
-  per author's value, raw, `(subject, aspect, kind, witness, actor,
+  per author's value, raw, `(subject, aspect, kind, test, actor,
   body, written_at, current)` — no `value`, no `state`; `current` is
   false for a function's value computed before the last write. `value`
   belongs to the collapsed read, `body` to the raw one.
-- `ATTEST(…)` — `(subject, aspect, witness, band, score, computed_at,
+- `TESTS(…)` — `(subject, aspect, test, band, score, computed_at,
   current, error)`, band in green/yellow/orange/red; `error` carries
   a detector's own failure, nothing withheld.
 - the loaded schema: `SELECT table_name, column_name, data_type FROM
@@ -149,7 +149,7 @@ guessed column costs a refusal. A named argument spells `:=`.
 | `owed` | what waits on an action: a load-query approval, a formula answer, a contested value, a measurement stale or never made, a review decision not yet applied |
 | `agent_assumptions` | every assumption you currently disclose |
 | `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_axes()` |
-| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a QUERY aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
+| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
 | `metric_axes()` | one row per metric: `metric`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `behavior`, `behavior_state`, `dims`, `unranked`, `unadmitted`, `owed` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
 | `band_points()` | the stored `metric_bands` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `behavior`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `band_verdict()` is the walk's verdict in one row |
 | `forecast_points()` | the stored `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `landed`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `landed` fill as the periods arrive in the data; `held_80` is how often such a band held — this metric's own history once 30 of its points have arrived at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
@@ -158,7 +158,7 @@ guessed column costs a refusal. A named argument spells `:=`.
 | `scenario_levers('name')` | what each lever does alone — `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from` (`forecast`, or `held: <why>`), `history_shift`, `history_low`, `history_high` (the lever's own effect over the periods ahead and its 90% interval), `computed_at`; the parts add up to the joint estimate, so read them beside `scenario_points()` when a scenario moves several levers — two that cancel show as two parts of opposite sign |
 | `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% band and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `stands` (`landed`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; `SELECT metric_plan() FROM <dataset>.<plan>` stores the same rows as the plan's judgement, which the plan goal reads — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
 | `metric_sources()` | what feeds each metric definition — `metric`, `field`, `source` (`table.column`), `table_name`, `reason`: per served field the column it descends from, and every table it scans |
-| `PROBE erp AS $$SELECT file FROM glob('*')$$` | every file under a source's location, listed at the source; `glob('**')` the subdirectories too |
+| `PREVIEW erp AS $$SELECT file FROM glob('*')$$` | every file under a source's location, listed at the source; `glob('**')` the subdirectories too |
 | `app_parts` | apps written as annotations, one row per file (`glossql-apps`) |
 | `current_dataset` | the dataset the call is bound to, one row — join it to narrow a workspace-wide read |
 | `pages()` | every page this server serves — `uri`, `title`, `body`; needs no dataset |

@@ -4,7 +4,7 @@
 
 The authored expectation is a FACT annotation; the check is a
 function's measurement on the same aspect; a detector scores the two
-values against each other; `ATTEST` shows the result.
+values against each other; `TESTS` shows the result.
 
 ```glossql
 DECLARE ASPECT hours_reconcile WITH $${
@@ -12,13 +12,13 @@ DECLARE ASPECT hours_reconcile WITH $${
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"},
                  "breach_rate": {"type": "number"}}
 }$$ AS FACT ON TABLE WHEN entity = 'work log line';
-DECLARE WITNESS hours_w ON hours_reconcile BY (AGENT, HUMAN)
+DECLARE TEST hours_w ON hours_reconcile BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 GLOSS hours_reconcile ON work_logs AS $${
   "outcome": "Logged minutes match the order's recorded duration, exactly.", "tolerance": 0.0}$$;
 ```
 
-- **The test (`WITNESS`) first, and its `BY` list names every actor.**
+- **The test (`DECLARE TEST`) first, and its `BY` list names every actor.**
   A test on the aspect controls who may write it: an agent annotating
   the expectation itself must be in `BY`, or the annotation is
   refused. Declare it before the annotation, `BY (AGENT, HUMAN)`.

@@ -1,10 +1,10 @@
 -- A validation's evidence: per subject, the authored expectation — the
 -- outcome in words and the tolerance written beside it — against the
 -- breach rate the check measured, and the band the detector gave the
--- pair. Rows only for a witness whose detector is rate_tolerance.
+-- pair. Rows only for a test whose detector is rate_tolerance.
 WITH d AS (SELECT dataset FROM current_dataset),
 w AS (
-  SELECT name, aspect, threshold FROM witnesses WHERE name = $check AND detector = 'rate_tolerance'
+  SELECT name, aspect, threshold FROM tests WHERE name = $check AND detector = 'rate_tolerance'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 slots AS (
   SELECT g.subject, g.aspect, g.actor_kind, g.body
@@ -24,8 +24,8 @@ SELECT a.subject,
        coalesce('measured ' || CAST(m.rate AS VARCHAR), 'nothing measured yet') AS measured,
        a.band,
        CASE WHEN a.band = 'green' THEN 'ok' ELSE 'warn' END AS bcls
-FROM ATTEST() a
-JOIN w ON w.name = a.witness
+FROM TESTS() a
+JOIN w ON w.name = a.test
 LEFT JOIN expected e ON e.subject = a.subject AND e.aspect = a.aspect
 LEFT JOIN measured m ON m.subject = a.subject AND m.aspect = a.aspect
 ORDER BY CASE a.band WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'error' THEN 3 ELSE 4 END, a.subject

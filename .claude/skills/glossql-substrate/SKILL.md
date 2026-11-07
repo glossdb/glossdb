@@ -32,13 +32,13 @@ mode; this file is so nobody has to rediscover it.
 - **The extension** owns the statements of the language (parsed by
   its grammar on DuckDB's parser), the store (the relations as tables
   in the lake's catalog, served as views in `ws.main`), the catalog reads
-  (`GLOSSARY()`, `ATTEST()`, the collapse, the tests (`WITNESS`), the
+  (`GLOSSARY()`, `TESTS()`, the collapse, the tests (`DECLARE TEST`), the
   stale rule), the subjects (a dataset, a table, a column, a relationship,
   a source, a view and its columns), the lineage of views, the cells
   of a dataset (`dataset_cells`), a view kept per store version, the
   service call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
-  tests (`WITNESS`), table macros that read the catalog and the views,
+  tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
   `../gloss/kits/` and the server's in `kits/`, run at every open,
   with a `.test` suite beside it.

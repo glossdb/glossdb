@@ -1,4 +1,4 @@
--- The facts: every QUERY aspect declared `x-kind: fact` with the one
+-- The facts: every VIEW aspect declared `x-kind: scalar` with the one
 -- number its grounding serves (`fact_values()`) and an as-of: the
 -- newest landing of the tables the grounding reads. Status and colour
 -- follow the pulse's rule. `$stopped` picks the served facts (0) or
@@ -33,12 +33,12 @@ SELECT s.name,
          WHEN r.ruled_at IS NOT NULL THEN 'ok'
          WHEN NOT s.grounded THEN 'warn'
          ELSE 'ok' END AS scls,
-       '?metric=' || s.name || '&kind=fact' AS link
+       '?metric=' || s.name || '&kind=scalar' AS link
 FROM metric_surfaces s
 LEFT JOIN fact_values() f ON f.metric = s.name
 LEFT JOIN as_of a ON a.metric = s.name
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN ruled r ON r.aspect = s.name
-WHERE s.kind = 'fact'
+WHERE s.kind = 'scalar'
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY s.name

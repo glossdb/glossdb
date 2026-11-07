@@ -1,4 +1,4 @@
-# 27 · Plan: a budget beside its actuals — RULED (a plan is its own QUERY aspect, `x-kind: plan`, tied to its metric by name; the plan world on `metric_series`, read by name)
+# 27 · Plan: a budget beside its actuals — RULED (a plan is its own VIEW aspect, `x-kind: plan`, tied to its metric by name; the plan world on `metric_series`, read by name)
 
 Source: the City of Baton Rouge / Parish of East Baton Rouge expense
 budget, Socrata dataset `5emz-4788` on data.brla.gov — public domain,
@@ -11,7 +11,7 @@ rows, 6,328 accounts, 82 funds, 58 departments, fiscal years 2018 to
 2026 (January to October); the fiscal year is the calendar year. The
 field names below are the dataset's own (the API's); the CSV download
 spells them as headers with spaces and the month as text.
-Ruled: a plan is its own QUERY aspect, one per plan, tied to its
+Ruled: a plan is its own VIEW aspect, one per plan, tied to its
 metric by name in the declaration (Fork B; the second SQL inside the
 metric's grounding died on the slot and the schema, the tie as a
 `metric` column in the plan's rows on the ledger's precedent, §5).
@@ -73,7 +73,7 @@ DECLARE ASPECT expense WITH $${
   "title": "Operating expense",
   "description": "What the City-Parish spent, per account and month",
   "x-kind": "measure", "x-unit": "USD"
-}$$ AS QUERY;
+}$$ AS VIEW;
 
 GLOSS expense ON brla AS $${
   "sql": "SELECT fiscalmonth, actual AS value, fund, segment2, charactercodedescription FROM expense_budget",
@@ -98,16 +98,16 @@ the grain the reader asks. "The revised budget is the January row
 plus the amendments" is therefore said three times and computed
 once, and none of it is a recipe.
 
-## 2. The plan declares like a metric — one QUERY aspect per plan
+## 2. The plan declares like a metric — one VIEW aspect per plan
 
 The placement a scenario has (fixture 19 §2: one FACT aspect per
-scenario), for a QUERY: one aspect per plan, `x-kind: plan`, tied to
+scenario), for a VIEW: one aspect per plan, `x-kind: plan`, tied to
 its metric by `x-plan-of` in the declaration — the tie is the plan's
-identity, checked at `DECLARE` against the declared QUERY aspects,
+identity, checked at `DECLARE` against the declared VIEW aspects,
 never re-tied. The body is the standard grounding schema (SPEC §5.2),
 unchanged: a plan's numbers are a landed table, read by SQL as the
 actual's are. The plan has its own `behavior`, `axes` and
-assumptions, its own slot under the supersession key, its own witness
+assumptions, its own slot under the supersession key, its own test
 if wanted. An edition is an aspect: the adopted budget and the amended
 budget both stand, and a re-gloss of either corrects that edition's
 SQL. A budget file of many lines is read as the ledger is: one plan
@@ -124,7 +124,7 @@ DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget",
   "description": "The adopted budget with the Metropolitan Council's amendments, as booked",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY;
+}$$ AS VIEW;
 
 GLOSS revised_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, revisedbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",
@@ -140,7 +140,7 @@ DECLARE ASPECT original_budget WITH $${
   "title": "Original budget",
   "description": "The budget the Metropolitan Council adopted",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY;
+}$$ AS VIEW;
 
 GLOSS original_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, originalbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",
@@ -149,11 +149,11 @@ GLOSS original_budget ON brla AS $${
 }$$;
 ```
 
-Plan authorship as a policy is one witness, as the scenario's (fixture
+Plan authorship as a policy is one test, as the scenario's (fixture
 19 §5):
 
 ```glossql
-DECLARE WITNESS plan_gate ON revised_budget BY (HUMAN);
+DECLARE TEST plan_gate ON revised_budget BY (HUMAN);
 ```
 
 ## 3. The read — a world beside the actual, a variance a join
@@ -197,7 +197,7 @@ grain asked, as the actual does; it spreads nothing.
 - **A second SQL inside the metric's grounding** — one body carrying
   `sql` and `plan`, superseding as one. Dies on the slot and the
   schema. The standard grounding schema would grow a key, in SPEC
-  §5.2 and the extension's grounding contract, and every QUERY body
+  §5.2 and the extension's grounding contract, and every VIEW body
   could carry a plan where it means nothing. One actor kind would carry both: an agent's actual
   beside a human's plan is not a state one slot holds, and whoever
   corrects the plan re-glosses the actual's SQL with it. One plan per
@@ -219,7 +219,7 @@ grain asked, as the actual does; it spreads nothing.
   the scenario's shape) — dies on size: a budget is thousands of
   account-years in two editions; the scenario is a factor per period
   on a handful of levers.
-- **The plan as a second QUERY gloss on the metric's own aspect** —
+- **The plan as a second VIEW gloss on the metric's own aspect** —
   dies on the supersession key: the second gloss retires the actual.
 - **The tie as a `metric` column in the plan's rows** — one aspect
   per budget file and edition, its SQL serving `metric, period,

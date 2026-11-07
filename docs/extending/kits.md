@@ -50,7 +50,7 @@ DECLARE ASPECT currency WITH $${"type": "object", "required": ["value"],
 DECLARE ASPECT min_max WITH $${"type": "object", "required": ["min", "max"]}$$ AS MEASUREMENT ON COLUMN;
 DECLARE FUNCTION min_max FOR GLOBAL AS
   $$ SELECT min(v) AS min, max(v) AS max FROM subject_column($subject) $$ RETURNS min_max;
-DECLARE WITNESS currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+DECLARE TEST currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
 ```
 
 - **Schemas.** A property's `WITH` is a JSON Schema. Every `FACT`
@@ -69,7 +69,7 @@ DECLARE WITNESS currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy T
   read, over the values written for the aspect, with `$threshold`
   bound, and returns `(subject, band, score)`. A detector that fails
   returns band `error`, never a failed read.
-- **Metric definitions.** Every `QUERY` annotation is checked against
+- **Metric definitions.** Every `VIEW` annotation is checked against
   the definition contract (`sql` or `stopped`, `assumptions`). A kit
   whose readers need a body key of their own declares a schema for it
   as an aspect with `"x-kind": "grounding"`.

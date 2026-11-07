@@ -4,7 +4,7 @@
 
 A definition is a choice between readings the data cannot decide.
 Go through the steps before asking: settle it by measurement first,
-and if the answer must keep holding, declare a test (`WITNESS`) so a
+and if the answer must keep holding, declare a test (`DECLARE TEST`) so a
 check decides it again on every import instead of anyone asking
 again. Only what no measurement can decide goes to the user — **a
 choice between readings, never a statistic**. A question the data

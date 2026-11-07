@@ -56,12 +56,12 @@ SELECT a.metric, a.behavior, coalesce(c.months, 0) AS months,
               'no behavior is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
             WHEN c.months < 7 THEN 'the walk needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
 FROM main.metric_axes() a LEFT JOIN counted c USING (metric)
-WHERE coalesce(a.kind, '') NOT IN ('fact', 'plan', 'scenario')
+WHERE coalesce(a.kind, '') NOT IN ('scalar', 'plan', 'scenario')
 ORDER BY a.metric;
 
 CREATE OR REPLACE MACRO main.band_body() AS TABLE
 WITH s AS (SELECT * FROM main.band_series() WHERE metric IN (SELECT metric FROM main.band_request() WHERE walkable)),
-t AS (SELECT coalesce((SELECT threshold FROM main.witnesses WHERE aspect = 'metric_bands' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
+t AS (SELECT coalesce((SELECT threshold FROM main.tests WHERE aspect = 'metric_bands' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
 SELECT CASE WHEN count(s.metric) > 0 THEN json_object(
          'spec', json_object('targets', ['value'], 'origins', 6, 'horizon', 1,
                              'levels', [0.05, 0.1, 0.5, 0.9, 0.95], 'grain', 'month', 'threshold', t.threshold),
@@ -150,7 +150,7 @@ DECLARE FUNCTION metric_bands FOR GLOBAL AS $$
 $$ RETURNS metric_bands;
 
 -- The breach is the service's verdict, repeated by the test's detector
--- over the measurement's own result, so that ATTEST() carries it and the
+-- over the measurement's own result, so that TESTS() carries it and the
 -- checks goal's next steps use it; the threshold is the red line the walk is
 -- asked with.
 DECLARE FUNCTION band_breach FOR GLOBAL AS $$
@@ -158,7 +158,7 @@ DECLARE FUNCTION band_breach FOR GLOBAL AS $$
   FROM slots WHERE speaker = 'function' AND body->>'band' IS NOT NULL
 $$;
 
-DECLARE WITNESS bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
+DECLARE TEST bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
 
 --===------------------------------------------------------------------===--
 -- band_verdict(): the newest walk's verdict — served_by, grain, score,
@@ -225,7 +225,7 @@ ORDER BY metric, point_seq NULLS FIRST;
 
 CREATE OR REPLACE MACRO main.forecast_request() AS TABLE
 WITH axes AS (
-  SELECT * FROM main.metric_axes() WHERE coalesce(kind, '') NOT IN ('fact', 'relation', 'plan', 'scenario')),
+  SELECT * FROM main.metric_axes() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
 series AS (
   SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
@@ -364,7 +364,7 @@ DECLARE FUNCTION forecast_stands FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE WITNESS forecast_w ON metric_forecast DETECTOR forecast_stands;
+DECLARE TEST forecast_w ON metric_forecast DETECTOR forecast_stands;
 
 --===------------------------------------------------------------------===--
 -- forecast_record(): every forecast run's points as rows, from the
@@ -531,7 +531,7 @@ judged AS (
                                WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
                 THEN l.lever || ' carries no lever gloss: a lever is a column someone sets, glossed lever true on the metric''s view'
-              WHEN NOT EXISTS (SELECT 1 FROM main.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'fact', 'relation'))
+              WHEN NOT EXISTS (SELECT 1 FROM main.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
               WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
                 THEN l.metric || ' serves no column named ' || l.col
@@ -829,7 +829,7 @@ DECLARE FUNCTION scenario_stands FOR GLOBAL AS $$
   SELECT subject, 'green' AS band, 0.0 AS score FROM slots WHERE speaker = 'function'
 $$;
 
-DECLARE WITNESS scenario_w ON metric_scenario DETECTOR scenario_stands;
+DECLARE TEST scenario_w ON metric_scenario DETECTOR scenario_stands;
 
 CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH newest AS (
@@ -941,11 +941,11 @@ refusal AS (
               WHEN w = 'scenario' AND s IS NULL THEN error('metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
               WHEN w = 'scenario' AND NOT EXISTS (SELECT 1 FROM main.scenarios() WHERE scenario = s) THEN error(
                 'metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario')
-              WHEN w = 'plan' AND p IS NULL THEN error('metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>')
+              WHEN w = 'plan' AND p IS NULL THEN error('metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>')
               WHEN w = 'plan' AND NOT EXISTS (SELECT 1 FROM named) THEN error(
                 CASE WHEN NOT EXISTS (SELECT 1 FROM main.aspects WHERE name = p)
-                     THEN 'metric_series(plan := ''' || p || '''): no aspect of that name is declared — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>'
-                     ELSE 'metric_series(plan := ''' || p || '''): ' || p || ' is no plan — a plan is a QUERY aspect declared with x-kind plan and x-plan-of <metric>' END)
+                     THEN 'metric_series(plan := ''' || p || '''): no aspect of that name is declared — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>'
+                     ELSE 'metric_series(plan := ''' || p || '''): ' || p || ' is no plan — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>' END)
               WHEN w = 'plan' AND EXISTS (SELECT 1 FROM named WHERE NOT applicable) THEN error(
                 'metric_series(plan := ''' || p || '''): ' || (SELECT reason FROM named))
          END AS r),
@@ -1144,7 +1144,7 @@ $$ RETURNS metric_plan;
 
 -- The gap is read by the test's detector over the judgement's own
 -- result: red where a banded period lies below or above the forecast's
--- band, the score the share of banded periods that do, so that ATTEST()
+-- band, the score the share of banded periods that do, so that TESTS()
 -- carries it and the brief counts it.
 DECLARE FUNCTION plan_gap FOR GLOBAL AS $$
   SELECT subject,
@@ -1158,7 +1158,7 @@ DECLARE FUNCTION plan_gap FOR GLOBAL AS $$
               FROM slots WHERE speaker = 'function'))
 $$;
 
-DECLARE WITNESS plan_w ON metric_plan DETECTOR plan_gap;
+DECLARE TEST plan_w ON metric_plan DETECTOR plan_gap;
 
 CREATE OR REPLACE MACRO main.plan_record() AS TABLE
 WITH newest AS (
@@ -1210,7 +1210,7 @@ futures_plans AS (
   SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.reason, x.stopped
   FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
   LEFT JOIN axes x ON x.metric = a.name
-  WHERE a.kind = 'QUERY' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
+  WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
 futures_forecast AS (
   SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
 futures_judged AS (
@@ -1265,9 +1265,9 @@ FROM futures_red red LEFT JOIN bodies b ON b.metric = red.metric CROSS JOIN ds
 UNION ALL
 SELECT 'bands', 7, 'next', 'band_points',
        'read the walk behind the red verdict on ' || reds.subject,
-       reds.witness || ' bands ' || reds.subject || ' red and the walk names no point',
+       reds.test || ' bands ' || reds.subject || ' red and the walk names no point',
        'SELECT metric, period, displacement FROM band_points() ORDER BY displacement DESC NULLS LAST', ''
-FROM reds CROSS JOIN ds WHERE reds.witness = 'bands_w' AND NOT EXISTS (SELECT 1 FROM futures_red)
+FROM reds CROSS JOIN ds WHERE reds.test = 'bands_w' AND NOT EXISTS (SELECT 1 FROM futures_red)
 UNION ALL
 SELECT 'bands', 8, 'blocked', '', '',
        'the walk exists and took no metric: ' || string_agg(p.metric || ' — ' || p.reason, '; ' ORDER BY p.metric), '', ''
@@ -1283,8 +1283,8 @@ FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind,
 UNION ALL
 SELECT 'plan', 2, 'next', 'DECLARE ASPECT plan',
        'declare the first plan',
-       'no plan is declared on ' || m.metrics || ': a plan is a QUERY aspect with x-kind plan and x-plan-of naming the metric it plans, defined by SQL over the loaded budget table, one aspect per edition, x-covers year where a row is booked against the year; which metrics the budget covers, and its name, are the person''s to choose',
-       'DECLARE ASPECT <name> WITH $${"title": "<Budget>", "x-kind": "plan", "x-plan-of": "<metric>"}$$ AS QUERY;',
+       'no plan is declared on ' || m.metrics || ': a plan is a VIEW aspect with x-kind plan and x-plan-of naming the metric it plans, defined by SQL over the loaded budget table, one aspect per edition, x-covers year where a row is booked against the year; which metrics the budget covers, and its name, are the person''s to choose',
+       'DECLARE ASPECT <name> WITH $${"title": "<Budget>", "x-kind": "plan", "x-plan-of": "<metric>"}$$ AS VIEW;',
        'GLOSS <name> ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;'
 FROM applicable m CROSS JOIN ds
 WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM futures_plans)

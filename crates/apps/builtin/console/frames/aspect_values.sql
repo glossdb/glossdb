@@ -26,7 +26,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
          WHEN st.state = 'unassessed' THEN CASE WHEN a.kind = 'measurement' THEN 'not yet measured' ELSE 'not yet annotated' END
          WHEN st.state = 'contested' THEN 'withheld: the annotations differ'
          WHEN a.kind = 'measurement' THEN substr(f.body::VARCHAR, 1, 200)
-         WHEN a.kind = 'query' THEN 'a metric definition in SQL; its page has the assumptions and the SQL'
+         WHEN a.kind = 'view' THEN 'a metric definition in SQL; its page has the assumptions and the SQL'
          ELSE CASE CAST($aspect AS VARCHAR)
            WHEN 'entity' THEN json_extract_string(s.body, '$.value')
              || coalesce(' · one row per ' || array_to_string(json_extract(s.body, '$.grain')::VARCHAR[], ', '), '')
@@ -54,7 +54,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
             WHEN s.actor_kind = 'human' THEN 'written by ' || coalesce(s.actor_id, 'a person')
             ELSE '' END AS mark_title,
        CASE
-         WHEN a.kind = 'query' THEN '/' || d.dataset || '/app/console/p/metrics?metric=' || CAST($aspect AS VARCHAR)
+         WHEN a.kind = 'view' THEN '/' || d.dataset || '/app/console/p/metrics?metric=' || CAST($aspect AS VARCHAR)
          WHEN strpos(st.subject, ' -> ') > 0 THEN ''
          WHEN len(string_split(st.subject, '.')) = 3 THEN '?column=' || substr(st.subject, len(d.dataset) + 2)
          WHEN len(string_split(st.subject, '.')) = 2 AND l.table_name IS NOT NULL THEN '?table=' || substr(st.subject, len(d.dataset) + 2)

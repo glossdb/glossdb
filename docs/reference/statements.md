@@ -31,10 +31,10 @@ location carries no credentials; `via` names a secret the engine holds.
 DECLARE SOURCE erp_export SET (type: parquet, location: 'lake/erp');
 ```
 
-## PROBE
+## PREVIEW
 
 ```
-PROBE <source> AS $$<sql>$$
+PREVIEW <source> AS $$<sql>$$
 ```
 
 Runs a query at the source and loads nothing: a dry run of a load
@@ -42,7 +42,7 @@ query. The result always carries its schema, so `LIMIT 0` shows the
 columns and types a load query would produce.
 
 ```glossql
-PROBE erp_export AS $$SELECT file FROM glob('*')$$;
+PREVIEW erp_export AS $$SELECT file FROM glob('*')$$;
 ```
 
 ## DECLARE RECIPE
@@ -115,11 +115,11 @@ DECLARE RELATIONSHIP work_orders.site_id -> sites.id;
 ```
 DECLARE ASPECT <name> WITH $${<JSON Schema>}$$ AS FACT [ON <grain>[, …] [WHEN <aspect> = '<value>']]
 DECLARE ASPECT <name> WITH $${<JSON Schema>}$$ AS MEASUREMENT [ON <grain>[, …]]
-DECLARE ASPECT <name> WITH $${<JSON Schema>}$$ AS QUERY
+DECLARE ASPECT <name> WITH $${<JSON Schema>}$$ AS VIEW
 ```
 
 A property of the harness schema. `FACT` is a value an actor states,
-`MEASUREMENT` a value a function computes, `QUERY` SQL served as a
+`MEASUREMENT` a value a function computes, `VIEW` SQL served as a
 view under the aspect's name. The grains are `DATASET`, `TABLE`,
 `COLUMN`, `RELATIONSHIP` and `SOURCE`; none means all. `WHEN` makes the
 aspect required only where a sibling aspect has that value; `WHEN TYPE
@@ -141,7 +141,7 @@ GLOSS <aspect> ON <asset> AS $${<JSON>}$$
 An annotation: one actor's value for one aspect on one asset. The body
 is validated against the aspect's schema and stored with its actor and
 the data snapshot it describes. The asset is a dataset, table, column,
-relationship (`a.x -> b.y`) or source. On a `QUERY` aspect the body is
+relationship (`a.x -> b.y`) or source. On a `VIEW` aspect the body is
 a metric definition, and the result is the metric's summary row
 ([metrics](../usage/metrics.md)).
 
@@ -166,10 +166,10 @@ DECLARE FUNCTION min_max FOR GLOBAL AS
   $$ SELECT min(v) AS min, max(v) AS max FROM subject_column($subject) $$ RETURNS min_max;
 ```
 
-## DECLARE WITNESS
+## DECLARE TEST
 
 ```
-DECLARE WITNESS <name> ON <aspect> [BY (AGENT[, HUMAN])] [DETECTOR <function>] [THRESHOLD <0..1>]
+DECLARE TEST <name> ON <aspect> [BY (AGENT[, HUMAN])] [DETECTOR <function>] [THRESHOLD <0..1>]
 ```
 
 A test on one aspect. `BY` lists the kinds of actor that may annotate
@@ -179,7 +179,7 @@ agree; `THRESHOLD` is the score above which differing values read as
 takes only a detector ([data tests](../usage/data-tests.md)).
 
 ```glossql
-DECLARE WITNESS currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+DECLARE TEST currency_w ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
 ```
 
 ## Running a measurement
@@ -232,18 +232,18 @@ narrows to one aspect.
 SELECT * FROM GLOSSARY(orders.amount);
 ```
 
-## ATTEST()
+## TESTS()
 
 ```
-ATTEST([<asset>[::<aspect>]])
+TESTS([<asset>[::<aspect>]])
 ```
 
 The test results: one row per asset, aspect and test, `(subject,
-aspect, witness, band, score, computed_at, current, error)`. `band` is
+aspect, test, band, score, computed_at, current, error)`. `band` is
 `green`, `yellow`, `orange`, `red` or `error`. Tests run when read.
 
 ```sql
-SELECT subject, band FROM ATTEST(fin.trial_balance) WHERE band = 'red';
+SELECT subject, band FROM TESTS(fin.trial_balance) WHERE band = 'red';
 ```
 
 ## Metrics as relations

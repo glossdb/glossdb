@@ -1,4 +1,4 @@
-# Landing — read before the first PROBE or DECLARE RECIPE
+# Landing — read before the first PREVIEW or DECLARE RECIPE
 
 ## Agree the topic before anything is loaded
 
@@ -69,7 +69,7 @@ the listing is a probe at the source's location — `glob('**')` lists
 the subdirectories too:
 
 ```glossql
-PROBE erp_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
+PREVIEW erp_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
 ```
 
 **Rehearse the schema with `LIMIT 0`, per file, before authoring any
@@ -79,7 +79,7 @@ that is null in your sample is invisible there, and a missed join key
 carries a missed relationship with it.
 
 ```glossql
-PROBE erp_export AS $$SELECT order_id,
+PREVIEW erp_export AS $$SELECT order_id,
        try_cast(amount AS DOUBLE) AS amount,
        try_strptime(order_date, '%d.%m.%Y')::DATE AS order_date
 FROM read_parquet('orders/*.parquet') LIMIT 0$$;
@@ -116,7 +116,7 @@ takes a list of formats and uses the first that parses, so a mixed column is one
 over three copies of the value:
 
 ```glossql
-PROBE erp_export AS $$SELECT
+PREVIEW erp_export AS $$SELECT
   try_strptime(paid, ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%b-%y'])::DATE AS paid
 FROM read_csv('payments.csv') LIMIT 5$$;
 ```
@@ -170,7 +170,7 @@ reader looks.
   export will also carry goes to `conventions` on the source. What is
   true of this load goes to `meaning` on the column or table. What
   must stay watched becomes a validation, the expectation authored at
-  the rate you measured today: `ATTEST` is green now and turns red
+  the rate you measured today: `TESTS` is green now and turns red
   when the source drifts (`references/validate.md`). The validation is
   what the user sees; a finding that never becomes one is known to
   you alone.

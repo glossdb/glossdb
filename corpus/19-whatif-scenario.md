@@ -40,7 +40,7 @@ GLOSS lever ON sales_order_lines.units AS $${
 
 ## 2. The scenario declares like a metric — one aspect per scenario
 
-The same placement metrics have (fixture 16 §1: one QUERY aspect per
+The same placement metrics have (fixture 16 §1: one VIEW aspect per
 concept, served by `read.<name>()`): one FACT aspect per scenario,
 `x-kind: scenario`. The flavor rides `x-kind`, never the syntax (the
 `read.` ruling, fixture 16).
@@ -100,7 +100,7 @@ estimate's 80% band, how often such a band held at that grain and
 step, and the service's `sign` and `basis`; a concept the service
 cannot estimate gets the reason, never a silent guess. Sweeps are
 `WHERE` clauses over these relations, never a special form (the
-`ATTEST` rule).
+`TESTS` rule).
 
 ```glossql
 SELECT metric, period, value FROM metric_series(world => 'scenario', scenario => 'price_hike');
@@ -111,11 +111,11 @@ FROM scenario_points(scenario => 'price_hike') WHERE metric = 'revenue';
 ## 5. Versioning and governance fall out of the store
 
 Supersession key (subject, aspect, actor kind): re-glossing updates
-the scenario, a human's numbers retire an agent's. A witness makes
+the scenario, a human's numbers retire an agent's. A test makes
 scenario authorship a policy, with no new construct:
 
 ```glossql
-DECLARE WITNESS scenario_gate ON price_hike BY (HUMAN);
+DECLARE TEST scenario_gate ON price_hike BY (HUMAN);
 
 GLOSS price_hike ON fin AS $${
   "levers": [

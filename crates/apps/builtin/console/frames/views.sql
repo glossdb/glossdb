@@ -1,4 +1,4 @@
--- The views: every derived relation of the dataset — a QUERY aspect
+-- The views: every derived relation of the dataset — a VIEW aspect
 -- declared `x-kind: relation` — with what each is and where its
 -- judgment stands, by the pulse's chip rule. `$stopped` picks the
 -- served views (0) or the stopped ones (1).

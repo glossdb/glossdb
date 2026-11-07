@@ -23,7 +23,7 @@ can be tested.
 | type annotations, docstrings | annotations: what one row is, a column's unit, a measure's additivity | `GLOSS` |
 | compiler error | validation on write against the aspect's JSON Schema | |
 | linter | quality screens: keys, joins, hierarchies, stock or flow | the `quality` kit |
-| unit test | measurements and tests on the data | `FUNCTION`, `WITNESS` |
+| unit test | measurements and tests on the data | `FUNCTION`, `TEST` |
 | test coverage | coverage of required annotations | `GLOSSARY()` state `unassessed` |
 | CI on every commit | results tied to the data version they read; stale when it changes | |
 | git history | snapshots of the data and the catalog together | DuckLake |
@@ -38,7 +38,7 @@ can be tested.
 for, such as a column's unit or a table's grain. It has a JSON Schema
 for its values, the assets it applies to, and a condition for when it
 is required. An aspect is asserted (`FACT`), computed
-(`MEASUREMENT`), or a view (`QUERY`): a metric definition, a scalar,
+(`MEASUREMENT`), or a view (`AS VIEW`): a metric definition, a scalar,
 or a derived relation. See [aspects](../usage/describing-data.md).
 
 **Annotations.** A gloss is one actor's value for one aspect on one
@@ -53,13 +53,13 @@ evidence. Its result is stored with the versions of everything it
 read. It is reused while those are unchanged, and runs again once they
 change. See [measurements](../usage/measurements.md).
 
-**Tests.** A test (`WITNESS` in the grammar) is declared on one
+**Tests.** A test (`DECLARE TEST`) is declared on one
 aspect. It collects every value for that aspect on an asset: the
 measurements, the agent's annotation, a person's annotation. A
 detector function scores how far they agree, and returns a band
 (green to red) and a score. When the score crosses the threshold and
 the values differ, the glossary marks the asset `contested`.
-`ATTEST()` returns the results. Tests run when they are read and never
+`TESTS()` returns the results. Tests run when they are read and never
 write into the data.
 
 **Coverage.** Every required aspect that nobody has annotated is

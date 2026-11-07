@@ -68,7 +68,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         page(
             "recipe",
             "Functions in a recipe or a probe",
-            "What the SQL of `DECLARE RECIPE` and `PROBE` can call: the \
+            "What the SQL of `DECLARE RECIPE` and `PREVIEW` can call: the \
              engine's defaults, the try-casts, and the three readers over \
              the source's files. Nothing else — no JSON functions, no \
              shipped aggregates, no declared function.",
@@ -77,7 +77,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         page(
             "detector",
             "Functions in a detector",
-            "What a witness's detector query can call over its `slots` \
+            "What a test's detector query can call over its `slots` \
              relation: the engine's defaults, nothing more.",
             &crate::engine::detector_functions(),
         ),

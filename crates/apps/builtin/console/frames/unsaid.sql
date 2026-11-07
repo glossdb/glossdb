@@ -1,4 +1,4 @@
--- What the vocabulary still owes, by name: every slot a witnessed fact
+-- What the vocabulary still owes, by name: every slot a tested fact
 -- aspect is owed on that no voice has filled, grouped by aspect and,
 -- under it, by table. The row opens the aspect on the Glossary tab.
 WITH d AS (SELECT dataset FROM current_dataset),

@@ -69,7 +69,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
   WITH groundings AS (
     SELECT name FROM (
       SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY')
+      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
          max(s.stance || ' on ' || s.aspect) AS sibling,
@@ -135,7 +135,7 @@ CREATE OR REPLACE VIEW main.app_releases AS
   FROM winning;
 
 -- Every metric the bound dataset claims, with its state: one row per
--- QUERY aspect with a metric definition here, served or stopped, or
+-- VIEW aspect with a metric definition here, served or stopped, or
 -- whose definitions entry names it — name, title, kind (the aspect's
 -- x-kind), unit and meaning from the definitions handbook, grounded
 -- (a definition with sql was written), stopped (the collapsed
@@ -146,7 +146,7 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
   aspects AS (
     SELECT name, schema FROM (
       SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
   slots AS (
     SELECT aspect, body, actor_kind FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
@@ -201,18 +201,18 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            (SELECT count(*) FROM main.glossary) AS n_claims,
            (SELECT n FROM asked) AS open_claims,
            (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
-           (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY'
+           (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW'
               AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
            (SELECT metrics FROM asked) AS open_metrics,
-           (SELECT count(DISTINCT name) FROM main.witnesses) AS n_validations,
-           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM main.witnesses) w
+           (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
+           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM main.tests) w
             WHERE NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = w.aspect)
               AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = w.aspect)) AS open_validations,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_scenarios,
-           (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
-           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'QUERY' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
+           (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
+           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
            (SELECT n FROM ruled) AS n_rulings,
            (SELECT owed FROM ruled) AS open_rulings,
@@ -230,16 +230,16 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            WHEN 'rulings' THEN c.open_rulings ELSE 0 END AS open
   FROM counts c
   CROSS JOIN (VALUES
-    ('sources', 'DECLARE SOURCE, then PROBE it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
+    ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
     ('tables', 'write a load query (recipe) and load it — typing is the load query''s work, this is not ETL'),
     ('relationships', 'DECLARE RELATIONSHIP between two endpoints — detect_relationships proposes, you judge'),
-    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or QUERY, grained with ON'),
+    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
     ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('metrics', 'GLOSS a QUERY aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE WITNESS (the test) with a DETECTOR scoring them — ATTEST() serves the test results'),
+    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
+    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST (the test) with a DETECTOR scoring them — TESTS() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the futures kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS QUERY with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the futures kit serves the plan world'),
+    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the futures kit serves the plan world'),
     ('rulings', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
     ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
   ) AS s(surface, how);

@@ -1415,7 +1415,7 @@ fn meta_elicit() -> Value {
 
 /// The same round on DuckDB: the kits are declared at open, a source
 /// and a recipe land the table, and the role gloss leaves the behavior
-/// claim owed — the witnessed claim a measurement settles, never a
+/// claim owed — the tested claim a measurement settles, never a
 /// question for the human.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_round_never_asks_the_human_for_statistics() {
@@ -1474,8 +1474,8 @@ async fn a_repeated_key_is_answered_by_repeating_the_ruling() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
-        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
+        DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "convention", "key": "days-in-period",
             "assumption": "days are the month's own calendar days, 28 to 31",
@@ -1627,7 +1627,7 @@ async fn the_round_rules_a_loose_assumption_on_retry() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7},
@@ -1773,7 +1773,7 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -1858,7 +1858,7 @@ async fn the_round_never_interrupts_a_working_call() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2111,7 +2111,7 @@ async fn sequential_rulings_compose_instead_of_reverting() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "convention", "key": "flat-30-day-month", "assumption": "a flat 30-day month", "basis": "judgment", "confidence": 0.6},
@@ -2214,8 +2214,8 @@ async fn the_round_names_the_sibling_ruling_on_the_same_key() {
         USE fin;
         DECLARE ASPECT ruling WITH $${"type": "object", "required": ["rulings"],
           "properties": {"rulings": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS QUERY;
-        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS VIEW;
+        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS VIEW;
         GLOSS purchases ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "scope", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.7}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2299,7 +2299,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'brief delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2372,7 +2372,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'unkeyed assumptions');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
     "#;
@@ -2410,8 +2410,8 @@ async fn the_open_questions_read_composes_like_a_table() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the read library');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
-        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
+        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
@@ -2595,13 +2595,13 @@ async fn the_workspace_says_what_it_affords() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
         DECLARE ASPECT price_hike WITH $${"title": "Price +15%", "x-kind": "scenario"}$$ AS FACT ON DATASET;
-        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS QUERY;
+        DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS VIEW;
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
-        DECLARE WITNESS ar_tie_w ON ar_tie BY (AGENT, HUMAN);
+        DECLARE TEST ar_tie_w ON ar_tie BY (AGENT, HUMAN);
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 160, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
@@ -2650,7 +2650,7 @@ async fn the_workspace_says_what_it_affords() {
             .clone()
     };
     // One metric declared, one grounded, one assumption open on it. The
-    // sample frame is a QUERY aspect too and must not inflate this.
+    // sample frame is a VIEW aspect too and must not inflate this.
     assert_eq!(row("metrics")["stands"], json!(1), "{rows:?}");
     assert_eq!(row("metrics")["open"], json!(1), "{rows:?}");
     assert_eq!(row("claims")["open"], json!(1), "{rows:?}");
@@ -2663,9 +2663,9 @@ async fn the_workspace_says_what_it_affords() {
     // Nothing ruled yet, so nothing owes a fold-in.
     assert_eq!(row("rulings")["stands"], json!(0), "{rows:?}");
     assert_eq!(row("rulings")["open"], json!(0), "{rows:?}");
-    // A validation stands with its witness and is open while nobody
-    // has spoken on the witnessed aspect. The DuckDB build opens with
-    // its kits declared, whose witnesses stand open here too.
+    // A validation stands with its test and is open while nobody
+    // has spoken on the tested aspect. The DuckDB build opens with
+    // its kits declared, whose tests stand open here too.
     let kit_witnesses = 11;
     assert_eq!(
         row("validations")["stands"],
@@ -2719,7 +2719,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 170, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");

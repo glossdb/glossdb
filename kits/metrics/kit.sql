@@ -37,7 +37,7 @@ DECLARE ASPECT ladder WITH $${
   }
 }$$ AS FACT ON COLUMN WHEN role = 'timestamp';
 
-DECLARE WITNESS ladder_w ON ladder BY (AGENT, HUMAN);
+DECLARE TEST ladder_w ON ladder BY (AGENT, HUMAN);
 
 -- The grains in order, a bucket's step, and the kit's rung per grain.
 CREATE OR REPLACE MACRO main.grain_rank(g) AS
@@ -52,7 +52,7 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
          WHEN 'month' THEN 48 WHEN 'quarter' THEN 40 WHEN 'year' THEN 20 END;
 
 --===------------------------------------------------------------------===--
--- metric_axes(): one row per metric of the bound dataset — a QUERY aspect
+-- metric_axes(): one row per metric of the bound dataset — a VIEW aspect
 -- whose metric definition is a view — what the catalog says its columns are
 -- and whether a series can be served: metric, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
@@ -81,7 +81,7 @@ WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (
   SELECT name, schema FROM (
     SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-    FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+    FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
 views AS (
   SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
@@ -173,7 +173,7 @@ judged AS (
   SELECT *,
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
          WHEN NOT served THEN 'the metric definition serves no view'
-         WHEN kind = 'fact' THEN 'a fact serves one number, read through fact_values()'
+         WHEN kind = 'scalar' THEN 'a fact serves one number, read through fact_values()'
          WHEN kind = 'relation' THEN 'a relation serves rows, not a series'
          WHEN period_column IS NULL AND len(period_cols) > 1 THEN
               list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period — serve it so, or gloss role attribute on the others'
@@ -188,7 +188,7 @@ judged AS (
          WHEN floor IS NULL THEN
               'the profile finds no cadence on ' || period_column || ': gloss ladder with a floor, GLOSS ladder ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<grain>"}$$'
     END AS reason,
-    CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('fact', 'relation')
+    CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || metric || '.' || period_column] ELSE []::VARCHAR[] END AS wanted
   FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
 -- a plan's row: its columns through the metric it plans
@@ -208,7 +208,7 @@ judged_plans AS (
   SELECT *,
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
          WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
-         WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no QUERY aspect declares on this dataset'
+         WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no VIEW aspect declares on this dataset'
          WHEN NOT served THEN 'the metric definition serves no view'
          WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
          WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
@@ -365,12 +365,12 @@ ORDER BY metric, dimension, member, period;
 
 --===------------------------------------------------------------------===--
 -- fact_values(): the declared facts of the bound dataset, served whole —
--- one row per metric whose aspect declares x-kind fact: metric, value where
+-- one row per metric whose aspect declares x-kind scalar: metric, value where
 -- the view is one row with a value column, reason where it is not.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
-WITH facts AS (SELECT metric, stopped FROM main.metric_axes() WHERE kind = 'fact'),
+WITH facts AS (SELECT metric, stopped FROM main.metric_axes() WHERE kind = 'scalar'),
 cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
@@ -439,7 +439,7 @@ SELECT $ctes$
 metrics_aspects AS (
   SELECT name, schema FROM (
     SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-    FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+    FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
 metrics_declared AS (
   SELECT name FROM metrics_aspects WHERE coalesce(json_extract_string(schema, '$.x-kind'), '') <> 'plan'),
 metrics_claimed AS (
@@ -466,7 +466,7 @@ WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
 SELECT 'metrics', 2, 'next', 'DECLARE ASPECT query',
        'declare the first concept',
-       'no metric is claimed by this dataset: a declared QUERY aspect is this dataset''s once its definitions entry or its metric definition exists; the names are the person''s to choose',
+       'no metric is claimed by this dataset: a declared VIEW aspect is this dataset''s once its definitions entry or its metric definition exists; the names are the person''s to choose',
        '', ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
@@ -496,7 +496,7 @@ SELECT 'metrics', 5, 'next', 'GLOSS role',
        list_aggregate(a.owed, 'string_agg', chr(10)),
        ''
 FROM axes a, ds
-WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('fact', 'relation', 'plan')
+WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
   AND len(a.wanted) = 0 AND len(a.owed) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
 UNION ALL
 SELECT 'metrics', 6, 'next', 'GLOSS query',
@@ -505,7 +505,7 @@ SELECT 'metrics', 6, 'next', 'GLOSS query',
        'GLOSS ' || a.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
        ''
 FROM axes a LEFT JOIN bodies b ON b.metric = a.metric, ds
-WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('fact', 'relation', 'plan')
+WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
   AND len(a.wanted) = 0 AND NOT (len(a.owed) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL))
 UNION ALL
 SELECT 'metrics', 7, 'next', 'GLOSS behavior',

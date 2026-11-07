@@ -40,6 +40,6 @@ FROM metric_surfaces s
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN ruled r ON r.aspect = s.name
 LEFT JOIN metric_axes() x ON x.metric = s.name
-WHERE s.kind NOT IN ('fact', 'plan', 'relation')
+WHERE s.kind NOT IN ('scalar', 'plan', 'relation')
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY name

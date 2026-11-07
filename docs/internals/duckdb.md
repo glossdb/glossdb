@@ -9,8 +9,8 @@ is a SQL body the engine executes.
 ## What the extension owns
 
 - **The grammar.** The language's statements, parsed by the extension's
-  grammar on DuckDB's parser: declarations, `GLOSS`, `IMPORT`, `PROBE`,
-  the reads `GLOSSARY()` and `ATTEST()`, and a measurement over an
+  grammar on DuckDB's parser: declarations, `GLOSS`, `IMPORT`, `PREVIEW`,
+  the reads `GLOSSARY()` and `TESTS()`, and a measurement over an
   asset.
 - **The catalog and its reads.** The relations as tables in the lake's
   catalog, served as views in `ws.main`; the newest value per author,

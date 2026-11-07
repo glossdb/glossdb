@@ -190,7 +190,7 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
     // Declared and claimed by nobody: the claim is the act.
     say(
         &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
     )
     .await;
     let row = goal(&app, "metrics").await;
@@ -307,7 +307,7 @@ async fn the_next_page_carries_the_forms() {
     let (app, _dir) = fin().await;
     say(
         &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
     )
     .await;
     let body = expect_ok(

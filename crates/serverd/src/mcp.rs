@@ -45,10 +45,10 @@ for when they matter, and every page this server serves is a row of `pages()`. \
 2. `SELECT * FROM datasets`, then what the brief below names. \
 The objects: a dataset holds tables, loaded from sources by load queries (recipes); an \
 aspect is a property the harness requires, with a JSON Schema; a gloss is an annotation: \
-an aspect's value on an asset (a table, a column, the dataset itself). A QUERY aspect's \
+an aspect's value on an asset (a table, a column, the dataset itself). A VIEW aspect's \
 gloss is SQL, served as a view under the aspect's name — a metric, a single value, or a \
 derived relation, which the metrics skill tells apart. Functions measure the data, and \
-their measurements are the evidence. Tests (WITNESS) score where measurements, agents and \
+their measurements are the evidence. Tests (TEST) score where measurements, agents and \
 people disagree. A person's review decision outranks every agent's annotation. Read live \
 state through the tool; never assume it. Every result ends with `next:`, one action per \
 goal — structure, metrics, slices, bands, checks, app, plan, rulings (the review) — and \
@@ -149,7 +149,7 @@ impl GlossqlMcp {
         let datasets = plane.datasets().await.map(|d| d.len()).unwrap_or(0);
         // How to begin, decided by whether anything stands to read: a
         // workspace before its first dataset has no brief to sweep —
-        // `owed`, `GLOSSARY(d)` and `ATTEST(d)` all need one — and
+        // `owed`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
         // the metrics skill's landing page is where it starts.
         let opening = if datasets == 0 {
             "No dataset exists yet, so there is nothing to brief: `SELECT * FROM \
@@ -200,7 +200,7 @@ impl GlossqlMcp {
                         "{} judgment question{} wait{} for a person (assumptions below \
                          full confidence — conventions and definitions, never \
                          statistics): each is served once as a form on a catalog read \
-                         (glossary, GLOSSARY(), ATTEST()), or relayed in chat where \
+                         (glossary, GLOSSARY(), TESTS()), or relayed in chat where \
                          forms are absent, and stays open until the person decides — \
                          the work goes on meanwhile",
                         questions,
@@ -571,14 +571,14 @@ impl GlossqlMcp {
                  for a client that reads those. \
                  {opens} \
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
-                 {} (GLOSSARY(), ATTEST() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
-                 QUERY aspect — a metric definition — answers with the metric's summary row in \
+                 {} (GLOSSARY(), TESTS() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
+                 VIEW aspect — a metric definition — answers with the metric's summary row in \
                  the `metric_axes()` shape: whether the SQL plans, its additivity and where \
                  that came from, the axes admitted, and every served column not admitted with \
                  how to admit it — read it before the next write. A refused statement is an \
                  error naming its place; what was stored before it stays stored \
                  (`{{landed}}`). While the workspace holds open questions, a call that only \
-                 reads the catalog (glossary, GLOSSARY(), ATTEST(), the catalog tables) \
+                 reads the catalog (glossary, GLOSSARY(), TESTS(), the catalog tables) \
                  carries the person's question forms; loads and data reads never do.",
                 self.plane.row_cap()
             ),
@@ -646,7 +646,7 @@ struct RulingEntry<'a> {
 }
 
 /// What still stands open for a human to judge, and the round's ONLY
-/// derivation — unassessed witnessed claims (behavior, unit, role) are
+/// derivation — unassessed tested claims (behavior, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
 /// shipped functions settle them. The derivation itself is the core's
 /// `open_questions` read (`kits/core/kit.sql`), which carries
@@ -1198,7 +1198,7 @@ impl GlossqlMcp {
     /// everything else runs through execute. Either way the session
     /// pages a data read — its plan carries the cap, so what the agent
     /// won't see is never computed — and serves a metadata read
-    /// (GLOSSARY(), ATTEST(), the store relations) whole: the map must
+    /// (GLOSSARY(), TESTS(), the store relations) whole: the map must
     /// be whole, and the store bounds it. What a refused sequence had
     /// already landed rides beside the refusal, in the usual shape —
     /// the writes stood.

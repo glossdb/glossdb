@@ -27,7 +27,7 @@ declared levers — a lever a FACT aspect on a column of a metric's
 view — read as `metric_series(world := 'scenario', scenario :=
 '<name>')` beside the actual and the forecast worlds; the estimate
 ahead is machinery, never statement syntax. A plan is a world on the same read
-(fixture 27): one QUERY aspect per plan, `x-kind: plan`, tied to its
+(fixture 27): one VIEW aspect per plan, `x-kind: plan`, tied to its
 metric by `x-plan-of` in the declaration, its body the grounding
 contract — a plan's numbers are a landed table, read by SQL
 as the actual's are — read as `metric_series(world := 'plan', plan :=

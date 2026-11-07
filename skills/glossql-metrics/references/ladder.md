@@ -97,7 +97,7 @@ point's fit saw only the months before it.
   record it as an assumption under the key `band-<period>` in the
   metric's definition, and the console asks. The walk is due again
   when a metric definition or the data changes.
-- A declared fact (`x-kind: fact`) `fact_values()` serves whole, its
+- A declared fact (`x-kind: scalar`) `fact_values()` serves whole, its
   number where the view is one row with a value; a derived relation
   serves as its view alone.
 
@@ -160,11 +160,11 @@ annotated lever on a served metric's column, the factor a map.
 ## The plan world
 
 A plan — a budget, a reforecast, a target — arrives as a loaded table,
-and the glossary holds how to read it. A plan is one QUERY aspect per
+and the glossary holds how to read it. A plan is one VIEW aspect per
 plan, declared with `x-kind: plan` and `x-plan-of: <metric>`, the
 metric it plans, and defined by SQL like a metric: `DECLARE ASPECT
 revised_budget WITH $${"title": "Revised budget", "x-kind": "plan",
-"x-plan-of": "expense"}$$ AS QUERY;` then `GLOSS
+"x-plan-of": "expense"}$$ AS VIEW;` then `GLOSS
 revised_budget ON fin AS $${"sql": "SELECT month AS date, revised AS
 value FROM budget"}$$;`. The plan is read through the metric it
 plans: its period and value are the columns named as that metric's,

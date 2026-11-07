@@ -42,7 +42,7 @@ CREATE TABLE fin.ledger AS
   FROM range(120) r(i);
 
 statement ok
-DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;
+DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
 
 statement ok
 GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund, object FROM fin.ledger GROUP BY ALL"}$$;
@@ -143,7 +143,7 @@ statement ok
 CREATE TABLE fin.later AS SELECT DATE '2024-06-15' AS seen, 7.0 AS level;
 
 statement ok
-DECLARE ASPECT reach WITH $${"title": "Reach"}$$ AS QUERY;
+DECLARE ASPECT reach WITH $${"title": "Reach"}$$ AS VIEW;
 
 statement ok
 GLOSS reach ON fin AS $${"sql": "SELECT seen AS period, level AS value FROM fin.later"}$$;
@@ -192,7 +192,7 @@ CREATE TABLE fin.levels AS SELECT * FROM (VALUES
   (DATE '2024-04-30', 'ops', 12.0), (DATE '2024-04-30', 'sales', 6.0)) t(d, dept, n);
 
 statement ok
-DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS QUERY;
+DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS VIEW;
 
 statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n AS value, dept FROM fin.levels"}$$;
@@ -238,7 +238,7 @@ CREATE TABLE fin.offers AS SELECT * FROM (VALUES
   (DATE '2024-01-15', 'sales', 2, 2), (DATE '2024-02-15', 'sales', 0, 2)) t(d, dept, won, offered);
 
 statement ok
-DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS QUERY;
+DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS VIEW;
 
 statement ok
 GLOSS win_rate ON fin AS $${"sql": "SELECT d AS period, dept, won, offered, won / offered AS value FROM fin.offers"}$$;
@@ -299,7 +299,7 @@ true	false	stock	stale
 # --- a fact serves one number; a stop serves its reason
 
 statement ok
-DECLARE ASPECT fte_cap WITH $${"title": "FTE cap", "x-kind": "fact"}$$ AS QUERY;
+DECLARE ASPECT fte_cap WITH $${"title": "FTE cap", "x-kind": "scalar"}$$ AS VIEW;
 
 statement ok
 GLOSS fte_cap ON fin AS $${"sql": "SELECT 40 AS value"}$$;

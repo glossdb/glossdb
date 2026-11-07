@@ -1,4 +1,4 @@
--- A declared fact's value (`x-kind: fact`), served whole by
+-- A declared fact's value (`x-kind: scalar`), served whole by
 -- `fact_values()` — one row when the view is one row with a `value`,
 -- none otherwise. Beside the number: the unit and meaning the
 -- definition carries, and the as-of, the newest landing of the tables

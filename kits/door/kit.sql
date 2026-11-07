@@ -30,7 +30,7 @@ CREATE OR REPLACE VIEW main.owed AS
   -- the view keeps serving the recorded SQL until the agent recomposes it
   query_aspects AS (
     SELECT name FROM main.aspects
-    QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1 AND kind = 'QUERY'),
+    QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1 AND kind = 'VIEW'),
   standing AS (
     SELECT g.dataset, g.subject, g.aspect, g.seq FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind = 'agent'
@@ -72,7 +72,7 @@ CREATE OR REPLACE VIEW main.owed AS
     JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
       ON a.name = f.returns
     WHERE (f.scope = 'GLOBAL' OR f.scope = ds.dataset) AND list_contains(a.grains, 'DATASET')
-      AND EXISTS (SELECT 1 FROM main.witnesses w WHERE w.aspect = a.name)
+      AND EXISTS (SELECT 1 FROM main.tests w WHERE w.aspect = a.name)
       AND EXISTS (SELECT 1 FROM main.metric_surfaces s WHERE s.grounded)
       AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
     QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.seq DESC) = 1),
@@ -148,14 +148,14 @@ SELECT 'checks', 2, 'next', 'EXTRACT', 'run ' || o.subject, o.why,
 FROM owed o, ds
 WHERE o.kind = 'never measured' AND o.what LIKE '% over ' || ds.dataset
 UNION ALL
-SELECT 'checks', 3, 'next', 'ATTEST', 'read the red test results',
-       v.witness || ' bands ' || v.subject || ' red',
-       'SELECT subject, aspect, witness, band, score FROM ATTEST(' || ds.dataset || ') WHERE band = ''red'' ORDER BY witness, subject',
+SELECT 'checks', 3, 'next', 'TESTS', 'read the red test results',
+       v.test || ' bands ' || v.subject || ' red',
+       'SELECT subject, aspect, test, band, score FROM TESTS(' || ds.dataset || ') WHERE band = ''red'' ORDER BY test, subject',
        ''
 FROM reds v, ds
-WHERE v.witness IS DISTINCT FROM 'bands_w'
+WHERE v.test IS DISTINCT FROM 'bands_w'
 UNION ALL
-SELECT 'checks', 4, 'next', 'DECLARE WITNESS',
+SELECT 'checks', 4, 'next', 'DECLARE TEST',
        'turn a reconciliation into a permanent test',
        'no check is open and none is yours: a tie-out you ran by hand becomes a test that runs again whenever its inputs change',
        'DECLARE ASPECT <name>_check WITH $${' || chr(10)
@@ -166,7 +166,7 @@ SELECT 'checks', 4, 'next', 'DECLARE WITNESS',
          || '  SELECT ''<what was compared>'' AS outcome, <the violation share, as DOUBLE> AS breach_rate' || chr(10)
          || '  FROM <the second route to the number>' || chr(10)
          || '$$ RETURNS <name>_check;' || chr(10)
-         || 'DECLARE WITNESS <name>_w ON <name>_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;' || chr(10)
+         || 'DECLARE TEST <name>_w ON <name>_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;' || chr(10)
          || 'GLOSS <name>_check ON ' || ds.dataset || ' AS $${"outcome": "<what must hold>", "tolerance": <the rate you measured>}$$;',
        'SELECT <name>_check_fn() FROM ' || ds.dataset
 FROM ds

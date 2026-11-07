@@ -1,15 +1,15 @@
--- One check, both faces: the witness's own declaration — the aspect it
+-- One check, both faces: the test's own declaration — the aspect it
 -- adjudicates, who may speak on it, its detector and threshold — and
--- its verdicts as ATTEST() holds them now: how many, by band, the worst
+-- its verdicts as TESTS() holds them now: how many, by band, the worst
 -- as the chip, the highest score, when the newest was measured and
 -- whether every one stands at this pin.
 WITH w AS (
-  SELECT * FROM witnesses WHERE name = $check
+  SELECT * FROM tests WHERE name = $check
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 v AS (
   SELECT a.band, a.score, a.computed_at, a.current,
          CASE a.band WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
-  FROM ATTEST() a WHERE a.witness = $check),
+  FROM TESTS() a WHERE a.test = $check),
 folded AS (
   SELECT count(v.band) AS n,
          count(*) FILTER (WHERE v.band = 'green') AS green,
@@ -22,7 +22,7 @@ folded AS (
          max(v.computed_at) AS measured_at,
          coalesce(bool_and(v.current), true) AS standing
   FROM v)
-SELECT w.name AS witness,
+SELECT w.name AS test,
        w.aspect,
        coalesce(nullif(array_to_string(w.speakers, ', '), ''), 'measurements alone') AS speakers,
        coalesce(w.detector, '') AS detector,

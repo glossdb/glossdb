@@ -2,7 +2,7 @@
 -- `fact`, `query`, `measurement`, or `own` for the workspace's own
 -- words — with what it holds from its schema, where it is owed from its
 -- grain and condition, how many owed subjects carry a value and how
--- many are contested, who may speak it, and whether a witness judges
+-- many are contested, who may speak it, and whether a test judges
 -- it. A row opens the aspect's page.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition, schema,
@@ -19,7 +19,7 @@ w AS (
   SELECT aspect,
          max(CASE WHEN detector IS NOT NULL THEN 1 ELSE 0 END) AS judged,
          max(array_to_string(speakers, ', ')) AS speakers
-  FROM (SELECT * FROM witnesses QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  FROM (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
   GROUP BY aspect),
 f AS (
   SELECT returns AS aspect, string_agg(name, ', ' ORDER BY name) AS fns
@@ -27,7 +27,7 @@ f AS (
   GROUP BY returns)
 SELECT a.name AS aspect,
        CASE
-         WHEN a.kind = 'query' THEN 'SQL with its assumptions disclosed, served as a view under the name'
+         WHEN a.kind = 'view' THEN 'SQL with its assumptions disclosed, served as a view under the name'
          WHEN json_extract(a.schema, '$.properties.value.enum') IS NOT NULL
            THEN 'one of ' || array_to_string(json_extract(a.schema, '$.properties.value.enum')::VARCHAR[], ' · ')
          WHEN json_keys(a.schema, '$.properties') IS NOT NULL AND len(json_keys(a.schema, '$.properties')) > 0
@@ -35,7 +35,7 @@ SELECT a.name AS aspect,
          WHEN json_extract_string(a.schema, '$.title') IS NOT NULL THEN json_extract_string(a.schema, '$.title')
          ELSE 'a JSON object' END AS holds,
        CASE
-         WHEN a.kind = 'query' THEN 'on the dataset'
+         WHEN a.kind = 'view' THEN 'on the dataset'
          WHEN a.grains IS NULL OR len(a.grains) = 0 THEN 'anywhere'
          WHEN len(a.grains) = 1 AND a.grains[1] = 'DATASET' THEN 'on the dataset'
          ELSE 'on a ' || array_to_string(list_transform(a.grains, lambda x: replace(lower(x), 'relationship', 'join')), ', a ') END

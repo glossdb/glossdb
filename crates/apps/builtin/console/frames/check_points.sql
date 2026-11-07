@@ -7,11 +7,11 @@
 -- their number. A point whose PIT is withheld carries the service's
 -- reason; a metric the walk found inapplicable carries its reason and
 -- no numbers. `band_points()` is the recorded walk, no re-run. Rows
--- only for a witness whose detector is band_breach, so another check's
+-- only for a test whose detector is band_breach, so another check's
 -- page draws nothing here.
 WITH w AS (
   SELECT name, coalesce(threshold, 0.98) AS threshold
-  FROM witnesses WHERE name = $check AND detector = 'band_breach'
+  FROM tests WHERE name = $check AND detector = 'band_breach'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
 ),
 newest AS (

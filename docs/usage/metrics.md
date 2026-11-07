@@ -1,6 +1,6 @@
 # Metrics
 
-A metric is a `QUERY` property: SQL with its assumptions, served as a
+A metric is a `VIEW` property: SQL with its assumptions, served as a
 view under the metric's name. Annotations on the view's columns make it
 a series: which column is the period, which the value, which the
 slices, and how the value adds up. The signatures of the metric views
@@ -14,7 +14,7 @@ owner, source, a formula) goes in the `definitions` annotation, where a
 correction replaces the entry with its author and time.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS VIEW;
 GLOSS definitions ON ops AS $${"definitions": {
   "throughput": {"meaning": "work completed and accepted; counted at completion date",
                  "unit": "hours", "owner": "Operations", "source": "KPI handbook v3 §2"}
@@ -60,13 +60,13 @@ column still missing an annotation. Read it before the next write.
 
 ## Three other kinds of view
 
-The same `QUERY` property serves three other things, told apart by
+The same `VIEW` property serves three other things, told apart by
 `x-kind` in the declaration:
 
 | `x-kind` | What it is | Served as |
 |---|---|---|
 | `measure` | a metric: a series over time | the series views, the console's charts |
-| `fact` | a single value with no date, such as a balance the source hands over already summed | `FROM <name>`, `fact_values()`, the console's single values |
+| `scalar` | a single value with no date, such as a balance the source hands over already summed | `FROM <name>`, `fact_values()`, the console's single values |
 | `relation` | shared SQL other definitions build on: a cleaned join, a scoped subset | `FROM <name>`; a change to it reaches every definition that reads it |
 
 A single value given a date becomes a one-point series. A validation

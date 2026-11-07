@@ -33,7 +33,7 @@ surfaces AS (
          CASE WHEN r.n > 0 THEN 'ruled' ELSE '' END AS mark,
          CASE WHEN r.n > 0 THEN 'a person decided the definition, ' || strftime(r.ruled_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title,
          '/' || d.dataset || '/app/console/p/metrics?metric=' || s.name
-           || CASE WHEN s.kind IN ('relation', 'fact') THEN '&kind=' || s.kind ELSE '' END AS link
+           || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
   FROM metric_surfaces s
   CROSS JOIN d
   LEFT JOIN rulings r ON r.aspect = s.name

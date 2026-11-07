@@ -144,7 +144,7 @@ noise; `list(x ORDER BY period)` — an unordered `list` is
 nondeterministic and must never feed a sparkline.
 
 **Store what a read proves.** A composed evaluation you verified may
-be stored as the metric's own QUERY annotation — durable executable
+be stored as the metric's own VIEW annotation — durable executable
 knowledge, served as the view `throughput` from then on. Compose `FROM
 throughput` where you can, so a component a review decision changes propagates
 through every metric built on it.

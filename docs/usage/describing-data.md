@@ -30,7 +30,7 @@ The kind says who provides the value:
 |---|---|---|
 | `FACT` | stated by an agent or a person, validated against the `WITH` schema | a unit, a convention, a constant, a formula |
 | `MEASUREMENT` | computed by a function from the data; never annotated by hand | `min_max`, outliers, relationship candidates |
-| `QUERY` | SQL, served as a view under the property's name | a metric, a single value, a derived relation ([metrics](metrics.md)) |
+| `VIEW` | SQL, served as a view under the property's name | a metric, a single value, a derived relation ([metrics](metrics.md)) |
 
 A measurement's value is the newest result of the function that
 returns it ([measurements](measurements.md)).
@@ -43,7 +43,7 @@ a tuple), or a source.
 
 - `ON DATASET | TABLE | COLUMN | RELATIONSHIP | SOURCE` lists the kinds
   of asset the property applies to. Without the clause it applies to
-  any asset, as spelled. A `QUERY` property always applies to the
+  any asset, as spelled. A `VIEW` property always applies to the
   dataset.
 - `ON TABLE` and `ON COLUMN` also require the asset to be loaded: an
   annotation on a table or column that is not in the dataset is

@@ -10,7 +10,7 @@
 {# ---- one metric: the number, then its reasons -------------------- #}
 {# Picking a metric is going deeper, not somewhere else: the Metrics
    tab stays the current one, every tile names the metric, and the tab
-   is the way back to the list. A fact's link carries `kind=fact` and
+   is the way back to the list. A single value's link carries `kind=scalar` and
    a view's `kind=relation`, and the page draws either without the
    series tiles — there is no window, no story and no slice over one
    number or over rows. A view's page shows what a view is instead:
@@ -20,7 +20,7 @@
   {# The re-measure banner: every write moves the pin, and a function
      voice landed at an earlier pin is served and marked — the numbers
      are current, the judged axes and the check verdicts stand on
-     those voices — and a measurement the cube or a witness reads may
+     those voices — and a measurement the cube or a test reads may
      never have been made. One row while either holds; the button
      runs them, the frames refetch on the write event, and the next
      cube read rebuilds. #}
@@ -39,7 +39,7 @@
      control reads the cube's fact row so it offers only the grains
      the metric's cells can answer, and changing one is navigation:
      only the frames whose URL changed refetch. #}
-  {% if kind != "fact" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
+  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
 
   {# A declared fact: one number, no series. `frames/fact` serves a
      row only when this metric is a declared fact with a number, so
@@ -57,7 +57,7 @@
     </template>
   </gl-rows>
 
-  {% if kind != "fact" and kind != "relation" %}
+  {% if kind != "scalar" and kind != "relation" %}
   {{ tiles::chart(frame="frames/trend?grain=month&span=24", spec="specs/series.vl.json",
        title="The story · " ~ metric, chip="metric_series()",
        empty="no values at this grain — Why these axes, below, says what is served; a grain finer than the metric's own serves nothing",
@@ -124,7 +124,7 @@
   </section>
   {% endif %}
 
-  <div{% if kind != "fact" and kind != "relation" %} class="half"{% endif %}>
+  <div{% if kind != "scalar" and kind != "relation" %} class="half"{% endif %}>
   <section class="tile">
     <header><span class="eyebrow" title="The decided definition: an expression over sibling metrics, with the window w as its only variable. It covers every window, so drilling into this metric recomputes its parts by this formula instead of regrouping its rows.">The formula · {{ metric }}</span>
       <code class="chip">formulas</code></header>
@@ -141,7 +141,7 @@
   </section>
   </div>
 
-  {% if kind != "fact" and kind != "relation" %}
+  {% if kind != "scalar" and kind != "relation" %}
   <div class="half">
   <section class="tile">
     <header><span class="eyebrow" title="The dimensions this metric may be sliced by, most relevant first. A wide dimension shows its largest members and &#x27;other&#x27;.">Slice</span>
@@ -216,7 +216,7 @@
   {# The re-measure banner: every write moves the pin, and a function
      voice landed at an earlier pin is served and marked — the numbers
      are current, the judged axes and the check verdicts stand on
-     those voices — and a measurement the cube or a witness reads may
+     those voices — and a measurement the cube or a test reads may
      never have been made. One row while either holds; the button
      runs them, the frames refetch on the write event, and the next
      cube read rebuilds. #}
@@ -264,7 +264,7 @@
   <section class="tile">
     <header><span class="eyebrow" title="Every derived view of the dataset: shared SQL the metrics build on. A view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every metric built on it. The Export tab serves each as a file.">Views</span>
       <code class="chip">metric_surfaces</code></header>
-    <gl-rows frame="frames/views?stopped=0" empty="no view is declared: a derived view is a QUERY aspect with x-kind relation, defined by SQL the metrics build on">
+    <gl-rows frame="frames/views?stopped=0" empty="no view is declared: a derived view is a VIEW aspect with x-kind relation, defined by SQL the metrics build on">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
           <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
@@ -290,7 +290,7 @@
   <section class="tile">
     <header><span class="eyebrow" title="Every single value with its number and the newest load of the tables it reads. No period and no change: a single value has no date of its own, so the data&#x27;s date is the one shown.">Single values</span>
       <code class="chip">metric_surfaces · fact_values()</code></header>
-    <gl-rows frame="frames/facts?stopped=0" empty="no single value is declared: a value with no date of its own is annotated with x-kind fact, and is served whole">
+    <gl-rows frame="frames/facts?stopped=0" empty="no single value is declared: a value with no date of its own is annotated with x-kind scalar, and is served whole">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 9rem 11rem 11rem">
           <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>

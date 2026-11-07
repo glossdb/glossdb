@@ -67,7 +67,7 @@ extensions, and attaches the lake, creating the catalog file and the
 own views, then runs the kits in order: the KPI kit and the quality
 kit from the extension, then the server's metrics and futures kits.
 Kits are ordinary declarations, readable through the `aspects`,
-`functions` and `witnesses` tables like anything an agent writes, and
+`functions` and `tests` tables like anything an agent writes, and
 a kit the catalog already holds runs nothing. Last, the server declares
 its own views and composes the `next` view from every kit's next steps
 ([next steps](../extending/next-steps.md)). The server writes nothing

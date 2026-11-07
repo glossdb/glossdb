@@ -31,19 +31,19 @@ DECLARE SOURCE crm SET (type: relational_db, location: 'postgres://crm.internal/
 
 ## Preview, then load
 
-List what a file source holds with a preview (`PROBE`):
-`PROBE erp_export AS $$SELECT file FROM glob('*')$$` lists the files
+List what a file source holds with `PREVIEW`:
+`PREVIEW erp_export AS $$SELECT file FROM glob('*')$$` lists the files
 under the location, `glob('**')` the subdirectories too
 ([the sources' files](../reference/reads.md)).
 
-`PROBE source AS $$sql$$` runs SQL at the source and loads nothing.
+`PREVIEW source AS $$sql$$` runs SQL at the source and loads nothing.
 The result always carries its schema, so a `LIMIT 0` preview of the
 final SQL shows exactly the columns and types the load will create. At
 a file source a table is a file: a query that names a plain table is
 refused, with the source's files and the `read_*` call that reads one.
 
 ```glossql
-PROBE erp_export AS $$SELECT count(*) AS n, count(p_rec) AS reconciled_parsed
+PREVIEW erp_export AS $$SELECT count(*) AS n, count(p_rec) AS reconciled_parsed
 FROM (SELECT try_cast(reconciled AS BOOLEAN) AS p_rec
       FROM read_csv('bank_transactions.csv'))$$;
 

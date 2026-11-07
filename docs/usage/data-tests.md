@@ -3,7 +3,7 @@
 A data test checks that a number holds. It has four parts: an
 expectation someone writes (a `FACT` annotation), a function that
 measures the same property, a detector that scores the two against
-each other, and `ATTEST()`, which serves the result. Tests run when
+each other, and `TESTS()`, which serves the result. Tests run when
 they are read and never write into the data. The language reference is
 [SPEC.md §7](https://github.com/glossdb/glossql/blob/main/SPEC.md).
 
@@ -17,7 +17,7 @@ DECLARE ASPECT hours_reconcile WITH $${
 }$$ AS FACT ON TABLE WHEN entity = 'work log line';
 GLOSS hours_reconcile ON work_logs AS $${
   "outcome": "Logged minutes match the order's recorded duration, exactly.", "tolerance": 0.0}$$;
-DECLARE WITNESS hours_w ON hours_reconcile BY (AGENT, HUMAN)
+DECLARE TEST hours_w ON hours_reconcile BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 
@@ -26,7 +26,7 @@ DECLARE WITNESS hours_w ON hours_reconcile BY (AGENT, HUMAN)
 3. Declare a function whose `RETURNS` names the same property and
    whose result carries `breach_rate`
    ([measurements](measurements.md#declare-a-function)).
-4. Declare the test (`WITNESS` in the grammar):
+4. Declare the test (`DECLARE TEST`):
    - `BY` lists who may annotate the property: `AGENT`, `HUMAN`.
      Functions are not listed; a function takes part through its
      `RETURNS`.
@@ -61,11 +61,11 @@ turns red when the source drifts.
 ## Read the results
 
 ```glossql
-SELECT * FROM ATTEST(orders.amount::behavior);
-SELECT subject, band FROM ATTEST(fin.trial_balance) WHERE band = 'red';
+SELECT * FROM TESTS(orders.amount::behavior);
+SELECT subject, band FROM TESTS(fin.trial_balance) WHERE band = 'red';
 ```
 
-`ATTEST()` returns `(subject, aspect, witness, band, score,
+`TESTS()` returns `(subject, aspect, test, band, score,
 computed_at, current, error)`:
 
 - `band`: `green`, `yellow`, `orange`, `red` or `error`;
@@ -75,7 +75,7 @@ computed_at, current, error)`:
   error is not a result: it never withholds a value, and every other
   test still answers.
 
-Filter with `WHERE`. With no argument, `ATTEST()` covers the dataset in
+Filter with `WHERE`. With no argument, `TESTS()` covers the dataset in
 use.
 
 `GLOSSARY()` shows the same judgment as `state`:

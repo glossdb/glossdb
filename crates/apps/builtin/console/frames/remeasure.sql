@@ -1,6 +1,6 @@
 -- One row while any measurement in the dataset stands from before the
 -- last change — a function voice landed at an earlier pin, served and
--- marked — or while one a metric's row or a witness reads was never
+-- marked — or while one a metric's row or a test reads was never
 -- made (`owed`'s `never measured` rows). Record-class: the banner
 -- appears with the write that caused it and clears when re-measure
 -- lands.

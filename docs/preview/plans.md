@@ -14,7 +14,7 @@ worlds, under the metric it plans.
 
 ## Declaring a plan
 
-A plan is a view aspect (`QUERY` in the grammar) of its own, one per
+A plan is a view aspect (`AS VIEW`) of its own, one per
 plan, the way a metric is one per concept. Its declaration carries
 `x-kind: plan` and `x-plan-of`, the metric it plans. Its annotation is
 a metric definition like any other: SQL over the loaded table,
@@ -25,7 +25,7 @@ DECLARE ASPECT revised_budget WITH $${
   "title": "Revised budget",
   "description": "The adopted budget with the council's amendments, as booked",
   "x-kind": "plan", "x-plan-of": "expense", "x-covers": "year", "x-unit": "USD"
-}$$ AS QUERY;
+}$$ AS VIEW;
 
 GLOSS revised_budget ON brla AS $${
   "sql": "SELECT fiscalmonth AS date, revisedbudget AS value, fund, segment2 FROM expense_budget"

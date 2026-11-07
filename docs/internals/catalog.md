@@ -32,7 +32,7 @@ inputs returns the same result.
 
 The catalog's version is the lake's snapshot plus every relation's
 highest sequence number, and any write moves it. The catalog reads
-(`GLOSSARY()`, `ATTEST()`, the newest values with their bands) are
+(`GLOSSARY()`, `TESTS()`, the newest values with their bands) are
 planned once per dataset and kept in the engine's object cache under
 that version, shared by every connection. A dataset's views are kept
 the same way, so a query over the metrics scans what is stored instead

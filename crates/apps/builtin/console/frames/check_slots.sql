@@ -1,10 +1,10 @@
 -- A voice check's evidence: every subject whose slots differ — the
--- witness's verdicts that are not green — with every voice on the slot
+-- test's verdicts that are not green — with every voice on the slot
 -- side by side, by actor kind, the human's first. Rows only for a
--- witness whose detector is slot_entropy.
+-- test whose detector is slot_entropy.
 WITH d AS (SELECT dataset FROM current_dataset),
 w AS (
-  SELECT name, aspect FROM witnesses WHERE name = $check AND detector = 'slot_entropy'
+  SELECT name, aspect FROM tests WHERE name = $check AND detector = 'slot_entropy'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 voices AS (
   SELECT g.subject, g.aspect,
@@ -17,8 +17,8 @@ SELECT a.subject,
        fmt_number(a.score) AS score,
        a.band,
        CASE WHEN a.band = 'green' THEN 'ok' ELSE 'warn' END AS bcls
-FROM ATTEST() a
-JOIN w ON w.name = a.witness
+FROM TESTS() a
+JOIN w ON w.name = a.test
 LEFT JOIN voices v ON v.subject = a.subject AND v.aspect = a.aspect
 WHERE a.band <> 'green'
 ORDER BY a.score DESC, a.subject

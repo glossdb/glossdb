@@ -26,14 +26,14 @@ the `next` read, and a page.
   rows, Parquet under the warehouse, a snapshot per write
   ([DuckDB seams](duckdb.md), [storage](storage.md)).
 - **Sources and load queries.** File sources read by the engine's own
-  readers, relational sources the engine attaches; `PROBE`, `IMPORT`,
+  readers, relational sources the engine attaches; `PREVIEW`, `IMPORT`,
   one load query per table.
 - **Metrics.** A metric is a view. Its columns carry the vocabulary,
   and the time grains on its period column say how its periods are
   walked. Four reads serve it: `metric_series()`, `metric_axes()`,
   `fact_values()` and `metric_sources()`
   ([views and table functions](../reference/reads.md)).
-- **Tests and review.** Tests (`WITNESS`), detectors, `ATTEST()`, the
+- **Tests and review.** Tests (`DECLARE TEST`), detectors, `TESTS()`, the
   review queue, and review decisions taken in the console.
 - **Interfaces and the console.** The two MCP interfaces, the query
   endpoint, and the console with the data apps
@@ -85,7 +85,7 @@ on every import
 Available:
 
 - **Files.** Parquet, CSV and JSON under a source's location, read by
-  the engine's own readers. `PROBE` runs the load query's SQL at the
+  the engine's own readers. `PREVIEW` runs the load query's SQL at the
   source and loads nothing.
 - **Relational databases.** A database the engine attaches: Postgres,
   MySQL, SQLite, DuckDB. The load query reads its tables through the

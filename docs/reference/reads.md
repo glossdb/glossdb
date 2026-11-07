@@ -90,7 +90,7 @@ word: quote it, `"at"`.
 
 ### metric_surfaces
 
-Every metric of the bound dataset and its state: one row per QUERY
+Every metric of the bound dataset and its state: one row per VIEW
 aspect defined here, served or stopped, or named in the `definitions`
 glossary. Columns: `name`, `title`, `kind` (the aspect's `x-kind`),
 `unit` and `meaning` (from `definitions`), `formula` (from
@@ -192,7 +192,7 @@ WHERE dimension = '' ORDER BY metric, period
 ### fact_values()
 
 The single values of the bound dataset: one row per metric whose
-aspect declares `x-kind: fact`. Columns: `metric`, `value` where the
+aspect declares `x-kind: scalar`. Columns: `metric`, `value` where the
 view is one row with a `value` column, `reason` where it is not.
 Computed at read; nothing is stored.
 
@@ -345,7 +345,7 @@ stays the live view. The columns of `plan_points()` with `plan_grain`,
 ## A source's files
 
 A file source's files are listed at the source, where a load query's
-paths resolve: `PROBE erp_export AS $$SELECT file FROM glob('*')$$`
+paths resolve: `PREVIEW erp_export AS $$SELECT file FROM glob('*')$$`
 returns one row per file under the source's location, `glob('**')` the
 subdirectories too. A dry run loads nothing.
 

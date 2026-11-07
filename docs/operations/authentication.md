@@ -68,7 +68,7 @@ SELECT * FROM GLOSSARY(orders.amount, all => true);
 ```
 
 The full read returns every value side by side,
-`(subject, aspect, kind, witness, actor, body, written_at, current)`;
+`(subject, aspect, kind, test, actor, body, written_at, current)`;
 `current` is false for a measurement made on data that has since
 changed.
 

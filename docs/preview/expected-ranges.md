@@ -65,7 +65,7 @@ The result is the service's:
 - **The band** reads the score against the threshold.
 
 The test's detector repeats the result over the measurement's own
-value, so `ATTEST()` carries it and the checks goal acts on it.
+value, so `TESTS()` carries it and the checks goal acts on it.
 
 ## History
 

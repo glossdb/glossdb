@@ -24,7 +24,7 @@ SELECT * FROM metric_axes();       -- one row per metric: what its columns say
 
 ## A metric is a view, and its columns are assets
 
-A metric definition is a QUERY gloss on the dataset: SQL under the
+A metric definition is a VIEW gloss on the dataset: SQL under the
 contract `sql` or `stopped`, with `assumptions` disclosed. The view it
 makes is a table of the dataset, so its columns take the KPI kit's
 words, as a loaded table's columns do. What a reader of the numbers
@@ -44,7 +44,7 @@ what `owed` lists; run what `wanted` lists; annotate `behavior` on the
 value; read the series.
 
 ```sql
-DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;
+DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
 GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;
 GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
 GLOSS role ON spend.value AS $${"value": "measure"}$$;
@@ -60,7 +60,7 @@ SELECT * FROM metric_series() WHERE metric = 'spend';
 |---|---|
 | `metric_axes()` | one row per metric of the bound dataset: `kind` (the aspect's `x-kind`), `stopped`, `applicable` and `reason` (what to change when it is not applicable), `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `behavior` and `behavior_state`, `dims`, `unadmitted` (served columns with no role) and `owed` (the annotation each needs), `wanted` (the measurement nobody ran), `judged_current` |
 | `metric_series(grain := …)` | the cells: `metric`, `world`, `dimension` (`''` the total), `member`, `period` (the bucket's start), `value`, `num`, `den`, `behavior`; without a grain each metric at its floor, with one each metric at or below it at that grain, a coarser metric serving no rows; a rung of buckets measured back from the edge; a flow's empty periods zero in the total; a dimension wider than 24 members as its top 23 and `other` |
-| `fact_values()` | one row per metric whose aspect carries `x-kind: fact`: `value` where the view is one row with a `value` column, else `reason` |
+| `fact_values()` | one row per metric whose aspect carries `x-kind: scalar`: `value` where the view is one row with a `value` column, else `reason` |
 | `metric_sources(for_metric := …)` | what feeds each metric, or the one named, through the views' lineage: `field`, `source` (`table.column`), `table_name`; one row per table read beside; a view that does not plan serves `reason` |
 
 ## The no-default rule
@@ -75,7 +75,7 @@ no behaviour stands on fin.spend.value, and spend serves several rows in one
 period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
 ```
 
-It defaults nothing. A contested behaviour — the test (`WITNESS`)
+It defaults nothing. A contested behaviour — the test (`DECLARE TEST`)
 withholding the value — refuses the same way, naming the conflict. At
 the floor, with one row per period, nothing is combined and the series
 serves what the view returns.

@@ -47,7 +47,7 @@ GLOSS conventions ON erp_export AS $${
 
 ## 4. Preview, then load
 
-`PROBE` runs a query on the source without loading anything; with
+`PREVIEW` runs a query on the source without loading anything; with
 `LIMIT 0` it returns the schema a load would create. The load query
 carries the casts and names the columns, so the loaded table is typed.
 A failed cast loads NULL, and the result reports how many cells each
@@ -55,7 +55,7 @@ A failed cast loads NULL, and the result reports how many cells each
 query (`NULLIF` before the cast) and declare it again.
 
 ```glossql
-PROBE erp_export AS $$SELECT order_id,
+PREVIEW erp_export AS $$SELECT order_id,
        try_cast(duration_min AS DOUBLE) AS duration_min,
        try_strptime(completed_at, '%Y-%m-%d %H:%M:%S') AS completed_at
 FROM read_parquet('work_orders/*.parquet') LIMIT 0$$;
@@ -144,7 +144,7 @@ More: [describing data](../usage/describing-data.md).
 
 ## 9. Define a metric
 
-Declare one view aspect (`QUERY`) per metric. The business definition,
+Declare one view aspect (`AS VIEW`) per metric. The business definition,
 meaning, unit and owner, goes in the `definitions` annotation, where a
 correction is stored with its author and time. The metric definition is
 SQL at row grain, without GROUP BY, with mechanics as SQL comments and
@@ -152,7 +152,7 @@ judgment as assumptions. Every assumption carries a `key`, which review
 decisions refer to.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS VIEW;
 
 GLOSS definitions ON ops AS $${"definitions": {
   "throughput": {"meaning": "work completed and accepted; counted at completion date",
@@ -183,9 +183,9 @@ More: [metrics](../usage/metrics.md).
 ## 10. Add a data test
 
 Write the expectation down; never assume a breach rate of zero, since a
-source with known dirt has its own. The test (`WITNESS`) compares your
+source with known dirt has its own. The test (`DECLARE TEST`) compares your
 expectation with a function that measures the same property, and
-`ATTEST()` returns the result. The shipped `rate_tolerance` detector is
+`TESTS()` returns the result. The shipped `rate_tolerance` detector is
 one-sided: green at or under the tolerance. To also catch
 over-cleaning, declare a detector of your own that goes red on both
 sides.
@@ -198,7 +198,7 @@ DECLARE ASPECT duration_present WITH $${
 }$$ AS FACT ON TABLE WHEN entity = 'one site visit on a work order';
 GLOSS duration_present ON work_orders AS $${
   "outcome": "Closed orders carry a positive on-site duration.", "tolerance": 0.01}$$;
-DECLARE WITNESS duration_w ON duration_present BY (AGENT, HUMAN)
+DECLARE TEST duration_w ON duration_present BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.01;
 
 DECLARE FUNCTION duration_present_check FOR ops AS $$
@@ -209,7 +209,7 @@ DECLARE FUNCTION duration_present_check FOR ops AS $$
   FROM work_orders WHERE status = 'closed'
 $$ RETURNS duration_present;
 
-SELECT subject, band, score FROM ATTEST(ops::duration_present);
+SELECT subject, band, score FROM TESTS(ops::duration_present);
 ```
 
 More: [data tests](../usage/data-tests.md).

@@ -49,7 +49,7 @@ plan's view.
 
 The walk sends every applicable metric's total at month grain, complete
 months only, seven at least, so that one origin has the six known values
-the service needs. The test's threshold (`WITNESS`) is the red line
+the service needs. The test's threshold is the red line
 the walk is asked with.
 
 ```sql
@@ -118,13 +118,13 @@ stale.
 
 ## The plan
 
-A plan is a QUERY aspect, `x-kind: plan`, tied to its metric by
+A plan is a VIEW aspect, `x-kind: plan`, tied to its metric by
 `x-plan-of`. Its definition is SQL over a loaded table, serving
 `period` and `value` as the metric's view does. The plan serves no cell of the
 actual world; its numbers are read under the metric it names.
 
 ```sql
-DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS QUERY;
+DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
 GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
 SELECT plan, grain, label, value, actual, variance, low, expected, high, stands FROM plan_points() WHERE plan = 'sales_budget';
 SELECT metric_plan() FROM fin.sales_budget;

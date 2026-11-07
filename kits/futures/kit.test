@@ -1,5 +1,5 @@
 # name: kits/futures/kit.test
-# description: the futures kit — the walk's request from the metric series, complete months only and seven at least; the walk landed as a measurement carrying the service's verdict; the reads and the witness over it
+# description: the futures kit — the walk's request from the metric series, complete months only and seven at least; the walk landed as a measurement carrying the service's verdict; the reads and the test over it
 # group: [sql]
 
 require glossql
@@ -44,7 +44,7 @@ CREATE TABLE fin.ledger AS
   FROM range(400) r(i);
 
 statement ok
-DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;
+DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
 
 statement ok
 GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value, fund FROM fin.ledger"}$$;
@@ -69,7 +69,7 @@ statement ok
 CREATE TABLE fin.recent AS SELECT DATE '2024-10-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(126) r(i);
 
 statement ok
-DECLARE ASPECT hires WITH $${"title": "Hires"}$$ AS QUERY;
+DECLARE ASPECT hires WITH $${"title": "Hires"}$$ AS VIEW;
 
 statement ok
 GLOSS hires ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.recent"}$$;
@@ -108,9 +108,9 @@ FROM band_body();
 ----
 6	13	0.98	2024-01	2025-01	spend	118.0
 
-# the witness's threshold is the red line the walk is asked with
+# the test's threshold is the red line the walk is asked with
 statement ok
-DECLARE WITNESS bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
+DECLARE TEST bands_w ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
 
 query R
 SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM band_body();
@@ -159,9 +159,9 @@ SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WH
 ----
 6 known values of history: a forecast needs 7
 
-# the verdict is the service's, repeated by the witness's detector
+# the verdict is the service's, repeated by the test's detector
 query TTTR
-SELECT subject, witness, band, score FROM ATTEST() WHERE witness = 'bands_w';
+SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_w';
 ----
 fin	bands_w	red	1.0
 
@@ -179,7 +179,7 @@ statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-04', 3.0, 'water');
 
 query T
-SELECT current FROM ATTEST() WHERE witness = 'bands_w';
+SELECT current FROM TESTS() WHERE test = 'bands_w';
 ----
 false
 
@@ -187,7 +187,7 @@ statement ok
 SELECT metric_bands() FROM fin;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, ATTEST() a WHERE m.function = 'metric_bands' AND a.witness = 'bands_w';
+SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_bands' AND a.test = 'bands_w';
 ----
 2	true
 
@@ -200,7 +200,7 @@ CREATE TABLE fin.budget AS
   FROM range(12) r(m);
 
 statement ok
-DECLARE ASPECT sales WITH $${"title": "Sales"}$$ AS QUERY;
+DECLARE ASPECT sales WITH $${"title": "Sales"}$$ AS VIEW;
 
 statement ok
 GLOSS sales ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value FROM fin.ledger GROUP BY ALL"}$$;
@@ -224,7 +224,7 @@ sales	flow	month	12	true	2025-02-01	12	[{'span': 1, 'to_go': quarter}, {'span': 
 
 # a stock at month grain asks no total: a second body at the month, beside the flow's
 statement ok
-DECLARE ASPECT balance WITH $${"title": "Balance"}$$ AS QUERY;
+DECLARE ASPECT balance WITH $${"title": "Balance"}$$ AS VIEW;
 
 statement ok
 GLOSS balance ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*)::DOUBLE AS value FROM fin.ledger GROUP BY ALL"}$$;
@@ -299,10 +299,10 @@ SELECT metric, world, count(*), any_value(value) FROM metric_series(world := 'fo
 ----
 sales	forecast	12	100.0
 
-# --- the plan: a QUERY aspect with x-kind plan and x-plan-of, read through the metric it plans
+# --- the plan: a VIEW aspect with x-kind plan and x-plan-of, read through the metric it plans
 
 statement ok
-DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS QUERY;
+DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
 
 # declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the grounding
 query I
@@ -383,7 +383,7 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 ----
 13
 
-# --- the judgement lands on the plan: wanted on its row until one stands, measured over it, witnessed; the routes read it
+# --- the judgement lands on the plan: wanted on its row until one stands, measured over it, tested; the routes read it
 query T
 SELECT wanted FROM metric_axes() WHERE metric = 'sales_budget';
 ----
@@ -412,7 +412,7 @@ ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 2025-12	above	1000.0
 
 query TTTR
-SELECT subject, witness, band, round(score, 2) FROM ATTEST() WHERE witness = 'plan_w';
+SELECT subject, test, band, round(score, 2) FROM TESTS() WHERE test = 'plan_w';
 ----
 fin.sales_budget	plan_w	red	0.27
 
@@ -421,7 +421,7 @@ statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-05', 2.0, 'water');
 
 query T
-SELECT current FROM ATTEST() WHERE witness = 'plan_w';
+SELECT current FROM TESTS() WHERE test = 'plan_w';
 ----
 false
 
@@ -429,7 +429,7 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, ATTEST() a WHERE m.function = 'metric_plan' AND a.witness = 'plan_w';
+SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_w';
 ----
 2	true
 
@@ -445,7 +445,7 @@ FROM routes_futures();
 # --- the scenario: a lever on a column of a metric's view, a scenario of a factor per period, the estimate ahead from the service
 
 statement ok
-DECLARE ASPECT priced WITH $${"title": "Priced spend"}$$ AS QUERY;
+DECLARE ASPECT priced WITH $${"title": "Priced spend"}$$ AS VIEW;
 
 statement ok
 GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price FROM fin.ledger"}$$;
@@ -577,7 +577,7 @@ SELECT * FROM metric_series(world := 'scenario', scenario := 'nothing');
 no scenario of that name is declared
 
 query TTTT
-SELECT subject, witness, band, current FROM ATTEST() WHERE witness = 'scenario_w';
+SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_w';
 ----
 fin	scenario_w	green	true
 

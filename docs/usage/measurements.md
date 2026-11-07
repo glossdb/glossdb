@@ -4,7 +4,7 @@ A function is one SQL query that measures the data: profiling, quality
 screens, detection. A measurement function `RETURNS` a property and
 runs over data. A detector has no `RETURNS` and scores how far the
 values for a property agree ([data tests](data-tests.md)). Metrics are
-neither: a metric is a `QUERY` property ([metrics](metrics.md)). The
+neither: a metric is a `VIEW` property ([metrics](metrics.md)). The
 language reference is [SPEC.md §6](https://github.com/glossdb/glossql/blob/main/SPEC.md);
 the shipped functions are listed in [functions](../reference/functions.md).
 

@@ -64,7 +64,7 @@ the aspect's name: `SELECT … FROM <name>` reads it, filters it and
 joins it as any view, and `information_schema` lists it. Its columns
 are assets: the words that make it a series are annotations on them.
 
-- **A metric** — a QUERY aspect whose definition serves a row-grain
+- **A metric** — a VIEW aspect whose definition serves a row-grain
   relation with a value column and a period column. Annotate `role`
   timestamp on the period column and `role` measure on the value
   column, run `temporal()` over the period column, and annotate the
@@ -78,8 +78,8 @@ are assets: the words that make it a series are annotations on them.
   written down, the interval table included.
 - **A current fact** — a single value with no as-of definition: a
   balance the source hands over already summed, a count from a
-  snapshot table. Define it as a QUERY aspect that serves `value` and no date,
-  with `"x-kind": "fact"` in the aspect's blob — the declaration is
+  snapshot table. Define it as a VIEW aspect that serves `value` and no date,
+  with `"x-kind": "scalar"` in the aspect's blob — the declaration is
   what makes it a fact. `FROM <name>` serves it, `fact_values()` serves every declared fact's
   number, and the console lists it under facts: one number, as of the
   newest load of the tables it reads. The summary row abstains on it,
@@ -93,12 +93,12 @@ are assets: the words that make it a series are annotations on them.
   design. There is no `CREATE VIEW` here; the definition is the view.
 - **A validation** — an authored expectation (a FACT annotation) with
   a function that measures it and a detector that scores the two;
-  `ATTEST()` is where it shows. Never a metric.
+  `TESTS()` is where it shows. Never a metric.
 
 "Shows up in the app" is not the goal. The right kind is; the app
 follows.
 
-**The write answers — read it.** A `GLOSS` on a QUERY aspect returns
+**The write answers — read it.** A `GLOSS` on a VIEW aspect returns
 the metric's summary row, the `metric_axes()` shape at the catalog
 version the write moved to: `applicable` and `reason`, `period_column` and
 `value_column`, `behavior` and `behavior_state`, `cadence`, `floor`
@@ -115,7 +115,7 @@ abstains with your own text.
 
 | reference | open it |
 |---|---|
-| `references/land.md` | before the first `PROBE`: the topic, the set of metrics, loading what the topic needs and nothing more, and what to do with the dirt you find |
+| `references/land.md` | before the first `PREVIEW`: the topic, the set of metrics, loading what the topic needs and nothing more, and what to do with the dirt you find |
 | `references/structure.md` | once tables are loaded: what each table is, the join structure, the slice axes |
 | `references/vocabulary.md` | before annotating a column: role first, behavior with its grounds, unit |
 | `references/ground.md` | before writing a metric definition: the handbook, the row-grain shape, ratios and stocks, keys on assumptions, the alternative, what a basis must be, serve or stop |

@@ -192,12 +192,12 @@ async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, 
             .join("\n");
         let head = trimmed.trim_start().to_lowercase();
         // Reads only: a write example is held to parsing alone, and a
-        // read of the language's own — GLOSSARY(), ATTEST(), a
+        // read of the language's own — GLOSSARY(), TESTS(), a
         // measurement over a subject — binds in the extension, not in
         // a plan.
         if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
             || head.contains("glossary(")
-            || head.contains("attest(")
+            || head.contains("tests(")
             || head.starts_with("select temporal(")
         {
             continue;

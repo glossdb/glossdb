@@ -41,7 +41,7 @@ test). The core kit declares `recipe_change`, `ruling` and the app
 properties before any other kit.
 
 Names the server reads, shipped by this kit: `title` and `x-kind` on
-QUERY aspects and `unit` and `meaning` in `definitions` entries (the
+VIEW aspects and `unit` and `meaning` in `definitions` entries (the
 console's metric pages and `metric_surfaces`), and `none` as the
 examined negative in the enum properties. "Examined, does not apply" is
 a different fact from an unassessed row, and the one that lets the
@@ -58,7 +58,7 @@ open work reach zero.
 | `unit_w` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
 | `dimension_w` | `dimension` | AGENT, HUMAN | — |
 
-A test (`WITNESS` in the grammar) says who may annotate a property and
+A test (`DECLARE TEST`) says who may annotate a property and
 makes it required; its detector scores the values written, a band and
 a score. The tests come last in the kit, since a test names a property
 and a detector that must already exist. The futures kit adds its own:

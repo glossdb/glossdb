@@ -77,7 +77,7 @@ Then close what waits on an action, in the same session:
   measurements — and the batch moved the pin, so every check function's
   value is stale until it runs again (`owed` counts them as
   `re-measure` rows). Re-run them, then read the results back on the
-  metrics the batch touched: `ATTEST()` on their check aspects,
+  metrics the batch touched: `TESTS()` on their check aspects,
   `metric_axes().alternative_divergence` where an alternative reading
   is disclosed. A test that applying a decision turned red is a
   conflict for the console — leave it open so the person decides again
@@ -136,7 +136,7 @@ check" is worth more than fluent certainty.
 ## When a value is contested
 
 `state = 'contested'` means the authors' values differ on one asset's
-aspect and the detector's score crossed the test's (`WITNESS`)
+aspect and the detector's score crossed the test's
 threshold — the value is withheld, never decided for you. Read the
 raw values (`GLOSSARY(subject, all => true)`), go back to the data,
 and annotate again only if the evidence moved you: your new annotation

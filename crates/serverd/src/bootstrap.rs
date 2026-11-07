@@ -2,8 +2,8 @@
 //! the teaching resources: what this build ships is what this build
 //! declares. A fresh workspace receives the KPI kit (the semantic
 //! vocabulary), the global measurement library, and the shipped
-//! witness plane — in that order: the library's column evidence
-//! conditions on the kit's `role`, and a witness names an aspect and
+//! test plane — in that order: the library's column evidence
+//! conditions on the kit's `role`, and a test names an aspect and
 //! a detector that must already stand. What stays the agent's work is
 //! the company's own vocabulary — metrics, validations, scenarios.
 

@@ -23,7 +23,7 @@ that harness inside the database, on the live data and its versions.
 | type annotations, docstrings | annotations | gloss |
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
-| unit test | a measurement, a test | function, `WITNESS` |
+| unit test | a measurement, a test | function, `TEST` |
 | test coverage | coverage of required annotations | `owed`, `unassessed` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
@@ -42,7 +42,7 @@ type it. Never a project word the reader cannot look up.
 | Write | Not | Our keyword, where it is real |
 |---|---|---|
 | interface, endpoint (MCP interface, query endpoint) | door | |
-| console | docket | the `docket` path, until it moves |
+| console | docket | the `console` path |
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
 | missing, required; coverage | owed | `owed` |
@@ -60,14 +60,14 @@ type it. Never a project word the reader cannot look up.
 | annotation; annotate | — | `GLOSS` |
 | the glossary | — | `GLOSSARY()` |
 | property of the harness schema | — | `ASPECT` |
-| test | witness | `WITNESS` → `TEST` |
-| test results | attestation | `ATTEST()` → `TESTS()` |
-| view (a metric, a scalar, a derived relation) | query aspect | kind `QUERY` → `VIEW` |
-| preview, dry run | probe | `PROBE` → `PREVIEW` |
+| test | witness | `DECLARE TEST` |
+| test results | attestation | `TESTS()` |
+| view (a metric, a scalar, a derived relation) | query aspect | kind `VIEW` (`AS VIEW`); `x-kind: scalar` for a single value |
+| preview, dry run | probe | `PREVIEW` |
 
-A keyword with an arrow is renamed in the grammar but not yet
-built. Code blocks use the keyword the grammar has today. Prose
-already uses the new word: "a test (`WITNESS` in the grammar)".
+Name the statement where the reader will type it, once: "a test
+(`DECLARE TEST`)", "a view aspect (`AS VIEW`)". Do not repeat the
+keyword as its own explanation: not "a test (`TEST`)".
 
 ## The rules
 

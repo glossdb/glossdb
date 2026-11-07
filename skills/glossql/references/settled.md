@@ -19,7 +19,7 @@ leaves the workspace, walk this map and run what answers it:
 | two metrics accidentally identical | `detect_grounding_collisions()` |
 | whether a metric's month is surprising | `metric_bands()`, the service's verdict carried by `bands_w` |
 | the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `metric_axes()` says what the catalog says of its columns, and what each still needs |
-| whether a written expectation holds | a check function's value and the detector you bind, read via `ATTEST()` |
+| whether a written expectation holds | a check function's value and the detector you bind, read via `TESTS()` |
 
 A measurement is called in the SELECT list with its subject in FROM,
 never as a table function: `SELECT detect_relationships() FROM ops`

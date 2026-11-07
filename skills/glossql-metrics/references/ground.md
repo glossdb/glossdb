@@ -2,14 +2,14 @@
 
 ## Define the metrics
 
-One QUERY aspect per concept, on the dataset. The aspect blob is thin
+One VIEW aspect per concept, on the dataset. The aspect blob is thin
 — declarations are never replaced by a newer version, so anything the
 company might revise belongs in the `definitions` annotation, where a correction
 supersedes with actor and timestamp. A field lives in exactly one
 place, never both.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS QUERY;
+DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS VIEW;
 ```
 
 **One registry ships with the kit, the handbook — annotate into it,
@@ -202,7 +202,7 @@ metric's rows by the `behavior` on its value column — flow, stock or
 ratio — and refuses to combine them while there is none; the write's
 answer says so, and `owed` lists the annotation until it is stored. The claim
 is yours, with its grounds: the column's meaning and the table's
-grain, never a name. The test (`WITNESS`) scores disagreement between actors and
+grain, never a name. The test (`DECLARE TEST`) scores disagreement between actors and
 measurements, and `metric_axes().behavior_state` says where the claim
 is — `current`, `contested`, `none` where nobody annotated it.
 

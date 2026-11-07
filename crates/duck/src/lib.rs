@@ -474,14 +474,13 @@ const RECORD: &[&str] = &[
     "imports",
     "recipes",
     "aspects",
-    "witnesses",
+    "tests",
     "functions",
     "measurements",
     "relationships",
     "datasets",
     "sources",
     "kits",
-    "attest",
 ];
 
 /// Whether a read touches the record anywhere: the store's relations by
@@ -495,7 +494,7 @@ pub fn reads_record(sql: &str) -> bool {
         .filter(|w| !w.is_empty())
         .any(|word| {
             let name = word.rsplit('.').next().unwrap_or(word);
-            name == "glossary" || name == "attest" || RECORD.contains(&name)
+            name == "glossary" || RECORD.contains(&name)
         })
 }
 
@@ -831,7 +830,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
          axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_axes()), \
          owed AS MATERIALIZED (SELECT * FROM {LAKE}.main.owed), \
-         reds AS MATERIALIZED (SELECT subject, witness FROM glossql_attest(current_schema(), NULL) WHERE band = 'red'), \
+         reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
            SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
            FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
@@ -1628,7 +1627,7 @@ impl Session {
     /// The console's re-measure: every function voice of the bound
     /// dataset that landed before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
-    /// ran, and every witnessed measurement on the dataset nobody ran
+    /// ran, and every tested measurement on the dataset nobody ran
     /// (the walk), runs for the first time, in the functions' name order,
     /// which runs the forecast before the plan judgement that reads it.
     /// Returns how many ran. A
@@ -1762,7 +1761,7 @@ fn grounding_row(
         ),
         &[],
     )?;
-    if one_cell(&kind).as_deref() != Some("QUERY") {
+    if one_cell(&kind).as_deref() != Some("VIEW") {
         return Ok(None);
     }
     let (_, _, row) = arrow_batches(
@@ -1884,7 +1883,7 @@ mod tests {
         let setup = r#"
         DECLARE DATASET fin SET (purpose: 'brief delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;

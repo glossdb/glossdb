@@ -15,7 +15,7 @@ roles, told apart by shape:
   it a measurement; filling a FACT aspect makes it a **computed value**: one
   more value for that aspect, beside the agent's and the person's. The
   measuring half of a validation is a computed value.
-- **A detector** — no `RETURNS`. Named in a test's (`WITNESS`)
+- **A detector** — no `RETURNS`. Named in a test's (`TEST`)
   `DETECTOR` clause; its query runs over the test's `slots` relation,
   the values it collects.
 
@@ -104,10 +104,10 @@ the data's shape.
 
 A detector's query plans over the **`slots`** relation — one row per
 author's value on the test's aspect:
-`(subject, aspect, kind, witness, actor, speaker, current, written_at, body)`.
+`(subject, aspect, kind, test, actor, speaker, current, written_at, body)`.
 `speaker` is `human` | `agent` | `function`; `current` is false for a
 function's value stored before the last write — it still counts, and
-`ATTEST()` marks the result. `body` arrives **typed**:
+`TESTS()` marks the result. `body` arrives **typed**:
 when every body is a JSON object (an aspect's slots share its
 schema, so they do), the column is a struct and fields read as
 `body['tolerance']`, nested arrays through `unnest(body['metrics'])`;
@@ -146,7 +146,7 @@ Judgment lives in detectors and in read policy, never in results — no
 measurement writes a judgment into data.
 
 ```glossql
-DECLARE WITNESS on_time_w ON on_time_completion BY (AGENT, HUMAN)
+DECLARE TEST on_time_w ON on_time_completion BY (AGENT, HUMAN)
   DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 

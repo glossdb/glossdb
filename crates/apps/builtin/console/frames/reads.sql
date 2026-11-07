@@ -1,4 +1,4 @@
--- Every read the dataset serves, for the Export tab: one row per QUERY
+-- Every read the dataset serves, for the Export tab: one row per VIEW
 -- aspect that stands here, with the files the download door serves for
 -- its view. The chip says kind and standing in one word. `$stopped`
 -- picks the served reads (0) or the stopped ones (1).
@@ -22,6 +22,6 @@ ORDER BY CASE
     WHEN s.stopped <> '' THEN 4
     WHEN NOT s.grounded THEN 3
     WHEN s.kind IN ('', 'measure', 'metric') THEN 0
-    WHEN s.kind = 'fact' THEN 1
+    WHEN s.kind = 'scalar' THEN 1
     ELSE 2 END,
   s.name

@@ -49,7 +49,7 @@ The result is a JSON array, one outcome per statement:
   "row_count": n, "truncated": bool}`. `columns` is present even with
   no rows, so `LIMIT 0` returns the schema.
 - **A write:** `{"done": "…"}` or `{"affected": n}`.
-- **An annotation of a metric definition** (`GLOSS` on a `QUERY`
+- **An annotation of a metric definition** (`GLOSS` on a `VIEW`
   aspect): the metric's summary row in the `metric_axes()` shape, at
   the catalog version the write created: whether the SQL plans, its
   additivity and where that came from, the slicing columns admitted,
@@ -66,7 +66,7 @@ The result is a JSON array, one outcome per statement:
 A data read returns at most `--row-cap` rows (default 200) and sets
 `truncated`. The cap is part of the read's plan, so the engine stops
 early and a sort keeps only the capped rows. Catalog reads —
-`GLOSSARY()`, `ATTEST()` and the catalog tables — are never capped.
+`GLOSSARY()`, `TESTS()` and the catalog tables — are never capped.
 
 ### The two closing lines
 
@@ -114,7 +114,7 @@ build time, so what a build serves is what its tests checked.
 ## The review queue
 
 While `open_questions` has rows, a call that only reads the catalog
-(`glossary`, `GLOSSARY()`, `ATTEST()`, the catalog tables) carries
+(`glossary`, `GLOSSARY()`, `TESTS()`, the catalog tables) carries
 the questions as forms; loads and data reads never do. Each question is
 one form with these choices:
 

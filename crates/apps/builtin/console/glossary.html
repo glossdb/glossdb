@@ -172,7 +172,7 @@
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="Every declared property: what it holds (from its schema), where it is required (its scope and condition), who may annotate it (the test, or the function that computes it), and how many required assets carry a value; the rail shows the share. A row opens the property with every value.">The harness schema</span>
-      <code class="chip">aspects · witnesses · functions · GLOSSARY()</code></header>
+      <code class="chip">aspects · tests · functions · GLOSSARY()</code></header>
     <p class="hint">What the harness asks about every asset. A fact is written by the agent or a person; a view is SQL; a measurement is computed by a function and never written by hand. A row opens the property with every value under it.</p>
     <p class="grp">Written about the data, by the agent or a person</p>
     <gl-rows frame="frames/vocabulary?kind=fact" empty="no asserted property is declared">
@@ -187,7 +187,7 @@
       </template>
     </gl-rows>
     <p class="grp">Defined in SQL</p>
-    <gl-rows frame="frames/vocabulary?kind=query" empty="no metric or view is declared yet">
+    <gl-rows frame="frames/vocabulary?kind=view" empty="no metric or view is declared yet">
       <template>
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>

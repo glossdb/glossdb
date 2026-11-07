@@ -616,9 +616,9 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
     agent
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
-               DECLARE ASPECT payables WITH $${"title": "Outstanding payables", "x-kind": "fact"}$$ AS QUERY;
-               DECLARE ASPECT cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS QUERY;
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
+               DECLARE ASPECT payables WITH $${"title": "Outstanding payables", "x-kind": "scalar"}$$ AS VIEW;
+               DECLARE ASPECT cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS VIEW;
                GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger",
                  "assumptions": [
                    {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
@@ -900,7 +900,7 @@ async fn the_brief_counts_what_waits_on_the_agent() {
     // Seeded state: the agent's handbook entry with its formula, and the
     // agent's dso gloss — nothing waits
     // but, on DuckDB, the futures kit's walk, forecast and estimate:
-    // witnessed measurements on the dataset nobody ran while a metric is
+    // tested measurements on the dataset nobody ran while a metric is
     // grounded.
     let walk = 3;
     let before = get(&app, "/perf/app/console/frames/owed").await;
@@ -1216,9 +1216,9 @@ async fn an_unclear_ruling_closes_the_question_without_taking_a_side() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
-    // A standing check is an ATTEST row — a
-    // detector's live verdict beside its witness's expectation. A
-    // witness without a detector is a speaker gate; its spoken slots
+    // A standing check is an TESTS row — a
+    // detector's live verdict beside its test's expectation. A
+    // test without a detector is a speaker gate; its spoken slots
     // never render as checks (the old frame showed them with the
     // band column reading `current`).
     let (app, plane, _dir) = workspace().await;
@@ -1237,11 +1237,11 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         .execute(
             r#"USE perf;
                DECLARE ASPECT meaning WITH $${"type": "object"}$$ AS FACT ON COLUMN;
-               DECLARE WITNESS meaning_w ON meaning BY (AGENT, HUMAN);
+               DECLARE TEST meaning_w ON meaning BY (AGENT, HUMAN);
                GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;
                DECLARE FUNCTION probe_check FOR GLOBAL AS
                  $$SELECT DISTINCT subject, 'orange' AS band, 0.42 AS score FROM slots$$;
-               DECLARE WITNESS dso_w ON dso DETECTOR probe_check THRESHOLD 0.9;"#,
+               DECLARE TEST dso_w ON dso DETECTOR probe_check THRESHOLD 0.9;"#,
         )
         .await
         .unwrap();
@@ -1261,11 +1261,11 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     assert_eq!(
         checks.matches("dso_w\n").count(),
         1,
-        "one witness row for the detector, and the meaning voice is not a check:\n{checks}"
+        "one test row for the detector, and the meaning voice is not a check:\n{checks}"
     );
     assert!(
         checks.contains("1 orange"),
-        "the witness row counts its verdicts by band:\n{checks}"
+        "the test row counts its verdicts by band:\n{checks}"
     );
     assert!(
         checks.contains("?check=dso_w&kind=verdicts\n"),
@@ -1302,7 +1302,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     agent
         .execute(
             r#"USE perf;
-               DECLARE WITNESS value_w ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+               DECLARE TEST value_w ON meaning BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
                GLOSS meaning ON ledger.month AS $${"value": "the month"}$$;"#,
         )
         .await
@@ -1396,7 +1396,7 @@ async fn the_metrics_faces_serve_the_cube() {
     let facts = body_text(facts).await;
     assert!(facts.contains("payables\n"), "{facts}");
     assert!(facts.contains("as of 20"), "{facts}");
-    assert!(facts.contains("?metric=payables&kind=fact\n"), "{facts}");
+    assert!(facts.contains("?metric=payables&kind=scalar\n"), "{facts}");
     assert!(!facts.contains("dso\n"), "a series is not a fact:\n{facts}");
 
     // The fact's tile frame: a row for the fact, none for the series,
@@ -1571,13 +1571,13 @@ async fn the_plan_stands_beside_its_metric() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
                GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
                GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
                SELECT temporal() FROM dso.month;
-               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS QUERY;
+               DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS VIEW;
                GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM perf.ledger"}$$;"#,
         )
         .await
@@ -1635,8 +1635,8 @@ async fn the_list_serves_a_workspace_without_a_fact() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
-               DECLARE ASPECT undated WITH $${"title": "Undated"}$$ AS QUERY;
+               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
+               DECLARE ASPECT undated WITH $${"title": "Undated"}$$ AS VIEW;
                GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
                GLOSS undated ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
@@ -2311,7 +2311,7 @@ async fn a_stopped_surface_folds_under_the_lists() {
         .unwrap()
         .execute(
             r#"USE perf;
-               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS QUERY;
+               DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS VIEW;
                GLOSS old_dso ON perf AS $${"stopped": "superseded by dso, which reads the cohort"}$$;"#,
         )
         .await
@@ -2441,7 +2441,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     let page = text(get(&app, "/perf/app/console/p/glossary").await).await;
     for frame in [
         "frames/vocabulary?kind=fact",
-        "frames/vocabulary?kind=query",
+        "frames/vocabulary?kind=view",
         "frames/vocabulary?kind=measurement",
         "frames/vocabulary?kind=own",
         "frames/terms",
@@ -2484,7 +2484,7 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     );
     let own = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=own").await).await;
     assert!(own.contains("app_frame\n"), "{own}");
-    let queries = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=query").await).await;
+    let queries = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=view").await).await;
     assert!(queries.contains("dso\n"), "{queries}");
     assert!(queries.contains("on the dataset\n"), "{queries}");
     let measurements =
@@ -2702,7 +2702,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .await,
     )
     .await;
-    // Both voices on the meaning, the person's first; the kit's witness
+    // Both voices on the meaning, the person's first; the kit's test
     // owes the role on every column, and the unfilled role slot leads
     // the list.
     let lead = "role\nmeaning\nmeaning\n";
