@@ -22,6 +22,7 @@
 <script src="/assets/gl-rows.js"></script>
 <script src="/assets/gl-graph.js"></script>
 <script src="/assets/gl-query.js"></script>
+<script src="/assets/gl-tree.js"></script>
 </head>
 <body hx-boost="true" hx-indicator=".load-bar"{% if app %} data-approot="/{{ dataset }}/app/{{ app.name }}/"{% endif %}>
 <header class="shell-nav">
@@ -55,13 +56,22 @@
   </div>
 </header>
 <div class="load-bar"></div>
-<main>
+{# The built-in console carries the dataset's tree beside every page; an
+   app of the workspace's own keeps the whole width. #}
+{% set tree = app and app.origin != "glossed" %}
+<main{% if tree %} class="with-tree"{% endif %}>
+{% if tree %}<aside class="side">
+  <a class="t-root{% if page == 'index' %} current{% endif %}" href="/{{ dataset }}/app/{{ app.name }}">{{ dataset }}</a>
+  <gl-tree frame="frames/tree"></gl-tree>
+</aside>
+<div class="content">{% endif %}
 {# A glossed app opens with its title, in full, whatever the picker
    could fit. The built-in's pages are its tabs, so it prints none. #}
 {# Which cut the page shows: the draft, or the release it is served
    at; an app nobody released is its draft and says nothing. #}
 {% if app and app.origin == "glossed" %}<h1 class="app-title">{{ app.title }}{% if draft %} <span class="chip" title="the newest parts, not the release">draft</span>{% elif released %} <span class="chip" title="released at {{ released }}">released</span>{% endif %}</h1>{% endif %}
 {% block main %}{% endblock %}
+{% if tree %}</div>{% endif %}
 </main>
 </body>
 </html>

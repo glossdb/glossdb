@@ -1,7 +1,9 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
+{{ object::crumbs(dataset=dataset, section="Query") }}
 {# The Query tab: a read of one's own against the query door. The pane
    posts one SELECT and renders the stream; csv and arrow save what
    came back. The SQL rides the page URL (`?sql=`), so a read is a

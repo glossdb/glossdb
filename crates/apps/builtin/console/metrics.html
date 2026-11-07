@@ -1,5 +1,6 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
 {% set metric = state.metric | default(value="") %}
@@ -7,15 +8,23 @@
 {% set kind = state.kind | default(value="") %}
 
 {% if metric %}
-{# ---- one metric: the number, then its reasons -------------------- #}
-{# Picking a metric is going deeper, not somewhere else: the Metrics
-   tab stays the current one, every tile names the metric, and the tab
-   is the way back to the list. A single value's link carries `kind=scalar` and
-   a view's `kind=relation`, and the page draws either without the
-   series tiles — there is no window, no story and no slice over one
-   number or over rows. A view's page shows what a view is instead:
-   the columns it serves with their roles, the tables it reads, and
-   its rows through the pane, before its assumptions and its SQL. #}
+{# ---- one metric: its title, then the same five tabs as every object #}
+{# A single value's link carries `kind=scalar` and a view's
+   `kind=relation`; the page draws either without the series tiles —
+   there is no window, no story and no slice over one number or over
+   rows. #}
+{% set tab = state.tab | default(value="description") %}
+{# A picked slice is a measurement: the slice link opens that tab. #}
+{% if dim and not state.tab %}{% set tab = "measurements" %}{% endif %}
+{% if kind == "scalar" or kind == "relation" %}{% set section = "Views" %}{% set q = "metric=" ~ metric ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "metric=" ~ metric %}{% endif %}
+{{ object::crumbs(dataset=dataset, section=section, section_link="/" ~ dataset ~ "/app/console/p/metrics", object=metric) }}
+<gl-rows frame="frames/metric_head" empty="">
+  <template>
+    <h1 class="obj-h"><code>{name}</code><span class="kind">{kind}</span></h1>
+    <p class="f-meta">{title} · <span class="r-num">{latest}</span> {unit} {period}</p>
+  </template>
+</gl-rows>
+{{ object::subtabs(q=q, tab=tab) }}
 <div class="tiles">
   {# The re-measure banner: every write moves the pin, and a function
      value loaded at an earlier pin is served and marked — the numbers
@@ -33,14 +42,9 @@
     </template>
   </gl-rows>
 
-  {# The viewer's window: grain and span are page params, bound into
-     the frames as $grain and $span — the frame SQL is the filter. The
-     references below carry the defaults; the URL overrides them. The
-     control reads the cube's fact row so it offers only the grains
-     the metric's cells can answer, and changing one is navigation:
-     only the frames whose URL changed refetch. #}
-  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
 
+{% if tab == "description" %}
+  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
   {# A declared fact: one number, no series. `frames/fact` serves a
      row only when this metric is a declared fact with a number, so
      the tile renders only then — `empty=""` states nothing for a
@@ -63,39 +67,6 @@
        empty="no values at this grain — Why these axes, below, says what is served; a grain finer than the metric's own serves nothing",
        note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing. Where metric_forecast has run, the forecast continues as the dashed line named forecast: the newest run's medians at the metric's own resolution, never clipped by the span. The shaded area is its 80% band; a point's tooltip says how often such a band held and whose count that is: this metric's own history, the dataset's, or the service's held-out data.") }}
 
-  <section class="tile">
-    <header><span class="eyebrow" title="Each plan on this metric, period by period at the plan&#x27;s own grain: the planned number, the actual where the period has begun, and the variance (actual minus plan) once it is complete. Where a forecast covers the rest, its median and 80% range show beside it, with how often such a range has held. A plan outside the range goes to review. A year only partly covered says how much and has no range.">The plan · {{ metric }}</span>
-      <code class="chip">plan_points()</code></header>
-    <gl-rows frame="frames/plan" empty="no plan is declared on this metric — a budget is loaded as a table and annotated as a plan, one per edition; the plan goal in the next steps gives the statement">
-      <template>
-        <div class="rrow" style="grid-template-columns:9rem 6rem 7rem 7rem 7rem 13rem 1fr">
-          <span class="r-subj asp">{plan}</span>
-          <span class="r-meta">{label}</span>
-          <span class="r-num">{planned}</span>
-          <span class="r-num">{actual}</span>
-          <span class="r-num">{variance}</span>
-          <span class="r-meta">{expected}</span>
-          <span class="r-meta"><code class="chip {scls}">{planned}</code> {held}</span>
-        </div>
-      </template>
-    </gl-rows>
-  </section>
-
-  <section class="tile">
-    <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">What moved · {{ metric }}</span>
-      <code class="chip">metric_series()</code></header>
-    <gl-rows frame="frames/drivers?grain=month" empty="no member moves at this grain: there are fewer than two periods here, or no dimension is admitted">
-      <template>
-        <div class="rrow" style="grid-template-columns:8rem 1fr 7rem 9rem 12rem">
-          <span class="r-subj asp">{dimension}</span>
-          <span class="r-what">{member}</span>
-          <span class="r-num">{delta}</span>
-          <span class="r-meta">{from_value} → {to_value}</span>
-          <span class="r-meta">{prev_period} → {last_period}</span>
-        </div>
-      </template>
-    </gl-rows>
-  </section>
   {% endif %}
 
   {% if kind == "relation" %}
@@ -141,6 +112,74 @@
   </section>
   </div>
 
+  <section class="tile">
+    <header><span class="eyebrow" title="The assumptions the agent disclosed in the current metric definition, each with the review decision on it, if any.">The assumptions behind it</span>
+      <code class="chip">agent_assumptions</code></header>
+    <p class="hint">● decided · ◐ still open. A review decision is stored as the decision alone; the agent then records the definition again.</p>
+    <div class="scroll">
+    <gl-rows frame="frames/assumptions" empty="this metric definition discloses no assumptions">
+      <template>
+        <div class="rrow" style="grid-template-columns:1.2rem 8rem 1fr">
+          <span class="g {gcls}">{glyph}</span>
+          <span class="r-subj asp">{dim}</span>
+          <span class="r-what">{what}<br>
+            <span class="r-meta">basis: {basis} · {decision}</span>
+            <details class="contest"><summary>the SQL</summary><pre class="statement">{statement}</pre></details>
+          </span>
+        </div>
+      </template>
+    </gl-rows>
+    </div>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The query this metric expands to. It must keep matching the formula.">The stored result</span>
+      <code class="chip">GLOSSARY()</code></header>
+    <gl-rows frame="frames/metric">
+      <template>
+        <pre class="statement">{sql}</pre>
+      </template>
+    </gl-rows>
+  </section>
+
+{% elif tab == "measurements" %}
+  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
+  {% if kind != "scalar" and kind != "relation" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Each plan on this metric, period by period at the plan&#x27;s own grain: the planned number, the actual where the period has begun, and the variance (actual minus plan) once it is complete. Where a forecast covers the rest, its median and 80% range show beside it, with how often such a range has held. A plan outside the range goes to review. A year only partly covered says how much and has no range.">The plan · {{ metric }}</span>
+      <code class="chip">plan_points()</code></header>
+    <gl-rows frame="frames/plan" empty="no plan is declared on this metric — a budget is loaded as a table and annotated as a plan, one per edition; the plan goal in the next steps gives the statement">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem 6rem 7rem 7rem 7rem 13rem 1fr">
+          <span class="r-subj asp">{plan}</span>
+          <span class="r-meta">{label}</span>
+          <span class="r-num">{planned}</span>
+          <span class="r-num">{actual}</span>
+          <span class="r-num">{variance}</span>
+          <span class="r-meta">{expected}</span>
+          <span class="r-meta"><code class="chip {scls}">{planned}</code> {held}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">What moved · {{ metric }}</span>
+      <code class="chip">metric_series()</code></header>
+    <gl-rows frame="frames/drivers?grain=month" empty="no member moves at this grain: there are fewer than two periods here, or no dimension is admitted">
+      <template>
+        <div class="rrow" style="grid-template-columns:8rem 1fr 7rem 9rem 12rem">
+          <span class="r-subj asp">{dimension}</span>
+          <span class="r-what">{member}</span>
+          <span class="r-num">{delta}</span>
+          <span class="r-meta">{from_value} → {to_value}</span>
+          <span class="r-meta">{prev_period} → {last_period}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% endif %}
+
   {% if kind != "scalar" and kind != "relation" %}
   <div class="half">
   <section class="tile">
@@ -179,38 +218,45 @@
   </section>
   {% endif %}
 
+
   <section class="tile">
-    <header><span class="eyebrow" title="The assumptions the agent disclosed in the current metric definition, each with the review decision on it, if any.">The assumptions behind it</span>
-      <code class="chip">agent_assumptions</code></header>
-    <p class="hint">● decided · ◐ still open. A review decision is stored as the decision alone; the agent then records the definition again.</p>
-    <div class="scroll">
-    <gl-rows frame="frames/assumptions" empty="this metric definition discloses no assumptions">
+    <header><span class="eyebrow" title="The newest result of each function on the view's columns.">Measured on its columns</span>
+      <code class="chip">measurements</code></header>
+    <gl-rows frame="frames/obj_measurements?subject={{ metric }}" empty="nothing has been measured on this view's columns">
       <template>
-        <div class="rrow" style="grid-template-columns:1.2rem 8rem 1fr">
-          <span class="g {gcls}">{glyph}</span>
-          <span class="r-subj asp">{dim}</span>
-          <span class="r-what">{what}<br>
-            <span class="r-meta">basis: {basis} · {decision}</span>
-            <details class="contest"><summary>the SQL</summary><pre class="statement">{statement}</pre></details>
-          </span>
+        <div class="rrow" style="grid-template-columns:12rem 10rem minmax(0,1fr) 9rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-meta">{function}</span>
+          <span class="r-meta dict">{value}</span>
+          <span class="r-meta">{at}</span>
         </div>
       </template>
     </gl-rows>
-    </div>
   </section>
 
+{% elif tab == "tests" %}
+{{ object::tests(subject=metric) }}
+{% elif tab == "used" %}
   <section class="tile">
-    <header><span class="eyebrow" title="The query this metric expands to. It must keep matching the formula.">The stored result</span>
-      <code class="chip">GLOSSARY()</code></header>
-    <gl-rows frame="frames/metric">
+    <header><span class="eyebrow" title="Each column of the metric's view and the loaded column it comes from. A computed column has none.">What it reads</span>
+      <code class="chip">metric_sources()</code></header>
+    <gl-rows frame="frames/metric_uses" empty="the view reads no loaded column the lineage can name">
       <template>
-        <pre class="statement">{sql}</pre>
+        <a class="rrow" href="{link}" style="grid-template-columns:12rem minmax(0,1fr) 12rem">
+          <span class="r-subj">{field}</span>
+          <span class="r-what">{source}</span>
+          <span class="r-meta">{reason}</span>
+        </a>
       </template>
     </gl-rows>
   </section>
+{% elif tab == "history" %}
+{{ object::history(frame="frames/metric_history", empty="nothing has been written on this metric") }}
+{% endif %}
 </div>
 
 {% else %}
+{{ object::crumbs(dataset=dataset, section="Metrics") }}
 {# ---- the surfaces list ------------------------------------------- #}
 <div class="tiles">
   {# The re-measure banner: every write moves the pin, and a function

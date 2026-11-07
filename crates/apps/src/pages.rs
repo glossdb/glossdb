@@ -35,6 +35,7 @@ pub const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'
 const SHELL: &str = include_str!("../templates/shell.html");
 const DATASETS: &str = include_str!("../templates/datasets.html");
 const TILES: &str = include_str!("../templates/modules/tiles.html");
+const OBJECT: &str = include_str!("../templates/modules/object.html");
 
 /// The embedded templates, parsed once for the process. A request
 /// takes a copy, since an app's own pages join it per request — they
@@ -46,6 +47,7 @@ fn base_tera() -> Tera {
             ("shell.html", SHELL),
             ("datasets.html", DATASETS),
             ("modules/tiles.html", TILES),
+            ("modules/object.html", OBJECT),
         ])
         .expect("the embedded templates parse; the apps suite renders each");
         tera

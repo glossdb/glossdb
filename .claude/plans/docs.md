@@ -22,7 +22,8 @@ out in the old words.
 | 9. glossql's docs in DuckLake's shape: overview, specification (one page per catalog table, held to `STORE_RELATIONS`), the extension (install, usage, functions, kits, building an interface), conformance | Medium: pages move from here and stay served from the extension's share | the extension's `docs/`, `test/sql/`; `docs/` here | done on `readme-harness` |
 | 10. Keyword forks: each rename below as competing forms on a real fixture, the lead's verdict, then a SPEC.md diff | Medium: grammar, corpus, every example in both repositories | `../gloss` grammar, SPEC.md, corpus; the docs suite here | done on `readme-harness` |
 | 11. Code comments and identifiers, by area as it is touched | Low | crates, kits | done on `readme-harness` |
-| 12. The console's navigation and its Model and History views | Medium: new pages over existing reads | `crates/apps/` | drafted below |
+| 12. The console's navigation: a tree, a breadcrumb, one page shape per object with sub-tabs, the overview with the scorecard, units beside numbers | Medium | `crates/apps/` | done on `readme-harness` |
+| 12b. The console's Model view (entities, keys, joins, measures, dimensions, time grains in one picture) and History view (loads, annotations and review decisions over time) | Medium: new frames over recorded rows, a graph | `crates/apps/` | drafted below |
 | 13. The websites from the two docs trees | Low | `../dataraum-website` | |
 
 ## The analogy
@@ -102,24 +103,21 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-### The console navigates like a catalog
+### The console shows the model and the history
 
-- **What it buys.** A person moves from the dataset to a source, a
-  table, a column or a metric and back, and every object's page answers
-  the same questions in the same place.
-- **What is there.** Seven tabs (Review, Metrics, Quality, Glossary,
-  Lineage, Export, Query) in `crates/apps/builtin/console/app.toml`;
-  depth on the table and metric pages; the glossary page is one long
-  page that opens with the harness schema; sources, joins, tests and
-  loads have no page; the metric page has no title and no way back; a
-  dataset with nothing open lands on three zeros; numbers carry no
-  unit.
-- **Done when.** A tree (dataset → sources → tables → columns; metrics;
-  views) and a breadcrumb on every page; one page shape per object
-  with the same sub-tabs (what is said, what is measured, tests, uses
-  and used by, history); a landing page with the harness scorecard
-  (required against known, per property); a metric's unit beside its
-  numbers; the apps suite passes and a walk on a seeded workspace shows
-  each page.
+- **What it buys.** A person sees the semantic layer and the ontology
+  as one picture, and what changed when, without reading tables.
+- **What is there.** Lineage draws tables, keys and the columns a
+  metric reads (`gl-graph`, `frames/lineage_*`); the object pages have
+  a History tab per object (`frames/obj_history.sql`); nothing shows
+  entities with their grain, measures with their additivity,
+  dimensions and time grains together, or the workspace's changes as
+  one timeline.
+- **Done when.** A Model page draws each table as its entity (grain,
+  time axis), its measures (additivity, unit) and dimensions, the keys
+  between tables and the metrics on top with their time grains; a
+  History page lists loads, annotations and review decisions newest
+  first, filterable by kind and object; both in the tree; apps tests
+  for their frames; a walk on a seeded workspace.
 
 (The results page, step 4, waits on the glossval rerun.)

@@ -801,6 +801,106 @@ gl-graph svg { display: block; font-family: var(--mono); }
   main { padding-left: 1rem; padding-right: 1rem; }
 }
 
+/* ---- the tree (gl-tree) beside the console's pages ----------------- */
+
+/* The console's pages sit beside the dataset's tree: quiet, small,
+   mono, the current entry marked as the current tab is. The bar
+   widens to the same column. */
+body:has(main.with-tree) .bar-in { max-width: 86rem; }
+main.with-tree {
+  max-width: 86rem;
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 2.25rem;
+  align-items: start;
+}
+main.with-tree > .content { min-width: 0; }
+.side {
+  position: sticky;
+  top: 3.75rem;
+  max-height: calc(100vh - 4.5rem);
+  overflow-y: auto;
+  padding: 1.4rem 0 2rem;
+  font-family: var(--mono);
+  font-size: var(--step);
+}
+.t-root {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-left: 2px solid transparent;
+  margin-bottom: 0.6rem;
+}
+.t-root.current, .t-link.current { border-left-color: var(--open); color: var(--ink); }
+.tree .t-fold { margin: 0; }
+.tree summary { cursor: pointer; list-style: none; }
+.tree summary::-webkit-details-marker { display: none; }
+.t-head {
+  color: var(--faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.5rem 0.2rem;
+  display: flex;
+  justify-content: space-between;
+}
+.t-head:hover { color: var(--muted); }
+.t-count { color: var(--faint); letter-spacing: 0; }
+.t-list { list-style: none; margin: 0; padding: 0; }
+.t-sub { padding-left: 0.9rem; }
+.t-link {
+  display: block;
+  color: var(--muted);
+  padding: 0.12rem 0.5rem;
+  border-left: 2px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-link:hover { color: var(--ink); }
+.tree details > summary > .t-link::before { content: '▸ '; color: var(--faint); }
+.tree details[open] > summary > .t-link::before { content: '▾ '; }
+@media (max-width: 900px) {
+  main.with-tree { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .side {
+    position: static;
+    max-height: 40vh;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 0.8rem;
+  }
+}
+
+/* The way back up, above every page of the console. */
+.crumbs { font-family: var(--mono); font-size: var(--step); color: var(--faint); margin: 1.5rem 0 0; }
+.crumbs a { color: var(--muted); border-bottom: 1px solid var(--rule); }
+.crumbs a:hover { color: var(--ink); }
+.crumbs .crumb-sep { margin: 0 0.4rem; color: var(--faint); }
+.hint a.go { color: var(--open); border-bottom: 1px solid var(--open-dim); }
+.obj-h { font-family: var(--sans); font-size: 1.2rem; font-weight: 500; margin: 0.5rem 0 0; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.obj-h code { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; }
+.obj-h .kind { font-family: var(--mono); font-size: var(--step); color: var(--faint); margin-left: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* An object's sub-tabs: the same five on every object's page. */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.2rem;
+  margin: 1rem 0 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: var(--step);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.subtabs a { color: var(--faint); padding: 0.45rem 0; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtabs a:hover { color: var(--ink); }
+.subtabs a.current { color: var(--ink); border-bottom-color: var(--open); }
+
+/* The scorecard: known against required, per property. */
+.score-bar { display: block; height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 0.35rem; }
+.score-bar i { display: block; height: 100%; background: var(--muted); }
+.score-bar.full i { background: var(--settled); }
+
 /* ---- the viewer's window (gl-window) ------------------------------ */
 
 .window-bar {

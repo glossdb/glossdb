@@ -229,7 +229,7 @@ async fn pages_render_and_frames_stream() {
         "the picker lists the app:\n{console}"
     );
     let open = console
-        .find("href=\"/perf/app/console\">Review</a>")
+        .find("href=\"/perf/app/console\">Overview</a>")
         .unwrap();
     let export = console
         .find(
@@ -738,7 +738,7 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
             };
             // Extra params are ignored by frames that bind none of them.
             let uri = format!(
-                "/perf/app/{}/frames/{stem}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact",
+                "/perf/app/{}/frames/{stem}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none",
                 builtin.name
             );
             let response = get(&app, &uri).await;
@@ -829,7 +829,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         let response = get(
             &app,
             &format!(
-                "/perf/app/console/frames/{frame}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact"
+                "/perf/app/console/frames/{frame}?metric=dso&subject=ledger&dim=region&grain=month&span=24&check=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none"
             ),
         )
         .await;
@@ -1281,7 +1281,8 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // no shape for.
     let page = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts").await).await;
     assert!(page.contains("frames/check\""), "{page}");
-    assert!(page.contains("frames/check_verdicts"), "{page}");
+    let evidence = text(get(&app, "/perf/app/console/p/quality?check=dso_w&kind=verdicts&tab=measurements").await).await;
+    assert!(evidence.contains("frames/check_verdicts"), "{evidence}");
     assert!(
         page.contains("aria-current=\"page\" href=\"/perf/app/console/p/quality\">Quality</a>"),
         "opening a check stays on the tab:\n{page}"
@@ -1714,17 +1715,21 @@ async fn the_metrics_pages_render_both_states() {
     let front = text(front).await;
     assert!(front.contains("frames/pulse"), "{front}");
 
-    // the front counts live on the console itself, not the metric list
-    let open = text(get(&app, "/perf/app/console").await).await;
-    assert!(open.contains("frames/front"), "{open}");
+    // the front counts live on the console itself, not the metric list;
+    // the questions and the decisions on the review page
+    let front_page = text(get(&app, "/perf/app/console").await).await;
+    assert!(front_page.contains("frames/front"), "{front_page}");
+    assert!(front_page.contains("frames/scorecard"), "{front_page}");
+    let open = text(get(&app, "/perf/app/console/p/review").await).await;
     assert!(open.contains("frames/open"), "{open}");
     assert!(open.contains("frames/settled"), "{open}");
 
     let dossier = text(get(&app, "/perf/app/console/p/metrics?metric=dso").await).await;
     assert!(dossier.contains("frames/trend"), "{dossier}");
-    assert!(dossier.contains("frames/dims"), "{dossier}");
+    let measured = text(get(&app, "/perf/app/console/p/metrics?metric=dso&tab=measurements").await).await;
+    assert!(measured.contains("frames/dims"), "{measured}");
     assert!(
-        !dossier.contains("frames/slices"),
+        !measured.contains("frames/slices"),
         "no dim picked — the slice tile must not render"
     );
 
@@ -2613,7 +2618,8 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let page = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
     assert!(page.contains("frames/table_head?table=ledger"), "{page}");
     assert!(page.contains("frames/table_columns?table=ledger"), "{page}");
-    assert!(page.contains("frames/table_landing?table=ledger"), "{page}");
+    let history = text(get(&app, "/perf/app/console/p/glossary?table=ledger&tab=history").await).await;
+    assert!(history.contains("frames/table_landing?table=ledger"), "{history}");
     assert!(
         page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">Glossary</a>"),
         "opening a table stays on the tab:\n{page}"
@@ -2757,4 +2763,57 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     );
     assert!(values.contains("a person\n"), "{values}");
     assert!(values.contains("?column=ledger.cohort\n"), "{values}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_tree_lists_sources_tables_columns_and_tests() {
+    // The console's tree: one row per entry, each with the page it
+    // opens — the source, the table and its columns, the tests.
+    let (app, _plane, _dir) = workspace().await;
+    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
+    for line in [
+        "Sources\n",
+        "Tables\n",
+        "Tests\n",
+        "/perf/app/console/p/glossary?source=erp\n",
+        "/perf/app/console/p/glossary?table=ledger\n",
+        "/perf/app/console/p/glossary?column=ledger.value\n",
+    ] {
+        assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
+    }
+    // Every console page carries the tree and its component.
+    let page = text(get(&app, "/perf/app/console/p/metrics").await).await;
+    assert!(page.contains("<gl-tree frame=\"frames/tree\">"), "{page}");
+    assert!(page.contains("/assets/gl-tree.js"), "{page}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_source_has_a_page_with_the_five_tabs() {
+    let (app, _plane, _dir) = workspace().await;
+    let page = text(get(&app, "/perf/app/console/p/glossary?source=erp").await).await;
+    assert!(page.contains("frames/source_head"), "{page}");
+    for tab in ["Description", "Measurements", "Tests", "Used by", "History"] {
+        assert!(page.contains(&format!(">{tab}</a>")), "{tab}:\n{page}");
+    }
+    assert!(page.contains("class=\"crumbs\""), "{page}");
+    let used = text(get(&app, "/perf/app/console/p/glossary?source=erp&tab=used").await).await;
+    assert!(used.contains("frames/source_recipes"), "{used}");
+    let recipes = body_text(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
+    assert!(recipes.contains("ledger\n"), "the source loads ledger:\n{recipes}");
+    let loads = body_text(get(&app, "/perf/app/console/frames/source_loads?source=erp").await).await;
+    assert!(loads.contains("ledger\n"), "ledger was loaded from it:\n{loads}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_overview_shows_the_scorecard_and_the_review_has_its_own_page() {
+    let (app, _plane, _dir) = workspace().await;
+    let overview = text(get(&app, "/perf/app/console").await).await;
+    assert!(overview.contains("frames/scorecard"), "{overview}");
+    assert!(overview.contains("frames/open_items"), "{overview}");
+    assert!(overview.contains("/perf/app/console/p/review"), "{overview}");
+    let review = text(get(&app, "/perf/app/console/p/review").await).await;
+    assert!(review.contains("frames/open\""), "{review}");
+    // The scorecard counts what is known against what is required.
+    let card = body_text(get(&app, "/perf/app/console/frames/scorecard").await).await;
+    assert!(card.contains(" of "), "{card}");
 }

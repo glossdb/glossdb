@@ -43,7 +43,7 @@ What the returned property's kind makes of the function:
 ## Run a measurement
 
 ```glossql
-SELECT outliers() FROM work_orders.duration_min;
+SELECT outlier_profile() FROM work_orders.duration_min;
 ```
 
 Running a function computes it at the current versions of everything

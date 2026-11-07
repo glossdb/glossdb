@@ -2,11 +2,12 @@ title = "Console"
 # no dataset line, ever: the URL binds it (/<dataset>/app/console), so one
 # app serves every dataset and the bar's picker switches between them.
 # Two groups of pages, and the bar draws a hairline where the group
-# changes: the pages that show what the catalog holds — the review
-# queue, the metrics, the quality, the glossary, the lineage — then the
-# two that hand the data over.
+# changes: the pages that show what the catalog holds — the overview,
+# the review queue, the metrics, the quality, the glossary, the
+# lineage — then the two that hand the data over.
 pages = [
-  { name = "index", title = "Review", group = "catalog" },
+  { name = "index", title = "Overview", group = "catalog" },
+  { name = "review", title = "Review", group = "catalog" },
   { name = "metrics", title = "Metrics", group = "catalog" },
   { name = "quality", title = "Quality", group = "catalog" },
   { name = "glossary", title = "Glossary", group = "catalog" },

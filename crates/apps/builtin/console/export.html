@@ -1,7 +1,9 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
+{{ object::crumbs(dataset=dataset, section="Export") }}
 {# Every relation of the dataset as a file: the loaded tables and the
    reads the catalog serves, each a download away. A file is the
    relation as it holds at the read, encoded on the way out; nothing

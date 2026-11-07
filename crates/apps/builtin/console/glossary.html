@@ -1,27 +1,27 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
 {% set table = state.table | default(value="") %}
 {% set column = state.column | default(value="") %}
 {% set aspect = state.aspect | default(value="") %}
+{% set source = state.source | default(value="") %}
+{% set tab = state.tab | default(value="description") %}
 
 {% if table %}
-{# ---- one table: everything the catalog holds on it ----------------- #}
-{# Opening a table is going deeper, not somewhere else: the Glossary
-   tab stays current and is the way back. The head is the entity
-   entry and the load; then every column with its values by aspect
-   and what was measured on it, each opening its page; the joins the
-   table takes part in with their coherence; what holds among its
-   columns; and the load as lines, the recipe folded. #}
-<p class="nav-sub"><a href="/{{ dataset }}/app/console/p/glossary">Glossary</a> › table</p>
+{# ---- one table: the same five tabs as every object --------------- #}
+{{ object::crumbs(dataset=dataset, section="Tables", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=table) }}
+{{ object::title(name=table, kind="table") }}
 <gl-rows frame="frames/table_head?table={{ table }}" empty="no landed table is named {{ table }}">
   <template>
-    <p class="page-h"><code>{name}</code> — <span class="r-what">{entity}</span> <span class="v {mcls}" title="{mark_title}">{mark}</span></p>
+    <p class="page-h"><span class="r-what">{entity}</span> <span class="v {mcls}" title="{mark_title}">{mark}</span></p>
     <p class="f-meta">{shape} · {rows} rows · {columns} columns · loaded {at} from {source} · {read_by}</p>
   </template>
 </gl-rows>
+{{ object::subtabs(q="table=" ~ table, tab=tab) }}
 <div class="tiles">
+{% if tab == "description" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every column with every annotation on it: its role and dimension result, unit and additivity where required, its meaning (or &#x27;not yet annotated&#x27; where it is required and empty), and what was measured: the time profile, a dimension&#x27;s coverage, the column profile, an identity it is part of, the cells its cast could not read. The mark is the column&#x27;s worst state; who wrote it and when show on hover. A row opens the column.">Columns</span>
       <code class="chip">GLOSSARY({{ table }}, all =&gt; true) · imports</code></header>
@@ -42,7 +42,51 @@
     </gl-rows>
   </section>
 
-  <div class="half"><section class="tile">
+{% elif tab == "measurements" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="The newest result of each function on this object or its columns.">Measured</span>
+      <code class="chip">measurements</code></header>
+    <gl-rows frame="frames/obj_measurements?subject={{ table }}" empty="nothing has been measured here yet">
+      <template>
+        <div class="rrow" style="grid-template-columns:14rem 10rem minmax(0,1fr) 9rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-meta">{function}</span>
+          <span class="r-meta dict">{value}</span>
+          <span class="r-meta">{at}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  <div><section class="tile">
+    <header><span class="eyebrow" title="The identities found among the table&#x27;s numeric columns, with the rows that hold and the rows that break, and whether the hierarchy search has run.">Identities among the columns</span>
+      <code class="chip">derivation_candidates · hierarchy_candidates</code></header>
+    <gl-rows frame="frames/table_identities?table={{ table }}" empty="nothing has been searched for among the columns">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(0,1fr)">
+          <span class="r-subj">{text}</span>
+          <span class="r-meta">{note}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section></div>
+
+{% elif tab == "tests" %}
+{{ object::tests(subject=table) }}
+{% elif tab == "used" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
+      <code class="chip">metric_sources()</code></header>
+    <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no metric reads it">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
+          <span class="r-subj">{metric}</span>
+          <span class="r-meta">{field}</span>
+          <span class="r-meta">{source}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+  <div><section class="tile">
     <header><span class="eyebrow" title="Every declared relationship this table is part of, its meaning, and what the coherence measurement found.">Joins</span>
       <code class="chip">relationships · relationship_coherence</code></header>
     <gl-rows frame="frames/joins?table={{ table }}&column=" empty="no declared join touches this table">
@@ -56,19 +100,7 @@
     </gl-rows>
   </section></div>
 
-  <div class="half"><section class="tile">
-    <header><span class="eyebrow" title="The identities found among the table&#x27;s numeric columns, with the rows that hold and the rows that break, and whether the hierarchy search has run.">Identities among the columns</span>
-      <code class="chip">derivation_candidates · hierarchy_candidates</code></header>
-    <gl-rows frame="frames/table_identities?table={{ table }}" empty="nothing has been searched for among the columns">
-      <template>
-        <div class="rrow" style="grid-template-columns:minmax(0,1fr)">
-          <span class="r-subj">{text}</span>
-          <span class="r-meta">{note}</span>
-        </div>
-      </template>
-    </gl-rows>
-  </section></div>
-
+{% elif tab == "history" %}
   <section class="tile">
     <header><span class="eyebrow" title="The table&#x27;s newest load: what the load query read, what was loaded and when, the rows it dropped where it can count them, the cells its casts could not read, the source&#x27;s conventions, and the load query&#x27;s SQL.">The load</span>
       <code class="chip">imports · recipes · conventions</code></header>
@@ -81,18 +113,25 @@
       </template>
     </gl-rows>
   </section>
+{{ object::history(frame="frames/obj_history?subject=" ~ table, empty="nothing has been written on this table") }}
+{% endif %}
 </div>
 
 {% elif column %}
-{# ---- one column: every value, every value ---------------------------- #}
-<p class="nav-sub"><a href="/{{ dataset }}/app/console/p/glossary">Glossary</a> › column</p>
+{# ---- one column: the same five tabs as every object -------------- #}
+{% set ctable = column | split(pat=".") | first %}
+{% set cname = column | split(pat=".") | last %}
+{{ object::crumbs(dataset=dataset, section="Tables", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=ctable, object_link="/" ~ dataset ~ "/app/console/p/glossary?table=" ~ ctable, child=cname) }}
+{{ object::title(name=column, kind="column") }}
 <gl-rows frame="frames/column_head?column={{ column }}" empty="no landed column is named {{ column }}">
   <template>
-    <p class="page-h"><a href="{link_table}"><code>{table_name}</code></a>.<code>{name}</code> — <span class="r-what">{meaning}</span></p>
+    <p class="page-h"><span class="r-what">{meaning}</span></p>
     <p class="f-meta">{role} · {typed} · {read_by} · {refused}</p>
   </template>
 </gl-rows>
+{{ object::subtabs(q="column=" ~ column, tab=tab) }}
 <div class="tiles">
+{% if tab == "description" %}
   <section class="tile">
     <header><span class="eyebrow" title="Each property on this column with every annotation on it, a person&#x27;s first, then the agent&#x27;s: the value, who wrote it, when, and its state. Then each measurement, summarised, and each required annotation nobody has written. A later or higher-ranked annotation outranks an earlier one, which is kept in history.">Every annotation</span>
       <code class="chip">GLOSSARY({{ column }}, all =&gt; true) · glossary</code></header>
@@ -112,6 +151,37 @@
     </gl-rows>
   </section>
 
+{% elif tab == "measurements" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="The newest result of each function on this object or its columns.">Measured</span>
+      <code class="chip">measurements</code></header>
+    <gl-rows frame="frames/obj_measurements?subject={{ column }}" empty="nothing has been measured here yet">
+      <template>
+        <div class="rrow" style="grid-template-columns:14rem 10rem minmax(0,1fr) 9rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-meta">{function}</span>
+          <span class="r-meta dict">{value}</span>
+          <span class="r-meta">{at}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+{% elif tab == "tests" %}
+{{ object::tests(subject=column) }}
+{% elif tab == "used" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
+      <code class="chip">metric_sources()</code></header>
+    <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no metric reads it">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
+          <span class="r-subj">{metric}</span>
+          <span class="r-meta">{field}</span>
+          <span class="r-meta">{source}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
   <section class="tile">
     <header><span class="eyebrow" title="Every declared relationship this column is part of, its meaning, and what the coherence measurement found.">Joins</span>
       <code class="chip">relationships · relationship_coherence</code></header>
@@ -125,11 +195,71 @@
       </template>
     </gl-rows>
   </section>
+{% elif tab == "history" %}
+{{ object::history(frame="frames/obj_history?subject=" ~ column, empty="nothing has been written on this column") }}
+{% endif %}
+</div>
+
+{% elif source %}
+{# ---- one source: the same five tabs as every object -------------- #}
+{{ object::crumbs(dataset=dataset, section="Sources", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=source) }}
+{{ object::title(name=source, kind="source") }}
+{{ object::subtabs(q="source=" ~ source, tab=tab) }}
+<div class="tiles">
+{% if tab == "description" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="The source as declared: what kind it is, where it is, and how it is reached.">The source</span>
+      <code class="chip">sources</code></header>
+    <gl-rows frame="frames/source_head" empty="no source is named {{ source }}">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)"><span class="r-meta">type</span><span class="r-what">{type}</span></div>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)"><span class="r-meta">location</span><span class="r-what">{location}</span></div>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)"><span class="r-meta">reached via</span><span class="r-what">{via}</span></div>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)"><span class="r-meta">declared</span><span class="r-meta">{declared}</span></div>
+        <details class="fold"><summary>the settings</summary><p class="dict">{settings}</p></details>
+      </template>
+    </gl-rows>
+  </section>
+{% elif tab == "measurements" %}
+  <p class="rows-empty">Nothing is measured on a source itself: the tables it loads carry the measurements.</p>
+{% elif tab == "tests" %}
+  <p class="rows-empty">Tests apply to the tables a source loads, not to the source.</p>
+{% elif tab == "used" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="The load queries of this dataset that read this source: the table each loads, its key, and its SQL. A row opens the table.">The tables it loads</span>
+      <code class="chip">recipes</code></header>
+    <gl-rows frame="frames/source_recipes" empty="no load query of this dataset reads this source">
+      <template>
+        <div class="rrow" style="grid-template-columns:12rem 8rem minmax(0,1fr)">
+          <a class="r-subj" href="{link}">{table_name}</a>
+          <span class="r-meta">{key}</span>
+          <details class="fold"><summary>the load query · {declared}</summary><pre class="statement">{sql}</pre></details>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+{% elif tab == "history" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every load of the tables this source feeds, newest first.">Loads</span>
+      <code class="chip">imports</code></header>
+    <gl-rows frame="frames/source_loads" empty="nothing has been loaded from this source">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem 12rem 6rem 8rem 8rem">
+          <span class="r-meta">{at}</span>
+          <span class="r-subj">{table_name}</span>
+          <span class="r-meta">{mode}</span>
+          <span class="r-num">{rows}</span>
+          <span class="r-meta">{dropped}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+{% endif %}
 </div>
 
 {% elif aspect %}
 {# ---- one aspect: the declaration, then every value ----------------- #}
-<p class="nav-sub"><a href="/{{ dataset }}/app/console/p/glossary">Glossary</a> › property</p>
+{{ object::crumbs(dataset=dataset, section="Glossary", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=aspect) }}
 <gl-rows frame="frames/aspect_head?aspect={{ aspect }}" empty="no aspect is named {{ aspect }}">
   <template>
     <p class="page-h"><code>{name}</code> — <span class="r-what">{kind}</span></p>
@@ -160,6 +290,7 @@
 </div>
 
 {% else %}
+{{ object::crumbs(dataset=dataset, section="Glossary") }}
 {# ---- the Glossary: the vocabulary, then the words ----------------- #}
 {# The dataset's words as the language holds them. First the
    vocabulary: every declared aspect with what it holds, where it is

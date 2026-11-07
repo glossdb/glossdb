@@ -95,7 +95,7 @@ stored with the versions of what it read, and served again until that
 data changes:
 
 ```glossql
-SELECT profile(), outliers() FROM ops.work_orders.duration_min;
+SELECT column_profile(), outlier_profile() FROM ops.work_orders.duration_min;
 SELECT temporal() FROM ops.work_orders.completed_at;
 ```
 

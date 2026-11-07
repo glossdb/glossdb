@@ -1,0 +1,65 @@
+{# The console's way around an object: the breadcrumb above it, its
+   title, and the same five sub-tabs on every object's page. `q` is
+   the object's own query string (`table=orders`, `metric=hires`), so
+   a sub-tab is the object's link with `tab=` added. #}
+
+{% macro crumbs(dataset, section="", section_link="", object="", object_link="", child="") %}
+<p class="crumbs">
+  <a href="/{{ dataset }}/app/console">{{ dataset }}</a>
+  {% if section %}<span class="crumb-sep">›</span>{% if section_link %}<a href="{{ section_link }}">{{ section }}</a>{% else %}{{ section }}{% endif %}{% endif %}
+  {% if object %}<span class="crumb-sep">›</span>{% if object_link and child %}<a href="{{ object_link }}">{{ object }}</a>{% else %}{{ object }}{% endif %}{% endif %}
+  {% if child %}<span class="crumb-sep">›</span>{{ child }}{% endif %}
+</p>
+{% endmacro crumbs %}
+
+{% macro title(name, kind) %}
+<h1 class="obj-h"><code>{{ name }}</code><span class="kind">{{ kind }}</span></h1>
+{% endmacro title %}
+
+{% macro subtabs(q, tab) %}
+<nav class="subtabs" aria-label="sections">
+  <a href="?{{ q }}"{% if tab == "description" %} class="current" aria-current="page"{% endif %}>Description</a>
+  <a href="?{{ q }}&tab=measurements"{% if tab == "measurements" %} class="current" aria-current="page"{% endif %}>Measurements</a>
+  <a href="?{{ q }}&tab=tests"{% if tab == "tests" %} class="current" aria-current="page"{% endif %}>Tests</a>
+  <a href="?{{ q }}&tab=used"{% if tab == "used" %} class="current" aria-current="page"{% endif %}>Used by</a>
+  <a href="?{{ q }}&tab=history"{% if tab == "history" %} class="current" aria-current="page"{% endif %}>History</a>
+</nav>
+{% endmacro subtabs %}
+
+{# The Tests tab: every test result on the object or its columns. #}
+{% macro tests(subject) %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every test result on this object or its columns, worst first. A row opens the test.">Test results</span>
+      <code class="chip">TESTS()</code></header>
+    <gl-rows frame="frames/obj_tests?subject={{ subject }}" empty="no test covers this object">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,16rem) 10rem 10rem 5rem 5rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-meta">{aspect}</span>
+          <span class="r-meta">{test}</span>
+          <span class="r-num">{score}</span>
+          <code class="chip {bcls}">{band}</code>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+{% endmacro tests %}
+
+{# The History tab: what was written and loaded, newest first. #}
+{% macro history(frame, empty, note="Every annotation written on this object, the ones later replaced included, and every load, newest first.") %}
+  <section class="tile">
+    <header><span class="eyebrow" title="{{ note }}">History</span>
+      <code class="chip">glossary · imports</code></header>
+    <gl-rows frame="{{ frame | safe }}" empty="{{ empty }}">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem 11rem 12rem 11rem minmax(0,1fr)">
+          <span class="r-meta">{at}</span>
+          <span class="r-subj">{what}</span>
+          <span class="r-meta">{subject}</span>
+          <span class="r-meta">{who}</span>
+          <span class="r-meta dict">{value}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+{% endmacro history %}

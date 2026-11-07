@@ -201,7 +201,7 @@ asking the person for it is asking them to do statistics by hand.
 `references/settled.md` maps each question to the function that
 settles it; walk it before any question leaves the workspace. A
 measurement is called in the SELECT list with its subject in FROM —
-`SELECT profile() FROM orders.amount` — never as a table function.
+`SELECT column_profile() FROM orders.amount` — never as a table function.
 
 What remains askable is judgment: definitions, conventions, business
 meaning, a choice between readings, held below full confidence. Prose

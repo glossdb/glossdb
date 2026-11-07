@@ -1,7 +1,9 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
+{{ object::crumbs(dataset=dataset, section="Lineage") }}
 {# Column lineage: the tables on the left laid out along their key
    edges, the metrics they feed on the right. Every line is a row of
    the catalog — a declared relationship, or a column a metric

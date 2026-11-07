@@ -1,85 +1,40 @@
 {% extends "shell.html" %}
 {% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
 
 {% block main %}
-{# The Questions tab, the console's first page: what holds open for a
-   human to judge, what has been settled, what waits on an act. Its
-   one write is the review decision form — the human's own judgment, loaded
-   under their own standing; everything else is a read. The data's
-   health is the Quality tab's, the numbers the Metrics tab's: this
-   page is judgment alone.
-
-   Each band is a matter list: the rail on the left says how firmly the
-   claim is held, the middle column is language somebody authored, and
-   the right says where it stands. #}
+{# The Overview, the console's first page: how much of what the
+   harness requires is known, what waits for a person, and what waits
+   for an action. Each line opens the page that answers it. #}
+{{ object::crumbs(dataset=dataset, section="Overview") }}
 <div class="tiles">
   <div class="counts">
     {{ tiles::value(frame="frames/front", field="open", label="Open questions",
          chip="open_questions",
-         note="Assumptions the agent holds below full confidence — conventions and definitions, never statistics. The same questions the agent's client shows as forms.") }}
+         note="Assumptions the agent holds below full confidence, waiting for a person. The Review tab answers them.") }}
     {{ tiles::value(frame="frames/front", field="ruled", label="Decisions",
          chip="review_decisions",
          note="Every review decision in this dataset, in the person's own words.") }}
     {{ tiles::value(frame="frames/front", field="waiting", label="Waiting for an action",
          chip="open_items",
-         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations, a measurement older than the data.") }}
+         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations.") }}
   </div>
+  <p class="hint"><a class="go" href="/{{ dataset }}/app/console/p/review">Open the review queue →</a></p>
 
   <section class="tile">
-    <header><span class="eyebrow" title="Assumptions in the agent&#x27;s metric definitions that it holds below full confidence. One leaves this list when the agent confirms it or a person decides it.">Waiting for your review</span>
-      <code class="chip">open_questions</code></header>
-    <p class="hint">Answer here or in your agent client: either records the same decision, in your own words. The bar shows the confidence the agent holds.</p>
-    <gl-rows frame="frames/open" empty="nothing is open: every disclosed assumption is at full confidence or decided">
+    <header><span class="eyebrow" title="For each property the harness requires, how many assets have a value against how many need one, worst first. Contested and stale values are counted as known and named beside. A row opens the property.">What is known</span>
+      <code class="chip">GLOSSARY()</code></header>
+    <p class="hint">Each property the harness requires: how many assets have it, against how many need it.</p>
+    <div class="rrow rhead" style="grid-template-columns:minmax(10rem,16rem) 8rem 8rem minmax(0,1fr)">
+      <span>property</span><span>kind</span><span>known</span><span></span>
+    </div>
+    <gl-rows frame="frames/scorecard" empty="the harness requires nothing yet: declare a property, or load a kit">
       <template>
-        <div class="rrow" style="grid-template-columns:2.6rem minmax(9rem,12rem) minmax(0,1fr) minmax(0,15rem)">
-          <span class="gutter">
-            <span class="rail"><i style="height:{pct}%"></i></span>
-            <span class="r-meta">{cf}</span>
-          </span>
-          <a class="r-subj" href="{link}">{subj}<br><span class="r-meta">{asp}</span></a>
-          <span class="r-what">{what}<br>
-            <span class="r-meta">{rival}</span><br>
-            <span class="r-meta">basis: {basis} {sibling}</span>
-          </span>
-          {# The one write the console takes. Only the claim's identity is
-             posted; the server derives the text again from the same read
-             that drew this row, so a stale tab is refused rather than
-             believed. The post is an htmx request with no swap: the
-             server answers 204 + HX-Trigger glossql:written, the store
-             drops its caches, and every panel refetches in place —
-             no navigation, nothing to go back to. #}
-          <form class="rule" hx-post="/{{ dataset }}/app/console/rule" hx-swap="none">
-            <input type="hidden" name="subject" value="{subj_id}">
-            <input type="hidden" name="aspect" value="{asp_id}">
-            <input type="hidden" name="key" value="{key_id}">
-            <button type="submit" name="stance" value="confirmed">Correct as stated</button>
-            <details>
-              <summary>Correct it</summary>
-              <textarea name="note" rows="3" placeholder="what is right instead — or, if the question itself missed, what confused you"></textarea>
-              <button type="submit" name="stance" value="corrected">Save correction</button>
-              <button type="submit" name="stance" value="unclear" title="Refuse the question, not the claim: the agent reformulates and asks again.">Unclear — ask again</button>
-            </details>
-          </form>
-        </div>
-      </template>
-    </gl-rows>
-  </section>
-
-  <section class="tile">
-    <header><span class="eyebrow" title="Your review decisions, in your own words. A decision shows as not yet applied until the agent updates the metric definition to match.">Decided</span>
-      <code class="chip">review_decisions</code></header>
-    <gl-rows frame="frames/settled" empty="no decisions yet">
-      <template>
-        <a class="rrow" href="{link}" style="grid-template-columns:2.6rem minmax(9rem,12rem) minmax(0,1fr) minmax(0,15rem)">
-          <span class="gutter">
-            <span class="{rcls}"><i style="height:100%"></i></span>
-          </span>
-          <span class="r-subj">{subj}<br><span class="r-meta">{asp}</span></span>
-          <span class="r-what">{what}</span>
-          <span class="verdict">
-            <span class="ruling"><span class="who">{stance}</span>{note}</span>
-            <span class="r-meta">{state} · {at}</span>
-          </span>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,16rem) 8rem 8rem minmax(0,1fr)">
+          <span class="r-subj">{aspect}</span>
+          <span class="r-meta">{kind}</span>
+          <span class="r-num">{known}</span>
+          <span class="r-meta">{issues}<span class="score-bar {full}"><i style="width:{share}%"></i></span></span>
         </a>
       </template>
     </gl-rows>
@@ -97,6 +52,5 @@
       </template>
     </gl-rows>
   </section>
-
 </div>
 {% endblock main %}
