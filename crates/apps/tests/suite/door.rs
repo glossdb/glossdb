@@ -1279,9 +1279,23 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     // The check's page: the declaration and the result as one row,
     // then the evidence — every result, for a detector the page has
     // no shape for.
-    let page = text(get(&app, "/perf/app/console/p/quality?check=dso_test&kind=verdicts").await).await;
+    let page = text(
+        get(
+            &app,
+            "/perf/app/console/p/quality?check=dso_test&kind=verdicts",
+        )
+        .await,
+    )
+    .await;
     assert!(page.contains("frames/check\""), "{page}");
-    let evidence = text(get(&app, "/perf/app/console/p/quality?check=dso_test&kind=verdicts&tab=measurements").await).await;
+    let evidence = text(
+        get(
+            &app,
+            "/perf/app/console/p/quality?check=dso_test&kind=verdicts&tab=measurements",
+        )
+        .await,
+    )
+    .await;
     assert!(evidence.contains("frames/check_verdicts"), "{evidence}");
     assert!(
         page.contains("aria-current=\"page\" href=\"/perf/app/console/p/quality\">Quality</a>"),
@@ -1291,8 +1305,14 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
     assert!(check.contains("probe_check\n"), "{check}");
     assert!(check.contains("0.9\n"), "the threshold:\n{check}");
     assert!(check.contains("1 result: 1 orange\n"), "{check}");
-    let verdicts =
-        body_text(get(&app, "/perf/app/console/frames/check_verdicts?check=dso_test").await).await;
+    let verdicts = body_text(
+        get(
+            &app,
+            "/perf/app/console/frames/check_verdicts?check=dso_test",
+        )
+        .await,
+    )
+    .await;
     assert!(verdicts.contains("perf\n"), "the subject:\n{verdicts}");
     assert!(verdicts.contains("orange\n"), "{verdicts}");
     assert!(verdicts.contains("0.42\n"), "the score:\n{verdicts}");
@@ -1326,8 +1346,14 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         checks.contains("?check=value_test&kind=voices\n"),
         "a voice check opens to its voices:\n{checks}"
     );
-    let slots =
-        body_text(get(&app, "/perf/app/console/frames/check_slots?check=value_test").await).await;
+    let slots = body_text(
+        get(
+            &app,
+            "/perf/app/console/frames/check_slots?check=value_test",
+        )
+        .await,
+    )
+    .await;
     assert!(
         slots.contains("ledger.value\n"),
         "the column whose voices differ:\n{slots}"
@@ -1340,7 +1366,11 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
         !slots.contains("ledger.month"),
         "an agreeing column is not listed:\n{slots}"
     );
-    let points = get(&app, "/perf/app/console/frames/check_points?check=value_test").await;
+    let points = get(
+        &app,
+        "/perf/app/console/frames/check_points?check=value_test",
+    )
+    .await;
     assert_eq!(
         row_count(points).await,
         0,
@@ -1726,7 +1756,14 @@ async fn the_metrics_pages_render_both_states() {
 
     let dossier = text(get(&app, "/perf/app/console/p/metrics?metric=dso").await).await;
     assert!(dossier.contains("frames/trend"), "{dossier}");
-    let measured = text(get(&app, "/perf/app/console/p/metrics?metric=dso&tab=measurements").await).await;
+    let measured = text(
+        get(
+            &app,
+            "/perf/app/console/p/metrics?metric=dso&tab=measurements",
+        )
+        .await,
+    )
+    .await;
     assert!(measured.contains("frames/dims"), "{measured}");
     assert!(
         !measured.contains("frames/slices"),
@@ -2199,19 +2236,11 @@ async fn the_lineage_page_draws_the_record() {
         "{edges:?}"
     );
     assert!(
-        edges.contains(&(
-            "ledger.month".into(),
-            "dso.month".into(),
-            "reads".into()
-        )),
+        edges.contains(&("ledger.month".into(), "dso.month".into(), "reads".into())),
         "{edges:?}"
     );
     assert!(
-        edges.contains(&(
-            "ledger.value".into(),
-            "dso.value".into(),
-            "reads".into()
-        )),
+        edges.contains(&("ledger.value".into(), "dso.value".into(), "reads".into())),
         "{edges:?}"
     );
     assert_eq!(
@@ -2618,8 +2647,18 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let page = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
     assert!(page.contains("frames/table_head?table=ledger"), "{page}");
     assert!(page.contains("frames/table_columns?table=ledger"), "{page}");
-    let history = text(get(&app, "/perf/app/console/p/glossary?table=ledger&tab=history").await).await;
-    assert!(history.contains("frames/table_landing?table=ledger"), "{history}");
+    let history = text(
+        get(
+            &app,
+            "/perf/app/console/p/glossary?table=ledger&tab=history",
+        )
+        .await,
+    )
+    .await;
+    assert!(
+        history.contains("frames/table_landing?table=ledger"),
+        "{history}"
+    );
     assert!(
         page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">Catalog</a>"),
         "opening a table stays on the tab:\n{page}"
@@ -2750,8 +2789,14 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         head.contains(&format!("{owed} required assets carry a value\n")),
         "{head}"
     );
-    let values =
-        body_text(get(&app, "/perf/app/console/frames/aspect_values?aspect=meaning").await).await;
+    let values = body_text(
+        get(
+            &app,
+            "/perf/app/console/frames/aspect_values?aspect=meaning",
+        )
+        .await,
+    )
+    .await;
     assert!(
         values.starts_with("ledger.value\n"),
         "spoken first, then owed by name:\n{values}"
@@ -2807,12 +2852,20 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
     };
     let index = text(get(&app, "/perf/app/console").await).await;
     let tabs = bar(&index);
-    let titles: Vec<&str> = ["Overview", "Catalog", "Metrics", "Quality", "Review", "Data"]
-        .into_iter()
-        .filter(|t| tabs.contains(&format!(">{t}</a>")))
-        .collect();
+    let titles: Vec<&str> = [
+        "Overview", "Catalog", "Metrics", "Quality", "Review", "Data",
+    ]
+    .into_iter()
+    .filter(|t| tabs.contains(&format!(">{t}</a>")))
+    .collect();
     assert_eq!(titles.len(), 6, "{tabs}");
-    for gone in [">Model</a>", ">History</a>", ">Lineage</a>", ">Query</a>", ">Glossary</a>"] {
+    for gone in [
+        ">Model</a>",
+        ">History</a>",
+        ">Lineage</a>",
+        ">Query</a>",
+        ">Glossary</a>",
+    ] {
         assert!(!tabs.contains(gone), "{gone} left the bar:\n{tabs}");
     }
     // A page marks the section that owns it, and the left nav shows
@@ -2820,9 +2873,15 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
     for (url, section) in [
         ("/perf/app/console/p/model", "Overview"),
         ("/perf/app/console/p/glossary?table=ledger", "Catalog"),
-        ("/perf/app/console/p/glossary?column=ledger.value", "Catalog"),
+        (
+            "/perf/app/console/p/glossary?column=ledger.value",
+            "Catalog",
+        ),
         ("/perf/app/console/p/glossary?source=erp", "Catalog"),
-        ("/perf/app/console/p/metrics?metric=x&kind=scalar", "Catalog"),
+        (
+            "/perf/app/console/p/metrics?metric=x&kind=scalar",
+            "Catalog",
+        ),
         ("/perf/app/console/p/metrics?metric=x", "Metrics"),
         ("/perf/app/console/p/quality", "Quality"),
         ("/perf/app/console/p/query", "Data"),
@@ -2830,7 +2889,9 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
         let page = text(get(&app, url).await).await;
         assert_eq!(current(&page), section, "{url}");
         assert!(
-            page.contains(&format!("<gl-tree frame=\"frames/tree\" section=\"{section}\">")),
+            page.contains(&format!(
+                "<gl-tree frame=\"frames/tree\" section=\"{section}\">"
+            )),
             "{url}"
         );
     }
@@ -2863,10 +2924,18 @@ async fn a_source_has_a_page_with_the_five_tabs() {
     assert!(page.contains("class=\"crumbs\""), "{page}");
     let used = text(get(&app, "/perf/app/console/p/glossary?source=erp&tab=used").await).await;
     assert!(used.contains("frames/source_recipes"), "{used}");
-    let recipes = body_text(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
-    assert!(recipes.contains("ledger\n"), "the source loads ledger:\n{recipes}");
-    let loads = body_text(get(&app, "/perf/app/console/frames/source_loads?source=erp").await).await;
-    assert!(loads.contains("ledger\n"), "ledger was loaded from it:\n{loads}");
+    let recipes =
+        body_text(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
+    assert!(
+        recipes.contains("ledger\n"),
+        "the source loads ledger:\n{recipes}"
+    );
+    let loads =
+        body_text(get(&app, "/perf/app/console/frames/source_loads?source=erp").await).await;
+    assert!(
+        loads.contains("ledger\n"),
+        "ledger was loaded from it:\n{loads}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2875,7 +2944,10 @@ async fn the_overview_shows_the_scorecard_and_the_review_has_its_own_page() {
     let overview = text(get(&app, "/perf/app/console").await).await;
     assert!(overview.contains("frames/scorecard"), "{overview}");
     assert!(overview.contains("frames/open_items"), "{overview}");
-    assert!(overview.contains("/perf/app/console/p/review"), "{overview}");
+    assert!(
+        overview.contains("/perf/app/console/p/review"),
+        "{overview}"
+    );
     let review = text(get(&app, "/perf/app/console/p/review").await).await;
     assert!(review.contains("frames/open\""), "{review}");
     // The scorecard counts what is known against what is required.
@@ -2959,13 +3031,25 @@ async fn the_history_lists_loads_annotations_and_declarations_newest_first() {
         "{all}"
     );
     // Filters narrow by kind and by object; a table includes its columns.
-    let loads = body_text(get(&app, "/perf/app/console/frames/history?kind=load&object=").await).await;
-    assert!(loads.contains("load\n") && !loads.contains("annotation\n"), "{loads}");
-    let ledger =
-        body_text(get(&app, "/perf/app/console/frames/history?kind=annotation&object=ledger").await).await;
+    let loads =
+        body_text(get(&app, "/perf/app/console/frames/history?kind=load&object=").await).await;
+    assert!(
+        loads.contains("load\n") && !loads.contains("annotation\n"),
+        "{loads}"
+    );
+    let ledger = body_text(
+        get(
+            &app,
+            "/perf/app/console/frames/history?kind=annotation&object=ledger",
+        )
+        .await,
+    )
+    .await;
     assert!(ledger.contains("ledger.value\n"), "{ledger}");
     let page = text(get(&app, "/perf/app/console/p/history?kind=load").await).await;
     assert!(page.contains("frames/history?kind="), "{page}");
-    assert!(page.contains("class=\"chip on\" href=\"?kind=load\""), "{page}");
+    assert!(
+        page.contains("class=\"chip on\" href=\"?kind=load\""),
+        "{page}"
+    );
 }
-

@@ -840,7 +840,10 @@ async fn the_login_brings_a_person_back_to_this_server_alone() {
     // `next` as the browser sends it (the request line is encoded) and
     // the path the pending cookie keeps.
     let cases = [
-        ("%2Ffin%2Fapp%2Fconsole%3Fpage%3D2", "/fin/app/console?page=2"),
+        (
+            "%2Ffin%2Fapp%2Fconsole%3Fpage%3D2",
+            "/fin/app/console?page=2",
+        ),
         ("http%3A%2F%2F127.0.0.1%3A8080%2Ffin", "/fin"),
         ("", "/"),
         ("%2F%5Cevil.example", "/"),
@@ -1382,7 +1385,10 @@ async fn the_bound_agent_door_opens_every_call_on_its_dataset() {
     assert!(description.contains("opens unbound"), "{description}");
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
-    assert!(instructions.contains("`open_items` on `fin`"), "{instructions}");
+    assert!(
+        instructions.contains("`open_items` on `fin`"),
+        "{instructions}"
+    );
     assert!(!instructions.contains("`USE` a dataset"), "{instructions}");
 
     let response = mcp_on(app, "/nope/mcp", "127.0.0.1", read(6)).await;

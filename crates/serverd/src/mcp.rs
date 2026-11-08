@@ -461,9 +461,7 @@ impl GlossqlMcp {
         }
         // Saved with nothing ticked and nothing typed. An empty form
         // says as little as a dismissed one, so it is the same defer.
-        format!(
-            "review: `{subject}:{aspect}:{key}` deferred — no answer given, it stays open"
-        )
+        format!("review: `{subject}:{aspect}:{key}` deferred — no answer given, it stays open")
     }
 
     /// The human rules an assumption: the review decision is stored as ITS OWN

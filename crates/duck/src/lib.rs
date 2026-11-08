@@ -1876,7 +1876,9 @@ mod tests {
         );
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
-            call_shape("USE fin; SELECT * FROM open_items").dataset.as_deref(),
+            call_shape("USE fin; SELECT * FROM open_items")
+                .dataset
+                .as_deref(),
             Some("fin")
         );
         assert!(call_shape("SELECT column_profile() FROM ops").writes);
