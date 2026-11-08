@@ -1,11 +1,11 @@
-//! Downloads: a landed table or a served metric's relation as a file.
+//! Downloads: a loaded table or a served metric's relation as a file.
 //! `GET /<dataset>/app/export/<name>.csv` or `.parquet`, where `<name>`
-//! is a table or a metric of the dataset — a metric's grounding is a
+//! is a table or a metric of the dataset — a metric's metric definition is a
 //! view under its name. The engine writes the file with its own CSV or
-//! parquet writer, under its spill directory; the door streams it out
+//! parquet writer, under its spill directory; the interface streams it out
 //! and removes it when the stream ends, drained or not. Parquet keeps
 //! the engine's types; CSV is text. What a file cannot answer — a read
-//! of the caller's own, a filter — the Arrow door does.
+//! of the caller's own, a filter — the Arrow interface does.
 //!
 //! The name is an identifier and nothing else: the plan is
 //! `SELECT * FROM "<name>"`, so a name the dataset does not hold is
@@ -86,7 +86,7 @@ pub async fn export(
         .into_response()
 }
 
-/// The plan for a name: a table quoted as spelled, or a grounding's
+/// The plan for a name: a table quoted as spelled, or a metric definition's
 /// relation. Identifiers only — nothing else reaches the planner.
 fn relation_sql(name: &str) -> Option<String> {
     let ident = |s: &str| {

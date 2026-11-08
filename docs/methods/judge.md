@@ -1,51 +1,50 @@
-# The judge pattern
+# Candidates and judgment
 
-A measurement proposes; it never verdicts. Every instrument in this
-directory is built to one division of labor: the statistical pass
-optimizes recall and serves everything it found as fact, and the agent
-reading the measurement removes the false positives against the data.
-Judgment lives in the reader, in detectors, and in read policy — never
+Every measurement in glossdb proposes; none decides. The statistical
+pass aims for recall and returns everything it found. The agent that
+reads the result removes the false positives against the data.
+Judgment lives in the reader, in detectors and in read policy, never
 inside a result.
 
-## Why this division
+## Why the work is split this way
 
-A threshold buried deep in machinery is a judgment nobody can argue
-with, made once, by the author, without the data in front of them.
-Keeping the bodies recall-oriented keeps the arguable constants
-visible — the bars are written in the measurement's own SQL (the
-derivation function's `match_rate >= 0.95 AND support >= 20`), while
-the screens beneath prune only on cost and algebra: the derivation
-screen skips triples whose operand magnitudes cannot land within 30×
-of the target, and the relationship screen's 0.5 containment floor
-bounds output, not judgment (the quality kit, `kits/quality`).
+A threshold hidden inside machinery is a judgment nobody can argue
+with. It is made once, by the author, without the data in view. So the
+thresholds that matter sit in the measurement's own SQL, where a
+reader sees them: the derivation function's `match_rate >= 0.95 AND
+support >= 20`. The screens underneath prune only on cost and algebra.
+The derivation screen skips triples whose operand magnitudes cannot
+land within 30× of the target. The relationship screen's 0.5
+containment floor bounds the output size; it judges nothing. Both
+screens are in the quality kit (`kits/quality`).
 
-The division is load-bearing in both directions: a reader with
-context declares edges no value statistic can see, and refuses
-coincidences no statistic can — which is why every pass serves
-candidates, never conclusions.
+The split works in both directions. A reader with context declares
+relationships no value statistic can see, and rejects coincidences no
+statistic can spot. That is why every measurement returns candidates,
+never conclusions.
 
-## The rules the pattern rests on
+## Rules
 
-- **Abstention is a complete answer.** A function that cannot ground
-  its output names the absent inputs (`missing_aspects`) instead of
-  guessing. A failed judgment means the statistics stand.
-- **No statistic ports without its oracle.** Every kit carries its
-  acceptance tests over data whose truth is known by construction
-  (the extension's `test/sql/`), and the glossval repo grades them on
-  corpora with declared truth; an instrument whose accuracy cannot be
-  measured does not ship.
-- **Every output has a consumer.** No aspect is declared that
-  nothing reads.
-- **Red exists only where a detector computes it.** Humans do not
-  volunteer disagreement; triage quality is bounded by the detector
-  library, not by anyone's diligence.
-- **No function voice on FACT slots.** A measured voice ranked against
-  claims puts calibration back in; a measurement is evidence the agent
-  reads before it glosses.
+- **Abstaining is a complete answer.** A function that cannot ground
+  its output names the missing inputs (`missing_aspects`) instead of
+  guessing. When a judgment fails, the statistics remain.
+- **No statistic ships without a test of its accuracy.** Every kit
+  carries acceptance tests over data whose truth is known by
+  construction (the extension's `test/sql/`). The glossval suite grades
+  them on corpora with declared truth. A measurement whose accuracy
+  cannot be measured does not ship.
+- **Every result has a reader.** No aspect is declared that nothing
+  reads.
+- **Red appears only where a detector computes it.** People do not
+  report disagreement on their own. Triage is as good as the detector
+  library.
+- **Functions do not write FACT values.** Ranking a measured value
+  against stated values brings calibration back in. A measurement is
+  evidence the agent reads before it annotates.
 
 ## Limits
 
-The pattern moves cost to the reader: a generous candidate list is
-only as good as the judge that prunes it, and the judge's attention is
-the scarce resource every serving decision protects (summaries served,
-detail read back on demand).
+The split moves cost to the reader. A generous candidate list is only
+as good as the judgment that prunes it. The reader's attention is the
+scarce resource, so results are served as summaries and the detail is
+read on demand.

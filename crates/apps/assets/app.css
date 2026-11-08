@@ -1,20 +1,20 @@
 /* The wrapper's one stylesheet.
 
-   A data app here is a docket, not a dashboard: a page of matters,
+   A data app here is a console, not a dashboard: a page of matters,
    each with what is claimed, who holds it, and where it stands. Three
    decisions carry that, and everything below derives from them.
 
    ONE ACCENT. Amber means "a person's judgement is wanted here" and
    means nothing else — not a brand colour, not a highlight. Beside it
    sit exactly two semantic hues, green for settled and red for
-   breached, which are verdicts rather than decoration. The old cyan
+   breached, which are results rather than decoration. The old cyan
    is retired; a chart that needs a second series gets it from the
    chart's own scale, not from the page.
 
    MONO IS THE VOICE. The page is a record, so it is set in mono
    throughout with tabular figures — subjects, keys, counts, times,
    provenance. Sans appears only where a human or an agent wrote a
-   sentence: a claim, a ruling's words, a note to the reader. That one
+   sentence: a claim, a review decision's words, a note to the reader. That one
    switch is how you can tell, at a glance and without reading, which
    parts of a row are the system speaking and which are language
    somebody authored.
@@ -141,9 +141,28 @@ a { color: inherit; text-decoration: none; }
 .tabs a:hover { color: var(--ink); }
 .tabs a.current { color: var(--ink); border-bottom-color: var(--open); }
 /* A hairline between two groups of pages, where the manifest's group
-   changes: the pages that show what the record says, then the ones
+   changes: the pages that show what the catalog says, then the ones
    that hand the data over. Structure, not decoration. */
 .tabs .sep { width: 1px; margin: 0.9rem 0.6rem; background: var(--rule); }
+
+/* The query behind a section sits beside its name, hidden until the
+   viewer asks for it. */
+html:not(.show-reads) header > .eyebrow + code.chip { display: none; }
+.reads-toggle {
+  font: inherit;
+  font-size: var(--step);
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.8rem;
+  cursor: pointer;
+}
+.reads-toggle:hover, .reads-toggle[aria-pressed="true"] { color: var(--ink); border-color: var(--faint); }
+.eyebrow[title] { cursor: help; }
+/* A line a row leaves empty takes no space. */
+.r-meta:empty + br { display: none; }
 
 /* The request indicator: a hairline of amber under the bar. */
 .load-bar {
@@ -276,9 +295,9 @@ code { font-family: var(--mono); font-size: 0.95em; }
 
 /* A finding is one matter on the Quality tab: a sentence for what, a
    paragraph for why, the evidence under it. The left rule carries the
-   verdict's hue where a witness gave one; a measured defect and a
+   result's hue where a test gave one; a measured defect and a
    load's refusal carry no hue — they are evidence, not judgment. The
-   sentences are the record's fields composed, so sans like any other
+   sentences are the catalog's fields composed, so sans like any other
    authored line; the numbers inside stay mono. */
 .finding {
   padding: 1.1rem 0 1.2rem 1rem;
@@ -326,9 +345,9 @@ code { font-family: var(--mono); font-size: 0.95em; }
 
 /* ---- the glossary's marks and rails ------------------------------- */
 
-/* A voice mark: who holds a value, said once and quietly. Nothing
+/* A value mark: who holds a value, said once and quietly. Nothing
    for the agent's unchallenged word — that is the ordinary case; a
-   person's word, a contested slot and a stale one each get a word.
+   person's word, a contested value and a stale one each get a word.
    The who and the when ride the hover. */
 .v {
   font-family: var(--mono);
@@ -347,9 +366,9 @@ code { font-family: var(--mono); font-size: 0.95em; }
 .v-none { display: none; }
 .v[title] { cursor: help; }
 
-/* The vocabulary's rail: per aspect, the share of owed subjects
+/* The vocabulary's rail: per aspect, the share of required subjects
    spoken on — ink on the raised ground, since a count is not a
-   verdict; settled green only when every owed slot is filled. */
+   result; settled green only when every required value is filled. */
 .rail-h {
   display: block;
   height: 4px;
@@ -381,9 +400,9 @@ code { font-family: var(--mono); font-size: 0.95em; }
 /* ---- the confidence gutter ---------------------------------------- */
 
 /* One rail per matter, filled to the confidence its author holds:
-   hollow amber while it waits on a person, solid green once ruled and
+   hollow amber while it waits on a person, solid green once decided and
    folded back in. Read straight down the column it says how settled
-   the workspace is, which is the one thing a docket should say at a
+   the workspace is, which is the one thing a console should say at a
    glance. The page's signature — and the only place it spends its
    accent at full strength. */
 
@@ -459,7 +478,7 @@ a.rrow:hover { background: var(--panel); }
 .g-fix { color: var(--open); }
 .g-jud { color: var(--ink); }
 
-/* A ruling, in the human's own words: sans, against the settled hue. */
+/* A review decision, in the human's own words: sans, against the settled hue. */
 .ruling {
   font-family: var(--sans);
   font-size: 0.85rem;
@@ -485,7 +504,7 @@ a.rrow:hover { background: var(--panel); }
   text-transform: uppercase;
 }
 
-/* The ruling form: the page's one write, and it should read as a
+/* The review decision form: the page's one write, and it should read as a
    judgement being given rather than a control panel. Confirming is one
    button; correcting opens for the words that make a correction worth
    anything. */
@@ -532,7 +551,7 @@ a.rrow:hover { background: var(--panel); }
 }
 .rule textarea:focus { border-color: var(--open); outline: none; }
 
-/* Where a matter stands: the ruling, then what became of it. */
+/* Where a matter holds: the review decision, then what became of it. */
 .verdict {
   display: flex;
   flex-direction: column;
@@ -543,7 +562,7 @@ a.rrow:hover { background: var(--panel); }
 /* ---- counts ------------------------------------------------------- */
 
 /* Standing counts sit in a hairline lattice above the bands: cells on
-   a rule, not floating cards. Deliberately not a hero — the docket's
+   a rule, not floating cards. Deliberately not a hero — the console's
    subject is the matters, and these only say how many. */
 .counts {
   display: grid;
@@ -565,6 +584,9 @@ a.rrow:hover { background: var(--panel); }
 
 gl-value { display: flex; align-items: baseline; gap: 0.6rem; min-height: 2rem; }
 .kpi-num { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+/* A count inside a sentence reads as a word of it. */
+.hint gl-value { display: inline; min-height: 0; }
+.hint gl-value .kpi-num { font-size: inherit; font-weight: 600; letter-spacing: 0; }
 
 /* ---- charts and tables -------------------------------------------- */
 
@@ -651,10 +673,10 @@ details.fold[open] summary { color: var(--muted); }
 .rrow.rhead { padding: 0.5rem 0 0.35rem; border-bottom: 1px solid var(--rule); }
 .rrow.rhead > * { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.04em; }
 
-/* The checks' band bar: one witness's verdicts counted by band, each
+/* The checks' band bar: one test's results counted by band, each
    count a share of the bar. Green is settled and red is breached, the
-   two verdict hues; yellow and orange are the amber at two strengths —
-   a verdict asking for a look, which is what amber means here. */
+   two result hues; yellow and orange are the amber at two strengths —
+   a result asking for a look, which is what amber means here. */
 .bands { display: flex; height: 5px; margin-top: 0.55rem; background: var(--raised); border-radius: 1px; overflow: hidden; }
 .bands i { display: block; height: 100%; flex-basis: 0; }
 .b-green { background: var(--settled); }
@@ -692,12 +714,12 @@ details.fold[open] summary { color: var(--muted); }
   margin-top: 0.9rem;
 }
 
-/* ---- the workspace root: the doors ------------------------------- */
+/* ---- the workspace root: the interfaces ------------------------------- */
 
 /* The three addresses as an address block: the path in ink at reading
-   size, the door's name beside it, one sentence in sans under each.
+   size, the interface's name beside it, one sentence in sans under each.
    The one place the root spends its size — a visitor who has just
-   landed should see where the server answers before anything else. */
+   loaded should see where the server answers before anything else. */
 .doors { list-style: none; margin: 0.2rem 0 0; padding: 0; }
 .doors li {
   display: grid;
@@ -716,23 +738,33 @@ details.fold[open] summary { color: var(--muted); }
   .doors .why { grid-column: 1; }
 }
 
-/* A row's links — a dataset's docket, a table's files — right-aligned
+/* A row's links — a dataset's console, a table's files — right-aligned
    in the row's last track. */
 .rrow .wgroup { justify-content: flex-end; }
+
+/* ---- filters as links (the history page) ---------------------------- */
+.filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0 0.8rem; }
+.filters .chip { margin-left: 0; text-decoration: none; }
+.filters .chip:hover { color: var(--ink); border-color: var(--faint); }
+.filters .chip.on { color: var(--ink); border-color: var(--open); }
 
 /* ---- the lineage graph (gl-graph) --------------------------------- */
 
 /* Tables as column boxes placed by dagre, metrics as a stack on the
-   right, the record's edges between them: a key edge solid, a
-   grounding's read dashed. Amber lights the edges a hovered or
+   right, the catalog's edges between them: a key edge solid, a
+   metric definition's read dashed. Amber lights the edges a hovered or
    focused column touches — the one thing on the page asking for the
    eye. A graph wider than the column scrolls inside its band. */
 .graph-wrap { overflow-x: auto; overflow-y: hidden; margin-top: 1rem; }
+.graph-wrap.overflows { box-shadow: inset -28px 0 18px -18px rgba(0, 0, 0, 0.55); }
+.graph-wrap:not(.overflows) + .scroll-hint { display: none; }
 gl-graph { display: block; min-height: 5rem; }
 gl-graph svg { display: block; font-family: var(--mono); }
 .n-box { fill: var(--panel); stroke: var(--rule); }
 .n-box.metric { fill: var(--raised); }
 .n-head { fill: var(--ink); font-size: 12px; font-weight: 600; }
+a:hover > .n-head { text-decoration: underline; }
+.n-sub { fill: var(--faint); font-size: 10px; }
 .n-rule { stroke: var(--rule); }
 .col text { fill: var(--muted); font-size: 11px; }
 .col.keyed text { fill: var(--ink); }
@@ -779,6 +811,107 @@ gl-graph svg { display: block; font-family: var(--mono); }
   .bar-in { gap: 0.8rem; min-height: 2.8rem; }
   main { padding-left: 1rem; padding-right: 1rem; }
 }
+
+/* ---- the tree (gl-tree) beside the console's pages ----------------- */
+
+/* The console's pages sit beside the dataset's tree: quiet, small,
+   mono, the current entry marked as the current tab is. The bar
+   widens to the same column. */
+body:has(main.with-tree) .bar-in { max-width: 86rem; }
+main.with-tree {
+  max-width: 86rem;
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 2.25rem;
+  align-items: start;
+}
+main.with-tree > .content { min-width: 0; }
+.side {
+  position: sticky;
+  top: 3.75rem;
+  max-height: calc(100vh - 4.5rem);
+  overflow-y: auto;
+  padding: 1.4rem 0 2rem;
+  font-family: var(--mono);
+  font-size: var(--step);
+}
+.t-root {
+  display: block;
+  color: var(--faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  margin: 0 0 0.4rem;
+}
+.t-own { margin-bottom: 0.6rem; }
+.t-link.current { border-left-color: var(--open); color: var(--ink); }
+.tree .t-fold { margin: 0; }
+.tree summary { cursor: pointer; list-style: none; }
+.tree summary::-webkit-details-marker { display: none; }
+.t-head {
+  color: var(--faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.5rem 0.2rem;
+  display: flex;
+  justify-content: space-between;
+}
+.t-head:hover { color: var(--muted); }
+.t-count { color: var(--faint); letter-spacing: 0; }
+.t-list { list-style: none; margin: 0; padding: 0; }
+.t-sub { padding-left: 0.9rem; }
+.t-link {
+  display: block;
+  color: var(--muted);
+  padding: 0.12rem 0.5rem;
+  border-left: 2px solid transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-link:hover { color: var(--ink); }
+.tree details > summary > .t-link::before { content: '▸ '; color: var(--faint); }
+.tree details[open] > summary > .t-link::before { content: '▾ '; }
+@media (max-width: 900px) {
+  main.with-tree { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .side {
+    position: static;
+    max-height: 40vh;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 0.8rem;
+  }
+}
+
+/* The way back up, above every page of the console. */
+.crumbs { font-family: var(--mono); font-size: var(--step); color: var(--faint); margin: 1.5rem 0 0; }
+.crumbs a { color: var(--muted); border-bottom: 1px solid var(--rule); }
+.crumbs a:hover { color: var(--ink); }
+.crumbs .crumb-sep { margin: 0 0.4rem; color: var(--faint); }
+.hint a.go { color: var(--open); border-bottom: 1px solid var(--open-dim); }
+.obj-h { font-family: var(--sans); font-size: 1.2rem; font-weight: 500; margin: 0.5rem 0 0; color: var(--ink); text-transform: none; letter-spacing: 0; }
+.obj-h code { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; }
+.obj-h .kind { font-family: var(--mono); font-size: var(--step); color: var(--faint); margin-left: 0.6rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* An object's sub-tabs: the same five on every object's page. */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1.2rem;
+  margin: 1rem 0 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: var(--step);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.subtabs a { color: var(--faint); padding: 0.45rem 0; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtabs a:hover { color: var(--ink); }
+.subtabs a.current { color: var(--ink); border-bottom-color: var(--open); }
+
+/* The scorecard: known against required, per property. */
+.score-bar { display: block; height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 0.35rem; }
+.score-bar i { display: block; height: 100%; background: var(--muted); }
+.score-bar.full i { background: var(--settled); }
 
 /* ---- the viewer's window (gl-window) ------------------------------ */
 

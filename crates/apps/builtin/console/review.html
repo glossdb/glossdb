@@ -1,0 +1,86 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{# The Review tab: what is open for a person to decide, what has been
+   decided, what waits for an action. Its one write is the review
+   decision form — the person's own judgment, stored under their own
+   name; everything else is a read. #}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
+<div class="tiles">
+  <div class="counts">
+    {{ tiles::value(frame="frames/front", field="open", label="Open questions",
+         chip="open_questions",
+         note="Assumptions the agent holds below full confidence — conventions and definitions, never statistics. The same questions the agent's client shows as forms.") }}
+    {{ tiles::value(frame="frames/front", field="ruled", label="Decisions",
+         chip="review_decisions",
+         note="Every review decision in this dataset, in the person's own words.") }}
+    {{ tiles::value(frame="frames/front", field="waiting", label="Waiting for an action",
+         chip="open_items",
+         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations, a measurement older than the data.") }}
+  </div>
+
+  <section class="tile" id="queue">
+    <header><span class="eyebrow" title="Assumptions in the agent&#x27;s metric definitions that it holds below full confidence. One leaves this list when the agent confirms it or a person decides it.">Waiting for your review</span>
+      <code class="chip">open_questions</code></header>
+    <p class="hint">Answer here or in your agent client: either records the same decision, in your own words. The bar shows the confidence the agent holds.</p>
+    <gl-rows frame="frames/open" empty="nothing is open: every disclosed assumption is at full confidence or decided">
+      <template>
+        <div class="rrow" style="grid-template-columns:2.6rem minmax(9rem,12rem) minmax(0,1fr) minmax(0,15rem)">
+          <span class="gutter">
+            <span class="rail"><i style="height:{pct}%"></i></span>
+            <span class="r-meta">{cf}</span>
+          </span>
+          <a class="r-subj" href="{link}">{subj}<br><span class="r-meta">{asp}</span></a>
+          <span class="r-what">{what}<br>
+            <span class="r-meta">{rival}</span><br>
+            <span class="r-meta">basis: {basis} {sibling}</span>
+          </span>
+          {# The one write the console takes. Only the claim's identity is
+             posted; the server derives the text again from the same read
+             that drew this row, so a stale tab is refused rather than
+             believed. The post is an htmx request with no swap: the
+             server answers 204 + HX-Trigger glossql:written, the store
+             drops its caches, and every panel refetches in place —
+             no navigation, nothing to go back to. #}
+          <form class="rule" hx-post="/{{ dataset }}/app/console/rule" hx-swap="none">
+            <input type="hidden" name="subject" value="{subj_id}">
+            <input type="hidden" name="aspect" value="{asp_id}">
+            <input type="hidden" name="key" value="{key_id}">
+            <button type="submit" name="stance" value="confirmed">Correct as stated</button>
+            <details>
+              <summary>Correct it</summary>
+              <textarea name="note" rows="3" placeholder="what is right instead — or, if the question itself missed, what confused you"></textarea>
+              <button type="submit" name="stance" value="corrected">Save correction</button>
+              <button type="submit" name="stance" value="unclear" title="Refuse the question, not the claim: the agent reformulates and asks again.">Unclear — ask again</button>
+            </details>
+          </form>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile" id="decisions">
+    <header><span class="eyebrow" title="Your review decisions, in your own words. A decision shows as not yet applied until the agent updates the metric definition to match.">Decided</span>
+      <code class="chip">review_decisions</code></header>
+    <gl-rows frame="frames/settled" empty="no decisions yet">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:2.6rem minmax(9rem,12rem) minmax(0,1fr) minmax(0,15rem)">
+          <span class="gutter">
+            <span class="{rcls}"><i style="height:100%"></i></span>
+          </span>
+          <span class="r-subj">{subj}<br><span class="r-meta">{asp}</span></span>
+          <span class="r-what">{what}</span>
+          <span class="verdict">
+            <span class="ruling"><span class="who">{stance}</span>{note}</span>
+            <span class="r-meta">{state} · {at}</span>
+          </span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+
+
+</div>
+{% endblock main %}

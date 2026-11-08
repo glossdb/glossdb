@@ -8,7 +8,7 @@
 //! Two rules, over every fenced ` ```glossql ` and ` ```sql ` block in
 //! the product skills (every `.md` under `skills/<name>/` — the
 //! SKILL.md and its references, embedded in the binary and served on
-//! the MCP door) and `.claude/skills/*/SKILL.md`:
+//! the MCP interface) and `.claude/skills/*/SKILL.md`:
 //!
 //!   1. it parses;
 //!   2. if it is a single read, it PLANS against a bootstrapped
@@ -56,7 +56,7 @@ fn blocks() -> Vec<Block> {
     skills.sort();
     // Every `.md` in the skill's directory, its references included —
     // a fence in a reference is held to the same rules as one on the
-    // first page, because the door serves both.
+    // first page, because the interface serves both.
     let mut files: Vec<std::path::PathBuf> = Vec::new();
     for skill in skills {
         if !skill.join("SKILL.md").is_file() {
@@ -121,7 +121,7 @@ fn blocks() -> Vec<Block> {
 }
 
 /// Every fenced example parses on the engine, the language's grammar
-/// on: the extension's parser is the one the door runs.
+/// on: the extension's parser is the one the interface runs.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_example_parses() {
     let (_dir, plane) = common::scratch_plane().await;
@@ -154,7 +154,7 @@ async fn every_skill_function_body_compiles() {
     let mut broken = Vec::new();
     let mut checked = 0usize;
     for b in blocks() {
-        // Anchored on DECLARE FUNCTION: PROBE, RECIPE and GLOSS bodies
+        // Anchored on DECLARE FUNCTION: PREVIEW, RECIPE and GLOSS bodies
         // ride the same dollar quoting and are SQL or JSON, so a bare
         // scan for `AS $$` compiles the wrong thing. Within a function
         // statement, `AS $$` opens the body and the next `$$` closes
@@ -195,7 +195,7 @@ async fn every_skill_function_body_compiles() {
 }
 
 /// A missing table is fine: an example may name a customer's data, or a
-/// grounding a fresh workspace has none of. A missing column is not.
+/// metric definition a fresh workspace has none of. A missing column is not.
 fn missing_table(error: &str) -> bool {
     error.contains("Table with name") && error.contains("does not exist")
 }
@@ -234,12 +234,12 @@ async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, 
             .join("\n");
         let head = trimmed.trim_start().to_lowercase();
         // Reads only: a write example is held to parsing alone, and a
-        // read of the language's own — GLOSSARY(), ATTEST(), a
+        // read of the language's own — GLOSSARY(), TESTS(), a
         // measurement over a subject — binds in the extension, not in
         // a plan.
         if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
             || head.contains("glossary(")
-            || head.contains("attest(")
+            || head.contains("tests(")
             || head.starts_with("select temporal(")
         {
             continue;
@@ -391,8 +391,8 @@ fn schema_majors(text: &str) -> Vec<u32> {
 }
 
 /// The apps skill names the vega-lite major outright, and this pin
-/// holds the number to what the door actually serves — the vendored
-/// bundle — alongside the built-in docket's own spec. Foreign agents
+/// holds the number to what the interface actually serves — the vendored
+/// bundle — alongside the built-in console's own spec. Foreign agents
 /// keep writing the `v5` habit into `app_spec` bodies; the skill's
 /// hint is the counter, and a bundle bump that forgets the prose
 /// fails here instead of teaching an outdated `$schema`.
@@ -412,8 +412,8 @@ fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
     // the suite, only held to the facts it states.
     let mut claimed = schema_majors(skill.body);
     let spec =
-        std::fs::read_to_string(manifest.join("../apps/builtin/docket/specs/series.vl.json"))
-            .expect("the docket's series spec");
+        std::fs::read_to_string(manifest.join("../apps/builtin/console/specs/series.vl.json"))
+            .expect("the console's series spec");
     claimed.extend(schema_majors(&spec));
     assert!(
         claimed.iter().all(|&v| v == served),

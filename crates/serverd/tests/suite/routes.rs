@@ -1,6 +1,6 @@
-//! The routes on the DuckDB engine: `next` answers from the record, one
-//! act per goal, read through the bound agent door; a goal's act is a
-//! statement the record filled, and the `next://` page carries the
+//! The routes on the DuckDB engine: `next` answers from the catalog, one
+//! act per goal, read through the bound agent interface; a goal's act is a
+//! statement the catalog filled, and the `next://` page carries the
 //! forms.
 
 use std::sync::Arc;
@@ -69,7 +69,7 @@ async fn expect_ok(response: Response<Body>) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
-/// Statements on the dataset's door; the outcomes, and a panic on a refusal.
+/// Statements on the dataset's interface; the outcomes, and a panic on a refusal.
 async fn say(app: &Router, statements: &str) -> Value {
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(1, statements)).await).await;
     assert_ne!(
@@ -151,7 +151,7 @@ async fn a_fresh_dataset_routes_every_goal() {
             "checks",
             "app",
             "plan",
-            "rulings"
+            "review"
         ],
         "{all:?}"
     );
@@ -173,13 +173,13 @@ async fn a_fresh_dataset_routes_every_goal() {
     assert_eq!(text(&metrics, "say"), "declare the first concept");
     assert_eq!(state("slices"), "blocked");
     assert_eq!(state("app"), "blocked");
-    assert_eq!(state("rulings"), "done");
-    // The bands and plan goals are the futures kit's: blocked while no
+    assert_eq!(state("review"), "done");
+    // The bands and plan goals are the outlook kit's: blocked while no
     // metric is applicable.
     for surface in ["bands", "plan"] {
         let row = goal(&app, surface).await;
         assert_eq!(text(&row, "state"), "blocked", "{row}");
-        assert_eq!(text(&row, "why"), "no applicable metric stands", "{row}");
+        assert_eq!(text(&row, "why"), "no applicable metric exists", "{row}");
     }
 }
 
@@ -190,7 +190,7 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
     // Declared and claimed by nobody: the claim is the act.
     say(
         &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
     )
     .await;
     let row = goal(&app, "metrics").await;
@@ -200,10 +200,10 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
         "{row}"
     );
 
-    // Claimed and not grounded: the grounding, or a stop.
+    // Claimed and not grounded: the metric definition, or a stop.
     say(&app, r#"GLOSS definitions ON fin AS $${"definitions": {"spend": {"unit": "EUR", "meaning": "what was booked"}}}$$;"#).await;
     let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "say"), "ground spend, or stop it", "{row}");
+    assert_eq!(text(&row, "say"), "define spend, or stop it", "{row}");
     assert!(text(&row, "statement").contains("\"stopped\""), "{row}");
 
     // Grounded: the write answers with the metric's row, and the
@@ -256,7 +256,7 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
     )
     .await;
     assert!(
-        refusal.contains("no behaviour stands on fin.spend.value"),
+        refusal.contains("no behavior is annotated on fin.spend.value"),
         "{refusal}"
     );
     assert!(
@@ -307,7 +307,7 @@ async fn the_next_page_carries_the_forms() {
     let (app, _dir) = fin().await;
     say(
         &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS QUERY;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
     )
     .await;
     let body = expect_ok(
@@ -329,7 +329,7 @@ async fn the_next_page_carries_the_forms() {
     assert!(page.contains("GLOSS definitions ON fin"), "{page}");
     assert!(!page.contains("```glossql\n\n```"), "no empty form: {page}");
 
-    // Every result on the dataset's door closes with the line.
+    // Every result on the dataset's interface closes with the line.
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(6, "SELECT 1 AS one")).await).await;
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(window.contains("next:"), "{window}");

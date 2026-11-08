@@ -148,7 +148,7 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
 /// The warehouse's credential: the key pair the environment names, or,
 /// a Google bucket named without one, the access token the platform
 /// mints for the account this process runs as — held before the lake
-/// opens on it, since the record's files are in the warehouse too, and
+/// opens on it, since the catalog's files are in the warehouse too, and
 /// minted anew from then on (its life comes back beside it). A
 /// directory warehouse needs none.
 async fn warehouse_credential(
@@ -170,7 +170,7 @@ async fn warehouse_credential(
     }
 }
 
-/// A fresh workspace receives the shipped system before any door
+/// A fresh workspace receives the shipped system before any interface
 /// opens; the function listings read the registries the shipped
 /// system declared into, so they follow the bootstrap.
 async fn bootstrapped(
@@ -192,7 +192,7 @@ async fn bootstrapped(
 
 /// Who may speak: whoever the issuer says. Its keys are discovered
 /// here, and a server that cannot reach them does not open. Under the
-/// open switch there is nobody to ask, and the record says so out
+/// open switch there is nobody to ask, and the catalog says so out
 /// loud.
 async fn access_of(
     auth: Option<config::Auth>,
@@ -219,9 +219,9 @@ async fn access_of(
     })
 }
 
-/// The doors served until the stop. The first stop signal closes the
+/// The interfaces served until the stop. The first stop signal closes the
 /// listener and the idle connections and lets what is in flight
-/// finish — a write mid-commit lands rather than being cut. A second
+/// finish — a write mid-commit is stored rather than being cut. A second
 /// one ends the wait; a platform's own bound is the kill that follows
 /// its grace period.
 async fn serve_until_stopped(

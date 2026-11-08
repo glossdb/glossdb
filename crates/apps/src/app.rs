@@ -1,8 +1,8 @@
 //! An app is a named set of parts — pages (`*.html`, tera),
 //! `frames/*.sql`, `specs/*.vl.json`, a manifest — authored as glosses
-//! into the record (`glossed.rs`: one gloss per part, the shape an
+//! into the catalog (`glossed.rs`: one gloss per part, the shape an
 //! agent over MCP writes and a human supersedes) or shipped in the
-//! binary (`builtin.rs`). Nothing is read from disk: the record and
+//! binary (`builtin.rs`). Nothing is read from disk: the catalog and
 //! the binary are the two sources, in that order. An app names no
 //! dataset — the URL does (`/<dataset>/app/<name>`), so one app serves
 //! every dataset in the workspace and the bar's pickers are links
@@ -12,16 +12,22 @@ use std::collections::BTreeMap;
 
 use crate::builtin::{self, BuiltinApp};
 
-/// One tab of the bar: the page's name, the title the bar prints, and
-/// the group the manifest puts it in. The bar draws a hairline where
-/// the group changes from one page to the next — the pages that show
-/// what the record says, then the ones that hand the data over; pages
-/// without a group draw none.
+/// One page of the app as the manifest lists it: its name, the title
+/// the bar prints, and the group the manifest puts it in — the bar
+/// draws a hairline where the group changes from one tab to the next;
+/// pages without a group draw none. A page may also name the bar's
+/// `section` it belongs to, say whether it is a tab of the bar itself
+/// (`bar`, true unless the manifest says false), and move to another
+/// section by its `kind` parameter (`kind_sections`: a view's page
+/// belongs to the catalog, a metric's to the metrics).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tab {
     pub name: String,
     pub title: String,
     pub group: String,
+    pub section: String,
+    pub bar: bool,
+    pub kind_sections: BTreeMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -84,14 +90,30 @@ fn manifest(value: &serde_json::Value) -> Manifest {
             pages
                 .iter()
                 .filter_map(|p| {
+                    let text = |key: &str| {
+                        p.get(key)
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("")
+                            .to_string()
+                    };
                     Some(Tab {
                         name: p.get("name")?.as_str()?.to_string(),
                         title: p.get("title")?.as_str()?.to_string(),
-                        group: p
-                            .get("group")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or("")
-                            .to_string(),
+                        group: text("group"),
+                        section: text("section"),
+                        bar: p
+                            .get("bar")
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(true),
+                        kind_sections: p
+                            .get("kind_sections")
+                            .and_then(serde_json::Value::as_object)
+                            .map(|m| {
+                                m.iter()
+                                    .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
                     })
                 })
                 .collect()
@@ -120,6 +142,9 @@ fn pages_by_name<'a>(files: impl Iterator<Item = &'a str>) -> Vec<Tab> {
             title: n.clone(),
             name: n,
             group: String::new(),
+            section: String::new(),
+            bar: true,
+            kind_sections: BTreeMap::new(),
         })
         .collect()
 }
@@ -127,7 +152,7 @@ fn pages_by_name<'a>(files: impl Iterator<Item = &'a str>) -> Vec<Tab> {
 impl AppDef {
     /// The app's definition, or why there is none: `Ok(None)` is "no
     /// such app" (a 404), `Err` is an app that exists but cannot serve.
-    /// The record wins; a built-in answers for the name only when the
+    /// The catalog wins; a built-in answers for the name only when the
     /// record carries nothing under it. `glossed` is every app part
     /// the dataset carries, loaded once by the caller — apps are small
     /// and one read serves the whole door.
@@ -138,7 +163,7 @@ impl AppDef {
         let files = crate::glossed::files_of(glossed, name);
         // Add an app, don't fork the built-in. A glossed part carries no
         // manifest requirement, so a single `GLOSS app_frame ON
-        // docket.mine` would resolve the whole app to that one file and
+        // console.mine` would resolve the whole app to that one file and
         // 404 every page the built-in ships — the hazard reached by the
         // route an MCP-only agent actually takes.
         if !files.is_empty() && builtin::builtin(name).is_some() {

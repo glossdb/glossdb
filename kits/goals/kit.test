@@ -1,0 +1,58 @@
+# name: kits/goals/kit.test
+# description: the goals kit — what waits on an action (`open_items`) and the core next steps of `next`, on the kits before it; run again, it holds
+# group: [sql]
+
+require glossql
+
+require json
+
+require parquet
+
+require ducklake
+
+statement ok
+ATTACH 'ducklake::memory:' AS ws (DATA_PATH '{TEST_DIR}/glossql_kit_goals_lake/');
+
+statement ok
+USE ws;
+
+statement ok
+PRAGMA glossql;
+
+statement ok
+FROM glossql_kit('{KITS}/core/kit.sql');
+
+statement ok
+FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
+
+statement ok
+FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
+
+statement ok
+FROM glossql_kit('{KITS}/metrics/kit.sql');
+
+statement ok
+FROM glossql_kit('{KITS}/outlook/kit.sql');
+
+statement ok
+FROM glossql_kit('{KITS}/goals/kit.sql');
+
+query I
+SELECT count(*) FROM open_items;
+----
+0
+
+query I
+SELECT count(*) > 0 FROM routes_core();
+----
+true
+
+query TT
+FROM glossql_kit('{KITS}/goals/kit.sql');
+----
+goals	current
+
+query I
+SELECT count(*) FROM kits;
+----
+6

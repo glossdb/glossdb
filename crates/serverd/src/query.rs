@@ -1,11 +1,11 @@
-//! The cockpit's query door: plain HTTP in, Arrow IPC out. A single
+//! The cockpit's query interface: plain HTTP in, Arrow IPC out. A single
 //! query streams straight from the engine — batches are encoded as they
 //! arrive, memory rides one batch, no cap, and a client that hangs up
 //! cancels the work upstream. Everything else answers in the wire JSON
 //! shape.
 //!
 //! The dataset is the URL's first segment and one that does not exist
-//! is a 404 — this door reads and writes, it does not bring datasets
+//! is a 404 — this interface reads and writes, it does not bring datasets
 //! into being. `USE` in the body still moves the statements after it,
 //! for the length of this request.
 
@@ -35,8 +35,8 @@ pub async fn query(
         Err(e) => return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     };
     match session.query_stream(&body).await {
-        // The Arrow door never caps — metadata or data, the client
-        // drains a stream; paging is the MCP door's concern.
+        // The Arrow interface never caps — metadata or data, the client
+        // drains a stream; paging is the MCP interface's concern.
         // The first poll runs the plan: a read the engine cannot start
         // — a scan it refuses, an expression that fails on the first
         // row — is a refusal with its text, not a 200 and a truncated
@@ -60,7 +60,7 @@ pub async fn query(
                     Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, e),
                 },
                 // The statement was refused: the body says why — and what
-                // a sequence had already landed rides beside the reason.
+                // a sequence had already loaded rides beside the reason.
                 Err(e) => {
                     let landed = match &e {
                         SessionError::Sequence { landed, .. } if !landed.is_empty() => {
@@ -70,7 +70,7 @@ pub async fn query(
                     };
                     let mut body = serde_json::json!({ "error": e.to_string() });
                     if let Some(landed) = landed {
-                        body["landed"] = landed;
+                        body["completed"] = landed;
                     }
                     (StatusCode::UNPROCESSABLE_ENTITY, Json(body)).into_response()
                 }
@@ -80,8 +80,8 @@ pub async fn query(
     }
 }
 
-/// The status a refusal answers with, by its class: a name the record
-/// does not hold is not found; a door whose service refused, did not
+/// The status a refusal answers with, by its class: a name the catalog
+/// does not hold is not found; an interface whose service refused, did not
 /// answer or is not named is unavailable; everything else is the
 /// statement's own fault.
 fn status_of(e: &SessionError) -> StatusCode {

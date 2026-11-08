@@ -2,7 +2,7 @@
 //! lockstep as the shipped system ([`crate::bootstrap`]): what this
 //! build serves is what this build's suite tested. A skill is a
 //! directory under the repo's `skills/`: its `SKILL.md`, served on the
-//! MCP door as a resource and as a prompt, and its references, served
+//! MCP interface as a resource and as a prompt, and its references, served
 //! as sibling resources the SKILL.md names for the moment they are
 //! needed (the Agent Skills layout: metadata, then the one page, then
 //! files on demand). The `docs/` pages and the engine's SQL guide
@@ -10,9 +10,9 @@
 //! two documents, SPEC.md and `grammar.ebnf`, are read at boot from
 //! the extension's share, the pin's — a connected agent has no
 //! checkout to read them from, and what an agent in this repository
-//! reads is what the door serves. [`door_pages`] is the one list of
+//! reads is what the interface serves. [`door_pages`] is the one list of
 //! them: the plane holds it,
-//! the MCP door lists and reads its resources from it, and the
+//! the MCP interface lists and reads its resources from it, and the
 //! `pages()` read serves the same rows to a client that has the
 //! statement tool and no resource reader.
 
@@ -203,7 +203,7 @@ pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>
     Ok(out.into())
 }
 
-/// The door's pages plus the ones built at boot — the function
+/// The interface's pages plus the ones built at boot — the function
 /// listings — in one list, the boot pages last.
 pub fn door_pages_with(
     extra: Vec<crate::engine::DoorPage>,

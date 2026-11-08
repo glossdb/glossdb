@@ -1,36 +1,83 @@
-# docs — the curated statement
+# Documentation
 
-What the system is, for every reader, agents and humans alike. Code and its comments are the
-source of truth for what is live; these pages state the shape, the
-verdicts, and the why that code cannot. The extension's SPEC.md alone
-is normative language prose; the skills teach a door-connected agent the language.
-Every fenced example in these pages is parsed and planned by the test
-suite.
+glossdb is a harness framework for data agents, written in the
+[glossql](https://github.com/glossdb/glossql) language. Every page here
+is also served to agents over MCP as a `doc://docs/…` resource.
 
-In short: an agent declares the glossary it needs — aspects as JSON
-contracts, measurement functions, detectors
-([aspects](concepts/aspects.md), [functions](concepts/functions.md)) —
-and fills it against landed data; questions the data cannot answer go
-to a human, and the answer becomes part of the record
-([questions](concepts/questions.md)); everything — glosses, rulings,
-app parts, the landings — is rows of one record, and the data is
-parquet under the warehouse ([workspace](concepts/workspace.md));
-reads are served as Arrow over plain HTTP ([connect](start/connect.md)).
+## Overview
 
-- [`start/`](start/README.md) — install, connect, and the walkthrough:
-  a company's exports to served metrics in one session.
-- [`concepts/`](concepts/README.md) — the mental model, one page per
-  concept: workspace, statements, aspects, actors, functions,
-  validation, imports, relationships, questions, apps.
-- [`reference/`](reference/README.md) — the shipped function library,
-  the reads, the KPI kit, the doors contract, app authoring.
-- [`methods/`](methods/README.md) — the instruments and why to trust
-  them: each algorithm with its measured verdict and stated limits.
-- [`architecture/`](architecture/README.md) — the kernel and its
-  seams, the store, the substrate seams, and storage.
-- [`system/`](system/README.md) — the server at a glance: what stands
-  and its known limits.
-- [`onboarding/`](onboarding/README.md) — the onboarding path: what
-  stands and its conventions.
-- [`quality/`](quality/README.md) — the quality layer and the
-  monitoring built on it.
+- [Introduction](overview/introduction.md): what glossdb is and why.
+- [How it works](overview/how-it-works.md): the data harness beside the
+  coding harness, part by part.
+- [Terms](overview/terms.md): every word, beside the industry's.
+
+## Getting started
+
+- [Installation](getting-started/installation.md)
+- [Connect an agent](getting-started/connect.md)
+- [Quickstart](getting-started/quickstart.md): from raw exports to
+  served metrics in one session.
+
+## Usage
+
+- [Workspaces and datasets](usage/workspaces.md)
+- [Loading data](usage/loading-data.md)
+- [Describing tables and columns](usage/describing-data.md)
+- [Relationships](usage/relationships.md)
+- [Metrics](usage/metrics.md)
+- [Measurements](usage/measurements.md)
+- [Data tests](usage/data-tests.md)
+- [The review queue](usage/review.md)
+- [The console](usage/console.md)
+- [Data apps](usage/data-apps.md)
+- [Querying and export](usage/querying.md)
+
+## Operations
+
+- [Configuration](operations/configuration.md)
+- [Authentication](operations/authentication.md)
+- [Deployment](operations/deployment.md)
+- [Logging and monitoring](operations/monitoring.md)
+
+## Reference
+
+- [Statements](reference/statements.md)
+- [Functions](reference/functions.md)
+- [Views and table functions](reference/reads.md)
+- [The KPI kit](reference/kpi-kit.md)
+- [The MCP interface](reference/mcp.md)
+- [HTTP endpoints](reference/http.md)
+- [App authoring](reference/apps.md)
+
+The language itself: [SPEC.md](https://github.com/glossdb/glossql/blob/main/SPEC.md)
+and [grammar.ebnf](https://github.com/glossdb/glossql/blob/main/grammar.ebnf).
+
+## Extending
+
+- [Kits](extending/kits.md)
+- [Goals and next steps](extending/next-steps.md)
+
+## Methods
+
+How each measurement computes its result, and its limits:
+[relationship discovery](methods/discovery.md),
+[join coherence](methods/coherence.md),
+[derivations](methods/derivations.md),
+[stock or flow](methods/behavior.md),
+[the judge](methods/judge.md).
+
+## Preview
+
+These need a model service and may change.
+
+- [Forecasts](preview/forecasts.md)
+- [Expected ranges](preview/expected-ranges.md)
+- [Plans](preview/plans.md)
+- [Scenarios](preview/scenarios.md)
+
+## Internals
+
+For contributors: [the kernel](internals/kernel.md),
+[the catalog store](internals/catalog.md),
+[storage](internals/storage.md),
+[DuckDB and the extension](internals/duckdb.md).

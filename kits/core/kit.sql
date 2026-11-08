@@ -1,21 +1,22 @@
--- The record's own words, declared by the engine at every open, before
--- any kit: what the doors write and read on their own account. A kit
--- brings vocabulary about the data; these are about the record.
+-- The catalog's own words, declared by the engine at every open, before
+-- any kit: what the interfaces write and read on their own account. A
+-- kit brings vocabulary about the data; these are about the catalog.
 
--- The reads the doors derive from the record, as views beside it.
+-- The reads the interfaces derive from the catalog, as views beside it.
 -- Replaced at every open so a view follows the build, never a lake's
 -- age; each open is one snapshot of the lake for it.
 
 -- The bound dataset as a relation: the schema in use when it is a
--- dataset's, no row on an unbound channel. The doors join it.
+-- dataset's, no row on an unbound channel. The interfaces join it.
 CREATE OR REPLACE VIEW main.current_dataset AS
   SELECT current_schema() AS dataset
   WHERE current_schema() IN (SELECT name FROM main.datasets);
 
 -- The agent's current assumptions, one row each: the latest agent
--- gloss per slot, its `assumptions` unnested, `idx` from 0. Derived
--- from the agent's CURRENT body, never a frozen copy, so an answered
--- question drops out when the fold-in raises its confidence.
+-- annotation per (subject, aspect), its `assumptions` unnested, `idx`
+-- from 0. Derived from the agent's CURRENT body, never a frozen copy, so
+-- an answered question drops out once the decision is applied and its
+-- confidence raised.
 CREATE OR REPLACE VIEW main.agent_assumptions AS
   WITH latest AS (
     SELECT * FROM (
@@ -31,14 +32,14 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
          l.body
   FROM latest l, unnest(coalesce(json_extract(l.body, '$.assumptions')::JSON[], []::JSON[])) WITH ORDINALITY AS t(a, i);
 
--- The human's standing rulings, one row per entry of the latest ruling
--- body on a subject; `folded_in` once no agent assumption below full
--- confidence carries the ruled key under the ruled aspect.
-CREATE OR REPLACE VIEW main.ruling_entries AS
+-- A person's current review decisions, one row per entry of the latest
+-- `review_decision` body on a subject; `folded_in` once no agent assumption below
+-- full confidence carries the decided key under the decided aspect.
+CREATE OR REPLACE VIEW main.review_decisions AS
   WITH latest AS (
     SELECT * FROM (
       SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
-      FROM main.glossary r WHERE aspect = 'ruling' AND actor_kind = 'human') WHERE rn = 1),
+      FROM main.glossary r WHERE aspect = 'review_decision' AND actor_kind = 'human') WHERE rn = 1),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
            json_extract_string(t.r, '$.aspect') AS aspect,
@@ -48,7 +49,7 @@ CREATE OR REPLACE VIEW main.ruling_entries AS
            coalesce(json_extract_string(t.r, '$.assumption'), '') AS assumption,
            json_extract_string(t.r, '$.note') AS note,
            l.written_at
-    FROM latest l, unnest(coalesce(json_extract(l.body, '$.rulings')::JSON[], []::JSON[])) WITH ORDINALITY AS t(r, i))
+    FROM latest l, unnest(coalesce(json_extract(l.body, '$.decisions')::JSON[], []::JSON[])) WITH ORDINALITY AS t(r, i))
   SELECT e.dataset, e.subject, e.idx, e.aspect, e.key, e.stance, e.dimension,
          e.assumption, e.note, e.written_at,
          count(a.key) = 0 AS folded_in
@@ -58,17 +59,17 @@ CREATE OR REPLACE VIEW main.ruling_entries AS
    AND a.key = e.key AND a.conf < 1.0
   GROUP BY ALL;
 
--- What still stands open for a human to judge: a keyed assumption
--- below full confidence on a grounding, in a dimension no function
--- owns (behavior, sign and grain are statistics), with no standing
--- ruling on its (dataset, subject, aspect, key). `sibling` carries a
--- ruling on the same key under another aspect, so the round can offer
--- it back. No ORDER BY: order where you consume.
+-- What is still open for a person to judge: a keyed assumption below
+-- full confidence in a metric definition, in a dimension no function
+-- owns (behavior, sign and grain are statistics), with no current
+-- review decision on its (dataset, subject, aspect, key). `sibling`
+-- carries a decision on the same key under another aspect, so the
+-- review can offer it back. No ORDER BY: order where you consume.
 CREATE OR REPLACE VIEW main.open_questions AS
   WITH groundings AS (
     SELECT name FROM (
       SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY')
+      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
          max(s.stance || ' on ' || s.aspect) AS sibling,
@@ -76,12 +77,12 @@ CREATE OR REPLACE VIEW main.open_questions AS
          max(s.note) AS sibling_note
   FROM main.agent_assumptions o
   JOIN groundings a ON a.name = o.aspect
-  LEFT JOIN main.ruling_entries s
+  LEFT JOIN main.review_decisions s
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
     AND coalesce(o.dimension, '-') NOT IN ('behavior', 'sign', 'grain')
-    AND NOT EXISTS (SELECT 1 FROM main.ruling_entries r
+    AND NOT EXISTS (SELECT 1 FROM main.review_decisions r
                     WHERE r.dataset = o.dataset AND r.subject = o.subject
                       AND r.aspect = o.aspect AND r.key = o.key)
   GROUP BY ALL;
@@ -91,7 +92,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
 -- manifest, `app_page` on `<dataset>.<app>.<page>` a page, `app_frame` a
 -- query, `app_spec` a chart spec. Two collapses: the newest writing per
 -- (dataset, subject, aspect, actor kind), then the human's over the
--- agent's. This is the draft; the door serves the app at its release.
+-- agent's. This is the draft; the console serves the app at its release.
 CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
     SELECT * FROM (
@@ -133,19 +134,19 @@ CREATE OR REPLACE VIEW main.app_releases AS
          actor_kind, written_at::VARCHAR AS released_at
   FROM winning;
 
--- Every metric the bound dataset claims, with where it stands: one row
--- per QUERY aspect a grounding stands on here, served or stopped, or
+-- Every metric the bound dataset claims, with its state: one row per
+-- VIEW aspect with a metric definition here, served or stopped, or
 -- whose definitions entry names it — name, title, kind (the aspect's
 -- x-kind), unit and meaning from the definitions handbook, grounded
--- (a grounding with sql was written), stopped (the collapsed
--- grounding's own text, '' where it serves). The numbers are
+-- (a definition with sql was written), stopped (the collapsed
+-- definition's own text, '' where it serves). The numbers are
 -- metric_axes() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.metric_surfaces AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (
     SELECT name, schema FROM (
       SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'QUERY'),
+      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
   slots AS (
     SELECT aspect, body, actor_kind FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
@@ -179,18 +180,51 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
      OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
--- What this workspace can be extended through, and where it stands on
--- each: `stands` counts what exists, `open` what is unfinished on the
--- surface, `how` the statement that extends it. Every count spans the
+-- What this workspace can be extended through, and its state on
+-- each: `existing` counts what exists, `open` what is unfinished on the
+-- surface and the agent can finish, `waiting` what waits for a person,
+-- `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_next AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS owed FROM main.ruling_entries),
+  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
-    SELECT name, kind, schema FROM (
-      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+    SELECT name, kind, grains, condition, schema FROM (
+      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1),
+  -- A test's property is in use when something that exists needs it:
+  -- a WHEN on another property's value, once an asset carries that
+  -- value; a WHEN on a column type, once such a column exists; a
+  -- measurement marked `x-used-by`, once a property of one of those
+  -- x-kinds is declared; a relationship property, once a key is
+  -- declared; a table or column property, once a table is loaded;
+  -- anything else, always. A test is open while its property is in
+  -- use and has no value anywhere.
+  tested AS (
+    SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema
+    FROM (SELECT DISTINCT aspect FROM main.tests) t
+    JOIN newest_aspects a ON a.name = t.aspect),
+  in_use AS (
+    SELECT a.name,
+      CASE
+        WHEN json_extract(a.schema, '$.x-used-by') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM newest_aspects u
+          WHERE list_contains(from_json(json_extract(a.schema, '$.x-used-by'), '["VARCHAR"]'),
+                              json_extract_string(u.schema, '$.x-kind')))
+        WHEN json_extract_string(a.condition, '$.aspect') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM main.glossary g
+          WHERE g.aspect = json_extract_string(a.condition, '$.aspect')
+            AND json_extract_string(g.body, '$.value') = json_extract_string(a.condition, '$.value'))
+        WHEN json_extract(a.condition, '$.type') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM duckdb_columns() c
+          WHERE c.database_name = current_database()
+            AND list_contains(from_json(json_extract(a.condition, '$.type'), '["VARCHAR"]'), c.data_type))
+        WHEN a.grains = ['RELATIONSHIP'] THEN EXISTS (SELECT 1 FROM main.relationships)
+        WHEN list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN') THEN EXISTS (SELECT 1 FROM main.imports)
+        ELSE true
+      END AS used
+    FROM tested a),
   counts AS (
     SELECT (SELECT count(*) FROM main.sources) AS n_sources,
            (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports)) AS n_tables,
@@ -198,23 +232,26 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            (SELECT count(*) FROM main.relationships) AS n_relationships,
            (SELECT count(*) FROM newest_aspects) AS n_aspects,
            (SELECT count(*) FROM main.glossary) AS n_claims,
-           (SELECT n FROM asked) AS open_claims,
+           0 AS open_claims,
            (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
-           (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY'
+           (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW'
               AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
-           (SELECT metrics FROM asked) AS open_metrics,
-           (SELECT count(DISTINCT name) FROM main.witnesses) AS n_validations,
-           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM main.witnesses) w
-            WHERE NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = w.aspect)
-              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = w.aspect)) AS open_validations,
+           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW'
+              AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('sample', 'plan')
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_metrics,
+           (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
+           (SELECT count(*) FROM in_use u WHERE u.used
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
+              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name)) AS open_validations,
+           (SELECT n FROM asked) AS waiting,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_scenarios,
-           (SELECT count(*) FROM newest_aspects WHERE kind = 'QUERY' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
-           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'QUERY' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
+           (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
+           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
-           (SELECT n FROM ruled) AS n_rulings,
-           (SELECT owed FROM ruled) AS open_rulings,
+           (SELECT n FROM ruled) AS n_decisions,
+           (SELECT unapplied FROM ruled) AS open_decisions,
            (SELECT n FROM apps) AS n_apps)
   SELECT s.surface, s.how,
          CASE s.surface WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
@@ -222,42 +259,43 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            WHEN 'claims' THEN c.n_claims WHEN 'functions' THEN c.n_functions
            WHEN 'metrics' THEN c.n_metrics WHEN 'validations' THEN c.n_validations
            WHEN 'scenarios' THEN c.n_scenarios WHEN 'plans' THEN c.n_plans
-           WHEN 'rulings' THEN c.n_rulings ELSE c.n_apps END AS stands,
+           WHEN 'review' THEN c.n_decisions ELSE c.n_apps END AS existing,
          CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
            WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
-           WHEN 'rulings' THEN c.open_rulings ELSE 0 END AS open
+           WHEN 'review' THEN c.open_decisions ELSE 0 END AS open,
+         CASE s.surface WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
   FROM counts c
   CROSS JOIN (VALUES
-    ('sources', 'DECLARE SOURCE, then PROBE it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
-    ('tables', 'author a recipe and extract it — typing is the recipe''s work, this is not ETL'),
+    ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
+    ('tables', 'write a load query (recipe) and load it — typing is the load query''s work, this is not ETL'),
     ('relationships', 'DECLARE RELATIONSHIP between two endpoints — detect_relationships proposes, you judge'),
-    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or QUERY, grained with ON'),
-    ('claims', 'GLOSS a subject with an aspect — the write verb; a human writing outranks the agent slot at every read'),
+    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
+    ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('metrics', 'GLOSS a QUERY aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE WITNESS with a DETECTOR banding them — ATTEST() serves the verdicts'),
-    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the futures kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS QUERY with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the landed budget table — the futures kit serves the plan world'),
-    ('rulings', 'a human rules a disclosed assumption; the agent owes the re-record that folds it in'),
+    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
+    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
+    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
+    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
+    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied — `waiting` counts the questions waiting for a person, which the agent cannot close'),
     ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
   ) AS s(surface, how);
 
--- A recipe change a human approved for a table: the brief counts it as
--- pending until a landing of that table is newer than the approval.
+-- A load-query change a person approved for a table: the brief counts it
+-- as pending until a load of that table is newer than the approval.
 DECLARE ASPECT recipe_change WITH $${
   "type": "object", "required": ["table", "sql", "reason"],
   "properties": {"table": {"type": "string"}, "sql": {"type": "string"},
                  "reason": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
--- The ruling channel: each human judgment the question round lands, the
--- claim it rules by key, confirmed or corrected; the ruled aspect's
--- slots stay agent-authored and the agent owes the fold-in. Witness-free
+-- Review decisions: each answer a person gives in the review, the
+-- claim it decides by key, confirmed or corrected; the decided aspect's
+-- values stay agent-authored and the agent applies the decision. No test
 -- on purpose: the actor kind stamps the writer.
-DECLARE ASPECT ruling WITH $${
-  "type": "object", "required": ["rulings"],
-  "properties": {"rulings": {"type": "array", "items": {
+DECLARE ASPECT review_decision WITH $${
+  "type": "object", "required": ["decisions"],
+  "properties": {"decisions": {"type": "array", "items": {
     "type": "object", "required": ["aspect", "key", "stance"],
     "properties": {"aspect": {"type": "string"},
                    "dimension": {"type": "string"},
@@ -268,7 +306,7 @@ DECLARE ASPECT ruling WITH $${
 }$$ AS FACT;
 
 -- Apps as glosses: one gloss per part, the aspect the kind of file, the
--- subject where it goes. Grainless and witness-free: a part is no claim
+-- subject where it goes. Grainless and without a test: a part is no claim
 -- about the data.
 DECLARE ASPECT app WITH $${
   "type": "object", "required": ["title"],
@@ -294,3 +332,17 @@ DECLARE ASPECT app_release WITH $${
   "type": "object",
   "properties": {"note": {"type": "string"}, "at": {"type": "string"}}
 }$$ AS FACT;
+
+-- How the console and the apps print a number: grouped thousands from
+-- 1,000 up, three significant digits below, plain decimals under 0.001.
+CREATE OR REPLACE MACRO main.fmt_number(x) AS
+  CASE WHEN x IS NULL THEN NULL
+       WHEN abs(x::DOUBLE) >= 999.5 THEN format('{:,.0f}', x::DOUBLE)
+       WHEN x::DOUBLE = 0 OR abs(x::DOUBLE) >= 0.001 THEN format('{:.3g}', x::DOUBLE)
+       ELSE rtrim(rtrim(format('{:.9f}', x::DOUBLE), '0'), '.') END;
+
+-- A change in percent, signed: +12.3%, -0.04%.
+CREATE OR REPLACE MACRO main.fmt_change(p) AS
+  CASE WHEN p IS NULL THEN NULL
+       WHEN p::DOUBLE < 0 THEN '-' || main.fmt_number(abs(p::DOUBLE)) || '%'
+       ELSE '+' || main.fmt_number(p::DOUBLE) || '%' END;

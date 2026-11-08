@@ -1,5 +1,5 @@
 # name: kits/core/kit.test
-# description: the core kit — the workspace's own vocabulary, the ruling and the app aspects, and the door's reads over the record; run again, it stands
+# description: the core kit — the workspace's own vocabulary, the review decision and the app aspects, and the interface's reads over the catalog; run again, it holds
 # group: [sql]
 
 require glossql
@@ -22,8 +22,18 @@ PRAGMA glossql;
 statement ok
 FROM glossql_kit('{KITS}/core/kit.sql');
 
+query TTTTTTT
+SELECT fmt_number(21205673.3), fmt_number(999.6), fmt_number(12.345), fmt_number(0.001), fmt_number(0.00001), fmt_number(0), fmt_number(NULL);
+----
+21,205,673	1,000	12.3	0.001	0.00001	0	NULL
+
+query TTT
+SELECT fmt_change(12.34), fmt_change(-0.04), fmt_change(NULL);
+----
++12.3%	-0.04%	NULL
+
 query I
-SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'ruling', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
+SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'review_decision', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
 ----
 7
 
@@ -33,17 +43,60 @@ SELECT count(*) FROM open_questions;
 0
 
 query I
-SELECT count(*) FROM ruling_entries;
+SELECT count(*) FROM review_decisions;
 ----
 0
 
-# the same text again, as the opener runs it at every start-up: the kit stands, nothing runs
+# the same text again, as the opener runs it at every start-up: the kit holds, nothing runs
 query TT
 FROM glossql_kit('{KITS}/core/kit.sql');
 ----
-core	stands
+core	current
 
 query I
 SELECT count(*) FROM kits WHERE name = 'core';
 ----
 1
+
+# --- a test is open while its property is in use and has no value ---
+
+statement ok
+DECLARE DATASET shop SET (purpose: 'tests in use');
+
+statement ok
+CREATE TABLE shop.orders AS SELECT 1 AS id, 9.5 AS amount;
+
+statement ok
+DECLARE ASPECT kind_of WITH $${"type": "object", "properties": {"value": {"type": "string"}}}$$ AS FACT ON COLUMN;
+
+statement ok
+DECLARE ASPECT money_unit WITH $${"type": "object", "properties": {"value": {"type": "string"}}}$$ AS FACT ON COLUMN WHEN kind_of = 'measure';
+
+statement ok
+DECLARE TEST money_unit_test ON money_unit BY (AGENT, HUMAN);
+
+# no column is a measure yet: the unit is required nowhere, so its test is not open
+query I
+SELECT open FROM workspace_next WHERE surface = 'validations';
+----
+0
+
+statement ok
+USE shop;
+
+statement ok
+GLOSS kind_of ON orders.amount AS $${"value": "measure"}$$;
+
+# a measure exists and carries no unit: the test is open
+query I
+SELECT open FROM workspace_next WHERE surface = 'validations';
+----
+1
+
+statement ok
+GLOSS money_unit ON orders.amount AS $${"value": "EUR"}$$;
+
+query I
+SELECT open FROM workspace_next WHERE surface = 'validations';
+----
+0

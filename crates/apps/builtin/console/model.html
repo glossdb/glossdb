@@ -1,0 +1,27 @@
+{% extends "shell.html" %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Model") }}
+{# The model: the semantic layer and the ontology in one picture. Each
+   table is drawn as its entity — what one row is, its grain and time
+   axis, its measures and dimensions — the declared keys join them, and
+   the metrics stand on the right with the columns they read. #}
+<div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="Each table as what one row is, with its grain, time axis, measures and dimensions; the declared keys between tables; each metric with the grain it is served at and the columns it reads.">The model</span>
+      <code class="chip">GLOSSARY() · relationships · metric_axes() · metric_sources()</code></header>
+    <p class="hint">Tables on the left, joined by their declared keys; metrics on the right. Under each name: what one row is, or the grain a metric is served at. A column shows what it carries — its role, a measure's additivity and unit, a dimension's rank, the grain and the time axis; columns that carry nothing fold under their table. Hover a column to follow it; a name opens its page.</p>
+    <div class="graph-wrap">
+      <gl-graph nodes="frames/model_nodes" edges="frames/lineage_edges" node-width="250" label="the model"
+                empty="no tables loaded yet — a load query loads a table, and its annotations fill the model"></gl-graph>
+    </div>
+    <p class="hint scroll-hint">The model is wider than the page: scroll right for the metrics.</p>
+    <div class="legend">
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-key"/></svg>declared key (→ many-to-one, ↔ one-to-one)</span>
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-reads"/></svg>a metric reads the column</span>
+      <span><span class="role-measure">measure</span> · key · dimension · timestamp — the column's role</span>
+    </div>
+  </section>
+</div>
+{% endblock main %}

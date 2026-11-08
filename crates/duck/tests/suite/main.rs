@@ -1,6 +1,6 @@
 //! The engine's own suite: a workspace opened on a tempdir, the kits
 //! declared, statements of the language run through a channel, reads
-//! streamed, the brief counted, a ruling landed. Needs the extension
+//! streamed, the brief counted, a review decision landed. Needs the extension
 //! beside this checkout (`GLOSSQL_EXTENSION` overrides the path).
 
 use glossdb_duck::{
@@ -34,7 +34,7 @@ fn extension_present() -> bool {
     present
 }
 
-/// A workspace whose two test actors are root. The door's gate has a
+/// A workspace whose two test actors are root. The interface's gate has a
 /// test of its own below.
 async fn plane() -> (tempfile::TempDir, Plane) {
     let dir = tempfile::tempdir().expect("a tempdir");
@@ -44,8 +44,8 @@ async fn plane() -> (tempfile::TempDir, Plane) {
     (dir, plane)
 }
 
-/// A door opens the workspace, never the engine: a standard actor
-/// lands, writes, copies, drops, declares, glosses and reads; the
+/// A interface opens the workspace, never the engine: a standard actor
+/// loads, writes, copies, drops, declares, glosses and reads; the
 /// engine's knobs are closed with a reason, in a sequence as the
 /// refused statement; a root actor has them.
 #[tokio::test(flavor = "multi_thread")]
@@ -289,7 +289,7 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
     )
     .await
     .unwrap();
-    assert!(said.starts_with("ruled (confirmed) on `k1`"), "{said}");
+    assert!(said.starts_with("decided (confirmed) on `k1`"), "{said}");
 
     let after = plane.brief_counts().await.unwrap();
     assert_eq!(after.human_writings, 1);
@@ -331,7 +331,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         .execute(
             "DECLARE DATASET fin SET (purpose: 'reads');
              USE fin;
-             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS QUERY;
+             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
              GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\", \"assumptions\": [
                {\"dimension\": \"definition\", \"key\": \"per-line\", \"assumption\": \"per line\", \"basis\": \"judgment\", \"confidence\": 0.7},
                {\"dimension\": \"grain\", \"key\": \"g\", \"assumption\": \"monthly\", \"basis\": \"measured\", \"confidence\": 1.0}]}$$;",

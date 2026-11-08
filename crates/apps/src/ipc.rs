@@ -1,5 +1,5 @@
 //! A read as an Arrow IPC stream body — the one encoder behind the
-//! Arrow door and the app door's frames.
+//! Arrow interface and the app interface's frames.
 //!
 //! Encoded into a chunked body as batches arrive. The channel's
 //! capacity is the backpressure: the encoder waits for the client to

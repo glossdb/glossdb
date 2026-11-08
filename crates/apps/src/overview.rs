@@ -1,4 +1,4 @@
-//! What the workspace root reads: a few counts over the record's own
+//! What the workspace root reads: a few counts over the catalog's own
 //! relations, rendered on the server. The root is not an app — no
 //! frames, no params, one visit — so the rows come through the same
 //! channel a frame would use and land in the template as JSON.
@@ -13,7 +13,7 @@ pub(crate) const DATASETS: &str = "SELECT name, \
        coalesce(json_extract_string(settings, '$.purpose'), '') AS purpose \
      FROM datasets ORDER BY name";
 
-/// A dataset at a glance: what has landed, what is served, what waits
+/// A dataset at a glance: what has loaded, what is served, what waits
 /// on a person. Bound to the dataset; `current_dataset` narrows the
 /// workspace-wide relations.
 pub(crate) const COUNTS: &str = "WITH latest AS ( \
@@ -39,7 +39,7 @@ fn reader() -> Actor {
 
 /// One read as JSON rows — every column by name, numbers as numbers.
 /// A read that fails answers with its text; the page prints it in the
-/// band it was for, the way a frame error lands in its tile.
+/// band it was for, the way a frame error is stored in its tile.
 pub(crate) async fn rows(
     door: &AppDoor,
     dataset: Option<&str>,
@@ -108,7 +108,7 @@ fn group_digits(n: i64) -> String {
 }
 
 /// `2026-09-04T14:10:03.512Z` read as `2026-09-04 14:10`: the minute
-/// is what a landing time is for on a page.
+/// is what a load time is for on a page.
 pub(crate) fn minute(rows: &mut [Value], field: &str) {
     for row in rows.iter_mut() {
         let Some(map) = row.as_object_mut() else {

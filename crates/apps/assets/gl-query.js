@@ -1,12 +1,12 @@
 // <gl-query dataset="fin" rows="50"> — a read of the viewer's own
-// against the query door: a text area, a run button, the rows as a
+// against the query interface: a text area, a run button, the rows as a
 // table, and the result to save as csv or as the Arrow stream the
-// door sent. The pane runs reads alone — SELECT, WITH, DESCRIBE,
+// interface sent. The pane runs reads alone — SELECT, WITH, DESCRIBE,
 // SHOW, EXPLAIN — and says so for anything else; a write is a
-// statement for the agent door. The door's own refusal, a scan it
+// statement for the agent door. The interface's own refusal, a scan it
 // cannot plan, an expression that fails, comes back as its text.
 // Nothing here touches the store: a read of one's own is never a
-// frame, so a ruling's evictions leave it alone. The read rides the
+// frame, so a review decision's evictions leave it alone. The read rides the
 // page URL as `sql`: a page opened with one runs it on load, so a
 // read is a link — the Query tab's relation list is such links; a
 // `sql` attribute on the element does the same for a page that
@@ -14,7 +14,7 @@
 // sorts what came back, in the browser, and the footer says so; the
 // engine sorts the whole relation when the read says ORDER BY. The
 // rows page in the browser in steps of `rows`, the footer carrying
-// the range and the way to the next page — every row the door
+// the range and the way to the next page — every row the interface
 // answered is held, so a page is a redraw and never a second read,
 // and the downloads keep the whole result.
 (function () {
@@ -191,7 +191,7 @@
             }
           }
           // The footer: the range on the page over the total, the
-          // sort where one stands, and a step either way while there
+          // sort where one holds, and a step either way while there
           // is somewhere to step.
           foot.replaceChildren();
           const said = document.createElement('span');

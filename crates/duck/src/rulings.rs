@@ -1,11 +1,11 @@
-//! A human's ruling landed as a gloss: the standing ruling body on the
+//! A human's review decision loaded as a gloss: the standing review decision body on the
 //! subject, the entry for the key replaced, the body re-glossed under
 //! human standing. The statement is the language's; this module only
 //! shapes the body.
 
 use crate::{Session, SessionError, rows_as_text};
 
-/// One ruling as the app door takes it.
+/// One review decision as the app interface takes it.
 pub struct Ruling<'a> {
     pub subject: &'a str,
     pub aspect: &'a str,
@@ -28,7 +28,7 @@ fn ident_path(text: &str, max_segments: usize) -> bool {
         })
 }
 
-/// Land `ruling` on the human's channel.
+/// Store `review_decision` on the human's channel.
 pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, SessionError> {
     let Ruling {
         subject,
@@ -58,7 +58,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         .batches(
             &format!(
                 "SELECT body::VARCHAR FROM {}.main.glossary \
-                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'ruling' AND actor_kind = 'human' \
+                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'review_decision' AND actor_kind = 'human' \
                  ORDER BY seq DESC LIMIT 1",
                 crate::LAKE
             ),
@@ -69,8 +69,8 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         .first()
         .and_then(|r| r.first().cloned().flatten())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .unwrap_or_else(|| serde_json::json!({ "rulings": [] }));
-    let Some(rulings) = body.get_mut("rulings").and_then(|r| r.as_array_mut()) else {
+        .unwrap_or_else(|| serde_json::json!({ "decisions": [] }));
+    let Some(rulings) = body.get_mut("decisions").and_then(|r| r.as_array_mut()) else {
         return Err(SessionError::RulingSlotNotRulings);
     };
     rulings.retain(|r| !(r["aspect"] == aspect && r["key"] == key));
@@ -90,20 +90,20 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         return Err(SessionError::DollarQuotedBody);
     }
     human
-        .execute(&format!("GLOSS ruling ON {subject} AS $${body}$$"))
+        .execute(&format!("GLOSS review_decision ON {subject} AS $${body}$$"))
         .await
         .map(|_| {
             if stance == "unclear" {
                 format!(
-                    "ruled (unclear) on `{key}` — the question missed: \
-                     reformulate the assumption in `{aspect}` under a new \
-                     key and re-record; the clearer wording derives its \
-                     own question"
+                    "decided (unclear) on `{key}` — the question missed: \
+                     reword the assumption in `{aspect}` under a new key \
+                     and record it again; the clearer wording becomes a new \
+                     question"
                 )
             } else {
                 format!(
-                    "ruled ({stance}) on `{key}` — the fold-in is yours: \
-                     re-record `{aspect}` carrying that key, citing the ruling"
+                    "decided ({stance}) on `{key}` — apply it: record \
+                     `{aspect}` again carrying that key, citing the decision"
                 )
             }
         })

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"globalViewTransitions":true,"allowEval":false}'>
-<title>{% block title %}{% if app %}{{ app.title }}{% else %}glossql{% endif %}{% endblock %}</title>
+<title>{% block title %}{% if app %}{{ app.title }}{% else %}glossdb{% endif %}{% endblock %}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='1' fill='%23151a22'/%3E%3Ctext x='8' y='12' text-anchor='middle' font-family='monospace' font-size='11' fill='%23e2a33f'%3Eg%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/app.css">
 <script src="/assets/vendor/htmx.min.js"></script>
@@ -22,11 +22,12 @@
 <script src="/assets/gl-rows.js"></script>
 <script src="/assets/gl-graph.js"></script>
 <script src="/assets/gl-query.js"></script>
+<script src="/assets/gl-tree.js"></script>
 </head>
 <body hx-boost="true" hx-indicator=".load-bar"{% if app %} data-approot="/{{ dataset }}/app/{{ app.name }}/"{% endif %}>
 <header class="shell-nav">
   <div class="bar-in">
-    <a class="brand" href="/">glossql<span class="dot">.</span></a>
+    <a class="brand" href="/">glossdb<span class="dot">.</span></a>
     {# The bar reads as the URL: the dataset, the app, then the app's
        pages. Each picker rewrites one path segment — a dataset is a
        place and so is an app, not a setting — so switching is a plain
@@ -41,24 +42,38 @@
     <select class="pick" aria-label="app" data-nav>
       {% for a in apps %}<option value="/{{ dataset }}/app/{{ a.name }}"{% if app and a.name == app.name %} selected{% endif %}>{{ a.title }}</option>{% endfor %}
     </select>
-    {# The app's pages, as the manifest lists them, a hairline where
-       the manifest's group changes. A one-page app has nothing to
-       switch between, so it shows no tabs. #}
+    {# The app's tabs, as the manifest lists them, a hairline where
+       the manifest's group changes. A tab is current when the page sits
+       in its section, or is the tab itself in an app without sections.
+       A one-page app has nothing to switch between, so it shows no
+       tabs. #}
     {% if app and pages | length > 1 %}
     <nav class="tabs" aria-label="pages">
-      {% for p in pages %}{% if p.sep %}<span class="sep" aria-hidden="true"></span>{% endif %}<a{% if p.name == page %} class="current" aria-current="page"{% endif %} href="/{{ dataset }}/app/{{ app.name }}{% if p.name != 'index' %}/p/{{ p.name }}{% endif %}{% if draft %}?draft{% endif %}">{{ p.title }}</a>{% endfor %}
+      {% for p in pages %}{% if p.sep %}<span class="sep" aria-hidden="true"></span>{% endif %}<a{% if p.current %} class="current" aria-current="page"{% endif %} href="/{{ dataset }}/app/{{ app.name }}{% if p.name != 'index' %}/p/{{ p.name }}{% endif %}{% if draft %}?draft{% endif %}">{{ p.title }}</a>{% endfor %}
     </nav>
     {% endif %}
+    {# Each section's read — the query behind it — hidden until asked
+       for; shell.js keeps the choice per browser. #}
+    {% if app and app.origin != "glossed" %}<button class="reads-toggle" type="button" data-reads-toggle aria-pressed="false">Show queries</button>{% endif %}
   </div>
 </header>
 <div class="load-bar"></div>
-<main>
+{# The built-in console carries the current section's list beside every
+   page; an app of the workspace's own keeps the whole width. #}
+{% set tree = app and app.origin != "glossed" %}
+<main{% if tree %} class="with-tree"{% endif %}>
+{% if tree %}<aside class="side">
+  <p class="t-root">{{ bar_section }}</p>
+  <gl-tree frame="frames/tree" section="{{ bar_section }}"></gl-tree>
+</aside>
+<div class="content">{% endif %}
 {# A glossed app opens with its title, in full, whatever the picker
    could fit. The built-in's pages are its tabs, so it prints none. #}
 {# Which cut the page shows: the draft, or the release it is served
    at; an app nobody released is its draft and says nothing. #}
 {% if app and app.origin == "glossed" %}<h1 class="app-title">{{ app.title }}{% if draft %} <span class="chip" title="the newest parts, not the release">draft</span>{% elif released %} <span class="chip" title="released at {{ released }}">released</span>{% endif %}</h1>{% endif %}
 {% block main %}{% endblock %}
+{% if tree %}</div>{% endif %}
 </main>
 </body>
 </html>

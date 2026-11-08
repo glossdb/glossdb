@@ -1,47 +1,45 @@
-# Derivations — lineage identities as the corruption instrument
+# Derivations
 
-`detect_derivations` finds row-grain arithmetic identities among a
-table's numeric columns — `a = b * c` and `a = b + c` — and reports
-each candidate with its support, violation count, and match rate. It
-runs at table grain (`SELECT detect_derivations() FROM orders`).
+`detect_derivations` finds arithmetic identities among a table's
+numeric columns, row by row: `a = b * c` and `a = b + c`. It reports
+each candidate with its support, its violation count and its match
+rate. It runs on a table: `SELECT detect_derivations() FROM orders`.
 
-## Why identities, not statistics
+## What it answers
 
-A scoped corruption and a real business change move a metric
-identically. A slice whose amounts were silently scaled shifts the
-mean, the quantiles, and the distribution exactly as a price change
-would — every marginal statistic confuses the two. The derivation the
-lineage carries is the one instrument that separates them: an identity
-like `line_amount = units * unit_price` holds at violation rate 0.0 on
-clean data and fires at exactly the corrupted rows' coverage, because
-a scaled copy of one operand can no longer reproduce the target row by
-row. The identity held at violation rate 0.0 on every clean corpus and
-fired at the artifact's exact row coverage — no marginal statistic
-reaches this.
+A scoped corruption and a real business change move a metric the same
+way. A slice whose amounts were silently scaled shifts the mean, the
+quantiles and the distribution exactly as a price change would. No
+statistic over one column tells the two apart.
 
-A confirmed identity, re-checked per batch, is therefore the admission
-check for subtle corruption: "the pipeline broke" and "the business
-changed" answer differently to it.
+An identity does. `line_amount = units * unit_price` holds on every row
+of clean data. When one operand is scaled, the identity breaks on
+exactly the corrupted rows. On the clean test corpora the violation
+rate is 0.0; on a corrupted one it equals the share of corrupted rows.
+A confirmed identity, checked again on every load, separates "the
+pipeline broke" from "the business changed".
 
-## Mechanism
+## How it works
 
-The screen `derivation_candidates(table)` in the quality kit is
-generous by design: it counts every triple that passes a structural
-prune, and the prune is cost, not judgment — a product or sum whose
-operand magnitudes cannot land within 30× of the target is skipped,
-with no recall lost at the function's bar. A row supports a triple
-when all three columns are filled and violates it when the target
-misses the form by more than 0.011 or a millionth of itself. The
-measurement, `detect_derivations`, applies the only two arguable
-constants, in the open: an identity holds at `match_rate >= 0.95`
-over `>= 20` supporting rows. The judge confirms
-which candidates are real derivations rather than coincidence.
+1. The screen `derivation_candidates(table)` in the quality kit counts
+   every triple of numeric columns that passes a structural prune. The
+   prune is about cost: a product or sum whose operand magnitudes
+   cannot land within 30× of the target is skipped. No identity the
+   function would accept is lost.
+2. A row supports a triple when all three columns are filled. It
+   violates the triple when the target misses the form by more than
+   0.011 or by more than a millionth of itself.
+3. `detect_derivations` applies the two thresholds, in its own SQL: an
+   identity holds at `match_rate >= 0.95` over at least 20 supporting
+   rows.
+4. The agent confirms which candidates are real derivations rather
+   than coincidence ([candidates and judgment](judge.md)).
 
 ## Limits
 
-- Numeric columns are capped at 12 per table; the result says
-  `truncated` when the cap applied.
-- Two forms only (`b * c`, `b + c`); deeper compositions are read
-  through the metric layer, not this instrument.
-- A coincidental identity can pass the bar on small tables — the judge
-  is part of the method.
+- At most 12 numeric columns per table. The result says `truncated`
+  when the cap applied.
+- Two forms only, `b * c` and `b + c`. Deeper compositions are checked
+  through metric definitions.
+- On small tables a coincidental identity can pass the thresholds. The
+  agent's review is part of the method.

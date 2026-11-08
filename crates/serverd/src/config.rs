@@ -87,7 +87,7 @@ fn number<T: std::str::FromStr<Err: std::fmt::Display>>(
 pub struct Config {
     pub addr: String,
     pub doors: DoorConfig,
-    /// Rows a data read ships before a door declares `truncated`.
+    /// Rows a data read ships before an interface declares `truncated`.
     pub row_cap: usize,
     /// The engine's memory ceiling, in megabytes; unset, the engine's
     /// own default, most of the box's memory.
@@ -97,8 +97,8 @@ pub struct Config {
     pub spill_limit_mb: Option<u64>,
     /// This server's own URI — `GLOSSDB_AUDIENCE`, the API identifier a
     /// token must name (RFC 8707 §2) and the host the world reaches
-    /// the doors at — defaulting to the bind address. Read under both
-    /// arrangements: the open switch verifies nobody, and the door
+    /// the interfaces at — defaulting to the bind address. Read under both
+    /// arrangements: the open switch verifies nobody, and the interface
     /// still has to know its name.
     pub audience: String,
     /// The authorization arrangement; none under the open switch.
@@ -107,7 +107,7 @@ pub struct Config {
     pub service: Option<glossdb_serverd::engine::Service>,
     pub catalog: Catalog,
     /// `GLOSSDB_ROOT`: the actor ids that have the engine's own knobs
-    /// at the doors; everyone else has the workspace. Comma-separated;
+    /// at the interfaces; everyone else has the workspace. Comma-separated;
     /// nobody by default.
     pub root: Vec<String>,
 }
@@ -230,7 +230,7 @@ impl Auth {
 }
 
 /// The explicit way to serve without the arrangement:
-/// `GLOSSDB_INSECURE_OPEN=true` opens every door, every caller
+/// `GLOSSDB_INSECURE_OPEN=true` opens every interface, every caller
 /// recorded as [`glossdb_serverd::INSECURE_DEV_MODE`]. Only the literal
 /// `true` counts — the switch is a statement, never a fallback:
 /// anything else leaves the gate required, and the refusal names the
@@ -239,7 +239,7 @@ fn open(get: &impl Fn(&str) -> Option<String>) -> bool {
     get("GLOSSDB_INSECURE_OPEN").is_some_and(|v| v.trim() == "true")
 }
 
-/// Whose `Host` header the agent door answers: loopback — the
+/// Whose `Host` header the agent interface answers: loopback — the
 /// transport's DNS-rebinding guard, for a server on a laptop where a
 /// browser could be steered at 127.0.0.1 — and the audience's host,
 /// the name the world reaches this server by. A deployment names its

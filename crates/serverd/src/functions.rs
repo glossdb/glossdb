@@ -1,10 +1,10 @@
-//! The function surface per execution context, as pages the door
+//! The function surface per execution context, as pages the interface
 //! serves: `doc://functions/door.md`, `doc://functions/recipe.md`,
 //! `doc://functions/detector.md`. Three contexts register different
-//! functions, and nothing on the door said which — an agent learned
+//! functions, and nothing on the interface said which — an agent learned
 //! the surface by refusal. Each page lists what its context registers,
 //! read from that context's own registry at boot (after the shipped
-//! system landed), so a page cannot drift from the registration; the
+//! system loaded), so a page cannot drift from the registration; the
 //! suite compares them (`tests/suite/next.rs`).
 
 use std::fmt::Write as _;
@@ -27,9 +27,9 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         name: (*name).to_string(),
         syntax: Some((*syntax).to_string()),
     }));
-    // The functions declared when the door opened — the kit's, and any
+    // The functions declared when the interface opened — the kit's, and any
     // a workspace declared before this boot. `functions` says what
-    // stands now.
+    // holds now.
     let declared = session
         .execute("SELECT name FROM functions ORDER BY name")
         .await?;
@@ -68,7 +68,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         page(
             "recipe",
             "Functions in a recipe or a probe",
-            "What the SQL of `DECLARE RECIPE` and `PROBE` can call: the \
+            "What the SQL of `DECLARE RECIPE` and `PREVIEW` can call: the \
              engine's defaults, the try-casts, and the three readers over \
              the source's files. Nothing else — no JSON functions, no \
              shipped aggregates, no declared function.",
@@ -77,7 +77,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         page(
             "detector",
             "Functions in a detector",
-            "What a witness's detector query can call over its `slots` \
+            "What a test's detector query can call over its `slots` \
              relation: the engine's defaults, nothing more.",
             &crate::engine::detector_functions(),
         ),

@@ -55,7 +55,7 @@ pub fn gate() -> Arc<Gate> {
 }
 
 /// A gate whose issuer exchanges codes at `token_url` — a test that
-/// stands the token endpoint in names where.
+/// holds the token endpoint in names where.
 pub fn gate_with(token_url: &str) -> Arc<Gate> {
     Arc::new(Gate::with_keys(
         ISSUER,
@@ -69,7 +69,7 @@ pub fn gate_with(token_url: &str) -> Arc<Gate> {
     ))
 }
 
-/// The doors' whole arrangement: the login carries the gate.
+/// The interfaces' whole arrangement: the login carries the gate.
 pub fn login() -> Arc<Login> {
     Arc::new(Login::new(gate(), CLIENT_SECRET).unwrap())
 }

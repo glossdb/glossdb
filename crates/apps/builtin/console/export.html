@@ -1,0 +1,71 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Export") }}
+{# Every relation of the dataset as a file: the loaded tables and the
+   reads the catalog serves, each a download away. A file is the
+   relation as it holds at the read, encoded on the way out; nothing
+   is stored twice. The download links opt out of the shell's hx-boost:
+   boosted, htmx would fetch the file and swap its text into the page
+   instead of letting the browser save it. #}
+<div class="tiles">
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Each table as its newest load: its rows, the cells its casts left empty, and when it was loaded. Column counts are the table&#x27;s own schema.">Tables</span>
+      <code class="chip">imports · information_schema</code></header>
+    <p class="hint">A file is the table as it is now. Parquet keeps the column types; CSV is text.</p>
+    <gl-rows frame="frames/tables" empty="nothing is loaded here yet: a table is loaded by a load query, DECLARE RECIPE over the MCP interface">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(10rem,1fr) 7rem 6rem 9rem 9rem">
+          <span class="r-subj">{name}<br><span class="r-meta">{columns} {columns_label}</span></span>
+          <span class="r-num">{rows}<br><span class="r-meta">rows</span></span>
+          <span class="r-num {ncls}">{nulled}{dash}<br><span class="r-meta">{nulled_label}</span></span>
+          <span class="r-meta">{landed}</span>
+          <span class="wgroup"><a class="wbtn" hx-boost="false" download href="{csv}">csv</a><a class="wbtn" hx-boost="false" download href="{parquet}">parquet</a></span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every metric, single value and derived view of this dataset, as its view serves it: a metric&#x27;s rows whole, before they are grouped. A stopped metric definition carries its author&#x27;s reason and serves no file.">Views</span>
+      <code class="chip">metric_surfaces · &lt;name&gt;</code></header>
+    <p class="hint">Each view says what it is while it serves, and why not when it does not.</p>
+    <gl-rows frame="frames/reads?stopped=0" empty="no view is served here yet: a view is a VIEW aspect with a metric definition, a GLOSS with its sql">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(12rem,16rem) minmax(0,1fr) 5rem 6rem 9rem">
+          <span class="r-subj">{read}<br><span class="r-meta">{title}</span></span>
+          <span class="r-what">{what}</span>
+          <span class="r-meta">{unit}</span>
+          <code class="chip {ccls}">{chip}</code>
+          <span class="wgroup {fcls}"><a class="wbtn" hx-boost="false" download href="{csv}">csv</a><a class="wbtn" hx-boost="false" download href="{parquet}">parquet</a></span>
+        </div>
+      </template>
+    </gl-rows>
+    {# A stopped read serves no file; it stays on record with the
+       author's reason, folded, closed by default. #}
+    <details class="fold">
+      <summary>stopped</summary>
+      <gl-rows frame="frames/reads?stopped=1" empty="none stopped: a view its author stops is listed here with the reason">
+        <template>
+          <div class="rrow" style="grid-template-columns:minmax(12rem,16rem) minmax(0,1fr) 6rem">
+            <span class="r-subj">{read}<br><span class="r-meta">{title}</span></span>
+            <span class="r-what">{what}</span>
+            <code class="chip {ccls}">{chip}</code>
+          </div>
+        </template>
+      </gl-rows>
+    </details>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow">A read of your own</span></header>
+    <p class="hint">For anything these files do not answer, use the query endpoint: post a query, receive an Arrow stream. The downloads above use the same endpoint.</p>
+<pre class="statement">curl -s --data 'SELECT * FROM &lt;table&gt; LIMIT 10' \
+  -H "Authorization: Bearer $TOKEN" {{ origin }}/{{ dataset }}/query</pre>
+  </section>
+
+</div>
+{% endblock main %}

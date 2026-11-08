@@ -1,5 +1,5 @@
-//! The engine. The glossql extension owns the language and the record,
-//! DuckLake the lake; this crate is the facade the doors use: a plane
+//! The engine. The glossql extension owns the language and the catalog,
+//! DuckLake the lake; this crate is the facade the interfaces use: a plane
 //! that opens the workspace, a channel per actor, statements executed
 //! and queries streamed as Arrow.
 //!
@@ -34,7 +34,7 @@ use duckdb_neo::query_result::ResultType;
 use duckdb_neo::{Parameters, QueryParameter};
 use futures::Stream;
 /// Who a connection speaks as (SPEC.md §1). Every write the engine
-/// lands is stamped with it; there is no BY clause anywhere. The doors
+/// stores is stamped with it; there is no BY clause anywhere. The interfaces
 /// read it off the gate and hand it to the engine with the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActorKind {
@@ -57,7 +57,7 @@ impl std::fmt::Display for ActorKind {
     }
 }
 
-/// The connection's actor: the kind the door it came through says, the
+/// The connection's actor: the kind the interface it came through says, the
 /// id the token says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Actor {
@@ -74,7 +74,7 @@ pub const DEFAULT_ROW_CAP: usize = 200;
 pub const LAKE: &str = "ws";
 
 /// The instance's own in-memory database: what the build carries and
-/// the record does not, the door's pages.
+/// the catalog does not, the interface's pages.
 const PAGES_DB: &str = "memory";
 
 // -- the refusal -------------------------------------------------------
@@ -151,12 +151,12 @@ impl From<arrow::error::ArrowError> for SessionError {
     }
 }
 
-/// What landed and what never ran, for a refusal at `index` of `total`.
+/// What ran and what never ran, for a refusal at `index` of `total`.
 fn sequence_context(index: usize, total: usize) -> String {
     let landed = match index {
-        1 => "nothing landed before it".to_string(),
-        2 => "statement 1 landed".to_string(),
-        _ => format!("statements 1–{} landed", index - 1),
+        1 => "nothing ran before it".to_string(),
+        2 => "statement 1 ran".to_string(),
+        _ => format!("statements 1–{} ran", index - 1),
     };
     let tail = if index == total {
         String::new()
@@ -181,22 +181,22 @@ pub enum Outcome {
     Affected(u64),
 }
 
-/// A read's batches as the doors drive them: one item per batch, the
+/// A read's batches as the interfaces drive them: one item per batch, the
 /// engine's refusal as an item's error.
 pub type BatchStream = Pin<Box<dyn Stream<Item = Result<RecordBatch, SessionError>> + Send>>;
 
-/// A read as the doors drive it.
+/// A read as the interfaces drive it.
 pub struct QueryStream {
     pub schema: SchemaRef,
     pub stream: BatchStream,
     /// Rows a paging caller ships before declaring the answer cut;
-    /// `usize::MAX` on a read of the record, which must be whole.
+    /// `usize::MAX` on a read of the catalog, which must be whole.
     pub cap: usize,
-    /// Whether the statement reads the record anywhere.
+    /// Whether the statement reads the catalog anywhere.
     pub record: bool,
 }
 
-/// A file the engine writes a read into, for the app door's downloads:
+/// A file the engine writes a read into, for the app interface's downloads:
 /// the engine's own CSV and parquet writers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyFormat {
@@ -220,7 +220,7 @@ impl CopyFormat {
     }
 }
 
-/// A page the door serves as a resource.
+/// A page the interface serves as a resource.
 #[derive(Debug, Clone)]
 pub struct DoorPage {
     pub uri: String,
@@ -239,12 +239,12 @@ pub struct Registered {
     pub syntax: Option<String>,
 }
 
-/// The doors by name: on this engine a door is a kit's table macro, so
-/// the list is read from the catalog ([`Session::registered_functions`])
+/// The server's own table functions by name: on this engine each is a kit's
+/// table macro, so the list is read from the catalog ([`Session::registered_functions`])
 /// and this constant stays empty for the callers that still name it.
 pub const DOORS: &[(&str, &str)] = &[];
 
-/// The request's standing as the gate stamps it: the actor the door
+/// The request's standing as the gate stamps it: the actor the interface
 /// verified, carried into the handlers.
 #[derive(Debug, Clone)]
 pub struct Caller(pub Actor);
@@ -396,7 +396,7 @@ pub fn detector_functions() -> Vec<Registered> {
     Vec::new()
 }
 
-/// The brief's counts: what the record holds of the human's hand.
+/// The brief's counts: what people have written in the catalog.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BriefCounts {
     pub human_writings: i64,
@@ -416,7 +416,7 @@ pub struct CallShape {
 /// The shape, from the statements' text: `USE` names the dataset, the
 /// last one standing; a statement that is not a read, and an
 /// extraction, write; a call of reads alone that names a record
-/// relation is a review. Syntactic, as the doors need it before the
+/// relation is a review. Syntactic, as the interfaces need it before the
 /// engine runs anything: a statement that is none of these is refused
 /// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
@@ -459,11 +459,11 @@ fn use_target(statement: &str) -> Option<String> {
 /// lake's `main` schema, and the reads over the record.
 const RECORD: &[&str] = &[
     "glossary",
-    // the door's derived reads, which say what the record holds
+    // the interface's derived reads, which say what the catalog holds
     "open_questions",
-    "ruling_entries",
+    "review_decisions",
     "agent_assumptions",
-    "owed",
+    "open_items",
     "metric_surfaces",
     "metric_axes",
     "metric_sources",
@@ -474,17 +474,16 @@ const RECORD: &[&str] = &[
     "imports",
     "recipes",
     "aspects",
-    "witnesses",
+    "tests",
     "functions",
     "measurements",
     "relationships",
     "datasets",
     "sources",
     "kits",
-    "attest",
 ];
 
-/// Whether a read touches the record anywhere: the store's relations by
+/// Whether a read touches the catalog anywhere: the store's relations by
 /// name, bare or under the store's schema, or the two reads over it.
 /// Syntactic, as the frame class needs: the words of the text, with
 /// the quoting and punctuation taken off.
@@ -495,7 +494,7 @@ pub fn reads_record(sql: &str) -> bool {
         .filter(|w| !w.is_empty())
         .any(|word| {
             let name = word.rsplit('.').next().unwrap_or(word);
-            name == "glossary" || name == "attest" || RECORD.contains(&name)
+            name == "glossary" || RECORD.contains(&name)
         })
 }
 
@@ -540,8 +539,8 @@ fn words(statement: &str) -> Vec<String> {
     out
 }
 
-/// What a door opens: the workspace, never the engine. A standard
-/// actor lands tables, writes rows, copies files in and out, drops what
+/// What an interface opens: the workspace, never the engine. A standard
+/// actor loads tables, writes rows, copies files in and out, drops what
 /// it made, declares and glosses, reads. The engine's own knobs are
 /// closed, and the refusal names which: its settings and the session's
 /// variables (`SET`, `RESET`, a `PRAGMA` switch), where the actor and
@@ -625,13 +624,13 @@ pub struct Config {
     /// megabytes; unset, the engine's own defaults.
     pub memory_limit_mb: Option<u64>,
     pub spill_limit_mb: Option<u64>,
-    /// The actors that have the engine's own knobs at the doors:
+    /// The actors that have the engine's own knobs at the interfaces:
     /// `SET`, `ATTACH`, `INSTALL`, `LOAD`, `CALL`. Everyone else has
     /// the workspace ([`admitted`]). Actor ids; none by default.
     pub root: Vec<String>,
 }
 
-/// The engine's spill files, and the files the export door writes:
+/// The engine's spill files, and the files the export interface writes:
 /// under the system's temporary directory, never beside the process.
 fn spill_dir() -> PathBuf {
     std::env::temp_dir().join("glossdb")
@@ -651,7 +650,7 @@ struct Pieces {
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
-    /// This repository's kits, `kits/`: metrics and futures.
+    /// This repository's kits, `kits/`: core, metrics, outlook and goals.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
@@ -695,10 +694,10 @@ fn pieces() -> Pieces {
 }
 
 /// One of the language's documents, `SPEC.md` or `grammar.ebnf`:
-/// what the door serves as `doc://SPEC.md` and `doc://grammar.ebnf`.
+/// what the interface serves as `doc://SPEC.md` and `doc://grammar.ebnf`.
 /// Read from beside the extension's kits, where its repository, the
 /// share and the CI cache all keep them. A missing document is the
-/// caller's error to raise: the door serves nothing it cannot read.
+/// caller's error to raise: the interface serves nothing it cannot read.
 pub fn language_document(name: &str) -> std::io::Result<String> {
     let kits = pieces().glossql_kits;
     let path = kits.parent().unwrap_or(&kits).join(name);
@@ -718,8 +717,8 @@ impl Config {
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("metrics/kit.sql"),
-                pieces.kits.join("futures/kit.sql"),
-                pieces.kits.join("door/kit.sql"),
+                pieces.kits.join("outlook/kit.sql"),
+                pieces.kits.join("goals/kit.sql"),
             ],
             extension_dir: pieces.extension_dir,
             catalog: workspace.join("catalog.ducklake").display().to_string(),
@@ -779,9 +778,9 @@ impl std::fmt::Debug for Plane {
 
 /// Run one statement for its effect on a connection.
 /// The `next` read, written at open from every `routes_<kit>()` macro
-/// the kits and the door declare: each serves its goals' CTEs and arms
+/// the kits and the interface declare: each serves its goals' CTEs and arms
 /// as SQL text over the reads this query takes once — `ds`, `axes`,
-/// `owed`, `reds`, `bodies`, `applicable` — so one `next` reads the
+/// `open_items`, `reds`, `bodies`, `applicable` — so one `next` reads the
 /// record once per relation, and the lowest step decides each goal, in
 /// the goals' order.
 fn next_view(conn: &Connection) -> Result<String, SessionError> {
@@ -830,8 +829,8 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
     let shared = format!(
         "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
          axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_axes()), \
-         owed AS MATERIALIZED (SELECT * FROM {LAKE}.main.owed), \
-         reds AS MATERIALIZED (SELECT subject, witness FROM glossql_attest(current_schema(), NULL) WHERE band = 'red'), \
+         open_items AS MATERIALIZED (SELECT * FROM {LAKE}.main.open_items), \
+         reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
            SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
            FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
@@ -857,7 +856,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
 
 /// The `next` view, written when its text is new. The hash of the
 /// composed text rides the view as its comment, which a replace
-/// clears; a view whose comment is the hash stands, and the open
+/// clears; a view whose comment is the hash holds, and the open
 /// skips the bind of the whole text. A kit that changed changes the
 /// text through its routes.
 fn write_next(conn: &Connection) -> Result<(), SessionError> {
@@ -904,7 +903,7 @@ fn arrow_batches(
     sql: &str,
     params: &[(String, String)],
 ) -> Result<(ResultType, SchemaRef, Vec<RecordBatch>), SessionError> {
-    // Only the parameters the text names: the doors bind every URL
+    // Only the parameters the text names: the interfaces bind every URL
     // parameter, and the engine refuses one the statement never spells.
     let named: Vec<(&str, &dyn QueryParameter)> = params
         .iter()
@@ -1054,7 +1053,7 @@ fn engine_instance(config: &Config) -> Result<(Environment, Instance, Connection
 impl Plane {
     /// Open the workspace: the instance, the extension, the lake, the
     /// grammar, the store, the kits in order and the `next` view. A kit
-    /// whose text the lake recorded stands and runs nothing; the view is
+    /// whose text the lake recorded holds and runs nothing; the view is
     /// written when its text is new. An existing workspace opens in the
     /// time of the attach.
     pub async fn open(config: Config) -> Result<Plane, SessionError> {
@@ -1064,7 +1063,7 @@ impl Plane {
                 let (environment, instance, conn) = engine_instance(&config)?;
                 // httpfs for the POST a service call makes and for a
                 // warehouse in an object store; the warehouse's credential
-                // held before the lake is attached, since the record's own
+                // held before the lake is attached, since the catalog's own
                 // files are in the warehouse too.
                 let store = store_kind(&config.warehouse);
                 if config.service.is_some() || store.is_some() {
@@ -1115,8 +1114,8 @@ impl Plane {
                 run(&conn, &format!("USE {LAKE}"))?;
                 run(&conn, "SET active_grammar_extensions = ['glossql']")?;
                 run(&conn, "PRAGMA glossql")?;
-                // the door's pages: a table of the instance's own in-memory
-                // database, empty until a door publishes them
+                // the interface's pages: a table of the instance's own in-memory
+                // database, empty until an interface publishes them
                 run(
                     &conn,
                     &format!(
@@ -1165,10 +1164,10 @@ impl Plane {
         })
     }
 
-    /// The pages the door serves, held here and published as rows of
+    /// The pages the interface serves, held here and published as rows of
     /// `pages()`, a temp macro of every channel over a table in the
     /// instance's own in-memory database, never the lake, since a page
-    /// is the build's and not the record's.
+    /// is the build's and not the catalog's.
     pub fn with_pages(mut self, pages: Arc<[DoorPage]>) -> Self {
         if let Err(e) = self.publish_pages(&pages) {
             tracing::warn!(error = %e, "the door pages are not rows of pages()");
@@ -1286,7 +1285,7 @@ impl Plane {
         session.execute(sql).await
     }
 
-    /// The datasets the record holds.
+    /// The datasets the catalog holds.
     pub async fn datasets(&self) -> Result<Vec<String>, SessionError> {
         let session = self.channel(bootstrap_actor(), None).await?;
         let batches = session
@@ -1318,8 +1317,8 @@ impl Plane {
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
              rulings AS (
                SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
-               FROM latest r, unnest(coalesce(json_extract(r.body, '$.rulings')::JSON[], [])) t(jr)
-               WHERE r.actor_kind = 'human' AND r.aspect = 'ruling'),
+               FROM latest r, unnest(coalesce(json_extract(r.body, '$.decisions')::JSON[], [])) t(jr)
+               WHERE r.actor_kind = 'human' AND r.aspect = 'review_decision'),
              owed AS (
                SELECT count(*) AS n FROM rulings ru
                WHERE EXISTS (SELECT 1 FROM latest a, unnest(coalesce(json_extract(a.body, '$.assumptions')::JSON[], [])) t(ja)
@@ -1442,7 +1441,7 @@ impl Session {
         self.batches_with_schema(sql, params).await.map(|(_, b)| b)
     }
 
-    /// One read's shape and rows: the shape stands when no row does.
+    /// One read's shape and rows: the shape holds when no row does.
     pub async fn batches_with_schema(
         &self,
         sql: &str,
@@ -1462,7 +1461,7 @@ impl Session {
     }
 
     /// The statements, in order, each an outcome; a refusal names its
-    /// place and carries what landed before it.
+    /// place and carries what loaded before it.
     pub async fn execute(&self, text: &str) -> Result<Vec<Outcome>, SessionError> {
         let conn = Arc::clone(&self.conn);
         let text = text.to_string();
@@ -1501,7 +1500,7 @@ impl Session {
         .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
-    /// One read, whole: the record's relations are never cut.
+    /// One read, whole: the catalog's relations are never cut.
     pub async fn query_stream(&self, sql: &str) -> Result<QueryStream, SessionError> {
         self.stream(sql, &[], false).await
     }
@@ -1604,7 +1603,7 @@ impl Session {
         self.admit(&one)?;
         let record = reads_record(&one);
         // an extraction is the language's, not a SELECT to page: it runs
-        // as written, and lands one row per function
+        // as written, and stores one row per function
         let cap = if paged && !record && !is_extraction(&one) {
             self.row_cap
         } else {
@@ -1625,15 +1624,15 @@ impl Session {
         })
     }
 
-    /// The docket's re-measure: every function voice of the bound
-    /// dataset that landed before the last change runs again over its
+    /// The console's re-measure: every function's value of the bound
+    /// dataset that loaded before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
-    /// ran, and every witnessed measurement on the dataset nobody ran
+    /// ran, and every tested measurement on the dataset nobody ran
     /// (the walk), runs for the first time, in the functions' name order,
     /// which runs the forecast before the plan judgement that reads it.
     /// Returns how many ran. A
     /// function that refuses — the walk with no service named — is
-    /// logged and stays owed, where the banner and the goal's next act
+    /// logged and stays required, where the banner and the goal's next act
     /// carry its refusal by name; the others run.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
         let acts = self
@@ -1648,7 +1647,7 @@ impl Session {
                      FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_axes()) \
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
-                     FROM {LAKE}.main.owed o \
+                     FROM {LAKE}.main.open_items o \
                      WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
                      ORDER BY 1, 2"
                 ),
@@ -1672,7 +1671,7 @@ impl Session {
     }
 
     /// What SQL on this channel can call beyond the engine's own: the
-    /// kits' macros as doors, the declared functions as extractions.
+    /// kits' macros as interfaces, the declared functions as extractions.
     pub async fn registered_functions(&self) -> Result<Vec<Registered>, SessionError> {
         let macros = self
             .batches(
@@ -1740,7 +1739,7 @@ fn execute_one(conn: &Connection, sql: &str, cap: usize) -> Result<Outcome, Sess
     }
 }
 
-/// A grounding's write answers with the metric's fact row: what the
+/// A metric definition's write answers with the metric's fact row: what the
 /// view's columns say and what they owe, at the pin the write moved
 /// to, in place of the outcome's one line. Any other gloss keeps its
 /// line; a metric with no row (the kit not loaded) keeps it too.
@@ -1762,7 +1761,7 @@ fn grounding_row(
         ),
         &[],
     )?;
-    if one_cell(&kind).as_deref() != Some("QUERY") {
+    if one_cell(&kind).as_deref() != Some("VIEW") {
         return Ok(None);
     }
     let (_, _, row) = arrow_batches(
@@ -1877,14 +1876,16 @@ mod tests {
         );
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
-            call_shape("USE fin; SELECT * FROM owed").dataset.as_deref(),
+            call_shape("USE fin; SELECT * FROM open_items")
+                .dataset
+                .as_deref(),
             Some("fin")
         );
         assert!(call_shape("SELECT column_profile() FROM ops").writes);
         let setup = r#"
         DECLARE DATASET fin SET (purpose: 'brief delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS QUERY;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
@@ -2049,7 +2050,7 @@ mod tests {
 /// golden copy is built once per content, keyed by the extension
 /// artifact and the kits' texts, under the system's temporary
 /// directory. A build that loses the race to another process yields to
-/// the one that landed: the rename is atomic, so a copy sees a whole
+/// the one that loaded: the rename is atomic, so a copy sees a whole
 /// workspace or none.
 pub mod testing {
     use super::{Config, Plane, SessionError};
@@ -2057,7 +2058,7 @@ pub mod testing {
     use std::path::{Path, PathBuf};
 
     /// The laptop config for `into`, holding a copy of the golden
-    /// workspace: every kit's row stands, so the open is the attach. A
+    /// workspace: every kit's row holds, so the open is the attach. A
     /// directory that holds a workspace already is left as it is.
     pub async fn golden(into: &Path) -> Result<Config, SessionError> {
         let config = Config::laptop(into);

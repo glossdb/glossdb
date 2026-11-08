@@ -1,0 +1,28 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Lineage") }}
+{# Column lineage: the tables on the left laid out along their key
+   edges, the metrics they feed on the right. Every line is a row of
+   the catalog — a declared relationship, or a column a metric
+   definition reads — and the element only draws them. #}
+<div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="Every declared key between columns, and for each metric the table columns its definition reads.">Column lineage</span>
+      <code class="chip">relationships · metric_sources()</code></header>
+    <p class="hint">Tables on the left, the metrics they feed on the right. A solid line is a declared key edge; a dashed one is a metric definition reading the column. Columns with nothing attached fold under their table — open them from the count. Hover a column to follow it; clicking puts it in the URL, so the view is a link.</p>
+    <div class="graph-wrap">
+      <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges"
+                empty="no tables loaded yet — a load query loads a table, and a key is declared over two of its columns"></gl-graph>
+    </div>
+    <p class="hint scroll-hint">The graph is wider than the page: scroll right for the metrics.</p>
+    <div class="legend">
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-key"/></svg>declared key (→ many-to-one, ↔ one-to-one)</span>
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-reads"/></svg>a metric definition reads the column</span>
+      <span><span class="role-measure">measure</span> · key · dimension · timestamp — the column's role</span>
+    </div>
+  </section>
+</div>
+{% endblock main %}

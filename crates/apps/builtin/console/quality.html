@@ -1,0 +1,254 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{% set check = state.check | default(value="") %}
+{% set ckind = state.kind | default(value="") %}
+{% set tab = state.tab | default(value="description") %}
+
+{% if check %}
+{# ---- one test: the same five tabs as every object ----------------- #}
+{# The link carries the detector's kind, so the Measurements tab knows
+   which evidence to draw: the corridor's points, the columns whose
+   annotations differ, a validation's rates, or every result for a
+   scoring function of the workspace's own. #}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Tests", object=check) }}
+{{ object::title(name=check, kind="test") }}
+{{ object::subtabs(q="check=" ~ check ~ "&kind=" ~ ckind, tab=tab) }}
+<div class="tiles">
+{% if tab == "description" %}
+  <gl-rows frame="frames/check" empty="no check named {{ check }} — a check is a test with a detector">
+    <template>
+      <section class="tile">
+        <header><span class="eyebrow">{test}</span>
+          <code class="chip {bcls}">{band}</code></header>
+        <div class="rrow" style="grid-template-columns:1fr">
+          <span class="r-what">{asks}</span>
+          <span class="r-meta">{detector} @ {threshold} on {aspect} · who may annotate: {actors}</span>
+          <span class="r-meta">{measured} · {score} · {at}{stale}</span>
+        </div>
+      </section>
+    </template>
+  </gl-rows>
+
+{% elif tab == "measurements" %}
+  {% if ckind == "corridor" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="For each metric, the newest complete month as recorded: the actual, the range its own history predicted, and how far outside it fell. A metric that could not be checked says why.">Every metric's newest complete month</span>
+      <code class="chip">band_points()</code></header>
+    <p class="hint">Per metric, the newest complete point: the actual against the range its own history predicted, how far out it sits (0 at the median, 0.8 at the range's edge, 1 at the extremes) and on which side. Farthest out first. A point that was held back, or a metric that could not be checked, says why.</p>
+    <gl-rows frame="frames/check_points" empty="the expected ranges have not been computed: metric_bands computes them, and the bands goal in the next steps gives the statement">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,14rem) 6rem 8rem minmax(10rem,1fr) 6rem 5rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{metric}</span></span>
+          <span class="r-meta">{period}</span>
+          <span class="r-num">{actual}</span>
+          <span class="r-meta">the corridor: {corridor}<br>{note}</span>
+          <span class="r-num">{displacement}<br><span class="r-meta">{side}</span></span>
+          <code class="chip {bcls}">{band}</code>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+  {% elif ckind == "voices" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Test results that are not green, with every annotation on the column, a person&#x27;s first. The score is the share of extra distinct values among them.">Columns where annotations disagree</span>
+      <code class="chip">TESTS() · glossary</code></header>
+    <p class="hint">Only the columns whose annotations disagree are listed, every annotation side by side, a person's first; the ones that agree are counted above.</p>
+    <gl-rows frame="frames/check_slots" empty="every annotation agrees: no column has differing values">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(10rem,16rem) minmax(0,1fr) 5rem 5rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-what">{voices}</span>
+          <span class="r-num">{score}</span>
+          <code class="chip {bcls}">{band}</code>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% elif ckind == "rate" %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Per asset: the expected outcome and tolerance a person or the agent wrote, the breach rate a measurement found, and the band the test gave the pair.">Expectation against measurement</span>
+      <code class="chip">TESTS() · glossary</code></header>
+    <p class="hint">Per asset: the expected outcome with its tolerance, and the breach rate a measurement found. Green at or under the tolerance, red above, yellow while nothing has been measured.</p>
+    <gl-rows frame="frames/check_rates" empty="no subject carries this expectation yet">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(10rem,14rem) minmax(0,1fr) 9rem 10rem 5rem">
+          <span class="r-subj">{subject}</span>
+          <span class="r-what">{outcome}</span>
+          <span class="r-meta">{tolerance}</span>
+          <span class="r-meta">{measured}</span>
+          <code class="chip {bcls}">{band}</code>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% else %}
+  <section class="tile">
+    <header><span class="eyebrow" title="Every result of this test, worst first. A test with a scoring function of the workspace&#x27;s own shows only these rows.">Every result</span>
+      <code class="chip">TESTS()</code></header>
+    <gl-rows frame="frames/check_verdicts" empty="no result yet: the test has not run">
+      <template>
+        <div class="rrow" style="grid-template-columns:minmax(10rem,14rem) minmax(0,1fr) 5rem 5rem">
+          <span class="r-subj">{subject}<br><span class="r-meta">{aspect}</span></span>
+          <span class="r-meta">{note}</span>
+          <span class="r-num">{score}</span>
+          <code class="chip {bcls}">{band}</code>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+  {% endif %}
+{% elif tab == "tests" %}
+  <p class="rows-empty">A test has no tests of its own: its results are under Measurements.</p>
+{% elif tab == "used" %}
+  <gl-rows frame="frames/check" empty="">
+    <template>
+      <section class="tile">
+        <header><span class="eyebrow" title="The property this test scores, and every asset that carries it.">What it tests</span></header>
+        <a class="rrow" href="/{{ dataset }}/app/console/p/glossary?aspect={aspect}" style="grid-template-columns:1fr">
+          <span class="r-subj">{aspect}</span>
+          <span class="r-meta">the property, with every value it scores</span>
+        </a>
+      </section>
+    </template>
+  </gl-rows>
+{% elif tab == "history" %}
+{{ object::history(frame="frames/test_history", empty="no declaration found", note="Each time this test was declared, newest first. Its results are computed when read, so they have no history of their own.") }}
+{% endif %}
+</div>
+
+{% else %}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
+{# ---- what is wrong, then the instruments --------------------------- #}
+{# Findings first: what is wrong right now, worst first, each a
+   sentence from the catalog's fields with the numbers behind it, what
+   reads the subject and where it came from — a test's result that
+   is not green, a load whose casts refused cells, a defect a function
+   measured. A breached corridor shows its months against the
+   corridor and where the move is. Then the instruments, in words: the
+   standing checks, what the functions measured, each table's newest
+   load, and what the vocabulary still owes by name. Everything here
+   is measured — a test's live result, the load's own account,
+   the measurement's own body — never assumed, and nothing is a count
+   standing in for a sentence. #}
+<div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their band; measurements carry none, since a measurement reports and never judges. A month outside its predicted range comes first, with its chart and the members that moved it. When nothing is wrong, the page says so.">Findings</span>
+      <code class="chip">TESTS() · imports · measurements</code></header>
+    <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
+
+    {# A breached corridor: the metric whose newest complete point
+       loaded outside. The picture and the movers are the metric's own
+       frames, keyed by its name through the row's field. #}
+    <gl-rows frame="frames/breaches" empty="">
+      <template>
+        <article class="finding f-red">
+          <div class="f-head"><code class="chip {bcls}">{band}</code><h2>{headline}</h2></div>
+          <p class="f-why">The month closed at <code>{actual}</code>. From its own history the metric was expected between <code>{lo}</code> and <code>{hi}</code>; the point sits {side} that, displacement <code>{displacement}</code>. {others}</p>
+          <gl-chart frame="frames/corridor?metric={metric}" spec="specs/corridor.vl.json" empty=""></gl-chart>
+          <p class="f-meta">the band is the range predicted for each month from the months before it, the 10th to the 90th percentile; the line is the actual</p>
+          <p class="f-sub">Where the move is · the previous month to this one, by each axis the metric is sliced by</p>
+          <gl-rows frame="frames/movers?metric={metric}" empty="the metric is sliced by no axis, so the move has no parts">
+            <template>
+              <div class="rrow f-move" style="grid-template-columns:8rem 7rem 12rem 7rem minmax(0,1fr)">
+                <span class="r-meta">{axis}</span>
+                <span class="r-subj">{member}</span>
+                <span class="r-meta">{before} → {after}</span>
+                <span class="r-num">{sign}{moved}</span>
+                <span class="r-meta">{rest} {rest_sign}{rest_moved}</span>
+              </div>
+            </template>
+          </gl-rows>
+          <p class="f-meta">{meta} · {at}{stale} · <a href="{link_check}">the test</a> · <a href="{link_metric}">{title}, sliced by {axis}</a></p>
+        </article>
+      </template>
+    </gl-rows>
+
+    <gl-rows frame="frames/findings" empty="Beyond the expected ranges, nothing stands out: every test green, every cell read, every join resolving, every identity holding.">
+      <template>
+        <article class="finding">
+          <div class="f-head"><code class="chip {bcls}">{chip}</code><h2>{headline}</h2></div>
+          <p class="f-why">{why} {reads}</p>
+          <p class="f-meta">{meta} · <a href="{link}">{link_text}</a></p>
+        </article>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="One row per test: what it asks, its scoring function and threshold, its results counted by band (the bar shows the shares), and its worst band. A row opens the test, with its declaration, its result and the evidence. A new load makes the result stale; the next read computes it again.">The tests</span>
+      <code class="chip">tests · TESTS()</code></header>
+    <p class="hint">The tests on this dataset, and how their results fell. Open a row for what the test saw.</p>
+    <gl-rows frame="frames/checks" empty="no test has a scoring function yet, so nothing is tested; the checks goal in the next steps gives the statement">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr) 10rem 10rem 5rem">
+          <span class="r-subj">{test}<br><span class="r-meta">{expectation}</span></span>
+          <span class="r-what">{asks}</span>
+          <span class="bands" title="{measured}"><i class="b-green" style="flex-grow:{green}"></i><i class="b-yellow" style="flex-grow:{yellow}"></i><i class="b-orange" style="flex-grow:{orange}"></i><i class="b-red" style="flex-grow:{red}"></i><i class="b-error" style="flex-grow:{errors}"></i></span>
+          <span class="r-meta">{measured}</span>
+          <code class="chip {bcls}">{band}</code>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every measurement, with what it found, how many assets it covered and when. A measurement reports and never judges: a defect shows above as a finding, and becomes a result only through a test. Measurements nobody has run are folded under the list.">What was measured</span>
+      <code class="chip">GLOSSARY(all =&gt; true) · kind = measurement</code></header>
+    <p class="hint">What the measurements found, property by property.</p>
+    <gl-rows frame="frames/measured" empty="no function has measured anything here yet — the next read's checks goal hands the statement">
+      <template>
+        <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr) 9rem">
+          <span class="r-subj">{aspect}<br><span class="r-meta">{subjects}</span></span>
+          <span class="r-what">{found}</span>
+          <span class="r-meta">{at}</span>
+        </div>
+      </template>
+    </gl-rows>
+    <details class="fold"><summary>not yet measured</summary>
+      <gl-rows frame="frames/unmeasured" empty="every declared measurement has run on something">
+        <template>
+          <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr)">
+            <span class="r-subj">{aspect}</span>
+            <span class="r-meta">{missing}</span>
+          </div>
+        </template>
+      </gl-rows>
+    </details>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="The newest load of each table: what the load query read (a join&#x27;s inputs listed, not summed), what was loaded and when, the rows a filter dropped (a join cannot count them and says nothing), and the cells its casts could not read with their values, most frequent first (up to eight). A load that could not count its casts says so. The table opens its page on the Glossary tab.">The loads</span>
+      <code class="chip">imports</code></header>
+    <p class="hint">Each table's newest load in one line: what was read, what was loaded, when, and what the casts could not read.</p>
+    <gl-rows frame="frames/landing" empty="nothing is loaded here yet: a table is loaded by a load query, DECLARE RECIPE over the MCP interface">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr) 6rem 9rem minmax(0,1.4fr)">
+          <span class="r-subj"><a href="{link}">{name}</a><br><span class="r-meta">{casts}</span></span>
+          <span class="r-meta">{read}</span>
+          <span class="r-num">{landed}<br><span class="r-meta">landed</span></span>
+          <span class="r-meta">{at}<br>{dropped}</span>
+          <span class="r-what dict">{refused}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Every required annotation nobody has written, by property, the assets under their tables. A row opens the property on the Glossary tab.">Not yet annotated</span>
+      <code class="chip">GLOSSARY() · state = unassessed</code></header>
+    <p class="hint">What the harness schema still requires, by name. A row opens the property on the Glossary tab.</p>
+    <gl-rows frame="frames/unsaid" empty="every required annotation is written">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr)">
+          <span class="r-subj">{aspect}<br><span class="r-meta">{missing} missing</span></span>
+          <span class="dict">{names}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+</div>
+{% endif %}
+{% endblock main %}

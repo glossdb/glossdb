@@ -6,7 +6,7 @@
 //! is its actor, dataset, the digest and length of its text and the
 //! spans of the work it caused — never the text itself. The text is a
 //! `debug` event inside the call's span, because statement bodies and
-//! groundings carry data. Refusals carry their reason and never the
+//! metric definitions carry data. Refusals carry their reason and never the
 //! token. Spans close with their busy and idle time, which is where
 //! the durations come from.
 //!
@@ -83,7 +83,7 @@ fn transport(get: impl Fn(&str) -> Option<String>) -> Result<Transport, String> 
     }
 }
 
-/// The directives a bare level stands for. Targets match by prefix
+/// The directives a bare level holds for. Targets match by prefix
 /// (tracing-subscriber `filter/env/directive.rs`), so `glossql` is
 /// every `glossql_*` crate and `serverd` the binary's own module. The
 /// MCP library narrates every request's service lifecycle at `info` —
@@ -130,7 +130,7 @@ impl Telemetry {
 /// on. `log` records — DataFusion's, sqlx's, the Avro reader's — are
 /// bridged into the same stream, which is why a bare level stays
 /// ours: at `debug` the Avro reader alone writes ten thousand lines
-/// per boot. One filter gates both sinks: what is not on the record
+/// per boot. One filter gates both sinks: what is not on the catalog
 /// is not exported either. Called inside the server's runtime: the
 /// gRPC exporter's channel spawns its connection task onto the runtime
 /// it is built in (the crate's own guidance, opentelemetry-otlp
@@ -218,7 +218,7 @@ fn export(transport: Transport) -> Result<Option<Export>, opentelemetry_otlp::Ex
     Ok(Some(Export { traces, logs }))
 }
 
-/// The span every door opens for a request — tower-http's `TraceLayer`
+/// The span every interface opens for a request — tower-http's `TraceLayer`
 /// calls this. Method and path, never the query: the browser login's
 /// callback carries its code there. A `traceparent` the client sent
 /// makes this span a child of the client's; without the export layer

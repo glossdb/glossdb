@@ -4,18 +4,18 @@
 
 The engine is DuckDB. Names are case-insensitive, quoted or not: a
 table declared `AdsInfo` is read as `adsinfo` or `"AdsInfo"` alike,
-and a column landed with capitals from a source header keeps that
+and a column loaded with capitals from a source header keeps that
 spelling in every listing and is reached by it in any case. A name
-that is a reserved word is quoted. The door serves reads; DDL, DML
+that is a reserved word is quoted. The MCP interface serves reads; DDL, DML
 and COPY are closed, and `skill://glossql/references/sql-here.md`
 carries what else the guide cannot say.
 
 ## Read at the reader's grain
 
 Grain is the reader's: the app asks by month, another reader by day,
-the same definitions answer both. Evaluate `FROM <metric>`: a grounding is a view under the metric's
-name, the current one after the collapse, human slot outranking
-agent, so a human answer is what runs.
+the same definitions answer both. Evaluate `FROM <metric>`: a metric definition is a view under the
+metric's name, the current one after the collapse, a person's value
+outranking the agent's, so a person's answer is what runs.
 
 - **Flows sum** over any partition.
 - **Stocks take the last period per window** —
@@ -38,7 +38,7 @@ agent, so a human answer is what runs.
 
 Percentiles and medians are level statistics — safe for both
 behaviors, which makes p50/p95 the honest summary when behavior is
-unglossed.
+not annotated.
 
 ### This is columnar, not postgres
 
@@ -47,10 +47,10 @@ which ones exist *here*. The engine is DuckDB at a pinned release,
 and three of its strongest tools have no postgres equivalent, so
 nobody reaches for them by reflex. The habit to break is the postgres
 shape: a self-join per comparison, a subquery per rank. The engine's
-own guide at this pin is on the door — `doc://vendor/duckdb/sql/…`,
+own guide at this pinned release is served here — `doc://vendor/duckdb/sql/…`,
 the functions by family under `functions/` — and
 `skill://glossql/references/sql-here.md` is what the guide cannot say
-about this door. This is what pays.
+about this interface. This is what pays.
 
 **One scan, many answers.** Declare the window once and reuse it;
 `FILTER (WHERE …)` pivots a driver into a column without a self-join
@@ -109,16 +109,16 @@ rule above. For year-over-year on a sparse axis the self-join earns
 its place: `ON prev.period = cur.period - INTERVAL '1 year'` cannot
 be fooled by a hole.
 
-**Never guess a GROUP BY — the glossed columns hand you the axes.**
+**Never guess a GROUP BY — the annotated columns hand you the axes.**
 Partition on the served columns that carry `role` dimension, the
-`dimension` glosses ranking them, primary first; a column most rows
-leave empty makes a top-N speak for a minority, and one dominant
+`dimension` annotations ranking them, primary first; a column most rows
+leave empty makes a top-N describe only a minority, and one dominant
 value makes ranks and ntiles degenerate. ROLLUP order comes from the
 declared hierarchy, coarse to fine — `ROLLUP(region, country, city)`;
 reversed, the subtotals are junk. Subtotal rows carry NULL in the
 rolled-up columns and a real NULL driver looks identical, so branch on
 `grouping(col)`, never on `IS NULL`. `GROUP BY ALL` is for probing;
-a recorded grounding spells its GROUP BY, because ALL silently
+a stored metric definition spells its GROUP BY, because ALL silently
 re-groups when someone edits the select list.
 
 **Time mechanics.** `date_trunc` down to the metric's grain and no
@@ -143,8 +143,8 @@ period-aligned series, so densify or join first or the number is
 noise; `list(x ORDER BY period)` — an unordered `list` is
 nondeterministic and must never feed a sparkline.
 
-**Record what a read proves.** A composed evaluation you verified may
-land as the metric's own QUERY gloss — durable executable knowledge,
-served as the view `throughput` from then on. Compose `FROM
-throughput` where you can, so a re-ruled component propagates through
-every metric built on it.
+**Store what a read proves.** A composed evaluation you verified may
+be stored as the metric's own VIEW annotation — durable executable
+knowledge, served as the view `throughput` from then on. Compose `FROM
+throughput` where you can, so a component a review decision changes propagates
+through every metric built on it.

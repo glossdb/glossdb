@@ -1,0 +1,56 @@
+{% extends "shell.html" %}
+{% import "modules/tiles.html" as tiles %}
+{% import "modules/object.html" as object %}
+
+{% block main %}
+{# The Overview, the console's first page: how much of what the
+   harness requires is known, what waits for a person, and what waits
+   for an action. Each line opens the page that answers it. #}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
+<div class="tiles">
+  <div class="counts">
+    {{ tiles::value(frame="frames/front", field="open", label="Open questions",
+         chip="open_questions",
+         note="Assumptions the agent holds below full confidence, waiting for a person. The Review tab answers them.") }}
+    {{ tiles::value(frame="frames/front", field="ruled", label="Decisions",
+         chip="review_decisions",
+         note="Every review decision in this dataset, in the person's own words.") }}
+    {{ tiles::value(frame="frames/front", field="waiting", label="Waiting for an action",
+         chip="open_items",
+         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations.") }}
+  </div>
+  <p class="hint"><a class="go" href="/{{ dataset }}/app/console/p/review">Open the review queue →</a></p>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="For each property the harness requires, how many assets have a value against how many need one, worst first. Contested and stale values are counted as known and named beside. A row opens the property.">What is known</span>
+      <code class="chip">GLOSSARY()</code></header>
+    <p class="hint">Each property the harness requires: how many assets have it, against how many need it.</p>
+    <div class="rrow rhead" style="grid-template-columns:minmax(10rem,16rem) 8rem 8rem minmax(0,1fr)">
+      <span>property</span><span>kind</span><span>known</span><span></span>
+    </div>
+    <gl-rows frame="frames/scorecard" empty="the harness requires nothing yet: declare a property, or load a kit">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,16rem) 8rem 8rem minmax(0,1fr)">
+          <span class="r-subj">{aspect}</span>
+          <span class="r-meta">{kind}</span>
+          <span class="r-num">{known}</span>
+          <span class="r-meta">{issues}<span class="score-bar {full}"><i style="width:{share}%"></i></span></span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+
+  <section class="tile">
+    <header><span class="eyebrow" title="Work the data needs before it is current: an approved load-query change not yet loaded, a formula newer than its stored result, a conflict between annotations, a measurement older than the data, and a review decision not yet applied.">Waiting for an action</span>
+      <code class="chip">open_items</code></header>
+    <gl-rows frame="frames/open_items" empty="nothing waits for an action">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(0,1fr) 9rem">
+          <span class="r-what">{what}<br><span class="r-meta">{why}</span></span>
+          <span class="r-meta">{since}</span>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+</div>
+{% endblock main %}

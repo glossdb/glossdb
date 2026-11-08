@@ -5,7 +5,7 @@
 //! values through the plan, never text spliced into SQL. Everything
 //! arrives as Utf8; the frame SQL casts explicitly, the same posture
 //! recipes take. A placeholder nobody bound fails at execution: the
-//! read tells the author what the URL owed it.
+//! read tells the author what the URL required it.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -89,11 +89,11 @@ pub async fn frame(
 
 /// One open question, as the workspace currently derives it.
 ///
-/// The docket's ruling write is gated on this: a posted answer is
+/// The console's review decision write is gated on this: a posted answer is
 /// accepted only if `open_questions` still carries that exact
 /// `(subject, aspect, key)`, and the prose it records is this read's,
-/// never the browser's. A tab left open across a fold-in posts a
-/// question that no longer stands, and gets told so.
+/// never the browser's. A tab left open across a applying the decision posts a
+/// question that no longer holds, and gets told so.
 pub(crate) struct OpenQuestion {
     pub dimension: String,
     pub assumption: String,
@@ -116,7 +116,7 @@ pub(crate) async fn one_open_question(
         // gate is a write's, so the join is not tidiness: two
         // datasets may hold the same subject under the same key,
         // and without it another dataset's open question admits a
-        // ruling into this one — carrying that dataset's prose,
+        // review decision into this one — carrying that dataset's prose,
         // since the words recorded are this read's.
         "SELECT coalesce(o.dimension, '-') AS dimension, o.assumption \
              FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset \
@@ -159,7 +159,7 @@ pub(crate) async fn one_open_question(
 /// The frame-class header: `record` when the frame's text reads the
 /// record anywhere (the engine's own reading of it, never curated),
 /// `data` when it does not. The browser's frame store evicts record
-/// entries on a ruling and keeps data entries, which no glossary write
+/// entries on a review decision and keeps data entries, which no glossary write
 /// moves.
 pub const FRAME_CLASS: &str = "glossql-frame-class";
 

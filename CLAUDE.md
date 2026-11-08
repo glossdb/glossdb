@@ -1,70 +1,70 @@
 # glossdb — workspace rules
 
-The context language and its server. The server ships: a brew tap and
-an image on GHCR, both cut at the workspace version. Grammar changes
-follow the corpus-first process below.
+glossdb is a harness framework for data agents: the server around the
+glossql language. It ships as a brew tap and an image on GHCR, both cut
+at the workspace version. Grammar changes follow the corpus-first
+process below. Words: the terms table in the glossql-prose skill.
 
 ## The map
 
 - The language is the extension's (`../gloss`, pinned by
   `crates/duck/glossql.ref`): `SPEC.md`, the only normative language
-  prose, whose open questions live in §9 and close by transcription
+  prose, whose open questions live in §9 and close by a corpus
   verdict, never by argument; `grammar.ebnf`, the machine-readable
   grammar and the source of truth for syntax; its `corpus/`, the
   transcriptions of real artifacts that are the language's acceptance
-  record, held to the grammar by its suite (` ```glossql ` must parse,
-  ` ```glossql-gap ` documents a gap and must fail). The door serves
-  the two documents as `doc://SPEC.md` and `doc://grammar.ebnf`, read
-  at boot from beside the extension's kits.
-- The routes the `next` read answers from: per goal, its steps as
-  query arms over the record, one act per goal as a statement filled
-  from the record — each kit's `routes_<kit>()` in its kit under
-  `kits/`, the core's in `kits/door/kit.sql`, composed at
-  open; the door's two lines, `crates/serverd/src/window.rs`.
+  tests, held to the grammar by its suite (` ```glossql ` must parse,
+  ` ```glossql-gap ` documents a gap and must fail). The MCP interface
+  serves the two documents as `doc://SPEC.md` and `doc://grammar.ebnf`,
+  read at boot from beside the extension's kits.
+- The next steps the `next` read returns: per goal, its steps as
+  query arms over the catalog, one action per goal as a statement
+  filled from the catalog — each kit's `routes_<kit>()` in its kit
+  under `kits/`, the core's in `kits/goals/kit.sql`, composed at open;
+  the two lines every result closes with, `crates/serverd/src/window.rs`.
 - `corpus/` — the two transcriptions behind the server's kits (19 and
   27), in the extension's corpus form; the serverd suite parses them
   on the engine.
-- `crates/` — the server, a Cargo workspace: `duck` ·
-  `apps` · `serverd`. What each is and how it is built: the crate
-  headers and `docs/architecture/`. Directories unprefixed, packages
-  `glossdb-*`; the engine is the glossql extension (`../gloss`, pinned
-  by `crates/duck/glossql.ref`) on DuckDB, compiled into every binary;
+- `crates/` — the server, a Cargo workspace: `duck` · `apps` ·
+  `serverd`. What each is and how it is built: the crate headers and
+  `docs/internals/`. Directories unprefixed, packages `glossdb-*`;
+  the engine is the glossql extension (`../gloss`, pinned by
+  `crates/duck/glossql.ref`) on DuckDB, compiled into every binary;
   the arrow line is one (the workspace `Cargo.toml` comment).
-- `kits/` — the server's kits, core, metrics, futures and door: SQL
-  loaded at open in that order around the extension's kpi and
-  quality kits, each with its `kit.test` suite beside it (DuckDB's
+- `kits/` — the server's kits, core, metrics, outlook and goals: SQL
+  loaded at open in that order around the extension's kpi and quality
+  kits, each with its `kit.test` suite beside it (DuckDB's
   sqllogictest form, run by the engine crate's suite). A kit whose
-  text the lake recorded stands at open and runs nothing. The
-  extension ships the language's kits as
-  examples; a kit whose words depend on the server, its doors or the
-  model service lives here. `kits/README.md` says what they add to
-  the language: vocabulary and reads, never grammar.
-- `docs/` — the curated statement of the system: what is implemented
-  and what is planned (`start/`, `concepts/`, `reference/`,
-  `methods/`, `architecture/`, and the concern pages). For agents and
-  humans alike; enterprise-customer quality, constantly current.
-  Never normative language prose.
-- `.github/` — `workflows/ci.yml` checks the standing invariant on
-  every push and pull request, with `deny.toml`, on the extension
-  built from its pinned commit and kept in the actions cache; the
-  release machinery: `workflows/release.yml` builds the image on a
-  `v*` tag, `release-macos.sh` is the laptop half, the rendered tap
-  formula sits beside them. The order and its sharp edges: the
-  glossql-release skill.
+  text the lake already recorded is current at open and runs nothing.
+  The extension ships the language's kits as examples; a kit whose
+  words depend on the server, its interfaces or the model service
+  lives here. `kits/README.md` says what they add to the language:
+  vocabulary and reads, never grammar.
+- `docs/` — what the system is and what is planned (`start/`,
+  `concepts/`, `reference/`, `methods/`, `architecture/`, and the
+  topic pages). For agents and people alike; written for an enterprise
+  evaluator, always current. Never normative language prose.
+- `.github/` — `workflows/ci.yml` runs the standing invariant on every
+  push and pull request, with `deny.toml`, on the extension built from
+  its pinned commit and kept in the actions cache; the release
+  machinery: `workflows/release.yml` builds the image on a `v*` tag,
+  `release-macos.sh` is the laptop half, the rendered tap formula sits
+  beside them. The order and its sharp edges: the glossql-release
+  skill.
 - `skills/` — the product skills, a `SKILL.md` and its `references/`
-  each, where a door-connected agent learns the language; embedded in
-  serverd and served on the MCP door as resources and prompts, gated
-  by the test suite. `.claude/skills/` keeps the skills for building
-  the server: the substrate, the prose and the release.
+  each, where an agent connected over MCP learns the language;
+  embedded in serverd and served on the MCP interface as resources and
+  prompts, gated by the test suite. `.claude/skills/` keeps the skills
+  for building the server: the substrate, the prose and the release.
 - `vendor/` — DuckDB's SQL guide for the release the lock resolves,
-  served on the door as `doc://vendor/duckdb/sql/…`.
+  served on the MCP interface as `doc://vendor/duckdb/sql/…`.
   `vendor/duckdb/refresh.sh <version> <duckdb-web commit>` at every
   pin move; the serverd suite holds its VERSION to Cargo.lock.
 
-## The record: issues, code, docs
+## Issues, code, docs
 
-GitHub issues (`glossdb/glossdb`) are the work record. One issue is
-one actionable unit at a uniform depth: what it buys, what stands
+GitHub issues (`glossdb/glossdb`) are the work log. One issue is one
+actionable unit at a uniform depth: what it buys, what is there
 (`file:line`, fixtures), done-when. Apache Software Foundation
 quality, and public: facts only — no session narrative, no run
 anecdotes, no actor names, nothing private, no other vendor's product
@@ -73,12 +73,12 @@ as a reference point. Labels stay small: `bug` · `ruling-candidate` ·
 become issues — SPEC.md §9 keeps that role.
 
 Code and its comments are the source of truth for what is implemented
-and live. A comment states a standing constraint or behavior the code
-cannot show — never history, never a run anecdote.
+and live. A comment states a constraint or behavior the code cannot
+show — never history, never a run anecdote.
 
 Docs state what the system is and what is planned — never what was
 rejected, reversed, or not built. Git history is the time machine;
-what is written is the rule — no "ruled [date]" stamps anywhere.
+what is written is the rule — no dated decision stamps anywhere.
 
 Roadmapping is ad hoc within a phase: when an issue closes, the
 project lead picks the next one or bundles a few in a session. The
@@ -88,11 +88,11 @@ it is, which phase — and is read when picking. It links its issues
 and shrinks as they close; it is never loaded unasked.
 
 A plan file is a table first: element, risk, what it touches, when,
-issue. Build order is risk order. Under 150 lines. It states what
-stands and what is next, never what was rejected and never a date.
-It drafts an issue only for its next row, in the issue form; the
-draft leaves when the issue opens. When the direction moves, the
-plan is rewritten, not patched.
+issue. Build order is risk order. Under 150 lines. It states what is
+there and what is next, never what was rejected and never a date. It
+drafts an issue only for its next row, in the issue form; the draft
+leaves when the issue opens. When the direction moves, the plan is
+rewritten, not patched.
 
 ## Ground rules
 
@@ -101,20 +101,20 @@ plan is rewritten, not patched.
   `grammar.ebnf`; they do not gate server code.
 - **Standing invariant.** Workspace `cargo test` passes: every fenced
   example under `docs/`, `skills/`, and `.claude/skills/` parses on
-  the engine's grammar and every single read binds, the door suites
-  hold the execution semantics, and the corpus behaves as tagged
+  the engine's grammar and every single read binds, the interface
+  suites hold the execution semantics, the corpus behaves as tagged
   (` ```glossql ` parses, ` ```glossql-gap ` does not), and the suites
   beside the kits under `kits/` pass on the engine; the extension's
-  kits' suites run in its repository. A change that breaks it
-  doesn't land.
-- **Build on the engine.** A read, a measurement, a route is SQL in a
-  kit; the extension owns the language and the record; the server
-  owns the doors. Extend DuckDB and the extension at their own seams,
-  never around them; the glossql-substrate skill carries the seam
-  register and its rules.
-- **Grounding.** The corpus fixtures are the empirical record;
-  coverage and semantics questions settle against this repo's own
-  code and runs.
+  kits' suites run in its repository. A change that breaks it doesn't
+  land.
+- **Build on the engine.** A read, a measurement, a next step is SQL
+  in a kit; the extension owns the language and the catalog; the
+  server owns the interfaces. Extend DuckDB and the extension at their
+  own seams, never around them; the glossql-substrate skill carries
+  the seams and their rules.
+- **Grounding in evidence.** The corpus fixtures are the empirical
+  evidence; coverage and semantics questions settle against this
+  repo's own code and runs.
 
 ## The language
 
@@ -123,11 +123,11 @@ plan is rewritten, not patched.
   notes. This repository's kits add vocabulary and reads on it
   (`kits/README.md`), never grammar; a form they need goes through
   the extension's corpus.
-- **Ideation before prose.** No idea enters SPEC.md until it survives
-  a corpus test: competing statement forms for the same real
-  artifact, checked against grammar and real table shapes, the forks
-  presented to the project lead. The surviving fork becomes a SPEC.md
-  diff that shrinks or holds the spec, never grows it by essay.
+- **Ideation before prose.** No idea enters SPEC.md until it passes a
+  corpus test: competing statement forms for the same real artifact,
+  checked against grammar and real table shapes, the forks presented
+  to the project lead. The chosen fork becomes a SPEC.md diff that
+  shrinks or holds the spec, never grows it by essay.
 - **Design authority.** The language has a single owner: the project
   lead. Every grammar change is reviewed by them; propose as SPEC.md
   edits with rationale — the grammar never drifts through

@@ -5,13 +5,13 @@
 
   function fmt(value, format) {
     if (value == null) return '\u2013';
-    // A value that is already a word — a band, a verdict, a state. It
+    // A value that is already a word — a band, a result, a state. It
     // reached the number formatter before this branch existed and the
-    // docket's corridor tile rendered NaN.
+    // console's corridor tile rendered NaN.
     if (format === 'text') return String(value);
     return new Intl.NumberFormat(undefined, {
       notation: 'compact',
-      maximumFractionDigits: 1,
+      maximumSignificantDigits: 3,
     }).format(Number(value));
   }
 

@@ -1,0 +1,21 @@
+title = "Console"
+# no dataset line, ever: the URL binds it (/<dataset>/app/console), so one
+# app serves every dataset and the bar's picker switches between them.
+# The bar shows six sections; every page names the section it belongs
+# to, and the left nav lists what is inside the current one. A page with
+# `bar = false` is reached from the left nav. The metrics page serves a
+# view too, and a view belongs to the catalog: `kind_sections` moves the
+# page there by its `kind` parameter. The bar draws a hairline before
+# the data section, the pages that hand the data over.
+pages = [
+  { name = "index", title = "Overview", section = "Overview", group = "catalog" },
+  { name = "model", title = "Model", section = "Overview", bar = false },
+  { name = "history", title = "History", section = "Overview", bar = false },
+  { name = "lineage", title = "Lineage", section = "Overview", bar = false },
+  { name = "glossary", title = "Catalog", section = "Catalog", group = "catalog" },
+  { name = "metrics", title = "Metrics", section = "Metrics", group = "catalog", kind_sections = { scalar = "Catalog", relation = "Catalog" } },
+  { name = "quality", title = "Quality", section = "Quality", group = "catalog" },
+  { name = "review", title = "Review", section = "Review", group = "catalog" },
+  { name = "export", title = "Data", section = "Data", group = "data" },
+  { name = "query", title = "Query", section = "Data", bar = false },
+]

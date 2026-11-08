@@ -1,27 +1,27 @@
 ---
 name: glossql-apps
-description: Author a data app on the glossql app door — a standalone page at /<dataset>/app/<name>, shaped with the user in prose, written as glosses (app, app_page, app_frame, app_spec). Frames are SQL, tiles are macros, filters live in the URL. Use when someone needs to look at what the workspace knows, after the numbers exist.
+description: Author a data app on the glossdb web interface — a standalone page at /<dataset>/app/<name>, shaped with the user in prose, written as annotations (app, app_page, app_frame, app_spec). Frames are SQL, tiles are macros, filters live in the URL. Use when someone needs to look at what the workspace knows, after the numbers exist.
 ---
 
 # Authoring apps
 
 A data app is **its own page, and its URL is the whole state**. It
 serves at `/<dataset>/app/<name>`; the dataset is the first segment
-and every filter a reader picks lands in the query string, so any
+and every filter a reader picks goes into the query string, so any
 view is a link they can paste to somebody else. That is the point:
 not a dashboard you log into, a page you send.
 
 Write one when someone needs to *look* at what the workspace knows. It
 is the last thing you build, not the first: an app over numbers nobody
-has grounded is a picture of nothing.
+has defined is a picture of nothing.
 
-**Add an app; don't fork the built-in.** The docket ships in the
-binary, with tests that run against it. A workspace that wants a
-different view of the same rows authors its own app beside it — the
-door serves as many as you write, and yours does not inherit anyone
-else's assumptions.
+**Add an app; don't fork the built-in.** The console (the built-in
+app `console`) ships in the binary, with tests that run against it. A
+workspace that wants a different view of the same rows authors its own
+app beside it — the server serves as many as you write, and yours does
+not inherit anyone else's assumptions.
 
-A part glossed under a built-in's name — `docket` — is refused: a
+A part annotated under a built-in's name — `console` — is refused: a
 single part resolves the whole app, and every other page the built-in
 ships would stop serving. Give yours its own name.
 
@@ -35,24 +35,25 @@ No forms anywhere in this flow — this is the conversation register.
    where "a monitoring dashboard" becomes "the Monday operations
    review page".
 2. **The tile list, as a proposal.** Each tile named with its read, its
-   slice and its chip — "cycle-time trend with the rival line ·
+   slice and its chip — "cycle-time trend with the alternative line ·
    throughput by region, top 8 · the open-questions count". Propose from what the
-   glossary already ranks: the judged axes, the grounded surfaces.
-   The user prunes and extends in words. When the app stands and the
+   glossary already ranks: the judged axes, the defined metrics.
+   The user prunes and extends in words. When the app exists and the
    metrics are done, the served metrics its pages do not show are the
    candidates for one more page: propose one, in a sentence, and write
    nothing until they say so.
 3. **Author, then hand over the URL.** The rendered page *is* the
    proposal made concrete. They react in prose — "swap the trend for
-   by-region", "wrong grain on that number" — and you re-gloss.
+   by-region", "wrong grain on that number" — and you annotate again.
 4. **Close with a read-back**: what shipped, what was cut and why,
    which tiles carry disclosed assumptions. Approval is the user
    saying so, in chat.
 
-## An app is glosses
+## An app is annotations
 
-One gloss per part, so a frame can be edited without rewriting the app
-and supersession versions each part on its own. The aspect says what
+One annotation (gloss) per part, so a frame can be edited without
+rewriting the app, and each part is versioned on its own: a new gloss
+replaces the old one. The aspect says what
 kind of file it is; the subject says where it goes, and its head is
 the app, under the `USE`'d dataset, even when the app is named like
 the dataset.
@@ -87,13 +88,13 @@ SELECT app, path, actor_kind FROM app_parts ORDER BY app, path
 ## Release when it is ready
 
 Every part you write is the draft, and readers see it at the plain URL
-only until the first release. A release is one gloss:
+only until the first release. A release is one annotation:
 
 ```glossql
 GLOSS app_release ON delivery AS $${"note": "Monday operations, first cut"}$$;
 ```
 
-From then on the door serves each part as it stood at the release;
+From then on the server serves each part as it was at the release;
 your later edits show under `?draft` on the same URLs, and the bar says
 which is on the page. Release again when the draft is ready. To return
 to an earlier release, name its time as `app_releases` prints it:
@@ -113,7 +114,7 @@ frame once per state and every tile bound to it shares that one table.
 
 - **URL params bind as plan placeholders** — `$region` in the SQL,
   `?region=EMEA` on the URL. Everything arrives as Utf8, so cast
-  explicitly (`CAST($from AS DATE)`), the same posture recipes take. A
+  explicitly (`CAST($from AS DATE)`), as load queries (recipes) do. A
   placeholder nobody bound fails the request with a message naming it;
   extra params are ignored. The dataset is not a param: your frame runs
   on a channel bound to the one the path named, so join
@@ -131,12 +132,12 @@ frame once per state and every tile bound to it shares that one table.
   anyone noticing.
 
 A frame is planned through the same path every other read takes, so
-every door is available inside one — a grounding under its name,
+every read is available inside one — a metric definition under its name,
 `metric_series(grain := $grain)` for the cells at a grain
 (`dimension = ''` is the total; a row carries `num`/`den` for a
 ratio's summed halves and `behavior`, the verb that made it),
-`metric_axes()` for what the record says of each metric's columns,
-and `band_points()` for the recorded walk beside the real books:
+`metric_axes()` for what the catalog says of each metric's columns,
+and `band_points()` for the stored walk beside the real books:
 
 ```sql
 SELECT period, actual, p05, p50, p95 FROM band_points()
@@ -144,7 +145,7 @@ WHERE metric = CAST($metric AS VARCHAR) AND period IS NOT NULL ORDER BY point_se
 ```
 
 The one limit: a placeholder binds a **value, not a relation name** —
-a door argument counts as a value (`metric_series(grain := $grain)` works). The URL steers the metric, the month, the slice.
+a read's argument counts as a value (`metric_series(grain := $grain)` works). The URL steers the metric, the month, the slice.
 
 A viewer's window is ordinary params: `?grain=quarter&span=24` binds
 as `$grain` and `$span`, and the frame SQL is the filter — the series
@@ -160,7 +161,7 @@ it.
 ## Tiles place what the frame computed
 
 Pages are tera, extending `shell.html` and importing the tile
-vocabulary. A page carries no script: the door serves it under a
+vocabulary. A page carries no script: the server serves it under a
 content security policy that runs the shell's assets alone, so a
 `<script>`, an `on…=` handler or a `javascript:` URL in a page is
 served as text and never runs. What a page does, it does through a
@@ -191,17 +192,17 @@ frame, a spec, a tile or a link. Four macros and a prose block:
   each field by name (`{subj}`, `{what}`), for anything that is a list
   of matters rather than a table of numbers. `join="frames/<name>"
   on="<key>"` merges a second frame's row by key into each row — how
-  a record frame and a data frame meet in one list without becoming
-  one fetch (the docket's pulse: `metric_surfaces` rows joined to the series'
+  a catalog frame and a data frame meet in one list without becoming
+  one fetch (the console's pulse: `metric_surfaces` rows joined to the series'
   numbers by metric name).
 - `<gl-window frame="frames/<axes>">` — the viewer's grain and span as
   links over the page URL; it reads the metric's resolution from a
   `metric_axes()` frame and offers the grains from there up. Member
-  moves are a frame, not a component: rank them in SQL (the docket's
+  moves are a frame, not a component: rank them in SQL (the console's
   `drivers.sql` is the shape) and place them with `gl-rows`.
 - `<gl-graph nodes="frames/<nodes>" edges="frames/<edges>">` — column
   lineage: the tables placed along their key edges, the metrics they
-  feed stacked beside them. The docket's `lineage_nodes.sql` and
+  feed stacked beside them. The console's `lineage_nodes.sql` and
   `lineage_edges.sql` are the two frame shapes (`relationships` plus
   `metric_sources()`); reuse them, or narrow them in SQL to one
   metric's tables.
@@ -215,7 +216,7 @@ frame, a spec, a tile or a link. Four macros and a prose block:
 them thin: encodings and marks. A spec that filters or aggregates is
 doing the frame's job in a place nobody can test.
 
-Pin `$schema` to the vega-lite major the door serves — today that is
+Pin `$schema` to the vega-lite major the server serves — today that is
 `https://vega.github.io/schema/vega-lite/v6.json`. The v5 reflex is
 outdated here: an older major renders but logs a version warning on
 every load. `{"data": {"name": "frame"}}` is how the spec names the
@@ -227,9 +228,10 @@ entry without hard-coding a colour.
 
 ## An app you author carries no write
 
-The door takes exactly one write in the whole system — the docket's
-ruling form, which answers a question the workspace already derived and
-posts only that claim's identity. Everything else is a read.
+The web interface takes exactly one write in the whole system — the
+console's review form, which answers a question the workspace already
+derived and posts only that claim's identity. Everything else is a
+read.
 
 Anything an app of yours needs to change, change with a statement. The
-page is a view of the record; it is never the way into it.
+page is a view of the catalog; it is never the way into it.

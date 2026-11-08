@@ -14,7 +14,7 @@
   const specs = new Map(); // spec url -> Promise<Object>
   // frame url -> 'record' | 'data', from the server's derived
   // glossql-frame-class header: `record` frames read the glossary
-  // somewhere in their expansion and can change under a ruling; `data`
+  // somewhere in their expansion and can change under a review decision; `data`
   // frames provably cannot. Metadata and data are not one pile.
   const classes = new Map();
 
@@ -113,11 +113,11 @@
 
   // A write evicts what it can change, nothing else. The server
   // announces every write with `HX-Trigger: glossql:written` (the
-  // ruling's 204, and the stale-tab 409 whose cause is someone else's
+  // review decision's 204, and the stale-tab 409 whose cause is someone else's
   // write), and it classifies every frame it serves: `record` frames
   // read the glossary somewhere in their expansion, `data` frames
   // provably do not — so the cube's cells, the trend and the slices
-  // survive a ruling untouched, in cache and on screen. Capture phase, so the
+  // survive a review decision untouched, in cache and on screen. Capture phase, so the
   // evictions land before any panel's own listener refetches. Specs
   // stay: they are static files.
   document.addEventListener(
@@ -135,7 +135,7 @@
   );
 
   // A re-measure can change the cube — its axes, so the dims, the
-  // slices, the drivers — which a ruling cannot. The door names it
+  // slices, the drivers — which a review decision cannot. The interface names it
   // (`glossql:remeasured`, sent beside `glossql:written`), and on it
   // the data frames go too; the tiles' own `glossql:written` listeners
   // then find fresh promises and redraw. Scope the effect to the cause:

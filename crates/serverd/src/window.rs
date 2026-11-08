@@ -1,22 +1,22 @@
 //! The two lines on every result: where the call left the agent, on
-//! its last outcome (`situation:`), and one act per goal the record
+//! its last outcome (`situation:`), and one act per goal the catalog
 //! affords from there (`next:`), each a link into `next://` and the
 //! `next` read. The representation carries the links; the client
 //! holds the goal. Nothing rides the instructions or the stable
-//! prefix, and nothing is an order: the skills say how, the record
+//! prefix, and nothing is an order: the skills say how, the catalog
 //! says what is admissible now.
 
 use serde_json::Value;
 
 /// The `situation:` line: refused, with the refusal's first line, or
-/// landed — and for a grounding what its fact row said.
+/// loaded — and for a metric definition what its fact row said.
 pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     if let Some(text) = refusal {
         let first = text.lines().next().unwrap_or(text);
         return format!("situation: refused — {first}");
     }
     let Some(fact) = outcome.filter(|o| o.get("metric").is_some()) else {
-        return "situation: landed".to_string();
+        return "situation: done".to_string();
     };
     let list = |field: &str| -> String {
         fact.get(field)
@@ -30,7 +30,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             .unwrap_or_default()
     };
     let metric = fact.get("metric").and_then(Value::as_str).unwrap_or("");
-    let mut line = format!("situation: landed — {metric}: ");
+    let mut line = format!("situation: done — {metric}: ");
     // A re-record says first what it changed against the writing it
     // supersedes — the totals over their shared periods: the line is
     // read left to right, and a moved total unsays the axes after it.
@@ -42,8 +42,8 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
         line.push_str(&format!("{drift}; "));
     }
     if fact.get("applicable") == Some(&Value::Bool(true)) {
-        // The grounding's word on its axes, where it spoke: what the
-        // list closed and what a verdict or a gloss would have
+        // The metric definition's word on its axes, where it spoke: what the
+        // list closed and what a result or a gloss would have
         // admitted, or that the empty list did not hold.
         let word = match fact.get("axes_basis").and_then(Value::as_str) {
             Some("authored") => {
@@ -53,21 +53,21 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
                 );
                 let by_verdict = tagged(fact, &["closed over verdict"]);
                 let by_gloss = tagged(fact, &["closed over gloss"]);
-                let mut word = String::from(" (the grounding's word");
+                let mut word = String::from(" (as the definition says");
                 if !closed.is_empty() {
                     word.push_str(&format!(" — closes {}", closed.join(", ")));
                 }
                 if !by_verdict.is_empty() {
-                    word.push_str(&format!("; a verdict admits {}", by_verdict.join(", ")));
+                    word.push_str(&format!("; a measurement admits {}", by_verdict.join(", ")));
                 }
                 if !by_gloss.is_empty() {
-                    word.push_str(&format!("; a gloss admits {}", by_gloss.join(", ")));
+                    word.push_str(&format!("; an annotation admits {}", by_gloss.join(", ")));
                 }
                 word.push(')');
                 word
             }
             Some("measured over authored") => format!(
-                " (measured over the authored empty list — a {} keeps its verdicts; the empty \
+                " (measured over the definition's empty list — a {} keeps its verdicts; the empty \
                  list closes a distinct count or a ratio)",
                 fact.get("behavior")
                     .and_then(Value::as_str)
@@ -141,12 +141,12 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
         out.push_str(&format!("## {surface}: {state}\n\n"));
         if state == "next" {
             out.push_str(&format!(
-                "**act:** {} — {}\n\n**why:** {}\n",
+                "**action:** {} — {}\n\n**why:** {}\n",
                 field(row, "act"),
                 field(row, "say"),
                 field(row, "why"),
             ));
-            // A step the record cannot fill hands no statement — the
+            // A step the catalog cannot fill hands no statement — the
             // names are the author's.
             let statement = field(row, "statement");
             if !statement.is_empty() {

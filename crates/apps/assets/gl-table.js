@@ -17,7 +17,9 @@
     if (typeof value === 'number') {
       return Number.isInteger(value)
         ? value.toLocaleString()
-        : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        : Math.abs(value) >= 999.5
+          ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+          : value.toLocaleString(undefined, { maximumSignificantDigits: 3 });
     }
     return String(value);
   }

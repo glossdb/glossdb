@@ -2,32 +2,32 @@
 // proving them `Send` descends further than the default limit allows.
 #![recursion_limit = "256"]
 
-//! serverd — the workspace's doors (M5): one axum listener carrying the
+//! serverd — the workspace's interfaces (M5): one axum listener carrying the
 //! MCP shim at `/mcp` and `/<dataset>/mcp` (rmcp streamable HTTP,
 //! 2026-07-28 and nothing behind it) and the cockpit's Arrow IPC query
-//! door at `/<dataset>/query`. Flight SQL is a future door: pyarrow
+//! interface at `/<dataset>/query`. Flight SQL is a future interface: pyarrow
 //! reads the same HTTP stream.
 //!
-//! **A door is bound to a dataset or to the workspace.** `/query`,
+//! **A interface is bound to a dataset or to the workspace.** `/query`,
 //! `/app` and `/<dataset>/mcp` carry the dataset in the path — a link
 //! someone can share, a call that opens on it. `/mcp` is the
-//! workspace's door: an agent there moves between datasets, and the
+//! workspace's interface: an agent there moves between datasets, and the
 //! dataset arrives in the statements, as `USE`, because the protocol
 //! has no session to hold it. Sources are declared and datasets
-//! brought into being at the workspace door; an agent working one
+//! brought into being at the workspace interface; an agent working one
 //! dataset connects to that dataset's door.
 //!
-//! No door keeps a cursor, so a restart cannot lose one and two callers
+//! No interface keeps a cursor, so a restart cannot lose one and two callers
 //! on two datasets cannot steer each other. `USE` moves the statements
 //! after it and expires with the call. A dataset that does not exist
-//! 404s on the bound doors; over `/mcp` it is where an agent declares
+//! 404s on the bound interfaces; over `/mcp` it is where an agent declares
 //! it.
 //!
-//! Every door is behind one gate (`auth`): a bearer token, verified
-//! against the issuer's published keys, says who is speaking; the door
+//! Every interface is behind one gate (`auth`): a bearer token, verified
+//! against the issuer's published keys, says who is speaking; the interface
 //! it came through says with which standing. The one way around the
 //! gate is explicit ([`Access::Open`], the `GLOSSDB_INSECURE_OPEN`
-//! switch): every caller becomes [`INSECURE_DEV_MODE`], the door still
+//! switch): every caller becomes [`INSECURE_DEV_MODE`], the interface still
 //! saying with which standing.
 
 // An unwrap outside a test is a panic waiting for the row that has it;
@@ -53,8 +53,8 @@ pub mod telemetry;
 pub mod window;
 mod wire;
 
-/// The engine the doors are built on: the facade over DuckDB and the
-/// glossql extension, under the one name a door uses.
+/// The engine the interfaces are built on: the facade over DuckDB and the
+/// glossql extension, under the one name an interface uses.
 pub use glossdb_duck as engine;
 
 pub use crate::engine::Plane;
@@ -76,7 +76,7 @@ use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use tower_http::trace::TraceLayer;
 
 /// The server's own hand: the actor the shipped system is bootstrapped
-/// under, and the one the door reads with when a read needs a channel
+/// under, and the one the interface reads with when a read needs a channel
 /// and no request is behind it. Human standing, because a person
 /// decided what ships, so the shipped kit outranks what an agent later
 /// glosses on the same key; the id names the mechanism, so a
@@ -86,16 +86,16 @@ use tower_http::trace::TraceLayer;
 pub const BOOTSTRAP: &str = "bootstrap";
 
 /// The other well-known actor id, [`BOOTSTRAP`]'s counterpart: what
-/// every caller becomes when the doors are served open
+/// every caller becomes when the interfaces are served open
 /// ([`Access::Open`]). The name is the warning — a gloss carrying it
-/// says on the record that nobody was verified.
+/// says on the catalog that nobody was verified.
 pub const INSECURE_DEV_MODE: &str = "insecure_dev_mode";
 
-/// Whose `Host` header the agent door answers, and the URI the server
+/// Whose `Host` header the agent interface answers, and the URI the server
 /// is reached at.
 #[derive(Clone)]
 pub struct DoorConfig {
-    /// Hostnames the agent door accepts in the `Host` header; empty
+    /// Hostnames the agent interface accepts in the `Host` header; empty
     /// is every host. The transport's default — loopback only — is
     /// the DNS-rebinding guard of a server on a laptop; a deployment
     /// names the host the world uses (`main.rs`, `allowed_hosts`).
@@ -115,18 +115,18 @@ impl Default for DoorConfig {
     }
 }
 
-/// Who may speak at the doors: verified by the gate the login carries,
+/// Who may speak at the interfaces: verified by the gate the login carries,
 /// or — by the explicit `GLOSSDB_INSECURE_OPEN=true` switch — anyone,
-/// every caller stamped [`INSECURE_DEV_MODE`] with the door's
+/// every caller stamped [`INSECURE_DEV_MODE`] with the interface's
 /// standing.
 pub enum Access {
-    /// Every door verifies with the gate the login carries.
+    /// Every interface verifies with the gate the login carries.
     Gated(Arc<Login>),
     /// No gate — the dev arrangement the switch's name warns about.
     Open,
 }
 
-/// Why a door told a dataset by its URL cannot open on it: the
+/// Why an interface told a dataset by its URL cannot open on it: the
 /// workspace does not hold the name. One existence question at the
 /// catalog; the listing is read on the miss alone, where the answer
 /// names what there is.
@@ -145,7 +145,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     let app_plane = Arc::clone(&plane);
     let root_plane = Arc::clone(&plane);
     let bind_plane = Arc::clone(&plane);
-    // The door speaks 2026-07-28 first and serves every revision the
+    // The interface speaks 2026-07-28 first and serves every revision the
     // library carries beneath it (2025-11-25 today) by negotiation —
     // statelessly for all of them: `legacy_session_mode: false` means
     // no `Mcp-Session-Id` minted or echoed, no GET stream, no DELETE,
@@ -179,9 +179,9 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
         Arc::new(NeverSessionManager::default()),
         config,
     );
-    // The doors, standing by kind: the agent doors stamp agent, the
-    // human doors stamp human. Identity is read the same way at every
-    // door; only the kind differs, and it is the door's to say
+    // The interfaces, standing by kind: the agent interfaces stamp agent, the
+    // human interfaces stamp human. Identity is read the same way at every
+    // interface; only the kind differs, and it is the interface's to say
     // (SPEC.md §1, the actor rides the transport).
     let human = Router::new()
         .merge(glossdb_apps::root_router(root_plane, &doors.own_uri))
@@ -190,8 +190,8 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
             "/{dataset}/app",
             glossdb_apps::router(app_plane, &doors.own_uri),
         );
-    // Two agent doors over the one service: the workspace door opens
-    // every call unbound, and the bound door opens it on the dataset
+    // Two agent interfaces over the one service: the workspace interface opens
+    // every call unbound, and the bound interface opens it on the dataset
     // its URL names (`mcp::bind`), the way `/{dataset}/query` does.
     let agent = Router::new().nest_service("/mcp", mcp.clone()).merge(
         Router::new()
@@ -200,7 +200,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     );
     let routes = match access {
         Access::Gated(login) => {
-            // One gate, instantiated per door with that door's standing.
+            // One gate, instantiated per interface with that interface's standing.
             let gate = Arc::clone(login.gate());
             let human = human.layer(axum::middleware::from_fn_with_state(
                 (Arc::clone(&gate), ActorKind::Human),
@@ -236,7 +236,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
                     get(metadata),
                 )
         }
-        // Open: the same doors, a fixed stamp in place of the gate. No
+        // Open: the same interfaces, a fixed stamp in place of the gate. No
         // login and no discovery document — with no 401 to answer, a
         // client is never sent to authenticate.
         Access::Open => {
@@ -255,7 +255,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
         // The assets are the app's own script and styles and hold no
         // data — outside the gate in either arrangement.
         .nest("/assets", glossdb_apps::assets_router())
-        // The request span, outermost: every door, the gate included,
+        // The request span, outermost: every interface, the gate included,
         // works inside it. tower-http's own layer; what the span holds
         // is telemetry's to say.
         .layer(
@@ -265,7 +265,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
                 .on_response(telemetry::request_done),
         )
         // The probe a platform asks every few seconds, after the trace
-        // layer so it is not on the record: the store is open before
+        // layer so it is not on the catalog: the store is open before
         // the router exists, so an answer at all says the server is up.
         .route("/healthz", get(|| async { "ok" }))
 }
