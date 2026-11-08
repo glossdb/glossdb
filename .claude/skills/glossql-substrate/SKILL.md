@@ -89,7 +89,9 @@ mode; this file is so nobody has to rediscover it.
 - **The extension is pinned.** `crates/duck/glossql.ref` names the
   commit the build carries; the DuckDB release is the one `duckdb-neo`
   links, and the extension is built against the same one. A pin move
-  is both at once, and the vendored guide follows.
+  is both at once, and the vendored guide follows. The pin is a commit
+  on the extension's `main`: only a push run there publishes every
+  platform's loadable.
 
 ## Before you write a mechanism
 
