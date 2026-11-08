@@ -464,13 +464,13 @@ SELECT 'metrics' AS surface, 1 AS step, 'next' AS state, 'GLOSS definitions' AS 
 FROM metrics_declared a, ds
 WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
-SELECT 'metrics', 2, 'next', 'DECLARE ASPECT query',
+SELECT 'metrics', 2, 'next', 'DECLARE ASPECT view',
        'declare the first concept',
        'no metric is claimed by this dataset: a declared VIEW aspect is this dataset''s once its definitions entry or its metric definition exists; the names are the person''s to choose',
        '', ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
 UNION ALL
-SELECT 'metrics', 3, 'next', 'GLOSS query',
+SELECT 'metrics', 3, 'next', 'GLOSS view',
        'define ' || c.name || ', or stop it',
        c.name || ' is declared and has no metric definition: a declaration nobody defines holds this goal — define it, or stop it with the reason no number is served',
        'GLOSS ' || c.name || ' ON ' || ds.dataset || ' AS $${' || chr(10)
@@ -499,7 +499,7 @@ FROM axes a, ds
 WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
   AND len(a.wanted) = 0 AND len(a.missing) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
 UNION ALL
-SELECT 'metrics', 6, 'next', 'GLOSS query',
+SELECT 'metrics', 6, 'next', 'GLOSS view',
        'record ' || a.metric || ' again' || ' — ' || split_part(a.reason, ':', 1),
        a.reason,
        'GLOSS ' || a.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',

@@ -183,7 +183,7 @@ it.
   and a DuckLake, behind one facade), `apps` (the console and the data
   apps), `serverd` (the binary and its interfaces).
 - `kits/` — the server's kits, loaded at open around the extension's
-  `kpi` and `quality`: `core`, `metrics`, `outlook` (preview), `door`
+  `kpi` and `quality`: `core`, `metrics`, `outlook` (preview), `goals`
   (goals and next steps); each with its test suite
   ([kits](kits/README.md)).
 - `skills/` — the skills served to agents.

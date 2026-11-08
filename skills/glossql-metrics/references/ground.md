@@ -25,7 +25,7 @@ is the decided definition: the stored SQL is one evaluation of it, not
 a replacement for it. Operands name sibling concepts, plus
 window-derived constants like `days[w]`. Nothing validates them; a
 misspelled sibling is silent, so read your own operand names back
-against `SELECT name FROM aspects WHERE kind = 'query'`. A base
+against `SELECT name FROM aspects WHERE kind = 'VIEW'`. A base
 concept defined as an extract has no formula.
 
 Whatever sits in a `WITH` blob cannot be corrected, contested or

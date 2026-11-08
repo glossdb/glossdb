@@ -136,7 +136,7 @@ metrics, for any window `w`: `[w]` reads a flow over the window,
 `[end of w]` a stock at its end, `[w-1]` the previous window. The
 formula documents the metric; the stored SQL is what runs. Formulas
 are not checked, so read the operand names back against
-`SELECT name FROM aspects WHERE kind = 'query'`.
+`SELECT name FROM aspects WHERE kind = 'VIEW'`.
 
 ## Stop a metric
 
