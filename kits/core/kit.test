@@ -58,13 +58,16 @@ SELECT count(*) FROM kits WHERE name = 'core';
 ----
 1
 
-# --- a test is open while its property is in use and has no value ---
+# --- a table or column test is open on each asset a metric reads, where its WHEN holds, until the asset has a value ---
 
 statement ok
 DECLARE DATASET shop SET (purpose: 'tests in use');
 
 statement ok
-CREATE TABLE shop.orders AS SELECT 1 AS id, 9.5 AS amount;
+CREATE TABLE shop.orders AS SELECT 1 AS id, 9.5 AS amount, 2 AS qty;
+
+statement ok
+CREATE TABLE shop.notes AS SELECT 1 AS id, 'x' AS note;
 
 statement ok
 DECLARE ASPECT kind_of WITH $${"type": "object", "properties": {"value": {"type": "string"}}}$$ AS FACT ON COLUMN;
@@ -75,11 +78,11 @@ DECLARE ASPECT money_unit WITH $${"type": "object", "properties": {"value": {"ty
 statement ok
 DECLARE TEST money_unit_test ON money_unit BY (AGENT, HUMAN);
 
-# no column is a measure yet: the unit is required nowhere, so its test is not open
-query I
-SELECT open FROM workspace_next WHERE surface = 'validations';
-----
-0
+statement ok
+DECLARE ASPECT about WITH $${"type": "object", "properties": {"value": {"type": "string"}}}$$ AS FACT ON TABLE, COLUMN;
+
+statement ok
+DECLARE TEST about_test ON about BY (AGENT, HUMAN);
 
 statement ok
 USE shop;
@@ -87,14 +90,38 @@ USE shop;
 statement ok
 GLOSS kind_of ON orders.amount AS $${"value": "measure"}$$;
 
-# a measure exists and carries no unit: the test is open
+statement ok
+GLOSS kind_of ON orders.qty AS $${"value": "measure"}$$;
+
+# measures exist, but no metric reads anything: no test is open
+query I
+SELECT open FROM workspace_next WHERE surface = 'validations';
+----
+0
+
+statement ok
+DECLARE ASPECT sales WITH $${"title": "Sales"}$$ AS VIEW;
+
+statement ok
+GLOSS sales ON shop AS $${"sql": "SELECT id AS period, amount AS value FROM shop.orders"}$$;
+
+# the metric reads orders and its amount: the unit is open on amount, not on qty, which no metric reads;
+# the table property is open on orders, not on notes
+query I
+SELECT open FROM workspace_next WHERE surface = 'validations';
+----
+2
+
+statement ok
+GLOSS money_unit ON orders.amount AS $${"value": "EUR"}$$;
+
 query I
 SELECT open FROM workspace_next WHERE surface = 'validations';
 ----
 1
 
 statement ok
-GLOSS money_unit ON orders.amount AS $${"value": "EUR"}$$;
+GLOSS about ON orders AS $${"value": "one row per order"}$$;
 
 query I
 SELECT open FROM workspace_next WHERE surface = 'validations';

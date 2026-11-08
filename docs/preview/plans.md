@@ -122,15 +122,15 @@ the catalog rows it read change; a newer forecast asks for it again.
 The `next` read carries the plan as its own goal, `plan`, beside the
 seven others ([views and table functions](../reference/reads.md),
 `next`). Every step reads the catalog, never the data. The goal's steps
-are the plan's preconditions, in order:
+are the plan's preconditions, in order. Until a plan is declared the
+goal is done: the data cannot say a plan is wanted, so a person asks
+for one or the agent declares one over a loaded budget table.
 
 1. an applicable metric, else the goal is blocked;
-2. the first plan to declare: its statement filled with the dataset,
-   the names left to the author;
-3. a declared plan to define, or to stop;
-4. a plan the read refuses, to record again;
-5. the forecast to run, if never run or stale;
-6. the plan to judge, if never judged or judged against an older
+2. a declared plan to define, or to stop;
+3. a plan the read refuses, to record again;
+4. the forecast to run, if never run or stale;
+5. the plan to judge, if never judged or judged against an older
    forecast.
 
 Then every plan year whose range does not contain the plan is a gap.

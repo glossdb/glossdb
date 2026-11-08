@@ -18,7 +18,7 @@ to measure, what to ask.
 says where you are on each after every call, on the `next:` line:
 
 ```text
-next: structure: done · metrics → define churn (next://ops/metrics) · slices → record churn again — serving one of region, channel (next://ops/slices) · bands → blocked: no applicable metric exists · checks → run metric_bands (next://ops/checks) · app → write the first page over 3 metrics (next://ops/app) · plan → declare the first plan (next://ops/plan) · review: done
+next: structure: done · metrics → define churn (next://ops/metrics) · slices → record churn again — serving one of region, channel (next://ops/slices) · bands → blocked: no applicable metric exists · checks → run metric_bands (next://ops/checks) · app → write the first page over 3 metrics (next://ops/app) · plan: done · review: done
 ```
 
 A goal that is neither done nor blocked is yours to move. Read its

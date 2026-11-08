@@ -1280,14 +1280,11 @@ FROM ds
 UNION ALL
 SELECT 'plan', 1, 'blocked', '', '', 'no applicable metric exists', '', ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind, '') <> 'plan')
+  AND EXISTS (SELECT 1 FROM futures_plans)
 UNION ALL
-SELECT 'plan', 2, 'next', 'DECLARE ASPECT plan',
-       'declare the first plan',
-       'no plan is declared on ' || m.metrics || ': a plan is a VIEW aspect with x-kind plan and x-plan-of naming the metric it plans, defined by SQL over the loaded budget table, one aspect per edition, x-covers year where a row is booked against the year; which metrics the budget covers, and its name, are the person''s to choose',
-       'DECLARE ASPECT <name> WITH $${"title": "<Budget>", "x-kind": "plan", "x-plan-of": "<metric>"}$$ AS VIEW;',
-       'GLOSS <name> ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;'
-FROM applicable m CROSS JOIN ds
-WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM futures_plans)
+SELECT 'plan', 2, 'done', '', '',
+       'no plan is declared: the goal opens once a person or an agent declares one, a VIEW aspect with x-kind plan and x-plan-of naming the metric it plans, defined by SQL over a loaded budget table', '', ''
+FROM ds WHERE NOT EXISTS (SELECT 1 FROM futures_plans)
 UNION ALL
 SELECT 'plan', 3, 'next', 'GLOSS plan',
        'define ' || p.plan || ', or stop it',
