@@ -300,7 +300,7 @@ FROM rows_ GROUP BY grain, totals, horizon;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_forecast WITH $${
-  "type": "object",
+  "type": "object", "x-used-by": ["plan", "scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
@@ -722,7 +722,7 @@ ORDER BY r.scenario, r.metric;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_scenario WITH $${
-  "type": "object",
+  "type": "object", "x-used-by": ["scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
     "scenarios": {"type": "array", "items": {"type": "object"}}
@@ -1115,7 +1115,7 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_plan WITH $${
-  "type": "object",
+  "type": "object", "x-used-by": ["plan"],
   "properties": {
     "plan": {"type": "string"},
     "metric": {"type": ["string", "null"]},

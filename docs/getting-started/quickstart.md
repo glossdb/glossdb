@@ -280,10 +280,10 @@ SELECT surface, state, say, statement FROM next ORDER BY goal
 
 A statement there is a proposal: edit it, send it, or skip it.
 `workspace_next` lists every surface the workspace can grow along, with
-what is done and what is open on each:
+what exists, what is open for the agent, and what waits for a person:
 
 ```sql
-SELECT surface, how, existing, open FROM workspace_next ORDER BY open DESC;
+SELECT surface, how, existing, open, waiting FROM workspace_next ORDER BY open DESC;
 ```
 
 More: [next steps](../extending/next-steps.md).

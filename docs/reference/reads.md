@@ -31,10 +31,20 @@ Where the workspace stands on each thing it can be extended with. Not
 a task list. Columns: `surface` (`sources`, `tables`, `relationships`,
 `aspects`, `claims`, `functions`, `metrics`, `validations`,
 `scenarios`, `plans`, `review`, `apps`), `how` (the statement that
-extends it), `existing` (what exists), `open` (what is unfinished; 0
-where nothing can be). A table is open while its load dropped rows.
-Every count spans the workspace: the view to read first, with no
-dataset bound.
+extends it), `existing` (what exists), `open` (what is unfinished and
+the agent can finish; 0 where nothing can be), `waiting` (what waits
+for a person: the review queue's questions, on the `review` row). A
+table is open while its load dropped rows; a metric while it is
+declared and not defined; a validation while its property is in use
+and has no value anywhere. A property is in use when something that
+exists needs it: its `WHEN` matches an asset (a unit once a column is
+a measure), a column of its type exists, a table is loaded (for table
+and column properties), a key is declared (for relationship
+properties), or, for a measurement marked `x-used-by`, a property of
+one of those x-kinds is declared (the forecast once a plan or a
+scenario is). Every count spans the workspace: the view to read first,
+with no dataset bound. Nothing open, with questions waiting, means the
+agent's part is done.
 
 ### open_questions
 

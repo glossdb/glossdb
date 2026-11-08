@@ -53,7 +53,9 @@ concept is theirs to name, and the proposal is there to help them
 think, not to fill the workspace.
 
 `workspace_next` is the map behind the line — every surface, what
-is done, what is open — when you want the counts.
+exists, what is open for you, what waits for a person — when you want
+the counts. Your part is done when nothing is open; questions waiting
+for a person do not hold it open.
 
 ## What you are making
 

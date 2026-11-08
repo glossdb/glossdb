@@ -182,16 +182,49 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
 
 -- What this workspace can be extended through, and its state on
 -- each: `existing` counts what exists, `open` what is unfinished on the
--- surface, `how` the statement that extends it. Every count spans the
+-- surface and the agent can finish, `waiting` what waits for a person,
+-- `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_next AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
   ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
-    SELECT name, kind, schema FROM (
-      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+    SELECT name, kind, grains, condition, schema FROM (
+      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1),
+  -- A test's property is in use when something that exists needs it:
+  -- a WHEN on another property's value, once an asset carries that
+  -- value; a WHEN on a column type, once such a column exists; a
+  -- measurement marked `x-used-by`, once a property of one of those
+  -- x-kinds is declared; a relationship property, once a key is
+  -- declared; a table or column property, once a table is loaded;
+  -- anything else, always. A test is open while its property is in
+  -- use and has no value anywhere.
+  tested AS (
+    SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema
+    FROM (SELECT DISTINCT aspect FROM main.tests) t
+    JOIN newest_aspects a ON a.name = t.aspect),
+  in_use AS (
+    SELECT a.name,
+      CASE
+        WHEN json_extract(a.schema, '$.x-used-by') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM newest_aspects u
+          WHERE list_contains(from_json(json_extract(a.schema, '$.x-used-by'), '["VARCHAR"]'),
+                              json_extract_string(u.schema, '$.x-kind')))
+        WHEN json_extract_string(a.condition, '$.aspect') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM main.glossary g
+          WHERE g.aspect = json_extract_string(a.condition, '$.aspect')
+            AND json_extract_string(g.body, '$.value') = json_extract_string(a.condition, '$.value'))
+        WHEN json_extract(a.condition, '$.type') IS NOT NULL THEN EXISTS (
+          SELECT 1 FROM duckdb_columns() c
+          WHERE c.database_name = current_database()
+            AND list_contains(from_json(json_extract(a.condition, '$.type'), '["VARCHAR"]'), c.data_type))
+        WHEN a.grains = ['RELATIONSHIP'] THEN EXISTS (SELECT 1 FROM main.relationships)
+        WHEN list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN') THEN EXISTS (SELECT 1 FROM main.imports)
+        ELSE true
+      END AS used
+    FROM tested a),
   counts AS (
     SELECT (SELECT count(*) FROM main.sources) AS n_sources,
            (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports)) AS n_tables,
@@ -199,15 +232,18 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            (SELECT count(*) FROM main.relationships) AS n_relationships,
            (SELECT count(*) FROM newest_aspects) AS n_aspects,
            (SELECT count(*) FROM main.glossary) AS n_claims,
-           (SELECT n FROM asked) AS open_claims,
+           0 AS open_claims,
            (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW'
               AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
-           (SELECT metrics FROM asked) AS open_metrics,
+           (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW'
+              AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('sample', 'plan')
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_metrics,
            (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
-           (SELECT count(*) FROM (SELECT DISTINCT aspect FROM main.tests) w
-            WHERE NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = w.aspect)
-              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = w.aspect)) AS open_validations,
+           (SELECT count(*) FROM in_use u WHERE u.used
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
+              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name)) AS open_validations,
+           (SELECT n FROM asked) AS waiting,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_scenarios,
@@ -227,7 +263,8 @@ CREATE OR REPLACE VIEW main.workspace_next AS
          CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
            WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
-           WHEN 'review' THEN c.open_decisions ELSE 0 END AS open
+           WHEN 'review' THEN c.open_decisions ELSE 0 END AS open,
+         CASE s.surface WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
   FROM counts c
   CROSS JOIN (VALUES
     ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
@@ -240,7 +277,7 @@ CREATE OR REPLACE VIEW main.workspace_next AS
     ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
     ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
-    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied'),
+    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied — `waiting` counts the questions waiting for a person, which the agent cannot close'),
     ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
   ) AS s(surface, how);
 

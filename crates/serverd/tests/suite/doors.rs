@@ -2612,7 +2612,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 161,
-                "SELECT surface, existing, open FROM workspace_next ORDER BY surface;",
+                "SELECT surface, existing, open, waiting FROM workspace_next ORDER BY surface;",
                 None,
             ),
         )
@@ -2649,11 +2649,16 @@ async fn the_workspace_says_what_it_affords() {
             .unwrap_or_else(|| panic!("no {name} row"))
             .clone()
     };
-    // One metric declared, one grounded, one assumption open on it. The
-    // sample frame is a VIEW aspect too and must not inflate this.
+    // One metric declared and defined, one assumption on it waiting for
+    // a person. The question waits on the review row; it leaves no
+    // metric and no claim open, so "nothing open" stays reachable
+    // without a person (glossdb#210). The sample frame is a VIEW aspect
+    // too and must not inflate the metrics.
     assert_eq!(row("metrics")["existing"], json!(1), "{rows:?}");
-    assert_eq!(row("metrics")["open"], json!(1), "{rows:?}");
-    assert_eq!(row("claims")["open"], json!(1), "{rows:?}");
+    assert_eq!(row("metrics")["open"], json!(0), "{rows:?}");
+    assert_eq!(row("claims")["open"], json!(0), "{rows:?}");
+    assert_eq!(row("review")["waiting"], json!(1), "{rows:?}");
+    assert_eq!(row("metrics")["waiting"], json!(0), "{rows:?}");
     // The scenarios and the sample frames. The sample interface is a planner interface, not a row
     // in `functions`, so this map is the only place an agent meets them
     // at all. Each is declared here and never glossed — vocabulary
@@ -2663,20 +2668,19 @@ async fn the_workspace_says_what_it_affords() {
     // Nothing decided yet, so no decision waits to be applied.
     assert_eq!(row("review")["existing"], json!(0), "{rows:?}");
     assert_eq!(row("review")["open"], json!(0), "{rows:?}");
-    // A validation holds with its test and is open while nobody
-    // has spoken on the tested aspect. The DuckDB build opens with
-    // its kits declared, whose tests stand open here too.
-    let kit_witnesses = 11;
+    // A validation is open while its property is in use and has no
+    // value. The kits' eleven tests exist from the start; with no table
+    // loaded, only these are in use: the agent's own `ar_tie`, the
+    // scenario and forecast measurements (a scenario is declared), and
+    // the bands every metric is checked against.
+    let kit_tests = 11;
     assert_eq!(
         row("validations")["existing"],
-        json!(1 + kit_witnesses),
+        json!(1 + kit_tests),
         "{rows:?}"
     );
-    assert_eq!(
-        row("validations")["open"],
-        json!(1 + kit_witnesses),
-        "{rows:?}"
-    );
+    let in_use = 4;
+    assert_eq!(row("validations")["open"], json!(in_use), "{rows:?}");
 
     // The authored expectation is speech on the aspect: the validation
     // stops being required the moment somebody speaks.
@@ -2701,7 +2705,7 @@ async fn the_workspace_says_what_it_affords() {
     let outcomes: Value = serde_json::from_str(text).unwrap();
     assert_eq!(
         outcomes[0]["rows"][0]["open"],
-        json!(kit_witnesses),
+        json!(in_use - 1),
         "{outcomes}"
     );
 }
