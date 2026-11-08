@@ -3,9 +3,11 @@
    the object's own query string (`table=orders`, `metric=hires`), so
    a sub-tab is the object's link with `tab=` added. #}
 
-{% macro crumbs(dataset, section="", section_link="", object="", object_link="", child="") %}
+{% macro crumbs(dataset, top="", section="", section_link="", object="", object_link="", child="") %}
+{% if top == "Catalog" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Metrics" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/metrics" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Review" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
 <p class="crumbs">
   <a href="/{{ dataset }}/app/console">{{ dataset }}</a>
+  {% if top %}<span class="crumb-sep">›</span>{% if section or object %}<a href="{{ top_link }}">{{ top }}</a>{% else %}{{ top }}{% endif %}{% endif %}
   {% if section %}<span class="crumb-sep">›</span>{% if section_link %}<a href="{{ section_link }}">{{ section }}</a>{% else %}{{ section }}{% endif %}{% endif %}
   {% if object %}<span class="crumb-sep">›</span>{% if object_link and child %}<a href="{{ object_link }}">{{ object }}</a>{% else %}{{ object }}{% endif %}{% endif %}
   {% if child %}<span class="crumb-sep">›</span>{{ child }}{% endif %}

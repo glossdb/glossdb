@@ -44,7 +44,11 @@ GLOSS app ON console_mine AS $${"title": "My console"}$$;
   {"name": "cash", "title": "Cash"}]` sets the order and the titles of
   the tabs; without it every page shows by its file name, `index`
   first. A page may carry a `"group"`: the bar draws a line where the
-  group changes. A one-page app shows no tabs. Every page of an app
+  group changes. A page may also name a `"section"`, and say
+  `"bar": false` to leave the bar: the tab of its section is then
+  marked while it is open. `"kind_sections"` moves a page to another
+  section by its `kind` parameter (`{"scalar": "Catalog"}`). A one-page
+  app shows no tabs. Every page of an app
   from the catalog opens with the manifest's title; the console's
   pages are its tabs and print none.
 

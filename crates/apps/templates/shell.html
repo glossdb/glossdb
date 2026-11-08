@@ -42,12 +42,14 @@
     <select class="pick" aria-label="app" data-nav>
       {% for a in apps %}<option value="/{{ dataset }}/app/{{ a.name }}"{% if app and a.name == app.name %} selected{% endif %}>{{ a.title }}</option>{% endfor %}
     </select>
-    {# The app's pages, as the manifest lists them, a hairline where
-       the manifest's group changes. A one-page app has nothing to
-       switch between, so it shows no tabs. #}
+    {# The app's tabs, as the manifest lists them, a hairline where
+       the manifest's group changes. A tab is current when the page sits
+       in its section, or is the tab itself in an app without sections.
+       A one-page app has nothing to switch between, so it shows no
+       tabs. #}
     {% if app and pages | length > 1 %}
     <nav class="tabs" aria-label="pages">
-      {% for p in pages %}{% if p.sep %}<span class="sep" aria-hidden="true"></span>{% endif %}<a{% if p.name == page %} class="current" aria-current="page"{% endif %} href="/{{ dataset }}/app/{{ app.name }}{% if p.name != 'index' %}/p/{{ p.name }}{% endif %}{% if draft %}?draft{% endif %}">{{ p.title }}</a>{% endfor %}
+      {% for p in pages %}{% if p.sep %}<span class="sep" aria-hidden="true"></span>{% endif %}<a{% if p.current %} class="current" aria-current="page"{% endif %} href="/{{ dataset }}/app/{{ app.name }}{% if p.name != 'index' %}/p/{{ p.name }}{% endif %}{% if draft %}?draft{% endif %}">{{ p.title }}</a>{% endfor %}
     </nav>
     {% endif %}
     {# Each section's read — the query behind it — hidden until asked
@@ -56,13 +58,13 @@
   </div>
 </header>
 <div class="load-bar"></div>
-{# The built-in console carries the dataset's tree beside every page; an
-   app of the workspace's own keeps the whole width. #}
+{# The built-in console carries the current section's list beside every
+   page; an app of the workspace's own keeps the whole width. #}
 {% set tree = app and app.origin != "glossed" %}
 <main{% if tree %} class="with-tree"{% endif %}>
 {% if tree %}<aside class="side">
-  <a class="t-root{% if page == 'index' %} current{% endif %}" href="/{{ dataset }}/app/{{ app.name }}">{{ dataset }}</a>
-  <gl-tree frame="frames/tree"></gl-tree>
+  <p class="t-root">{{ bar_section }}</p>
+  <gl-tree frame="frames/tree" section="{{ bar_section }}"></gl-tree>
 </aside>
 <div class="content">{% endif %}
 {# A glossed app opens with its title, in full, whatever the picker

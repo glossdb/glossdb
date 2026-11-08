@@ -233,7 +233,7 @@ async fn pages_render_and_frames_stream() {
         .unwrap();
     let export = console
         .find(
-            "class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Export</a>",
+            "class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Data</a>",
         )
         .unwrap();
     assert!(open < export, "{console}");
@@ -242,7 +242,7 @@ async fn pages_render_and_frames_stream() {
     assert_eq!(console.matches("class=\"sep\"").count(), 1, "{console}");
     assert!(
         console.contains(
-            "</a><span class=\"sep\" aria-hidden=\"true\"></span><a class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Export</a>"
+            "</a><span class=\"sep\" aria-hidden=\"true\"></span><a class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">Data</a>"
         ),
         "{console}"
     );
@@ -1948,7 +1948,7 @@ async fn the_export_tab_lists_tables_and_reads() {
         0
     );
     let second = text(get(&app, "/second/app/console/p/export").await).await;
-    assert!(second.contains(">Export</a>"), "{second}");
+    assert!(second.contains(">Data</a>"), "{second}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2107,9 +2107,9 @@ async fn the_lineage_page_draws_the_record() {
         page.contains("<gl-graph nodes=\"frames/lineage_nodes\" edges=\"frames/lineage_edges\""),
         "{page}"
     );
-    // The other pages carry the fourth tab.
-    let open = text(get(&app, "/perf/app/console").await).await;
-    assert!(open.contains("/perf/app/console/p/lineage"), "{open}");
+    // The overview's left nav links it.
+    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
+    assert!(tree.contains("/perf/app/console/p/lineage\n"), "{tree}");
 
     // Nodes: the two tables' columns in order, and the metric definition's
     // served fields under the metric; a metric definition with only an
@@ -2621,7 +2621,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     let history = text(get(&app, "/perf/app/console/p/glossary?table=ledger&tab=history").await).await;
     assert!(history.contains("frames/table_landing?table=ledger"), "{history}");
     assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">Glossary</a>"),
+        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">Catalog</a>"),
         "opening a table stays on the tab:\n{page}"
     );
     let head = body_text(get(&app, "/perf/app/console/frames/table_head?table=ledger").await).await;
@@ -2781,10 +2781,75 @@ async fn the_tree_lists_sources_tables_columns_and_tests() {
     ] {
         assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
     }
-    // Every console page carries the tree and its component.
+    // Every console page carries the left nav for its section.
     let page = text(get(&app, "/perf/app/console/p/metrics").await).await;
-    assert!(page.contains("<gl-tree frame=\"frames/tree\">"), "{page}");
+    assert!(
+        page.contains("<gl-tree frame=\"frames/tree\" section=\"Metrics\">"),
+        "{page}"
+    );
     assert!(page.contains("/assets/gl-tree.js"), "{page}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
+    let (app, _plane, _dir) = workspace().await;
+    let bar = |page: &str| {
+        let start = page.find("<nav class=\"tabs\"").unwrap();
+        let end = start + page[start..].find("</nav>").unwrap();
+        page[start..end].to_string()
+    };
+    let current = |page: &str| {
+        let tabs = bar(page);
+        let at = tabs.find("class=\"current\"").unwrap();
+        let title = &tabs[at..];
+        let open = title.find('>').unwrap() + 1;
+        title[open..open + title[open..].find('<').unwrap()].to_string()
+    };
+    let index = text(get(&app, "/perf/app/console").await).await;
+    let tabs = bar(&index);
+    let titles: Vec<&str> = ["Overview", "Catalog", "Metrics", "Quality", "Review", "Data"]
+        .into_iter()
+        .filter(|t| tabs.contains(&format!(">{t}</a>")))
+        .collect();
+    assert_eq!(titles.len(), 6, "{tabs}");
+    for gone in [">Model</a>", ">History</a>", ">Lineage</a>", ">Query</a>", ">Glossary</a>"] {
+        assert!(!tabs.contains(gone), "{gone} left the bar:\n{tabs}");
+    }
+    // A page marks the section that owns it, and the left nav shows
+    // that section.
+    for (url, section) in [
+        ("/perf/app/console/p/model", "Overview"),
+        ("/perf/app/console/p/glossary?table=ledger", "Catalog"),
+        ("/perf/app/console/p/glossary?column=ledger.value", "Catalog"),
+        ("/perf/app/console/p/glossary?source=erp", "Catalog"),
+        ("/perf/app/console/p/metrics?metric=x&kind=scalar", "Catalog"),
+        ("/perf/app/console/p/metrics?metric=x", "Metrics"),
+        ("/perf/app/console/p/quality", "Quality"),
+        ("/perf/app/console/p/query", "Data"),
+    ] {
+        let page = text(get(&app, url).await).await;
+        assert_eq!(current(&page), section, "{url}");
+        assert!(
+            page.contains(&format!("<gl-tree frame=\"frames/tree\" section=\"{section}\">")),
+            "{url}"
+        );
+    }
+    // The breadcrumb names the section.
+    let table = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
+    assert!(table.contains(">Catalog</a>"), "{table}");
+    // Every entry of the left nav is tagged with its section.
+    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
+    for line in [
+        "Overview\n",
+        "Catalog\n",
+        "Data\n",
+        "Properties\n",
+        "/perf/app/console/p/model\n",
+        "/perf/app/console/p/review#decisions\n",
+        "/perf/app/console/p/query\n",
+    ] {
+        assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

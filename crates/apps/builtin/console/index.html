@@ -6,7 +6,7 @@
 {# The Overview, the console's first page: how much of what the
    harness requires is known, what waits for a person, and what waits
    for an action. Each line opens the page that answers it. #}
-{{ object::crumbs(dataset=dataset, section="Overview") }}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
 <div class="tiles">
   <div class="counts">
     {{ tiles::value(frame="frames/front", field="open", label="Open questions",

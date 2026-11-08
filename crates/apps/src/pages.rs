@@ -208,10 +208,28 @@ async fn page_response(
         .into_iter()
         .try_for_each(|(name, text)| tera.add_raw_template(&format!("pages/{name}"), &text))
         .map(|()| tera);
-    // `sep` is the hairline before a tab: the group changed from the
-    // page before it. Computed here so the template stays a loop.
-    let pages: Vec<Value> = def
+    // The section this page sits in: the manifest's, moved by the page's
+    // `kind` parameter where the manifest says so. A manifest without
+    // sections marks the page itself.
+    let kind = params
+        .iter()
+        .find(|(k, _)| k == "kind")
+        .map(|(_, v)| v.as_str());
+    let section = def
         .pages
+        .iter()
+        .find(|t| t.name == page)
+        .map(|t| {
+            kind.and_then(|k| t.kind_sections.get(k))
+                .unwrap_or(&t.section)
+                .clone()
+        })
+        .unwrap_or_default();
+    // The bar's tabs: the pages the manifest puts in the bar. `sep` is
+    // the hairline before a tab: the group changed from the tab before
+    // it. Computed here so the template stays a loop.
+    let bar: Vec<&crate::app::Tab> = def.pages.iter().filter(|t| t.bar).collect();
+    let pages: Vec<Value> = bar
         .iter()
         .enumerate()
         .map(|(i, tab)| {
@@ -219,7 +237,8 @@ async fn page_response(
                 "name": tab.name,
                 "title": tab.title,
                 "group": tab.group,
-                "sep": i > 0 && def.pages[i - 1].group != tab.group,
+                "sep": i > 0 && bar[i - 1].group != tab.group,
+                "current": if section.is_empty() { tab.name == page } else { tab.section == section },
             })
         })
         .collect();
@@ -231,6 +250,7 @@ async fn page_response(
     ctx.insert("apps", &apps_json(&glossed));
     ctx.insert("pages", &pages);
     ctx.insert("page", page);
+    ctx.insert("bar_section", &section);
     ctx.insert("dataset", dataset);
     ctx.insert("datasets", &datasets);
     ctx.insert("state", &state_map(params));

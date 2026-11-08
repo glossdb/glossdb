@@ -11,7 +11,7 @@
 
 {% if table %}
 {# ---- one table: the same five tabs as every object --------------- #}
-{{ object::crumbs(dataset=dataset, section="Tables", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=table) }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=table) }}
 {{ object::title(name=table, kind="table") }}
 <gl-rows frame="frames/table_head?table={{ table }}" empty="no landed table is named {{ table }}">
   <template>
@@ -121,7 +121,7 @@
 {# ---- one column: the same five tabs as every object -------------- #}
 {% set ctable = column | split(pat=".") | first %}
 {% set cname = column | split(pat=".") | last %}
-{{ object::crumbs(dataset=dataset, section="Tables", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=ctable, object_link="/" ~ dataset ~ "/app/console/p/glossary?table=" ~ ctable, child=cname) }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=ctable, object_link="/" ~ dataset ~ "/app/console/p/glossary?table=" ~ ctable, child=cname) }}
 {{ object::title(name=column, kind="column") }}
 <gl-rows frame="frames/column_head?column={{ column }}" empty="no landed column is named {{ column }}">
   <template>
@@ -202,7 +202,7 @@
 
 {% elif source %}
 {# ---- one source: the same five tabs as every object -------------- #}
-{{ object::crumbs(dataset=dataset, section="Sources", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=source) }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Sources", object=source) }}
 {{ object::title(name=source, kind="source") }}
 {{ object::subtabs(q="source=" ~ source, tab=tab) }}
 <div class="tiles">
@@ -259,7 +259,7 @@
 
 {% elif aspect %}
 {# ---- one aspect: the declaration, then every value ----------------- #}
-{{ object::crumbs(dataset=dataset, section="Glossary", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=aspect) }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Properties", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=aspect) }}
 <gl-rows frame="frames/aspect_head?aspect={{ aspect }}" empty="no aspect is named {{ aspect }}">
   <template>
     <p class="page-h"><code>{name}</code> — <span class="r-what">{kind}</span></p>
@@ -290,7 +290,7 @@
 </div>
 
 {% else %}
-{{ object::crumbs(dataset=dataset, section="Glossary") }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Properties") }}
 {# ---- the Glossary: the vocabulary, then the words ----------------- #}
 {# The dataset's words as the language holds them. First the
    vocabulary: every declared aspect with what it holds, where it is

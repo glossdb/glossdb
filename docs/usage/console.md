@@ -8,9 +8,23 @@ look up what is known about any table or column. It opens at
 ## Find your way
 
 The bar at the top has a dataset picker, an app picker (the console,
-and any [data apps](data-apps.md) the workspace holds), and the
-console's tabs. Every view's state is in the URL, so you can send any
-view as a link.
+and any [data apps](data-apps.md) the workspace holds), and six
+sections: Overview, Catalog, Metrics, Quality, Review and Data. The
+list on the left shows what is inside the current section:
+
+| Section | The left list |
+|---|---|
+| Overview | the scorecard, the model, the history, lineage |
+| Catalog | the properties, each source, each table with its columns, each view |
+| Metrics | each metric, then each single value |
+| Quality | all results, then each test |
+| Review | the queue, the decisions |
+| Data | export, query |
+
+A table, column, source or view opens in Catalog, a metric in Metrics,
+a test in Quality. The breadcrumb above each page names the way back,
+e.g. `hr › Catalog › Tables › employees`. Every view's state is in the
+URL, so you can send any view as a link.
 
 Each section has a plain name; hover over it for what it shows.
 **Show queries** in the bar adds the view or function each section

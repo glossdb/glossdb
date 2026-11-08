@@ -2,7 +2,7 @@
 {% import "modules/object.html" as object %}
 
 {% block main %}
-{{ object::crumbs(dataset=dataset, section="Model") }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Model") }}
 {# The model: the semantic layer and the ontology in one picture. Each
    table is drawn as its entity — what one row is, its grain and time
    axis, its measures and dimensions — the declared keys join them, and

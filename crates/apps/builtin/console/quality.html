@@ -13,7 +13,7 @@
    which evidence to draw: the corridor's points, the columns whose
    annotations differ, a validation's rates, or every result for a
    scoring function of the workspace's own. #}
-{{ object::crumbs(dataset=dataset, section="Tests", section_link="/" ~ dataset ~ "/app/console/p/quality", object=check) }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Tests", object=check) }}
 {{ object::title(name=check, kind="test") }}
 {{ object::subtabs(q="check=" ~ check ~ "&kind=" ~ ckind, tab=tab) }}
 <div class="tiles">
@@ -120,7 +120,7 @@
 </div>
 
 {% else %}
-{{ object::crumbs(dataset=dataset, section="Quality") }}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
 {# ---- what is wrong, then the instruments --------------------------- #}
 {# Findings first: what is wrong right now, worst first, each a
    sentence from the catalog's fields with the numbers behind it, what

@@ -4,7 +4,7 @@
 {% block main %}
 {% set kind = state.kind | default(value="") %}
 {% set obj = state.object | default(value="") %}
-{{ object::crumbs(dataset=dataset, section="History") }}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="History") }}
 {# One timeline of the dataset, newest first. The filters are URL
    params, so a filtered view is a link. #}
 <div class="tiles">

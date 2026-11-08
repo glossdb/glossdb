@@ -16,8 +16,8 @@
 {% set tab = state.tab | default(value="description") %}
 {# A picked slice is a measurement: the slice link opens that tab. #}
 {% if dim and not state.tab %}{% set tab = "measurements" %}{% endif %}
-{% if kind == "scalar" or kind == "relation" %}{% set section = "Views" %}{% set q = "metric=" ~ metric ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "metric=" ~ metric %}{% endif %}
-{{ object::crumbs(dataset=dataset, section=section, section_link="/" ~ dataset ~ "/app/console/p/metrics", object=metric) }}
+{% if kind == "scalar" or kind == "relation" %}{% set section = "Views" %}{% set q = "metric=" ~ metric ~ "&kind=" ~ kind %}{% else %}{% set section = "" %}{% set q = "metric=" ~ metric %}{% endif %}
+{{ object::crumbs(dataset=dataset, top=bar_section, section=section, object=metric) }}
 <gl-rows frame="frames/metric_head" empty="">
   <template>
     <h1 class="obj-h"><code>{name}</code><span class="kind">{kind}</span></h1>
@@ -256,7 +256,7 @@
 </div>
 
 {% else %}
-{{ object::crumbs(dataset=dataset, section="Metrics") }}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
 {# ---- the surfaces list ------------------------------------------- #}
 <div class="tiles">
   {# The re-measure banner: every write moves the pin, and a function

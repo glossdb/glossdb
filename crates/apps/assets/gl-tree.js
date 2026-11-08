@@ -1,8 +1,11 @@
-// <gl-tree frame="frames/tree"> — the console's tree. The frame serves
-// one row per entry: `section`, `parent` (the table a column belongs
-// to, empty otherwise), `name`, `label`, `link`. Sections and tables
-// fold; which are open is kept per browser. The entry whose link is
-// the current page is marked, and its section and table open.
+// <gl-tree frame="frames/tree" section="Catalog"> — the console's left
+// nav: what is inside the bar's current section. The frame serves one
+// row per entry: `top` (the bar's section), `section` (a heading inside
+// it; empty for the section's own pages, listed first without one),
+// `parent` (the table a column belongs to, empty otherwise), `name`,
+// `label`, `link`. Headings and tables fold; which are open is kept per
+// browser. The entry whose link is the current page is marked, and its
+// heading and table open.
 (function () {
   'use strict';
 
@@ -33,6 +36,9 @@
   function isCurrent(link) {
     const url = new URL(link, document.location.origin);
     if (url.pathname !== document.location.pathname) return false;
+    // A link to a part of a page is current only while the location
+    // points at that part.
+    if (url.hash && url.hash !== document.location.hash) return false;
     const here = new URLSearchParams(document.location.search);
     for (const [k, v] of url.searchParams) {
       if (here.get(k) !== v) return false;
@@ -95,11 +101,27 @@
       }
     }
 
-    draw(rows) {
+    draw(all) {
+      const top = this.getAttribute('section');
+      const rows = top ? all.filter((r) => r.top === top) : all;
       const stored = remembered();
       const open = stored || new Set();
+      const nav = el('nav', 'tree');
+      nav.setAttribute('aria-label', top || 'dataset');
+      // The section's own pages: a plain list, no heading.
+      const own = rows.filter((r) => !r.section);
+      if (own.length) {
+        const list = el('ul', 't-list t-own');
+        for (const r of own) {
+          const li = el('li');
+          li.append(entry(r));
+          list.append(li);
+        }
+        nav.append(list);
+      }
       const sections = new Map();
       for (const r of rows) {
+        if (!r.section) continue;
         if (!sections.has(r.section)) sections.set(r.section, { tops: [], kids: new Map() });
         const s = sections.get(r.section);
         if (r.parent) {
@@ -109,8 +131,6 @@
           s.tops.push(r);
         }
       }
-      const nav = el('nav', 'tree');
-      nav.setAttribute('aria-label', 'dataset');
       for (const [name, s] of sections) {
         const list = el('ul', 't-list');
         let sectionCurrent = false;
@@ -142,7 +162,7 @@
         d.append(list);
         nav.append(d);
       }
-      if (sections.size === 0) nav.append(el('p', 'rows-empty', 'nothing loaded yet'));
+      if (rows.length === 0) nav.append(el('p', 'rows-empty', 'nothing here yet'));
       return nav;
     }
   }

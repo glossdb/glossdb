@@ -837,13 +837,14 @@ main.with-tree > .content { min-width: 0; }
 }
 .t-root {
   display: block;
-  color: var(--ink);
-  font-weight: 600;
+  color: var(--faint);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   padding: 0.15rem 0.5rem;
-  border-left: 2px solid transparent;
-  margin-bottom: 0.6rem;
+  margin: 0 0 0.4rem;
 }
-.t-root.current, .t-link.current { border-left-color: var(--open); color: var(--ink); }
+.t-own { margin-bottom: 0.6rem; }
+.t-link.current { border-left-color: var(--open); color: var(--ink); }
 .tree .t-fold { margin: 0; }
 .tree summary { cursor: pointer; list-style: none; }
 .tree summary::-webkit-details-marker { display: none; }
