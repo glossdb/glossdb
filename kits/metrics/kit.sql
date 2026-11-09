@@ -517,7 +517,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
   ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable)
   SELECT ok.applicable,
          CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM a WHERE coalesce(kind, '') IN ('scalar', 'relation')),
-                                                  'no value column: not a metric, or its columns carry no role yet') END AS reason,
+                                                  'the definition does not say yet which column is the time and which the measure') END AS reason,
          CASE WHEN ok.applicable THEN (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a) END AS breach_rate,
          (SELECT behavior FROM a) AS behavior
   FROM ok
@@ -746,7 +746,9 @@ SELECT m.metric, 9, 'done', '', '', 'every test on ' || m.metric || ' is green o
 FROM (SELECT DISTINCT metric FROM report) m, ds
 UNION ALL
 SELECT 'metrics', 1, 'next', 'GLOSS view', 'define the first metric',
-       'no metric is served on ' || ds.dataset || ': the person''s question names it, and the glossql-metrics skill says how a definition is written',
-       '', ''
+       'no metric is served on ' || ds.dataset || ': the person''s question names it. A definition is SQL with one row per period and slice, and says which column is the time, which the measure and how it adds up (additive, semi-additive for a level such as a balance or a headcount, ratio), and which columns slice it',
+       'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
+         || 'GLOSS <metric> ON ' || ds.dataset || ' AS $${"sql": "SELECT <period>, <value>, <slicing columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio>", "unit": "<unit>"}, "dimensions": ["<column>"]}$$;',
+       ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM report)
 $arms$ AS arms;

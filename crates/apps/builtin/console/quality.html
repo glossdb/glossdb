@@ -135,6 +135,21 @@
    standing in for a sentence. #}
 <div class="tiles">
   <section class="tile">
+    <header><span class="eyebrow" title="Every test on each metric and on the tables and columns it reads, worst first: join fan-out, orphaned keys, additivity, validity dates, and the team's own. A metric whose tests all pass is one green row.">Tests per metric</span>
+      <code class="chip">metric_tests()</code></header>
+    <p class="hint">What can break each metric's number, checked. Worst first; a green row means every test on the metric passes or was accepted.</p>
+    <gl-rows frame="frames/metric_tests" empty="no metric is served yet: the tests appear with the first definition">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(9rem,13rem) minmax(8rem,11rem) 1fr 5rem">
+          <span class="r-subj">{metric}</span>
+          <span class="r-meta">{test}<br>{declared_by}</span>
+          <span class="r-what">{what}<br><span class="r-meta">{stale}</span></span>
+          <code class="chip {bcls}">{state}</code>
+        </a>
+      </template>
+    </gl-rows>
+  </section>
+  <section class="tile">
     <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their band; measurements carry none, since a measurement reports and never judges. A month outside its predicted range comes first, with its chart and the members that moved it. When nothing is wrong, the page says so.">Findings</span>
       <code class="chip">TESTS() · imports · measurements</code></header>
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>

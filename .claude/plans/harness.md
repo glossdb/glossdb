@@ -13,10 +13,10 @@ databases), `clients.md` and `chat.md` (the trial).
 | 4 | Forecast goals as steps on the metric (outside its expected range, plan outside the forecast) plus one `outlook` goal for runs due | done |
 | 5 | Glossary states `conflict` and `missing`; a test not yet run is `not_run`; `status:` line; "annotate" in served text | done |
 | 6 | Effective-dated tables: `validity` on a table, `validity_test` on every metric that reads one | done |
-| 7 | A metric definition carries its time column, measure with additivity and dimensions inline; the server writes the column annotations | open |
-| 8 | Console: Quality opens on the tests per metric | open |
-| 9 | Skills rewritten around the test report | open |
-| 10 | glossval: finish line "every metric's tests green or accepted", rerun the eight seats against the stored bare runs, then the Monday test | open |
+| 7 | A metric definition carries its time column, measure with additivity and dimensions inline; the server writes the column annotations | done |
+| 8 | Console: Quality opens on the tests per metric | done |
+| 9 | Skills: the one-statement definition and effective-dated tables taught; the rest of the pages still to shorten | partly |
+| 10 | glossval: finish line updated (uncommitted in glossval); still to do: rerun the eight seats against the stored bare runs, then the Monday test | open |
 | 11 | Remaining coined words: `behavior` → additivity, `entity` → grain, `ladder` → time grains, `band` → severity, `metric_axes()`, `workspace_next`, kit, actor | open, after 10 |
 | 12 | Keywords `GLOSS`, `ASPECT`, `RECIPE`: corpus forks, the lead's call | open |
 | 13 | Semantic model export as Apache Ossie; lineage export as OpenLineage | open, after 7 |

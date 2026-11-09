@@ -64,6 +64,7 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("check_slots.sql"),
         frame!("check_verdicts.sql"),
         frame!("checks.sql"),
+        frame!("metric_tests.sql"),
         frame!("column_head.sql"),
         frame!("column_slots.sql"),
         frame!("columns.sql"),

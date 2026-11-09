@@ -1949,6 +1949,7 @@ fn grounding_row(
     if one_cell(&kind).as_deref() != Some("VIEW") {
         return Ok(None);
     }
+    inline_columns(conn, aspect, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
         &format!("SELECT * FROM {LAKE}.main.metric_axes() WHERE metric = '{quoted}'"),
@@ -1956,6 +1957,105 @@ fn grounding_row(
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
     Ok((rows > 0).then_some(row))
+}
+
+/// A metric definition may say what its columns are, beside its SQL:
+/// `time` (the period column), `measure` (`column`, `additivity`, and
+/// `unit`, `numerator`, `denominator` where they apply) and `dimensions`
+/// (the first leads the slices). The server writes them as the column
+/// annotations the kits read, and profiles the time column, so one
+/// statement serves the metric. Additivity takes the industry's words
+/// or the kit's: additive is a flow, semi-additive a stock, a ratio
+/// re-divides its halves, non-additive combines by no rule.
+fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), SessionError> {
+    let Some(dataset) = rest
+        .split(" on ")
+        .nth(1)
+        .and_then(|s| s.split(" as ").next())
+        .map(str::trim)
+        .filter(|d| !d.is_empty() && !d.contains('.'))
+    else {
+        return Ok(());
+    };
+    let (_, _, body) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT body::VARCHAR FROM {LAKE}.main.glossary WHERE dataset = '{d}' AND subject = '{d}' \
+             AND aspect = '{m}' ORDER BY seq DESC LIMIT 1",
+            d = dataset.replace('\'', "''"),
+            m = metric.replace('\'', "''")
+        ),
+        &[],
+    )?;
+    let Some(body) =
+        one_cell(&body).and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok())
+    else {
+        return Ok(());
+    };
+    let name = |v: &serde_json::Value| -> Option<String> {
+        v.as_str()
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .map(str::to_string)
+    };
+    let annotate =
+        |aspect: &str, column: &str, value: serde_json::Value| -> Result<(), SessionError> {
+            run(
+                conn,
+                &format!("GLOSS {aspect} ON {dataset}.{metric}.{column} AS $${value}$$"),
+            )
+        };
+    let mut wrote = false;
+    let time = body.get("time").and_then(name);
+    if let Some(column) = &time {
+        annotate("role", column, serde_json::json!({"value": "timestamp"}))?;
+        wrote = true;
+    }
+    if let Some(measure) = body.get("measure") {
+        let column = measure
+            .get("column")
+            .and_then(name)
+            .or_else(|| name(measure));
+        if let Some(column) = column {
+            annotate("role", &column, serde_json::json!({"value": "measure"}))?;
+            wrote = true;
+            let additivity = measure
+                .get("additivity")
+                .and_then(|a| a.as_str())
+                .map(|a| match a {
+                    "additive" => "flow",
+                    "semi-additive" => "stock",
+                    "non-additive" => "none",
+                    other => other,
+                });
+            if let Some(value) = additivity {
+                let mut said = serde_json::json!({"value": value});
+                for half in ["numerator", "denominator", "grounds"] {
+                    if let Some(v) = measure.get(half) {
+                        said[half] = v.clone();
+                    }
+                }
+                annotate("behavior", &column, said)?;
+            }
+            if let Some(unit) = measure.get("unit").and_then(|u| u.as_str()) {
+                annotate("unit", &column, serde_json::json!({"value": unit}))?;
+            }
+        }
+    }
+    if let Some(dimensions) = body.get("dimensions").and_then(|d| d.as_array()) {
+        for (i, column) in dimensions.iter().filter_map(name).enumerate() {
+            annotate("role", &column, serde_json::json!({"value": "dimension"}))?;
+            let rank = if i == 0 { "primary" } else { "supporting" };
+            annotate("dimension", &column, serde_json::json!({"value": rank}))?;
+            wrote = true;
+        }
+    }
+    if wrote && let Some(column) = &time {
+        run(
+            conn,
+            &format!("SELECT temporal() FROM {dataset}.{metric}.{column}"),
+        )?;
+    }
+    Ok(())
 }
 
 /// Statements split on `;` outside quotes, dollar quotes (`$$` and

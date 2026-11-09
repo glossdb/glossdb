@@ -77,18 +77,32 @@ the aspect's name: `SELECT … FROM <name>` reads it, filters it and
 joins it as any view, and `information_schema` lists it. Its columns
 are assets: the words that make it a series are annotations on them.
 
-- **A metric** — a VIEW aspect whose definition serves a row-grain
-  relation with a value column and a period column. Annotate `role`
-  timestamp on the period column and `role` measure on the value
-  column, run `temporal()` over the period column, and annotate the
-  value's `behavior`: the series read then serves it at the measured
-  cadence or the time grains' floor (`ladder`), the console charts it,
-  the bands walk watches it. **A level with an as-of definition is a stock, not a
-  fact** — payables outstanding, inventory on hand, headcount,
-  anything you could state as of any date: collapse the events to the
-  frame's grain, one row per entity per period, and annotate `behavior`
-  stock on the value. `references/ground.md` carries both shapes
-  written down, the interval table included.
+- **A metric** — SQL that serves one row per period and slice, with a
+  value column and a period column. Say in the same statement which
+  column is the time, which the measure and how it adds up, and which
+  columns slice it; the server writes the column annotations, profiles
+  the time column and runs the tests:
+
+  ```glossql
+  GLOSS headcount ON hr AS $${
+    "sql": "SELECT p.period, de.dept_no, count(*) AS value FROM periods p JOIN dept_emp de ON de.from_date <= p.period AND de.to_date > p.period GROUP BY 1, 2",
+    "time": "period",
+    "measure": {"column": "value", "additivity": "semi-additive", "unit": "people"},
+    "dimensions": ["dept_no"]
+  }$$;
+  ```
+
+  Additivity: `additive` sums over time and members (revenue, orders);
+  `semi-additive` is a level that sums over members and never over
+  time (headcount, a balance, stock on hand): serve one row per entity
+  per period; `ratio` names its `numerator` and `denominator` columns
+  and re-divides. `references/ground.md` carries the shapes written
+  down, the interval table included.
+- **An effective-dated table** — rows valid from one date to another,
+  a key once per version (titles, prices, assignments). Say so once,
+  `GLOSS validity ON titles AS $${"valid_from": "from_date",
+  "valid_to": "to_date"}$$;`, and every metric that reads the table
+  without bounding both dates fails `validity_test`.
 - **A current fact** — a single value with no as-of definition: a
   balance the source hands over already summed, a count from a
   snapshot table. Define it as a VIEW aspect that serves `value` and no date,
