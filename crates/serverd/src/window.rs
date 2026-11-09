@@ -15,7 +15,9 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
         let first = text.lines().next().unwrap_or(text);
         return format!("status: refused — {first}");
     }
-    let Some(fact) = outcome.filter(|o| o.get("metric").is_some()) else {
+    // a definition's summary row, never another read that names a metric
+    let Some(fact) = outcome.filter(|o| o.get("metric").is_some() && o.get("applicable").is_some())
+    else {
         return "status: done".to_string();
     };
     let list = |field: &str| -> String {
@@ -75,16 +77,26 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             ),
             _ => String::new(),
         };
-        line.push_str(&format!(
-            "applicable; axes [{}]{word}; unadmitted [{}]; wanted [{}]",
-            list("dims"),
-            list("unadmitted"),
-            list("wanted")
-        ));
+        // served, and by which columns it slices; then only what is
+        // left to say: a served column with no role, a profile not run
+        let dims = list("dims");
+        line.push_str("served");
+        if !dims.is_empty() {
+            line.push_str(&format!(", sliced by {dims}"));
+        }
+        line.push_str(&word);
+        let unadmitted = list("unadmitted");
+        if !unadmitted.is_empty() {
+            line.push_str(&format!("; columns not described yet: {unadmitted}"));
+        }
+        let wanted = list("wanted");
+        if !wanted.is_empty() {
+            line.push_str(&format!("; still to run: {wanted}"));
+        }
     } else {
         let reason = fact.get("reason").and_then(Value::as_str).unwrap_or("");
         let first = reason.split(". ").next().unwrap_or(reason);
-        line.push_str(&format!("not applicable — {first}"));
+        line.push_str(&format!("not served yet — {first}"));
     }
     line
 }
