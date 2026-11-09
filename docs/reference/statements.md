@@ -19,6 +19,8 @@ Common rules:
 
 ## DECLARE SOURCE
 
+*DECLARE SOURCE — register where data comes from*
+
 ```
 DECLARE SOURCE <name> SET (type: <type>, location: '<path or URL>' [, via: <secret>])
 ```
@@ -33,6 +35,8 @@ DECLARE SOURCE erp_export SET (type: parquet, location: 'lake/erp');
 
 ## PREVIEW
 
+*PREVIEW — run a query at a source without loading anything*
+
 ```
 PREVIEW <source> AS $$<sql>$$
 ```
@@ -46,6 +50,8 @@ PREVIEW erp_export AS $$SELECT file FROM glob('*')$$;
 ```
 
 ## DECLARE RECIPE
+
+*DECLARE RECIPE — define the query that loads a table (a load query)*
 
 ```
 DECLARE RECIPE <table> ON <dataset> FROM <source> [SET (key: <column>[, …])] AS $$<sql>$$
@@ -64,6 +70,8 @@ DECLARE RECIPE sites ON ops FROM erp_export AS $$
 
 ## IMPORT
 
+*IMPORT — load a table, or refresh it from its source*
+
 ```
 IMPORT [<dataset>.]<table>
 ```
@@ -78,6 +86,8 @@ IMPORT ops.sites;
 ```
 
 ## DECLARE DATASET and USE
+
+*DECLARE DATASET — create a schema for tables and metrics; USE — work in it*
 
 ```
 DECLARE DATASET <name> SET (purpose: '<text>'[, …])
@@ -96,6 +106,8 @@ USE fin;
 
 ## DECLARE RELATIONSHIP
 
+*DECLARE RELATIONSHIP — declare a foreign key between two tables*
+
 ```
 DECLARE RELATIONSHIP [<dataset>.]<table>.<key> -> [<dataset>.]<table>.<key>
 DECLARE RELATIONSHIP [<dataset>.]<table>.<key> <-> [<dataset>.]<table>.<key>
@@ -111,6 +123,8 @@ DECLARE RELATIONSHIP work_orders.site_id -> sites.id;
 ```
 
 ## DECLARE ASPECT
+
+*DECLARE ASPECT — define a property that tables, columns or datasets can be annotated with, or a metric*
 
 ```
 DECLARE ASPECT <name> WITH $${<JSON Schema>}$$ AS FACT [ON <grain>[, …] [WHEN <aspect> = '<value>']]
@@ -134,6 +148,8 @@ DECLARE ASPECT currency WITH $${"type": "object", "required": ["value"],
 
 ## GLOSS
 
+*GLOSS — annotate: set a property's value on a table, column, relationship or dataset, or define a metric*
+
 ```
 GLOSS <aspect> ON <asset> AS $${<JSON>}$$
 ```
@@ -145,11 +161,28 @@ relationship (`a.x -> b.y`) or source. On a `VIEW` aspect the body is
 a metric definition, and the result is the metric's summary row
 ([metrics](../usage/metrics.md)).
 
+A metric definition's body:
+
+| Key | Meaning |
+|---|---|
+| `sql` | the query: one row per period and slice |
+| `time` | the period column |
+| `measure` | `column`, its `additivity` (`additive`, `semi-additive`, `ratio` with `numerator` and `denominator`, `non-additive`) and `unit` |
+| `dimensions` | the columns that slice the metric; the first leads |
+| `assumptions` | the judgment calls, each with a `key` and a `confidence`; below 1 it becomes a question for a person |
+| `stopped` | in place of `sql`: why no number is served |
+
+With `time`, `measure` and `dimensions` the server writes the column
+annotations (`role`, `additivity`, `unit`, `dimension`), profiles the
+time column and runs the metric's tests.
+
 ```glossql
 GLOSS unit ON orders.amount AS $${"value": "EUR", "source_column": "currency_code"}$$;
 ```
 
 ## DECLARE FUNCTION
+
+*DECLARE FUNCTION — define a measurement (a SQL query over the data) or a scoring function*
 
 ```
 DECLARE FUNCTION <name> FOR <dataset | GLOBAL> AS $$<sql>$$ [RETURNS <aspect>]
@@ -168,6 +201,8 @@ DECLARE FUNCTION min_max FOR GLOBAL AS
 
 ## DECLARE TEST
 
+*DECLARE TEST — define a data test on a property*
+
 ```
 DECLARE TEST <name> ON <aspect> [BY (AGENT[, HUMAN])] [DETECTOR <function>] [THRESHOLD <0..1>]
 ```
@@ -184,6 +219,8 @@ DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy T
 
 ## Running a measurement
 
+*SELECT f() FROM subject — run a measurement and store its result*
+
 ```
 SELECT <function>()[, …] FROM <asset>
 ```
@@ -198,6 +235,8 @@ SELECT column_profile(), outlier_profile() FROM orders.amount;
 ```
 
 ## DELETE FROM glossary
+
+*DELETE FROM glossary — remove annotations*
 
 ```
 DELETE FROM [<lake>.][glossql.]glossary [WHERE <condition>]
@@ -214,6 +253,8 @@ DELETE FROM glossary WHERE dataset = 'fin' AND subject = 'orders.amount' AND asp
 ```
 
 ## GLOSSARY()
+
+*GLOSSARY() — read what is known about a table, column or dataset*
 
 ```
 GLOSSARY([<asset>[::<aspect>]][, all => true])
@@ -233,6 +274,8 @@ SELECT * FROM GLOSSARY(orders.amount);
 ```
 
 ## TESTS()
+
+*TESTS() — read test results*
 
 ```
 TESTS([<asset>[::<aspect>]])
