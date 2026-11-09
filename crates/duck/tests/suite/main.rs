@@ -405,7 +405,9 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
 }
 
 /// This repository's kits' suites, `kits/<kit>/kit.test`, on the
-/// engine, each on a lake of its own.
+/// engine, each on a lake of its own and on a thread of its own: a
+/// suite loads its kits itself, which is what it tests, so the wait is
+/// the slowest suite's.
 #[test]
 fn the_kits_suites_pass() {
     if !extension_present() {
@@ -420,10 +422,21 @@ fn the_kits_suites_pass() {
         .collect();
     suites.sort();
     assert!(!suites.is_empty(), "no suite under {}", kits.display());
-    for suite in suites {
-        let dir = tempfile::tempdir().expect("a tempdir");
-        let records = glossdb_duck::sqllogic::run_suite(&suite, dir.path())
-            .unwrap_or_else(|report| panic!("{report}"));
-        eprintln!("{}: {records} records", suite.display());
-    }
+    let failures: Vec<String> = std::thread::scope(|scope| {
+        let runs: Vec<_> = suites
+            .iter()
+            .map(|suite| {
+                scope.spawn(move || {
+                    let dir = tempfile::tempdir().expect("a tempdir");
+                    let records = glossdb_duck::sqllogic::run_suite(suite, dir.path())?;
+                    eprintln!("{}: {records} records", suite.display());
+                    Ok::<(), String>(())
+                })
+            })
+            .collect();
+        runs.into_iter()
+            .filter_map(|run| run.join().expect("a suite's thread").err())
+            .collect()
+    });
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

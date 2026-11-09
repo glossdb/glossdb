@@ -1939,7 +1939,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_warehouse_sink_replaces_the_secret() {
         let dir = tempfile::tempdir().expect("a directory");
-        let mut config = Config::laptop(dir.path());
+        let mut config = testing::golden(dir.path()).await.expect("the golden copy");
         config.service = Some(Service {
             url: "http://127.0.0.1:1".into(),
             token: Some("k".into()),
@@ -1989,7 +1989,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_service_is_named_once_for_the_instance() {
         let dir = tempfile::tempdir().expect("a directory");
-        let mut config = Config::laptop(dir.path());
+        let mut config = testing::golden(dir.path()).await.expect("the golden copy");
         config.service = Some(Service {
             url: "http://127.0.0.1:1".into(),
             token: Some("k1".into()),
@@ -2020,11 +2020,10 @@ mod tests {
         plane.token_sink().set("k2").expect("set");
         let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
         assert_eq!(rows[0][1].as_deref(), Some("k2"));
-        let unnamed = Plane::open(Config::laptop(
-            tempfile::tempdir().expect("a directory").path(),
-        ))
-        .await
-        .expect("opens");
+        let bare = tempfile::tempdir().expect("a directory");
+        let unnamed = Plane::open(testing::golden(bare.path()).await.expect("the golden copy"))
+            .await
+            .expect("opens");
         let channel = unnamed
             .channel(
                 Actor {
