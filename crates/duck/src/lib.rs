@@ -93,7 +93,7 @@ pub enum SessionError {
     BadShape { subject: String, detail: String },
     #[error("not an aspect name: `{0}`")]
     BadAspectName(String),
-    #[error("the standing ruling slot is not a ruling body")]
+    #[error("the standing review_decision annotation has no decisions list")]
     RulingSlotNotRulings,
     #[error("a body carrying `$$` cannot ride the dollar-quoted statement")]
     DollarQuotedBody,

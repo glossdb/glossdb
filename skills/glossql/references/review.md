@@ -1,4 +1,4 @@
-# Rulings and what they owe you — read when the brief counts a ruling, a question, or a contest
+# Review decisions and open questions — read when the brief counts a decision, a question, or a contest
 
 A person's answer is stored as a **review decision** (`review_decision` in the
 catalog): the judgment alone — confirmed or corrected, naming the

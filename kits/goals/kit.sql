@@ -205,7 +205,7 @@ UNION ALL
 SELECT 'app', 5, 'done', '', '', 'an app exists', '', ''
 FROM ds
 UNION ALL
-SELECT 'review', 1, 'next', 'GLOSS query',
+SELECT 'review', 1, 'next', 'GLOSS view',
        'apply the review decision on ' || r.aspect || ' (' || r.key || ': ' || r.stance || ')',
        coalesce(r.note, ''),
        '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "decided-by-person"; an unclear answer means rewording the question under a new key' || chr(10)

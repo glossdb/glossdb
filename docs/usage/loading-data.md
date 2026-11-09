@@ -86,9 +86,14 @@ Each load records `dropped_rows_count`, in the statement's result and
 in `imports`. It counts the rows the CSV reader rejected when the load
 query stores its rejects (`store_rejects`), is NULL when the query
 ignores errors without storing them, and is 0 otherwise. Which rows
-they were is the reader's `reject_errors` table, at the source. Fixing
-a bad value, such as a placeholder date, is an edit to the load query,
-so the catalog shows who decided what it means.
+they were is the reader's `reject_errors` table, at the source.
+
+The load query holds the typing: casts, date formats and the source's
+null markers. Excluding rows, recoding values or dropping duplicates is
+a decision, not typing. It goes in a derived view the metrics read
+from (`x-kind: "relation"`), and each metric records it as an
+assumption a person reviews ([metrics](metrics.md)). Nothing finds
+placeholder values for you: `column_profile()` shows the candidates.
 
 ## Correct a load query
 

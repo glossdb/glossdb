@@ -20,7 +20,7 @@ ruled, don't propose them back.
 
 The detail lives in the files themselves — `.github/workflows/
 release.yml`, `.github/release-macos.sh`, the `Dockerfile`,
-`docs/start/install.md`. What follows is the order, which is written
+`docs/getting-started/installation.md`. What follows is the order, which is written
 nowhere else.
 
 ## The order
@@ -28,10 +28,14 @@ nowhere else.
 1. If glossthesi's wire changed, glossthesi releases first — the
    server's suites against a running service are the check.
 2. The extension's commit is pushed: `crates/duck/glossql.ref` names a
-   commit of `glossdb/glossql` that GitHub serves, or CI and the image
-   build fail at the checkout. Bump `version` in the workspace
+   commit on the extension's `main` whose push run of the distribution
+   pipeline is green, or CI and the image build fail at the checkout.
+   A pull request's run builds `linux_amd64` alone (the CI tools'
+   reduced mode), so a branch commit leaves `linux_arm64` and
+   `osx_arm64` with no artifact, and the image builds the extension
+   from source without the lake beside it. Bump `version` in the workspace
    `Cargo.toml`, and the image tag in the `docker run` example of
-   `docs/start/install.md`. Workspace `cargo test` green — a DuckDB
+   `docs/getting-started/installation.md`. Workspace `cargo test` green — a DuckDB
    pin move since the last release fails the vendored-guide test
    until `vendor/duckdb/refresh.sh <version> <commit>` has run.
 3. Tag and push: `git tag v<version> && git push origin v<version>`,
