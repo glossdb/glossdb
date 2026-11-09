@@ -5,7 +5,7 @@ back. Two roads exist. Which one a person and an agent use well is
 not measured, so this plan is an experiment with one measure, not a
 build list. The trial runs on what stands today: the agent writes a
 link to the docket and the person follows it. The shared frame is
-`kernel.md`; the trial's road is `clients.md`.
+`harness.md`; the trial's road is `clients.md`.
 
 ## The two roads
 

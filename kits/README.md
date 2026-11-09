@@ -15,7 +15,7 @@ it, run by the engine crate's suite on its own runner
 | Kit | Adds | Record |
 |---|---|---|
 | `core` | the workspace's own vocabulary, the ruling channel, a recipe's approval and the apps as glosses, and the record's own reads: `open_questions`, `review_decisions`, `current_dataset` | `core/kit.test` |
-| `metrics` | the actual world: every applicable metric's cells at its floor or a coarser grain, read as `metric_series()` and described by `metric_axes()`; the ladder over the view's time column | `metrics/kit.test`; fixtures 26 and 28 of the extension's corpus |
+| `metrics` | the actual world: every applicable metric's cells at its floor or a coarser grain, read as `metric_series()` and described by `metric_axes()`; the ladder over the view's time column; three tests on every metric over the tables it scans (join fan-out, referential integrity, additivity) and `metric_tests()`, every test per metric, worst first | `metrics/kit.test`; fixtures 26 and 28 of the extension's corpus |
 | `outlook` | the forecast, scenario and plan worlds on the same read, answered by the model service: the walk's bands, the forecast, the scenario's estimate, the plan's judgement | `outlook/kit.test`; `corpus/` here, fixtures 19 and 27 |
 | `goals` | what waits for an action in the bound dataset, `open_items`, and the core next steps of `next` | `goals/kit.test` |
 

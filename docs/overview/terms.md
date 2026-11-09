@@ -44,6 +44,38 @@ defined once here. How they fit together: [how it works](how-it-works.md).
 | time grains | time grains | day, week, month, quarter: the grains a metric is served at |
 | metric definition | metric | A view whose columns carry role, additivity and time |
 
+## The semantic model in Ossie's words
+
+Apache Ossie (incubating), formerly Open Semantic Interchange, is the
+open format for exchanging a semantic model between BI tools, catalogs
+and agents. A document holds one model: `datasets`, each with `fields`
+and `metrics`; `relationships`; `ai_context` at every level. Beside
+ours:
+
+| Ossie | glossql | Note |
+|---|---|---|
+| the model (`name`, `description`) | dataset | one document per dataset |
+| `datasets[]`: `name`, `source`, `primary_key`, `unique_keys` | table, with its `entity` | the keys from the entity's identity |
+| `fields[]` with `dimension.is_time` | column with `role` timestamp | |
+| `fields[]` with `dimension` | column with `role` dimension or attribute, ranked by `dimension` | |
+| `metrics[].expression.sql` | metric definition (a `VIEW` aspect) and `behavior` on its value | Ossie's metric is an aggregate expression; ours is a row-grain view whose value's additivity says how it aggregates |
+| `relationships[]`: `from_columns`, `to_columns` | `DECLARE RELATIONSHIP` | |
+| `ai_context`: `instructions`, `synonyms`, `examples` | `meaning`, `definitions`, `conventions` | |
+| `custom_extensions` | `unit`, tests, review decisions | what Ossie does not carry rides here on export |
+
+An export to Ossie and an import from it are planned.
+
+## Tests
+
+| Term | Industry word | What it is |
+|---|---|---|
+| `fan_out_test` | join fan-out, many-to-many join | Two tables a metric scans share a key that repeats on both sides; the join multiplies rows unless the definition narrows it |
+| `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
+| `additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
+| `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
+| `red` · `unassessed` · `stale` · `green` | fail · skipped · stale · pass | A test's state in `metric_tests()` |
+| `tolerance`, `breach_rate` | threshold, failure rate | The rate a person accepts; the violation share a check measures |
+
 ## The server
 
 | Term | Industry word | What it is |
@@ -68,3 +100,12 @@ defined once here. How they fit together: [how it works](how-it-works.md).
   served as views.
 - **Harness** names the whole: the schema, the measurements, the
   tests, the review and the next steps around an agent.
+- **Data tests** (dbt), **expectations** (Great Expectations),
+  **checks** (Soda), **assertions** (DataHub) and **monitors**
+  (observability tools) all name what a test is here.
+- **Data observability** names watching freshness, volume, schema and
+  lineage; here the stale rule, each load's row count, and the lineage
+  of every view and load.
+- **Data contract** names a producer's promise about a table: its
+  schema, keys and quality rules; here a kit's required properties and
+  the tests on a source's tables.

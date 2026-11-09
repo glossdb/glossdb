@@ -1,7 +1,7 @@
 # The clients plan
 
 What a person meets on the trial: sign up, connect Claude or
-ChatGPT, put a file in, work. The shared frame is `kernel.md`. How a
+ChatGPT, put a file in, work. The shared frame is `harness.md`. How a
 result reaches the person inside the chat, and how a ruling gets
 back, is `chat.md`. What a file is once it is in, a workbook or a
 PDF, is `sources.md`; the road in comes before the readers, since a

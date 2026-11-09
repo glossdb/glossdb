@@ -82,10 +82,10 @@ what is written is the rule — no dated decision stamps anywhere.
 
 Roadmapping is ad hoc within a phase: when an issue closes, the
 project lead picks the next one or bundles a few in a session. The
-kernel plan, `.claude/plans/kernel.md`, holds the evaluation behind
-`docs/architecture/kernel.md` — what each element touches, how hard
-it is, which phase — and is read when picking. It links its issues
-and shrinks as they close; it is never loaded unasked.
+harness plan, `.claude/plans/harness.md`, is the frame — what each
+element touches, how hard it is, when — and names the plans beside
+it. It is read when picking. A plan links its issues and shrinks as
+they close; none is loaded unasked.
 
 A plan file is a table first: element, risk, what it touches, when,
 issue. Build order is risk order. Under 150 lines. It states what is
