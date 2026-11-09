@@ -367,7 +367,7 @@ SELECT count(*) FROM metric_tests() WHERE metric IN ('fte_cap', 'win_rate');
 ----
 0
 
-# a metric joining two tables on a key that repeats on both sides fans out: the stored screen is the evidence, and until it is stored the test says so
+# a metric joining two tables on a column whose values repeat on both sides fans out: the definition's own join and the columns' profiles are the evidence, and until they are profiled the test says so
 statement ok
 CREATE TABLE fin.notes AS SELECT CASE WHEN i < 90 THEN i ELSE i - 90 END AS line_id, 'note ' || i AS text FROM range(100) r(i);
 
@@ -389,12 +389,15 @@ SELECT orphan_check() FROM fin.noted_spend;
 query TTT
 SELECT test, state, json_extract_string(evidence, '$.reason') FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
 ----
-fan_out_test	yellow	no relationship screen is stored: run detect_relationships() over the dataset
+fan_out_test	yellow	the join columns are not profiled yet: run column_profile() over fin.lines.line_id, fin.notes.line_id
 orphan_test	green	no relationship is declared between the tables the metric scans (lines, notes): nothing to check
 
-# the screen lands: the check's result predates it and says so, and the next run reads the screen
+# the profiles land: the check's result predates them and says so, and the next run reads them
 statement ok
-SELECT detect_relationships() FROM fin;
+SELECT column_profile() FROM fin.lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.notes.line_id;
 
 query TT
 SELECT state, current FROM metric_tests() WHERE metric = 'noted_spend' AND test = 'fan_out_test';
@@ -466,3 +469,30 @@ WHERE json_extract_string(d, '$.name') = 'spend' AND json_extract(f, '$.dimensio
 fund	false
 object	false
 period	true
+
+# --- fan-out reads the join the definition makes: two tables read side by side with no join cannot fan out, whatever their columns share
+
+statement ok
+DECLARE ASPECT all_lines WITH $${"title": "All lines"}$$ AS VIEW;
+
+statement ok
+GLOSS all_lines ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*) AS value FROM (SELECT booked, line_id FROM fin.lines UNION ALL SELECT DATE '2024-01-01', line_id FROM fin.notes) GROUP BY ALL"}$$;
+
+statement ok
+SELECT fan_out_check() FROM fin.all_lines;
+
+query T
+SELECT state FROM metric_tests() WHERE metric = 'all_lines' AND test = 'fan_out_test';
+----
+green
+
+# an accepted rate is no conflict: the tolerance the test offers settles it
+statement ok
+GLOSS fan_out_check ON fin.noted_spend AS $${"tolerance": 1.0, "grounds": "every note of a line is counted on purpose"}$$;
+
+query T
+SELECT state FROM metric_tests() WHERE metric = 'noted_spend' AND test = 'fan_out_test'
+UNION ALL SELECT state FROM GLOSSARY(fin.noted_spend) WHERE aspect = 'fan_out_check';
+----
+green
+current

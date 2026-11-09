@@ -1844,6 +1844,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
         }
     }
     for (dataset, metric) in metrics {
+        profile_join_columns(conn, &dataset, &metric);
         for check in &checks {
             if let Err(e) = run(conn, &format!("SELECT {check}() FROM {dataset}.{metric}")) {
                 tracing::debug!(error = %e, %dataset, %metric, %check, "built-in test: not run");
@@ -1871,6 +1872,31 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
         }
     }
     Ok(())
+}
+
+/// The fan-out test reads whether a join column's values repeat from
+/// its profile: one aggregate per column of a metric's joins, stored
+/// and reused while the table holds.
+fn profile_join_columns(conn: &Connection, dataset: &str, metric: &str) {
+    let Ok((_, _, joined)) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT left_column FROM glossql_views_joins('{d}') WHERE view = '{m}' \
+             UNION SELECT right_column FROM glossql_views_joins('{d}') WHERE view = '{m}'",
+            d = dataset.replace('\'', "''"),
+            m = metric.replace('\'', "''")
+        ),
+        &[],
+    ) else {
+        return;
+    };
+    for row in rows_as_text(&joined) {
+        if let Some(Some(column)) = row.first()
+            && let Err(e) = run(conn, &format!("SELECT column_profile() FROM {column}"))
+        {
+            tracing::debug!(error = %e, %column, "join column: not profiled");
+        }
+    }
 }
 
 /// The metrics of a dataset whose definition scans a table, added to the set.
@@ -2032,6 +2058,14 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                 for half in ["numerator", "denominator", "grounds"] {
                     if let Some(v) = measure.get(half) {
                         said[half] = v.clone();
+                    }
+                }
+                // a ratio's halves are measures too
+                for half in ["numerator", "denominator"] {
+                    if let Some(half) = measure.get(half).and_then(name)
+                        && half != column
+                    {
+                        annotate("role", &half, serde_json::json!({"value": "measure"}))?;
                     }
                 }
                 annotate("additivity", &column, said)?;
