@@ -266,7 +266,7 @@ the data over. More: [the console](../usage/console.md).
 Every tool result ends with two lines; the last one reads:
 
 ```text
-next: structure: done · metrics: done · slices: done · bands → run the walk (next://ops/bands) · checks: done · app → write the first page over 1 metric (next://ops/app) · plan → declare the first plan (next://ops/plan) · review: done
+next: structure: done · metrics: done · slices: done · bands → run the walk (next://ops/bands) · checks: done · app → write the first page over 1 metric (next://ops/app) · plan: done · review: done
 ```
 
 One action per goal: structure, metrics, slices, bands, checks, app,

@@ -193,18 +193,54 @@ CREATE OR REPLACE VIEW main.workspace_next AS
     SELECT name, kind, grains, condition, schema FROM (
       SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1),
-  -- A test's property is in use when something that exists needs it:
-  -- a WHEN on another property's value, once an asset carries that
-  -- value; a WHEN on a column type, once such a column exists; a
-  -- measurement marked `x-used-by`, once a property of one of those
-  -- x-kinds is declared; a relationship property, once a key is
-  -- declared; a table or column property, once a table is loaded;
-  -- anything else, always. A test is open while its property is in
-  -- use and has no value anywhere.
+  -- A test is open while its property is in use and has no value. A
+  -- table or column property is in use on what the metrics read: each
+  -- loaded table a metric's view descends from when the property takes
+  -- tables, else each such column, where a WHEN holds on that asset;
+  -- each asset without a value is open. Every other property counts
+  -- once, in use when something that exists needs it: a measurement
+  -- marked `x-used-by`, once a property of one of those x-kinds is
+  -- declared; a WHEN on another property's value, once an asset carries
+  -- that value; a WHEN on a column type, once such a column exists; a
+  -- relationship property, once a key is declared; anything else,
+  -- always.
   tested AS (
-    SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema
+    SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema,
+           json_extract(a.schema, '$.x-used-by') IS NULL
+             AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN')) AS on_assets
     FROM (SELECT DISTINCT aspect FROM main.tests) t
     JOIN newest_aspects a ON a.name = t.aspect),
+  metric_reads AS (
+    SELECT DISTINCT split_part(path, '.', 1) AS dataset, split_part(path, '.', 2) AS table_name,
+           split_part(path, '.', 3) AS column_name
+    FROM (SELECT unnest(regexp_extract_all(l.derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
+          FROM glossql_views_lineage(NULL) l
+          JOIN newest_aspects m ON m.name = l.view AND m.kind = 'VIEW'
+            AND coalesce(json_extract_string(m.schema, '$.x-kind'), '') NOT IN ('sample', 'plan'))),
+  assets AS (
+    SELECT DISTINCT a.name, a.condition, r.dataset, r.table_name,
+           CASE WHEN list_contains(a.grains, 'TABLE') THEN NULL ELSE r.column_name END AS column_name
+    FROM tested a, metric_reads r WHERE a.on_assets),
+  open_assets AS (
+    SELECT s.name FROM assets s
+    WHERE (json_extract_string(s.condition, '$.aspect') IS NULL OR EXISTS (
+            SELECT 1 FROM main.glossary g
+            WHERE g.dataset = s.dataset AND g.subject = concat_ws('.', s.dataset, s.table_name, s.column_name)
+              AND g.aspect = json_extract_string(s.condition, '$.aspect')
+              AND json_extract_string(g.body, '$.value') = json_extract_string(s.condition, '$.value')))
+      AND (json_extract(s.condition, '$.type') IS NULL OR EXISTS (
+            SELECT 1 FROM duckdb_columns() c
+            WHERE c.database_name = current_database() AND c.schema_name = s.dataset
+              AND c.table_name = s.table_name AND c.column_name = s.column_name
+              AND list_contains(from_json(json_extract(s.condition, '$.type'), '["VARCHAR"]'), c.data_type)))
+      AND NOT EXISTS (
+            SELECT 1 FROM main.glossary g
+            WHERE g.dataset = s.dataset AND g.subject = concat_ws('.', s.dataset, s.table_name, s.column_name)
+              AND g.aspect = s.name)
+      AND NOT EXISTS (
+            SELECT 1 FROM main.measurements m
+            WHERE m.dataset = s.dataset AND m.subject = concat_ws('.', s.dataset, s.table_name, s.column_name)
+              AND m.aspect = s.name)),
   in_use AS (
     SELECT a.name,
       CASE
@@ -221,10 +257,9 @@ CREATE OR REPLACE VIEW main.workspace_next AS
           WHERE c.database_name = current_database()
             AND list_contains(from_json(json_extract(a.condition, '$.type'), '["VARCHAR"]'), c.data_type))
         WHEN a.grains = ['RELATIONSHIP'] THEN EXISTS (SELECT 1 FROM main.relationships)
-        WHEN list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN') THEN EXISTS (SELECT 1 FROM main.imports)
         ELSE true
       END AS used
-    FROM tested a),
+    FROM tested a WHERE NOT a.on_assets),
   counts AS (
     SELECT (SELECT count(*) FROM main.sources) AS n_sources,
            (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports)) AS n_tables,
@@ -242,7 +277,8 @@ CREATE OR REPLACE VIEW main.workspace_next AS
            (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
            (SELECT count(*) FROM in_use u WHERE u.used
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
-              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name)) AS open_validations,
+              AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name))
+             + (SELECT count(*) FROM open_assets) AS open_validations,
            (SELECT n FROM asked) AS waiting,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'

@@ -205,8 +205,9 @@ amended one both exist.
 - `SELECT metric_plan() FROM <dataset>.<plan>` judges the plan: the
   same rows stored as a measurement on the plan with the forecast run
   they were judged against, `plan_test` reading the gap off them. The
-  plan goal reads the judgement and never the data. Its next steps:
-  the first plan to declare, a declared plan to define, the forecast
+  plan goal reads the judgement and never the data. It is done until a
+  plan is declared: declare one when the person asks for it or a loaded
+  table is a budget. Its next steps: a declared plan to define, the forecast
   to run while due, the plan to judge, then per plan year the band does
   not hold — a scenario on a lever that closes the gap, its estimate
   run, or the gap recorded as an assumption under `plan-<year>` in the

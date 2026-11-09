@@ -174,13 +174,21 @@ async fn a_fresh_dataset_routes_every_goal() {
     assert_eq!(state("slices"), "blocked");
     assert_eq!(state("app"), "blocked");
     assert_eq!(state("review"), "done");
-    // The bands and plan goals are the outlook kit's: blocked while no
-    // metric is applicable.
-    for surface in ["bands", "plan"] {
-        let row = goal(&app, surface).await;
-        assert_eq!(text(&row, "state"), "blocked", "{row}");
-        assert_eq!(text(&row, "why"), "no applicable metric exists", "{row}");
-    }
+    // The bands goal is the outlook kit's: blocked while no metric is
+    // applicable. The plan goal is done while no plan is declared.
+    let bands = goal(&app, "bands").await;
+    assert_eq!(text(&bands, "state"), "blocked", "{bands}");
+    assert_eq!(
+        text(&bands, "why"),
+        "no applicable metric exists",
+        "{bands}"
+    );
+    let plan = goal(&app, "plan").await;
+    assert_eq!(text(&plan, "state"), "done", "{plan}");
+    assert!(
+        text(&plan, "why").starts_with("no plan is declared"),
+        "{plan}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
