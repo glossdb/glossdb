@@ -2078,6 +2078,46 @@ pub mod testing {
         if dir.is_dir() {
             return Ok(dir);
         }
+        // One process builds, the rest wait for its rename: a suite's
+        // processes start together, and each building its own copy
+        // loads the kits as many times over at once. A lock older than
+        // any build is a crashed builder's, and is taken over.
+        let lock = root.join(format!("{}.lock", key(config).map_err(io)?));
+        let stale = std::time::Duration::from_secs(600);
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if dir.is_dir() {
+                        return Ok(dir);
+                    }
+                    let age = std::fs::metadata(&lock)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok());
+                    if age.is_some_and(|age| age > stale) {
+                        let _ = std::fs::remove_file(&lock);
+                        continue;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                Err(e) => return Err(io(e)),
+            }
+        }
+        let built = build_golden(&root, &dir).await;
+        let _ = std::fs::remove_file(&lock);
+        built
+    }
+
+    async fn build_golden(root: &Path, dir: &Path) -> Result<PathBuf, SessionError> {
+        let io = |e: std::io::Error| SessionError::Engine(format!("the golden workspace: {e}"));
+        if dir.is_dir() {
+            return Ok(dir.to_path_buf());
+        }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -2086,14 +2126,14 @@ pub mod testing {
         std::fs::create_dir_all(&scratch).map_err(io)?;
         let built = Plane::open(Config::laptop(&scratch)).await?;
         drop(built);
-        match std::fs::rename(&scratch, &dir) {
+        match std::fs::rename(&scratch, dir) {
             Ok(()) => {}
             Err(_) if dir.is_dir() => {
                 let _ = std::fs::remove_dir_all(&scratch);
             }
             Err(e) => return Err(io(e)),
         }
-        Ok(dir)
+        Ok(dir.to_path_buf())
     }
 
     /// What the golden workspace is made of: the extension artifact (by
