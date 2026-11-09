@@ -467,6 +467,7 @@ const RECORD: &[&str] = &[
     "metric_surfaces",
     "metric_axes",
     "metric_sources",
+    "metric_tests",
     "workspace_next",
     "app_parts",
     "app_releases",
