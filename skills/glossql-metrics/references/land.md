@@ -1,58 +1,47 @@
-# Landing — read before the first PREVIEW or DECLARE RECIPE
+# Loading — read before the first PREVIEW or DECLARE RECIPE
 
-## Agree the topic before anything is loaded
+## Agree the topic first
 
-A dataset has a topic — on-time delivery, capacity, cost control —
-and the topic makes every later choice decidable: which tables to
-load, which metrics to propose, which questions matter. Propose one
-in prose from what you can see, let the user shape it, then declare
-it:
+A dataset has a topic: on-time delivery, capacity, cost control. The
+topic decides which tables to load, which metrics to propose and which
+questions matter. Propose one from what you can see, let the person
+shape it, then declare it:
 
 ```glossql
 DECLARE DATASET ops SET (purpose: 'service delivery — what gets done, how fast, and where it stalls');
 ```
 
-**Then propose the set of metrics** — what the topic implies, including
-the heavy ones (an end-to-end cycle time, real utilization), not just
-what looks easy to compute. The user prunes and extends in prose. That
-conversation is where scope questions surface while they are cheap:
-"cycle time from which timestamp?" costs one sentence now and a wrong
-dashboard later. Aim high deliberately — **a metric in the set that the data
-cannot define is a finding, not a failure.** Name what is missing and
-which tables would close it; surfacing that gap is the product
-working.
+Then propose the metrics the topic implies, the hard ones included (an
+end-to-end cycle time, real utilization). The person prunes and adds.
+Scope questions are cheap here: "cycle time from which timestamp?"
+costs one sentence now and a wrong dashboard later. A metric the data
+cannot serve is a finding: name what is missing and which tables would
+close it.
 
-This is conversation, not a form. **Prose shapes the work; forms
-record decisions in the catalog.** Anything deciding what the work
-*is* — the topic, the set of metrics, whether to widen the import —
-is chat: present the facts, propose, interpret the answer. The review
-carries only existing assumptions to confirm or correct; it cannot
-replace conversation because nothing exists yet.
+Do this in chat. The topic, the metric list and how much to load are
+conversation. The review queue only asks about assumptions that
+already exist.
 
-## Load what the topic needs — this is not ETL
+## Load what the topic needs
 
-Probe and recipe are the filter. A dataset is a curated working set
-for its topic, never a mirror of the export: load the tables the
-metrics need, take only the columns the recipe's SELECT list earns,
-filter wide tables in the recipe's WHERE. Leaving something out costs
-one later `DECLARE RECIPE`; loading everything costs attention on
-every read after — more values to annotate, more required claims,
-more noise,
-until the deep scope questions drown in a hundred-column long tail.
-Width also costs compute: the structure searches scale with a table's
-column pairs, so a wide table loaded whole is what makes them slow.
+A dataset is a working set for its topic, not a copy of the export.
+Load the tables the metrics need, select only the columns you will
+use, and filter wide tables in the load query's WHERE. Leaving
+something out costs one more `DECLARE RECIPE` later. Loading
+everything costs on every read: more columns to annotate, more
+required annotations, slower relationship searches (they scale with
+the number of column pairs).
 
-**Read the source's conventions before probing.** Annotations at
-source scope are served in every dataset, so what an earlier onboarding learned about
-this system — placeholder dates, format warts, key spellings — is
-already readable. The source is the asset, bound to a dataset or
-not:
+**Read the source's conventions before you preview.** Annotations on a
+source are served in every dataset, so what was learned earlier about
+this system (placeholder dates, formats, key spellings) is already
+there:
 
 ```glossql
 SELECT value FROM GLOSSARY(erp_export) WHERE aspect = 'conventions';
 ```
 
-What you learn goes back the same way:
+Write back what you learn:
 
 ```glossql
 GLOSS conventions ON erp_export AS $${
@@ -61,22 +50,21 @@ GLOSS conventions ON erp_export AS $${
 }$$;
 ```
 
-Only what the *next* export from that system will also carry belongs
-at source scope; dataset-local evidence stays in dataset annotations.
+Only what the next export from that system will also carry goes on the
+source. What is true of this load goes on the dataset's tables and
+columns.
 
-**List the files before naming one.** A recipe names its files, and
-the listing is a probe at the source's location — `glob('**')` lists
-the subdirectories too:
+**List the files before naming one.** `glob('**')` lists
+subdirectories too:
 
 ```glossql
 PREVIEW erp_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
 ```
 
-**Rehearse the schema with `LIMIT 0`, per file, before authoring any
-recipe.** A zero-row probe still carries every `(name, type)`. Row
-probes cannot replace it — probe rows omit null fields, so a column
-that is null in your sample is invisible there, and a missed join key
-carries a missed relationship with it.
+**Check the schema with `LIMIT 0`, per file, before writing a load
+query.** A zero-row preview returns every column name and type. A
+preview of rows omits null fields, so a column that is null in your
+sample is missing, and a missed join key is a missed relationship.
 
 ```glossql
 PREVIEW erp_export AS $$SELECT order_id,
@@ -85,23 +73,13 @@ PREVIEW erp_export AS $$SELECT order_id,
 FROM read_parquet('orders/*.parquet') LIMIT 0$$;
 ```
 
-**Name the columns — never `SELECT *`.** A star recipe passes a
-schema change in the source and fails later, downstream, where
-nothing points back at the source; a named SELECT list fails at the
-re-import, where the drift is and where you can fix it.
+**Name the columns; never `SELECT *`.** With named columns, a schema
+change in the source fails at the next load, where you can fix it.
+With a star it fails later, somewhere downstream.
 
-**Typing is authored.** The recipe carries the casts and the column
-choices; there is no typing machinery behind it. A failed cast stores
-NULL — a kept row with a NULL cell, not a dropped row. The period
-axis every metric is bucketed on is a microsecond timestamp, but the
-engine buckets in nanoseconds, so the axis ends at 2262-04-11: a date
-past it is never a period. Cast dates with
-`try_cast(x AS TIMESTAMP)` or `try_strptime(x, format)`, and check the cast
-account: a year past 2262 is a token the source wrote, not a date,
-and `try_cast(x AS TIMESTAMP)` stores it as NULL where the account
-counts it. `try_strptime` keeps the token as a microsecond
-value, and the walk then abstains on every metric that column
-anchors, with the reason.
+**You write the casts.** The load query carries the casts and the
+column choice; nothing types the data for you. A failed `try_*` cast
+stores NULL in a kept row.
 
 ```glossql
 DECLARE RECIPE orders ON ops FROM erp_export AS $$
@@ -111,9 +89,14 @@ DECLARE RECIPE orders ON ops FROM erp_export AS $$
   FROM read_parquet('orders/*.parquet')$$;
 ```
 
-**One date column may carry several conventions.** `try_strptime`
-takes a list of formats and uses the first that parses, so a mixed column is one call, not a chain of coalesces
-over three copies of the value:
+**Dates past 2262-04-11 are not periods.** A year beyond that is a
+token the source wrote, not a date. `try_cast(x AS TIMESTAMP)` stores
+it as NULL and the cast report counts it. `try_strptime` keeps it, and
+the expected-ranges run then skips every metric on that column, with
+the reason.
+
+**One date column may hold several formats.** `try_strptime` takes a
+list and uses the first format that parses:
 
 ```glossql
 PREVIEW erp_export AS $$SELECT
@@ -121,59 +104,53 @@ PREVIEW erp_export AS $$SELECT
 FROM read_csv('payments.csv') LIMIT 5$$;
 ```
 
-Order is your claim about the source and it decides the ambiguous
-rows: `02/03/2025` is March 2nd under `%d/%m/%Y` and February 3rd under
-`%m/%d/%Y`, and whichever you name first wins. Name the unambiguous
+The order decides ambiguous rows: `02/03/2025` is March 2nd under
+`%d/%m/%Y` and February 3rd under `%m/%d/%Y`. Put the unambiguous
 formats first. Where two readings both parse and the count matters,
-measure it (`substr` the parts and count which are impossible under
-each) and disclose the residual with a key — say how many rows no
-evidence could decide, rather than picking quietly.
+measure it (count the rows impossible under each) and disclose the
+rest as a keyed assumption, with the number of rows no evidence could
+decide.
 
-The outcome carries the **cast account** at the decision moment: for
-every `try_*`, how many cells the cast nulled and the top such values.
-Those tokens came from the data, not a list — judge them. A repeated
-`\N` or `n/a` is a null marker: amend the recipe (`NULLIF` before the
-cast) and re-declare, which supersedes it and loads again. A scattered
-long tail may be genuinely bad data worth a `meaning` annotation. A
-reload keeps the annotations (their snapshot ids show their age) — re-run the
-measurements for columns the new recipe changed.
+**Read the cast report.** The load's result lists, for every `try_*`,
+how many cells the cast set to NULL and their most frequent values.
+A repeated `\N` or `n/a` is a null marker: add `NULLIF` before the
+cast and declare the load query again; it replaces the old one and
+loads again. A scattered tail may be bad data worth a `meaning`
+annotation. A reload keeps the annotations. Run the measurements again
+for the columns the new load query changed.
 
-For a relational source, probe and recipe SQL run **at the source** in
-its own dialect, and the wire decides what can be loaded. SQLite has no
-date type: `CAST(date(x) AS DATE)` silently stores `2010` for
-`'2010-12-27'` because DATE takes NUMERIC affinity — measured, not
-theorized. Load it as text and cast at read time, and put that gap in
-the column's `meaning` so nobody rediscovers it. Read `DESCRIBE
-<table>` the moment a table is loaded: a numeric that was loaded as text
-shows up there instead of three reads later.
+**A relational source runs your SQL itself**, in its own dialect.
+SQLite has no date type: `CAST(date(x) AS DATE)` stores `2010` for
+`'2010-12-27'`. Load such a column as text, cast it when you read, and
+say so in the column's `meaning`. Run `DESCRIBE <table>` right after a
+load: a number loaded as text shows there.
 
-## Dirt is measured, never assumed
+## Measure the defects
 
-Nobody hands you a list of the data's defects. The user does not know
-them either. You find them, and every finding follows one rule:
-measure first, decide second, write the decision where the next
-reader looks.
+Nobody gives you a list of the data's defects. You find them. Measure
+first, decide second, and write the decision where the next reader
+looks.
 
-- **Measure.** Which asset, what share of rows, since when. The cast
-  account at load; `column_profile()` for nulls, distincts and top values;
-  `temporal()` for gaps; `relationship_coherence()` for orphans and
-  child-before-parent dates; `detect_derivations()` for an identity
-  that breaks. A finding is a number, never an impression.
-- **Typing goes in the recipe; nothing else does.** A null marker, a
-  cast, a date format is typing. A row you exclude, a value you
-  recode, a sentinel you turn to NULL, a duplicate you drop is a
-  decision, and a decision inside a recipe hides from every read
-  after it. Put it in one derived relation the metrics compose from
-  (`x-kind: "relation"`), and disclose it on each metric as a keyed
-  `scope` or `convention` assumption below 1.0, so the review asks it.
-- **Write what you found where the next reader looks.** What the next
-  export will also carry goes to `conventions` on the source. What is
-  true of this load goes to `meaning` on the column or table. What
-  must stay watched becomes a validation, the expectation authored at
-  the rate you measured today: `TESTS` is green now and turns red
-  when the source drifts (`references/validate.md`). The validation is
-  what the user sees; a finding that never becomes one is known to
-  you alone.
+- **Measure.** Which table or column, what share of rows, since when.
+  The cast report at load; `column_profile()` for nulls, distinct
+  counts and top values; `temporal()` for gaps;
+  `relationship_coherence()` for orphans and children dated before
+  their parent; `detect_derivations()` for an identity that breaks. A
+  finding is a number.
+- **Only typing goes in the load query.** A null marker, a cast, a
+  date format is typing. Excluding a row, recoding a value, turning a
+  sentinel to NULL or dropping a duplicate is a decision, and inside a
+  load query nobody sees it. Put it in one derived relation the
+  metrics read (`x-kind: "relation"`), and disclose it on each metric
+  as a keyed `scope` or `convention` assumption below 1.0, so the
+  review asks it.
+- **Write it down.** What the next export will also carry: in
+  `conventions` on the source. What is true of this load: in `meaning`
+  on the column or table. What must stay watched: a test, with the
+  expectation set at the rate you measured today. `TESTS()` is green
+  now and turns red when the source drifts
+  (`references/validate.md`). A person sees the test; a finding
+  without one is known only to you.
 
-Whether a metric is served on that data, or stopped, is decided in
-its definition: `references/ground.md`.
+Whether a metric is served on that data or stopped is decided in its
+definition: `references/ground.md`.
