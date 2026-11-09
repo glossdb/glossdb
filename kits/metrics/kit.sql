@@ -419,6 +419,154 @@ SELECT metric, NULL, NULL, NULL, 'the metric definition does not plan' FROM line
 ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 
 --===------------------------------------------------------------------===--
+-- The built-in tests on a metric: what can break its number, checked
+-- against its lineage and the data. Each is a measurement over the
+-- metric's view, `SELECT <check>() FROM <dataset>.<metric>`, whose
+-- breach_rate rate_tolerance scores: 0 is green. A person who accepts a
+-- result records a tolerance at or above it on the metric; their value
+-- outranks the agent's. `x-subject: metric` marks a test metric_tests()
+-- expects on every metric, run or not.
+--
+-- metric_reads_of(ds, m): the tables and columns metric m of dataset ds
+-- descends from, through its view's lineage; none when it does not plan.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.metric_reads_of(ds, m) AS TABLE
+SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
+FROM (SELECT unnest(regexp_extract_all(l.derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
+      FROM glossql_views_lineage(ds) l WHERE l.view = m)
+WHERE split_part(path, '.', 1) = ds;
+
+-- metric_scans_of(ds, m): every table metric m's definition scans, joins and
+-- filters included, from the parse tree of its view; an unqualified name is
+-- the metric's own dataset's.
+CREATE OR REPLACE MACRO main.metric_scans_of(ds, m) AS TABLE
+SELECT DISTINCT r.t AS table_name
+FROM duckdb_views() v,
+     unnest(regexp_extract_all(json_serialize_sql(regexp_replace(v.sql, '^CREATE VIEW \S+ AS ', ''))::VARCHAR,
+            '"type":"BASE_TABLE".*?"schema_name":"([^"]*)","table_name":"([^"]*)"', ['s', 't'])) AS u(r)
+WHERE v.database_name = current_database() AND v.schema_name = ds AND v.view_name = m AND coalesce(nullif(r.s, ''), ds) = ds;
+
+-- fan_out_check: two tables the metric reads share a key that repeats on
+-- both sides, so a join on it multiplies rows unless the definition narrows
+-- it (by dates, by a filter). The pairs come from relationship_candidates:
+-- a many-to-many between two of its tables is the evidence.
+DECLARE ASPECT fan_out_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "pairs": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
+  WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  pairs AS (
+    SELECT DISTINCT least(from_col, to_col) || ' ~ ' || greatest(from_col, to_col) AS pair
+    FROM main.relationship_candidates(split_part($subject, '.', 1))
+    WHERE cardinality = 'many-to-many' AND split_part(from_col, '.', 1) <> split_part(to_col, '.', 1)
+      AND split_part(from_col, '.', 1) IN (SELECT table_name FROM reads)
+      AND split_part(to_col, '.', 1) IN (SELECT table_name FROM reads))
+  SELECT EXISTS (SELECT 1 FROM reads) AS applicable,
+         CASE WHEN NOT EXISTS (SELECT 1 FROM reads) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
+         CASE WHEN EXISTS (SELECT 1 FROM reads) THEN CASE WHEN EXISTS (SELECT 1 FROM pairs) THEN 1.0 ELSE 0.0 END END AS breach_rate,
+         (SELECT list(pair ORDER BY pair) FROM pairs) AS pairs
+$$ RETURNS fan_out_check;
+
+DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- combine_check: the metric's value column says how it combines over time
+-- and members (behavior); without it a total or a coarser grain sums
+-- whatever the column holds, a stock or a ratio included.
+DECLARE ASPECT combine_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]}, "behavior": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION combine_check FOR GLOBAL AS $$
+  WITH a AS (SELECT * FROM main.metric_axes() WHERE metric = split_part($subject, '.', 2))
+  SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) AS applicable,
+         CASE WHEN NOT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) THEN 'no value column: not a metric, or its columns carry no role yet' END AS reason,
+         (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a WHERE value_column IS NOT NULL) AS breach_rate,
+         (SELECT behavior FROM a) AS behavior
+$$ RETURNS combine_check;
+
+DECLARE TEST combine_test ON combine_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- orphan_check: the share of rows on a declared edge between two tables the
+-- metric reads whose key finds no parent; an inner join drops them, an
+-- outer join counts them under no member.
+DECLARE ASPECT orphan_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "edges": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
+  WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  edges AS (
+    SELECT DISTINCT relationship, orphan_rate
+    FROM main.relationship_checks(split_part($subject, '.', 1))
+    WHERE applicable AND relationship IS NOT NULL
+      AND split_part(split_part(relationship, ' ', 1), '.', 2) IN (SELECT table_name FROM reads)
+      AND split_part(split_part(relationship, ' ', 3), '.', 2) IN (SELECT table_name FROM reads))
+  SELECT EXISTS (SELECT 1 FROM reads) AS applicable,
+         CASE WHEN NOT EXISTS (SELECT 1 FROM reads) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
+         CASE WHEN EXISTS (SELECT 1 FROM reads) THEN coalesce((SELECT max(orphan_rate) FROM edges), 0.0) END AS breach_rate,
+         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM edges) AS edges
+$$ RETURNS orphan_check;
+
+DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+--===------------------------------------------------------------------===--
+-- metric_tests(): every test on each metric of the bound dataset and on
+-- what it reads — metric, test, subject (the metric, or a table or column it
+-- reads), state (red, unassessed, stale, orange, yellow, green), score,
+-- evidence (the check's own result), run (the statement that runs it again,
+-- empty where there is none). The tests marked x-subject metric appear on
+-- every metric, run or not. Ordered by what to look at first.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.metric_tests() AS TABLE
+WITH metrics AS (
+  SELECT metric FROM main.metric_axes() WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
+results AS (SELECT subject, aspect, test, band, score, current FROM glossql_tests(current_schema(), NULL)),
+expected AS (
+  SELECT t.name AS test, t.aspect
+  FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) t
+  JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+    ON a.name = t.aspect
+  WHERE json_extract_string(a.schema, '$.x-subject') = 'metric'),
+evidence AS (
+  SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
+  QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY seq DESC) = 1),
+own AS (
+  SELECT m.metric, e.test, current_schema() || '.' || m.metric AS subject,
+         CASE WHEN r.band IS NULL THEN 'unassessed' WHEN NOT r.current THEN 'stale' ELSE r.band END AS state,
+         r.score, v.value::JSON AS evidence,
+         'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.metric AS run
+  FROM metrics m CROSS JOIN expected e
+  LEFT JOIN results r ON r.subject = current_schema() || '.' || m.metric AND r.test = e.test
+  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.metric AND v.aspect = e.aspect),
+reads AS (
+  SELECT m.metric, current_schema() || '.' || r.table_name AS tbl,
+         current_schema() || '.' || r.table_name || '.' || r.column_name AS col
+  FROM metrics m, main.metric_reads_of(current_schema(), m.metric) r),
+inputs AS (
+  SELECT DISTINCT d.metric, r.test, r.subject,
+         CASE WHEN NOT r.current THEN 'stale' ELSE r.band END AS state, r.score, NULL::JSON AS evidence, '' AS run
+  FROM reads d JOIN results r ON r.subject IN (d.tbl, d.col)
+  WHERE r.test NOT IN (SELECT test FROM expected))
+SELECT metric, test, subject, state, score, evidence, run
+FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs)
+ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'unassessed' THEN 1 WHEN 'stale' THEN 2 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 4 ELSE 5 END,
+         metric, test, subject;
+
+--===------------------------------------------------------------------===--
 -- The two goals this kit answers for the `next` read. A goal's next
 -- steps are in order, one arm per step; an arm serves a row when its
 -- condition holds on the catalog, and the lowest step that serves decides

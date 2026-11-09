@@ -404,6 +404,81 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     );
 }
 
+/// A kit whose text changed runs again at the next open, over the views
+/// the last one left in main and a dataset's metric view: the open
+/// completes, the kit's new text recorded.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_changed_kit_runs_again_at_the_next_open() {
+    if !extension_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
+    let first = Plane::open(config.clone())
+        .await
+        .expect("the workspace opens");
+    let session = first.channel(agent(), None).await.unwrap();
+    session
+        .execute(
+            "DECLARE DATASET fin SET (purpose: 'a kit again');
+             USE fin;
+             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
+             GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\"}$$;",
+        )
+        .await
+        .unwrap();
+    drop(session);
+    drop(first);
+
+    // every kit as it is, the server's own kits each one comment longer
+    let kits = tempfile::tempdir().unwrap();
+    let mut changed = config.clone();
+    changed.kits = config
+        .kits
+        .iter()
+        .map(|kit| {
+            let name = kit.parent().and_then(|p| p.file_name()).unwrap();
+            let mut text = std::fs::read_to_string(kit).unwrap();
+            if ["core", "metrics", "outlook", "goals"]
+                .iter()
+                .any(|k| name == *k)
+            {
+                text.push_str("\n-- the same kit, once more\n");
+            }
+            let folder = kits.path().join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            let copy = folder.join("kit.sql");
+            std::fs::write(&copy, text).unwrap();
+            copy
+        })
+        .collect();
+    // the open on a task of its own: one that never returns holds its worker,
+    // never the clock that ends the test
+    let second = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        tokio::spawn(Plane::open(changed)),
+    )
+    .await
+    .expect("the open completes within two minutes")
+    .unwrap()
+    .expect("the workspace reopens");
+    let core = text(
+        &second
+            .execute(
+                agent(),
+                None,
+                "SELECT count(DISTINCT hash) FROM kits WHERE name = 'core'",
+            )
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        core,
+        vec![vec![Some("2".to_string())]],
+        "the metrics kit ran again"
+    );
+}
+
 /// This repository's kits' suites, `kits/<kit>/kit.test`, on the
 /// engine, each on a lake of its own and on a thread of its own: a
 /// suite loads its kits itself, which is what it tests, so the wait is
