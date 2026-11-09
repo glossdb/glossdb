@@ -846,7 +846,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
          steps AS ({steps}), \
          first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
-         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'bands' THEN 3 WHEN 'plan' THEN 4 ELSE 1 END AS goal, \
+         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'outlook' THEN 3 ELSE 1 END AS goal, \
                 surface, step, state, act, say, why, statement, \"then\" \
          FROM first WHERE rn = 1"
     ))
@@ -1768,7 +1768,7 @@ fn execute_one(
 /// or one of its columns) or whose scanned table it imported, every test
 /// whose aspect is marked `x-subject: metric` runs over the metric, as
 /// CI runs a suite after a commit. A check that fails is logged and
-/// never fails the call; its row stays unassessed and the test report
+/// never fails the call; its row stays missing and the test report
 /// says so.
 fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result<(), SessionError> {
     let newest = |table: &str| {

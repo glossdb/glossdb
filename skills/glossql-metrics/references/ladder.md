@@ -84,7 +84,7 @@ metric's own history can explain. The service's result scores the
 newest point of every metric walked, and the test `bands_test` carries it. Each
 point's fit saw only the months before it.
 
-- **The walk is the `bands` goal.** `SELECT metric_bands() FROM
+- **The walk is a step of the `outlook` goal.** `SELECT metric_bands() FROM
   <dataset>` runs it; the `next:` line says when it is due and when
   it is current, and the console's re-measure runs it too.
 - **The read is recall, you are the judge.** A business shift and a
@@ -212,6 +212,6 @@ amended one both exist.
   to run while due, the plan to judge, then per plan year the band does
   not hold — a scenario on a lever that closes the gap, its estimate
   run, or the gap recorded as an assumption under `plan-<year>` in the
-  plan's body for a person to decide; `next://<dataset>/plan` hands the
+  plan's body for a person to decide; the planned metric's goal in `next` hands the
   statements filled. A plan's table is no edge of the actuals: a
   budget loaded through the year's end stretches no metric's series.

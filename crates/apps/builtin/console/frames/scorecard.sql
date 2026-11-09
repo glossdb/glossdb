@@ -6,15 +6,15 @@ WITH a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 counts AS (
   SELECT aspect, count(*) AS required,
-         count(*) FILTER (WHERE state <> 'unassessed') AS known,
-         count(*) FILTER (WHERE state = 'contested') AS contested,
+         count(*) FILTER (WHERE state <> 'missing') AS known,
+         count(*) FILTER (WHERE state = 'conflict') AS conflict,
          count(*) FILTER (WHERE state = 'stale') AS stale
   FROM GLOSSARY() GROUP BY aspect)
 SELECT c.aspect,
        a.kind,
        CAST(c.known AS VARCHAR) || ' of ' || CAST(c.required AS VARCHAR) AS known,
        concat_ws(' · ',
-         CASE WHEN c.contested > 0 THEN CAST(c.contested AS VARCHAR) || ' contested' END,
+         CASE WHEN c.conflict > 0 THEN CAST(c.conflict AS VARCHAR) || ' conflict' END,
          CASE WHEN c.stale > 0 THEN CAST(c.stale AS VARCHAR) || ' stale' END) AS issues,
        CAST(round(c.known * 100.0 / c.required) AS BIGINT) AS share,
        CASE WHEN c.known = c.required THEN 'full' ELSE '' END AS full,

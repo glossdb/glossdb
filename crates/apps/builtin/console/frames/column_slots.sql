@@ -53,19 +53,19 @@ a AS (
 unfilled AS (
   SELECT st.aspect, CASE WHEN a.kind = 'measurement' THEN 'measured' ELSE 'said' END AS kind,
          CASE WHEN a.kind = 'measurement' THEN 'not yet measured' ELSE 'not yet annotated' END AS value,
-         '' AS voice, '' AS actor, 'unassessed' AS state, CAST(NULL AS TIMESTAMP) AS spoken_at, 1 AS rn
+         '' AS voice, '' AS actor, 'missing' AS state, CAST(NULL AS TIMESTAMP) AS spoken_at, 1 AS rn
   FROM states st JOIN a ON a.name = st.aspect
-  WHERE st.state = 'unassessed'),
+  WHERE st.state = 'missing'),
 every AS (SELECT * FROM authored UNION ALL SELECT * FROM measured UNION ALL SELECT * FROM unfilled)
 SELECT aspect, kind, value, voice, state,
        coalesce(strftime(spoken_at, '%d %b %Y %H:%M'), '') AS "at",
-       CASE WHEN state = 'contested' THEN 'contested' WHEN state = 'stale' THEN 'stale'
+       CASE WHEN state = 'conflict' THEN 'conflict' WHEN state = 'stale' THEN 'stale'
             WHEN state = 'outranked' THEN 'outranked'
             WHEN voice = 'a person' THEN 'ruled' ELSE '' END AS mark,
-       CASE WHEN state = 'contested' THEN 'v-open' WHEN state = 'stale' THEN 'v-stale'
+       CASE WHEN state = 'conflict' THEN 'v-open' WHEN state = 'stale' THEN 'v-stale'
             WHEN state = 'outranked' THEN 'v-stale'
             WHEN voice = 'a person' THEN 'v-ruled' ELSE 'v-none' END AS mcls,
-       CASE WHEN state = 'contested' THEN 'the annotations differ; the test withholds the value'
+       CASE WHEN state = 'conflict' THEN 'the annotations differ; the test withholds the value'
             WHEN state = 'stale' THEN 'written before the column last changed'
             WHEN state = 'outranked' THEN 'a later or higher-ranked annotation wins'
             WHEN voice = 'a person' THEN 'written by ' || actor

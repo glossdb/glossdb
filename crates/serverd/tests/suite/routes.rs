@@ -186,6 +186,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
             ("additivity_test".into(), "yellow".into()),
             ("fan_out_test".into(), "green".into()),
             ("orphan_test".into(), "green".into()),
+            ("validity_test".into(), "green".into()),
         ],
         "{tests:?}"
     );

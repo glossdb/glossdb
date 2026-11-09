@@ -2,7 +2,7 @@
 -- `fact`, `query`, `measurement`, or `own` for the workspace's own
 -- words — with what it holds from its schema, where it is required from its
 -- grain and condition, how many required subjects carry a value and how
--- many are contested, who may speak it, and whether a test judges
+-- many are conflict, who may speak it, and whether a test judges
 -- it. A row opens the aspect's page.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition, schema,
@@ -12,8 +12,8 @@ WITH a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 counts AS (
   SELECT aspect, count(*) AS owed,
-         count(*) FILTER (WHERE state <> 'unassessed') AS spoken,
-         count(*) FILTER (WHERE state = 'contested') AS contested
+         count(*) FILTER (WHERE state <> 'missing') AS spoken,
+         count(*) FILTER (WHERE state = 'conflict') AS conflict
   FROM GLOSSARY() GROUP BY aspect),
 w AS (
   SELECT aspect,
@@ -42,7 +42,7 @@ SELECT a.name AS aspect,
          || coalesce(' where ' || json_extract_string(a.condition, '$.aspect') || ' = ' || json_extract_string(a.condition, '$.value'), '')
          || coalesce(' where the type is ' || array_to_string(json_extract(a.condition, '$.type')::VARCHAR[], ' or '), '') AS owed_on,
        CAST(coalesce(c.spoken, 0) AS VARCHAR) || ' of ' || CAST(coalesce(c.owed, 0) AS VARCHAR)
-         || CASE WHEN coalesce(c.contested, 0) > 0 THEN ' · ' || CAST(c.contested AS VARCHAR) || ' contested' ELSE '' END AS spoken,
+         || CASE WHEN coalesce(c.conflict, 0) > 0 THEN ' · ' || CAST(c.conflict AS VARCHAR) || ' conflict' ELSE '' END AS spoken,
        CASE WHEN coalesce(c.owed, 0) = 0 THEN 0 ELSE CAST(round(c.spoken * 100.0 / c.owed) AS BIGINT) END AS share,
        CASE WHEN coalesce(c.owed, 0) > 0 AND c.spoken = c.owed THEN 'full' ELSE '' END AS full,
        CASE

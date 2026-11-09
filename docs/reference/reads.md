@@ -134,7 +134,7 @@ grain its rows are booked at), `stopped` (the stop reason),
 column's measured grain), `floor` (the ladder's, else the cadence),
 `rung` (how many periods the floor serves), `behavior` and
 `behavior_state` (the value column's additivity: NULL and `none` where
-nobody said, `contested` where the test withholds it), `dims` (the
+nobody said, `conflict` where the test withholds it), `dims` (the
 slicing columns, primary first), `unranked` (dimension columns no
 `dimension` annotation ranks), `unadmitted` (served columns with no
 role), `missing` (the annotation each of those needs), `wanted` (the
@@ -231,7 +231,7 @@ Every test on each metric of the bound dataset and on what it reads,
 worst first. Columns: `metric`, `test`, `aspect`, `declared_by`
 (`kit:<name>` for a shipped test, else the actor as `kind:id`),
 `subject` (the metric, or a table or column it reads), `state` (`red`,
-`orange`, `yellow`, `green`, or `unassessed` while the test has not
+`orange`, `yellow`, `green`, or `not_run` while the test has not
 run), `current` (false once what the result read has moved; the band
 stands and the test runs again at the next touch), `score`, `evidence`
 (the check's own result), `run` (the statement that runs it again;
@@ -368,12 +368,12 @@ band of the last period inside it), `planned` (`complete`: the period is complet
 (on the year row of a plan covering part of the year: `9 of 12
 months`), `held_80`, `held_from`, `origin` (the forecast's). Computed
 at read. `metric_plan` stores the same rows per plan as a measurement,
-which the `plan` goal reads.
+which `next` reads.
 
 ### plan_record()
 
 The newest stored comparison per plan, from the measurements alone,
-one row per point; the `plan` goal reads this, and `plan_points()`
+one row per point; `next` reads this, and `plan_points()`
 stays the live view. The columns of `plan_points()` with `plan_grain`,
 `forecast_run` (the forecast measurement it was compared against) and
 `forecast_origin`.
@@ -416,8 +416,8 @@ reads one. Needs no dataset.
 
 Where the bound dataset stands on each goal, and the one action that
 moves it. One row per goal — a served metric, named by the metric,
-whose step is its worst test; `review`; the outlook's `bands` and
-`plan` where a model service is named — or the one `WHERE surface =
+whose step is its worst test; `review`; `outlook` where a model
+service is named — or the one `WHERE surface =
 '…'` names. Columns: `goal` (the goal's order), `surface`, `step`, `state`
 (`next`, `blocked`, `done`), `act` (the statement kind, function or
 view), `say` (the action in a clause), `why` (what in the catalog

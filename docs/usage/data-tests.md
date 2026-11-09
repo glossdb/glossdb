@@ -83,11 +83,11 @@ use.
 | State | Meaning |
 |---|---|
 | `current` | the value holds |
-| `contested` | the values differ and the score is above the threshold: the value is withheld, with band and score |
+| `conflict` | the values differ and the score is above the threshold: the value is withheld, with band and score |
 | `stale` | the data changed after the value was written; it is still served, and marked |
-| `unassessed` | the property is required and nobody has annotated it; the row still appears |
+| `missing` | the property is required and nobody has annotated it; the row still appears |
 
-Only values that differ can be contested. A single value never
+Only values that differ can be in conflict. A single value never
 contests itself: its band shows beside it, and the value is served.
 Precedence is fixed: a person's value over an agent's over a
 function's. The detector reports disagreement and never resolves it.

@@ -69,7 +69,7 @@ others AS (
 every AS (SELECT * FROM worded UNION ALL SELECT * FROM others),
 a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 backlog AS (
-  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'unassessed') AS unspoken
+  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unspoken
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect
   WHERE a.kind = 'measurement'
   GROUP BY g.aspect),

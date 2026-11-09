@@ -24,7 +24,7 @@ that harness inside the database, on the live data and its versions.
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
 | unit test | a measurement, a test | function, `TEST` |
-| test coverage | coverage of required annotations | `open_items`, `unassessed` |
+| test coverage | coverage of required annotations | `open_items`, `missing` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
 | code review | the review queue | `open_questions` |

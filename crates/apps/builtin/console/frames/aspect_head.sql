@@ -24,8 +24,8 @@ f AS (
   SELECT string_agg(name, ', ' ORDER BY name) AS fns
   FROM (SELECT DISTINCT name FROM functions WHERE returns = CAST($aspect AS VARCHAR))),
 counts AS (
-  SELECT count(*) AS owed, count(*) FILTER (WHERE state <> 'unassessed') AS spoken,
-         count(*) FILTER (WHERE state = 'contested') AS contested
+  SELECT count(*) AS owed, count(*) FILTER (WHERE state <> 'missing') AS spoken,
+         count(*) FILTER (WHERE state = 'conflict') AS conflict
   FROM GLOSSARY() WHERE aspect = CAST($aspect AS VARCHAR))
 SELECT a.name,
        CASE a.kind WHEN 'fact' THEN 'asserted: written by the agent or a person'
@@ -44,7 +44,7 @@ SELECT a.name,
        CASE WHEN a.kind = 'measurement' THEN coalesce('computed by ' || f.fns, 'no function returns it')
             ELSE coalesce('test ' || w.tests, 'no test: anyone may annotate, nothing scores it') END AS guard,
        CAST(c.spoken AS VARCHAR) || ' of ' || CAST(c.owed AS VARCHAR) || ' required assets carry a value'
-         || CASE WHEN c.contested > 0 THEN ', ' || CAST(c.contested AS VARCHAR) || ' contested' ELSE '' END AS spoken,
+         || CASE WHEN c.conflict > 0 THEN ', ' || CAST(c.conflict AS VARCHAR) || ' conflict' ELSE '' END AS spoken,
        coalesce(json_extract_string(a.schema, '$.description'), '') AS description,
        regexp_replace(a.schema::VARCHAR, '[[:space:]]+', ' ', 'g') AS schema
 FROM a CROSS JOIN w CROSS JOIN f CROSS JOIN counts c

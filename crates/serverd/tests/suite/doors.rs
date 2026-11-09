@@ -2675,11 +2675,11 @@ async fn the_workspace_says_what_it_affords() {
     assert_eq!(row("review")["existing"], json!(0), "{rows:?}");
     assert_eq!(row("review")["open"], json!(0), "{rows:?}");
     // A validation is open while its property is in use and has no
-    // value. The kits' fourteen tests exist from the start; with no table
+    // value. The kits' fifteen tests exist from the start; with no table
     // loaded, only these are in use: the agent's own `ar_tie`, the
     // scenario and forecast measurements (a scenario is declared), and
     // the bands every metric is checked against.
-    let kit_tests = 14;
+    let kit_tests = 15;
     assert_eq!(
         row("validations")["existing"],
         json!(1 + kit_tests),

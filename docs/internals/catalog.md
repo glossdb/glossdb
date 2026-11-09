@@ -52,6 +52,6 @@ past the cap is asked for, and the result says `truncated`.
   migrated.
 - Dependencies are declared, never guessed.
 - Staleness is marked when read.
-- Nothing hides a judgment: `stale` is returned and marked, `contested`
-  is withheld with its band and score, and `unassessed` is a visible
+- Nothing hides a judgment: `stale` is returned and marked, `conflict`
+  is withheld with its band and score, and `missing` is a visible
   row.

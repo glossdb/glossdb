@@ -9,10 +9,9 @@ view, built from the kits. Kits add goals the same way.
 
 | Goal | Done when | From |
 |---|---|---|
-| one per served metric, named by the metric | every test on the metric is green or accepted: no red, none unrun | `metrics` kit |
-| `review` | nothing waits: review decisions applied, approved load queries declared again, contested values read | `goals` kit |
-| `bands` | the expected-range walk exists and no band is red, or the red carries a question or a review decision (preview; only where a model service is named) | `outlook` kit |
-| `plan` | every plan is served and compared, none lies outside the forecast's band, or the gap carries a question or a review decision (preview; only where a model service is named) | `outlook` kit |
+| one per served metric, named by the metric | every test on the metric is green or accepted: no red, none not run | `metrics` kit |
+| `review` | nothing waits: review decisions applied, approved load queries declared again, conflicts read | `goals` kit |
+| `outlook` | the expected ranges, the forecast and the plan comparisons are current (preview; only where a model service is named). A metric outside its expected range, and a plan outside the forecast's range, are steps on the metric's own goal | `outlook` kit |
 
 A dataset with no served metric gets one row, `metrics`, saying so.
 The goal is the caller's: what the person asked for decides which
@@ -34,7 +33,7 @@ test on each metric and on what it reads, a team's own tests included
 
 The step is the worst state: red, then orange, yellow (a check whose
 evidence is not stored yet, or a definition whose columns carry no
-role), unassessed. A result that predates a change to what it read
+role), not run. A result that predates a change to what it read
 keeps its band and says so; the server runs it again at the next touch.
 The statement settles it: a fix to the definition or the load, the
 measurement to run, or, where the number is right as it is, a tolerance
@@ -80,7 +79,7 @@ macro in the lake's `main` schema. The steps read the catalog, never
 the data, through relations the server computes once: `ds` (the bound
 dataset), `axes` (`metric_axes()`), `open_items`, `reds` (red test
 results) and `bodies` (the current metric definition per metric). The
-metrics' goals sort first, `review` next, the outlook's after; a goal
+metrics' goals sort first, `review` next, `outlook` after; a goal
 the server does not know sorts with the metrics.
 
 ## Adding a goal

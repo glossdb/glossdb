@@ -24,7 +24,7 @@ can be tested.
 | compiler error | validation on write against the aspect's JSON Schema | |
 | linter | quality screens: keys, joins, hierarchies, stock or flow | the `quality` kit |
 | unit test | measurements and tests on the data; built-in tests on every metric: join fan-out, referential integrity, additivity | `FUNCTION`, `TEST`, `metric_tests()` |
-| test coverage | coverage of required annotations | `GLOSSARY()` state `unassessed` |
+| test coverage | coverage of required annotations | `GLOSSARY()` state `missing` |
 | CI on every commit | results tied to the data version they read; stale when it changes | |
 | git history | snapshots of the data and the catalog together | DuckLake |
 | code review | the review queue: a person decides | `open_questions` |
@@ -58,7 +58,7 @@ aspect. It collects every value for that aspect on an asset: the
 measurements, the agent's annotation, a person's annotation. A
 detector function scores how far they agree, and returns a band
 (green to red) and a score. When the score crosses the threshold and
-the values differ, the glossary marks the asset `contested`.
+the values differ, the glossary marks the asset `conflict`.
 `TESTS()` returns the results. Tests run when they are read and never
 write into the data. The metrics kit ships three tests on every
 metric, over the tables its definition scans: join fan-out,
@@ -68,7 +68,7 @@ worst first, with the statement that runs it; a person accepts a
 result by recording a tolerance.
 
 **Coverage.** Every required aspect that nobody has annotated is
-`unassessed` in `GLOSSARY()`. Coverage, conflicts, failing tests and
+`missing` in `GLOSSARY()`. Coverage, conflicts, failing tests and
 open questions are the agent's score.
 
 **Versions.** The workspace is a DuckLake. Every load is a snapshot.

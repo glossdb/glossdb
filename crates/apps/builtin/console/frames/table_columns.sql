@@ -16,8 +16,8 @@ slots AS (
 cur AS (SELECT subject, aspect, actor_kind, written_at, json_extract_string(body, '$.value') AS value FROM slots WHERE rn = 1),
 states AS (
   SELECT subject,
-         max(CASE WHEN state = 'contested' THEN 2 WHEN state = 'stale' THEN 1 ELSE 0 END) AS worst,
-         count(*) FILTER (WHERE aspect = 'meaning' AND state = 'unassessed') AS meaning_owed
+         max(CASE WHEN state = 'conflict' THEN 2 WHEN state = 'stale' THEN 1 ELSE 0 END) AS worst,
+         count(*) FILTER (WHERE aspect = 'meaning' AND state = 'missing') AS meaning_owed
   FROM GLOSSARY()
   WHERE subject LIKE (SELECT subject FROM tbl) || '.%'
     AND aspect IN ('role', 'meaning', 'unit', 'behavior', 'dimension')
@@ -66,7 +66,7 @@ SELECT c.column_name AS name,
        CASE WHEN e.axis = c.column_name THEN 'time axis' ELSE coalesce(x.value, '') END AS axis,
        coalesce(m.value, CASE WHEN coalesce(st.meaning_owed, 0) > 0 THEN 'not yet annotated' ELSE '' END) AS meaning,
        coalesce(s.measured, '') AS measured,
-       CASE WHEN st.worst = 2 THEN 'contested' WHEN st.worst = 1 THEN 'stale' WHEN h.subject IS NOT NULL THEN 'ruled' ELSE '' END AS mark,
+       CASE WHEN st.worst = 2 THEN 'conflict' WHEN st.worst = 1 THEN 'stale' WHEN h.subject IS NOT NULL THEN 'ruled' ELSE '' END AS mark,
        CASE WHEN st.worst = 2 THEN 'v-open' WHEN st.worst = 1 THEN 'v-stale' WHEN h.subject IS NOT NULL THEN 'v-ruled' ELSE 'v-none' END AS mcls,
        CASE WHEN st.worst = 2 THEN 'the annotations differ; the test withholds the value'
             WHEN st.worst = 1 THEN 'an annotation was written before the column last changed'

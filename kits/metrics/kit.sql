@@ -61,7 +61,7 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- (a ratio's halves), cadence (the period column's measured granularity),
 -- floor (the time grains', else the cadence), rung (how many buckets the floor serves), behavior
 -- and behavior_state (the collapsed claim on the value column, NULL and
--- 'none' where nobody annotated it, 'contested' where the test withholds it),
+-- 'none' where nobody annotated it, 'conflict' where the test withholds it),
 -- dims (the slicing columns, primary first), unranked (the dimension
 -- columns no dimension gloss ranks), unadmitted (the served columns with
 -- no role), required (the gloss each of those wants),
@@ -120,8 +120,8 @@ behaviors AS (
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'value' END AS behavior,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'numerator' END AS numerator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'denominator' END AS denominator,
-         CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'contested' END AS behavior_state
-  FROM slots s WHERE s.aspect = 'behavior' AND s.state <> 'unassessed'),
+         CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'conflict' END AS behavior_state
+  FROM slots s WHERE s.aspect = 'behavior' AND s.state <> 'missing'),
 profiles AS (
   SELECT metric, col,
          CASE WHEN (value->>'applicable') = 'true' AND (value->>'granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
@@ -281,7 +281,7 @@ all_rows AS MATERIALIZED (
          list({'dimension': c."column", 'member': coalesce(c.val, 'NULL')}) FILTER (WHERE list_contains(a.dims, c."column")) AS members
   FROM cells c JOIN asked a ON a.metric = c."table"
   GROUP BY c."table", c.rn),
--- a value column with no behaviour, a contested one, or one said not to
+-- a value column with no behaviour, a conflicting one, or one said not to
 -- combine (none) cannot be combined over rows
 combining AS (
   SELECT a.metric, a.value_column, a.behavior, a.behavior_state,
@@ -292,7 +292,7 @@ combining AS (
   GROUP BY a.metric, a.value_column, a.behavior, a.behavior_state, a.at_grain, a.floor),
 refused AS (
   SELECT CASE WHEN count(*) > 0 AND unclaimed = 'refuse' THEN error(string_agg(
-           CASE WHEN behavior_state = 'contested' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is contested'
+           CASE WHEN behavior_state = 'conflict' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is in conflict'
                 WHEN behavior = 'none' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is none, so its rows do not combine'
                 ELSE 'no behavior is annotated on ' || current_schema() || '.' || metric || '.' || value_column END
            || CASE WHEN coarser THEN ', and ' || metric || ' is asked at a coarser grain than its floor' ELSE ', and ' || metric || ' serves several rows in one period' END
@@ -423,7 +423,8 @@ ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 -- against its lineage and the evidence the quality kit stored, never
 -- against the data again. fan_out_check is join fan-out, orphan_check
 -- referential integrity on the declared joins, additivity_check the
--- additivity of the value. Each is a measurement over the metric's
+-- additivity of the value, validity_check an effective-dated table read
+-- without its validity dates. Each is a measurement over the metric's
 -- view, `SELECT <check>() FROM <dataset>.<metric>`, whose breach_rate
 -- rate_tolerance scores: 0 is green. A check whose evidence is not
 -- stored yet says so in `reason` and serves no rate, which reads
@@ -563,12 +564,55 @@ $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
+-- validity: an effective-dated table (a slowly changing dimension, type 2):
+-- each row holds from valid_from to valid_to, and a key repeats once per
+-- version. open_end is the value valid_to carries on the current row
+-- ('9999-01-01'), absent where it is NULL. Annotated on the table.
+DECLARE ASPECT validity WITH $${
+  "type": "object", "required": ["valid_from", "valid_to"],
+  "properties": {"valid_from": {"type": "string"}, "valid_to": {"type": "string"},
+                 "open_end": {"type": "string"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+-- validity_check: the metric scans an effective-dated table and reads both
+-- of its validity columns, in its join, its filter or its select list; a
+-- scan that reads neither or one joins every version of a key, and the
+-- number counts a row once per version.
+DECLARE ASPECT validity_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "tables": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION validity_check FOR GLOBAL AS $$
+  WITH scans AS (
+    SELECT split_part(s.table_name, '.', 2) AS table_name, s.columns
+    FROM glossql_views_scans(split_part($subject, '.', 1)) s
+    WHERE s.view = split_part($subject, '.', 2) AND split_part(s.table_name, '.', 1) = split_part($subject, '.', 1)),
+  dated AS (
+    SELECT split_part(g.subject, '.', 2) AS table_name, g.value->>'valid_from' AS valid_from, g.value->>'valid_to' AS valid_to
+    FROM glossql_glossary(split_part($subject, '.', 1), NULL, false) g
+    WHERE g.aspect = 'validity' AND g.value IS NOT NULL),
+  undated AS (
+    SELECT DISTINCT s.table_name || ' (' || d.valid_from || ', ' || d.valid_to || ')' AS scan
+    FROM scans s JOIN dated d USING (table_name)
+    WHERE NOT (list_contains(s.columns, d.valid_from) AND list_contains(s.columns, d.valid_to)))
+  SELECT EXISTS (SELECT 1 FROM scans) AS applicable,
+         CASE WHEN NOT EXISTS (SELECT 1 FROM scans) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
+         CASE WHEN EXISTS (SELECT 1 FROM scans) THEN CASE WHEN EXISTS (SELECT 1 FROM undated) THEN 1.0 ELSE 0.0 END END AS breach_rate,
+         (SELECT list(scan ORDER BY scan) FROM undated) AS tables
+$$ RETURNS validity_check;
+
+DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
 --===------------------------------------------------------------------===--
 -- metric_tests(): every test on each metric of the bound dataset and on
 -- what it reads — metric, test, aspect, declared_by (the kit that ships
 -- the test, kit:<name>, or the agent or person who wrote it), subject
 -- (the metric, or a table or column it reads), state (red, orange,
--- yellow, green, or unassessed while the test has not run), current
+-- yellow, green, or not run while the test has not run), current
 -- (false once what the result read has moved: the band stands and the
 -- test runs again at the next touch), score, evidence (the check's own
 -- result), run (the statement that runs it again, empty where there is
@@ -595,7 +639,7 @@ evidence AS (
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY seq DESC) = 1),
 own AS (
   SELECT m.metric, e.test, e.aspect, current_schema() || '.' || m.metric AS subject,
-         coalesce(r.band, 'unassessed') AS state, coalesce(r.current, false) AS current,
+         coalesce(r.band, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.metric AS run
   FROM metrics m CROSS JOIN expected e
@@ -614,14 +658,14 @@ inputs AS (
   WHERE r.test NOT IN (SELECT test FROM expected))
 SELECT t.metric, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
-ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'unassessed' THEN 3 ELSE 4 END,
+ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
          current, metric, test, subject;
 
 --===------------------------------------------------------------------===--
 -- The test report this kit answers for the `next` read: one goal per
 -- served metric, named by the metric, whose step is the worst test on
 -- it — red, then orange, yellow (a check whose evidence is not stored
--- yet, or a definition whose columns carry no role), unassessed — with
+-- yet, or a definition whose columns carry no role), not run — with
 -- the statement that settles it, filled from the catalog; a result that
 -- predates a change to what it read keeps its band and says so; `done`
 -- when every test on the metric is green or accepted. A dataset with no
@@ -638,9 +682,10 @@ CREATE OR REPLACE MACRO main.routes_metrics() AS TABLE
 SELECT $ctes$
 report AS (
   SELECT r.*,
-         CASE r.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 WHEN 'yellow' THEN 3 WHEN 'unassessed' THEN 4 END AS rank,
+         CASE r.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 WHEN 'yellow' THEN 3 WHEN 'not_run' THEN 4 END AS rank,
          json_extract_string(r.evidence, '$.reason') AS reason,
          coalesce(list_aggregate(from_json(json_extract(r.evidence, '$.pairs'), '["VARCHAR"]'), 'string_agg', ', '), '') AS pairs,
+         coalesce(list_aggregate(from_json(json_extract(r.evidence, '$.tables'), '["VARCHAR"]'), 'string_agg', ', '), '') AS undated,
          coalesce((SELECT string_agg(round(try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) * 100, 1) || '% of rows on ' || json_extract_string(e, '$.relationship'), ', ')
                    FROM unnest(coalesce(json_extract(r.evidence, '$.edges')::JSON[], [])) t(e)
                    WHERE try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) > 0), '') AS orphans
@@ -653,26 +698,29 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'the join in ' || r.metric || ' fans out on ' || r.pairs
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'run the relationship screen for ' || r.metric
+         WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.metric || ' reads ' || r.undated || ' without its validity dates'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN r.orphans || ' find no parent in ' || r.metric
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'declare the join ' || r.metric || ' uses'
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'run the coherence check for ' || r.metric
-         WHEN r.state = 'unassessed' THEN 'run ' || r.test || ' on ' || r.metric
+         WHEN r.state = 'not_run' THEN 'run ' || r.test || ' on ' || r.metric
          ELSE r.test || ' ' || r.state || ' on ' || r.subject
        END AS say,
        CASE
          WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'no behavior is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves'
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'two tables ' || r.metric || ' scans share a key that repeats on both sides (' || r.pairs || '): the join multiplies rows unless the definition narrows it by the dates or a filter; where the join is right as it is, a tolerance on the metric says so'
+         WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.undated || ' is effective-dated: a key repeats once per version, and a join or a filter that does not bound both validity columns counts a row once per version'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN 'rows on a declared join between tables ' || r.metric || ' scans find no parent: an inner join drops them, an outer join counts them under no member; fix the load, or record the rate as the tolerance'
          WHEN r.state = 'yellow' THEN coalesce(a.reason, r.reason, r.test || ' has no rate yet')
-         WHEN r.state = 'unassessed' THEN r.test || ' has not run on ' || r.metric
+         WHEN r.state = 'not_run' THEN r.test || ' has not run on ' || r.metric
          ELSE coalesce(r.reason, r.test || ' scored ' || coalesce(CAST(r.score AS VARCHAR), '?') || ' on ' || r.subject)
-       END || CASE WHEN r.state <> 'unassessed' AND NOT r.current THEN '; the result predates a change to what it read, and runs again at the next touch' ELSE '' END AS why,
+       END || CASE WHEN r.state <> 'not_run' AND NOT r.current THEN '; the result predates a change to what it read, and runs again at the next touch' ELSE '' END AS why,
        CASE
          WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'GLOSS behavior ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<flow|stock|ratio>", "grounds": "<why, in the business''s words>"}$$;'
          WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
          WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- narrow the join on ' || r.pairs || ' by its dates or a filter, then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'SELECT detect_relationships() FROM ' || ds.dataset
+         WHEN r.test = 'validity_test' AND r.state = 'red' THEN '-- bound the validity columns of ' || r.undated || ' by the period (valid_from <= period AND valid_to > period), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN '-- fix the load that leaves rows without a parent, or accept the rate:' || chr(10) || 'GLOSS orphan_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": ' || coalesce(CAST(r.score AS VARCHAR), '<the rate>') || ', "grounds": "<why these rows have no parent>"}$$;'
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'DECLARE RELATIONSHIP <child>.<column> -> <parent>.<column>;'
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'SELECT relationship_coherence() FROM ' || ds.dataset
@@ -680,7 +728,7 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
        END AS statement,
        CASE
          WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'SELECT * FROM metric_series(grain := ''' || coalesce(a.floor, 'month') || ''') WHERE metric = ''' || r.metric || ''''
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- or, where the join is right as it is: GLOSS fan_out_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why the fan-out is meant>"}$$;'
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- where one of the tables is effective-dated, say so and the validity test names the fix: GLOSS validity ON <table> AS $${"valid_from": "<column>", "valid_to": "<column>"}$$;' || chr(10) || '-- or, where the join is right as it is: GLOSS fan_out_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why the fan-out is meant>"}$$;'
          WHEN r.state = 'yellow' AND r.test IN ('fan_out_test', 'orphan_test') THEN r.run
          ELSE ''
        END AS "then"

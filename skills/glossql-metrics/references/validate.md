@@ -29,7 +29,7 @@ GLOSS hours_reconcile ON work_logs AS $${
   fill: leave it out.
 - **Scope the check with `WHEN`.** A check declared bare `ON TABLE`
   requires a value on every table in the workspace, each an
-  unassessed row — a handful of unscoped checks fills the backlog
+  missing row — a handful of unscoped checks fills the backlog
   with rows nobody can fill.
 - **`breach_rate` is the violation share.** 0.0 is fully passing, and
   it is compared against `tolerance` upward. Reporting a pass rate

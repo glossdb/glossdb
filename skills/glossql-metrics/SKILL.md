@@ -65,7 +65,7 @@ think, not to fill the workspace.
 metric and on what it reads, with the statement that runs it —
 and `workspace_next` the map of the workspace: every surface, what
 exists, what is open for you, what waits for a person. Your part is
-done when no test is red or unrun on a served metric; questions
+done when no test is red or not run on a served metric; questions
 waiting for a person do not hold it open.
 
 ## What you are making

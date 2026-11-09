@@ -6,7 +6,7 @@ a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (P
 unspoken AS (
   SELECT g.aspect, CASE WHEN starts_with(g.subject, d.dataset || '.') THEN substr(g.subject, len(d.dataset) + 2) ELSE g.subject END AS subject
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect CROSS JOIN d
-  WHERE a.kind = 'fact' AND g.state = 'unassessed'),
+  WHERE a.kind = 'fact' AND g.state = 'missing'),
 named AS (
   SELECT aspect,
          CASE WHEN strpos(subject, ' -> ') > 0 THEN 'joins'
