@@ -18,8 +18,8 @@ databases), `clients.md` and `chat.md` (the trial).
 | 9 | Skills: the metrics skill rewritten as the work in order; the reference pages still to shorten | partly |
 | 10 | glossval: finish line updated (uncommitted in glossval); still to do: rerun the eight seats against the stored bare runs, then the Monday test | open |
 | 11 | Renamed: `additivity` (was behavior) with additive, semi-additive, ratio, non-additive; `time_grains` (was ladder); `metric_summary()`, `workspace_status`. Left as they are: `entity`, `band`, kit, actor | done |
-| 12 | Keywords `GLOSS`, `ASPECT`, `RECIPE` stay; each explained in ordinary words in SPEC and the docs, the way a SQL reference explains a command | open |
-| 13 | Semantic model export as Apache Ossie; lineage export as OpenLineage | open, after 7 |
+| 12 | Keywords stay; the statement reference says each in ordinary words under its name | done |
+| 13 | `semantic_model()`: the dataset as an Apache Ossie document, valid against Ossie's JSON schema. Open: an HTTP endpoint for it, an import, and lineage as OpenLineage | partly |
 | 14 | Results page and websites | open, after 10 |
 
 ## Measured
