@@ -82,7 +82,7 @@ arrow-json = "59.2"
 # there, and the extension is built against one release exactly.
 duckdb-neo = { version = "0.20000.1", default-features = false, features = ["bundled-json", "bundled-parquet"] }
 axum = "0.8"
-rmcp = { version = "3.1", features = ["transport-streamable-http-server", "elicitation"] }
+rmcp = { version = "3.9", features = ["transport-streamable-http-server", "elicitation"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 thiserror = "2"
 insta = "1"

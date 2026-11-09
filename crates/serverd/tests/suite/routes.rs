@@ -346,3 +346,38 @@ async fn the_next_page_carries_the_forms() {
         "{window}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_metric_another_dataset_claimed_is_not_offered() {
+    let (app, _dir) = fin().await;
+    say(
+        &app,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           GLOSS definitions ON fin AS $${"definitions": {"spend": {"unit": "EUR", "meaning": "what was booked"}}}$$;"#,
+    )
+    .await;
+    let body = expect_ok(
+        mcp_on(
+            app.clone(),
+            "/mcp",
+            call(0, "DECLARE DATASET ops SET (purpose: 'a second dataset');"),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    // fin's metric is fin's: ops is told to declare its own, never to claim spend.
+    let body = expect_ok(
+        mcp_on(
+            app.clone(),
+            "/ops/mcp",
+            call(1, "SELECT * FROM next WHERE surface = 'metrics'"),
+        )
+        .await,
+    )
+    .await;
+    let text_out = body["result"]["content"][0]["text"].as_str().unwrap();
+    let outcomes: Value = serde_json::from_str(text_out).unwrap();
+    let row = &outcomes[0]["rows"][0];
+    assert_eq!(text(row, "say"), "declare the first concept", "{row}");
+}
