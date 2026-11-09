@@ -52,7 +52,7 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 query TTTT
 SELECT metric, applicable, reason, unadmitted FROM metric_axes();
 ----
-spend	false	no column carries role timestamp: gloss role on the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
+spend	false	no column carries role timestamp: annotate the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
 
 query T
 SELECT missing[1] FROM metric_axes();
@@ -390,7 +390,7 @@ query TTT
 SELECT test, state, json_extract_string(evidence, '$.reason') FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
 ----
 fan_out_test	yellow	no relationship screen is stored: run detect_relationships() over the dataset
-orphan_test	yellow	no relationship is declared between the tables the metric scans (lines, notes): declare the join it uses
+orphan_test	green	no relationship is declared between the tables the metric scans (lines, notes): nothing to check
 
 # the screen lands: the check's result predates it and says so, and the next run reads the screen
 statement ok

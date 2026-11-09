@@ -178,11 +178,11 @@ judged AS (
          WHEN period_column IS NULL AND len(period_cols) > 1 THEN
               list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period — serve it so, or gloss role attribute on the others'
          WHEN period_column IS NULL THEN
-              'no column carries role timestamp: gloss role on the period column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "timestamp"}$$'
+              'no column carries role timestamp: annotate the period column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "timestamp"}$$'
          WHEN value_column IS NULL AND len(measure_cols) > 1 THEN
               list_aggregate(measure_cols, 'string_agg', ' and ') || ' carry role measure; the value is the column named value — serve it so, or gloss role attribute on the others'
          WHEN value_column IS NULL THEN
-              'no column carries role measure: gloss role on the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
+              'no column carries role measure: annotate the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
          WHEN floor IS NULL AND NOT profiled THEN
               'no cadence is known on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss ladder with a floor'
          WHEN floor IS NULL THEN
@@ -476,12 +476,20 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
     SELECT json_extract_string(j, '$.from') AS from_col, json_extract_string(j, '$.to') AS to_col,
            json_extract_string(j, '$.cardinality') AS cardinality
     FROM screen, unnest(coalesce(json_extract(screen.value, '$.candidates')::JSON[], [])) t(j)),
+  -- a pair on an effective-dated table repeats its key by design: the
+  -- validity test judges that join
+  dated AS (
+    SELECT split_part(g.subject, '.', 2) AS table_name
+    FROM glossql_glossary(split_part($subject, '.', 1), NULL, false) g
+    WHERE g.aspect = 'validity' AND g.value IS NOT NULL),
   pairs AS (
     SELECT DISTINCT least(from_col, to_col) || ' ~ ' || greatest(from_col, to_col) AS pair
     FROM candidates
     WHERE cardinality = 'many-to-many' AND split_part(from_col, '.', 1) <> split_part(to_col, '.', 1)
       AND split_part(from_col, '.', 1) IN (SELECT table_name FROM reads)
-      AND split_part(to_col, '.', 1) IN (SELECT table_name FROM reads))
+      AND split_part(to_col, '.', 1) IN (SELECT table_name FROM reads)
+      AND split_part(from_col, '.', 1) NOT IN (SELECT table_name FROM dated)
+      AND split_part(to_col, '.', 1) NOT IN (SELECT table_name FROM dated))
   SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true ELSE EXISTS (SELECT 1 FROM screen) END AS applicable,
          CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM screen) THEN 'no relationship screen is stored: run detect_relationships() over the dataset' END AS reason,
@@ -520,8 +528,8 @@ DECLARE TEST additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate
 -- orphan_check: the share of rows on a declared edge between two tables the
 -- metric scans whose key finds no parent, from the stored coherence result
 -- (relationship_coherence' newest on the dataset); an inner join drops
--- them, an outer join counts them under no member. A metric that scans two
--- tables with no edge declared between any of them is told so.
+-- them, an outer join counts them under no member. Where no edge is
+-- declared between the tables a metric scans there is nothing to check.
 DECLARE ASPECT orphan_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -551,13 +559,14 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
     WHERE split_part(split_part(relationship, ' ', 1), '.', 2) IN (SELECT table_name FROM reads)
       AND split_part(split_part(relationship, ' ', 3), '.', 2) IN (SELECT table_name FROM reads))
   SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
-              WHEN NOT EXISTS (SELECT 1 FROM declared) THEN false
+              WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
               ELSE EXISTS (SELECT 1 FROM coherence) END AS applicable,
          CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): declare the join it uses'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): nothing to check'
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM coherence) THEN 'no coherence result is stored: run relationship_coherence() over the dataset' END AS reason,
          CASE WHEN n.tables = 1 THEN 0.0
-              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM declared) AND EXISTS (SELECT 1 FROM coherence) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
+              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM coherence) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
          (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges
   FROM n
 $$ RETURNS orphan_check;
@@ -694,13 +703,12 @@ $ctes$ AS ctes, $arms$
 SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
        CASE
          WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'say how ' || r.metric || ' combines'
-         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'gloss the columns of ' || r.metric
+         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'annotate the columns of ' || r.metric
          WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'the join in ' || r.metric || ' fans out on ' || r.pairs
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'run the relationship screen for ' || r.metric
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.metric || ' reads ' || r.undated || ' without its validity dates'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN r.orphans || ' find no parent in ' || r.metric
-         WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'declare the join ' || r.metric || ' uses'
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'run the coherence check for ' || r.metric
          WHEN r.state = 'not_run' THEN 'run ' || r.test || ' on ' || r.metric
          ELSE r.test || ' ' || r.state || ' on ' || r.subject
@@ -722,7 +730,6 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'SELECT detect_relationships() FROM ' || ds.dataset
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN '-- bound the validity columns of ' || r.undated || ' by the period (valid_from <= period AND valid_to > period), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN '-- fix the load that leaves rows without a parent, or accept the rate:' || chr(10) || 'GLOSS orphan_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": ' || coalesce(CAST(r.score AS VARCHAR), '<the rate>') || ', "grounds": "<why these rows have no parent>"}$$;'
-         WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'DECLARE RELATIONSHIP <child>.<column> -> <parent>.<column>;'
          WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'SELECT relationship_coherence() FROM ' || ds.dataset
          ELSE r.run
        END AS statement,

@@ -530,7 +530,7 @@ judged AS (
               WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
                                WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
-                THEN l.lever || ' carries no lever gloss: a lever is a column someone sets, glossed lever true on the metric''s view'
+                THEN l.lever || ' is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric''s view'
               WHEN NOT EXISTS (SELECT 1 FROM main.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
               WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
@@ -542,7 +542,7 @@ folded AS (
   SELECT b.scenario, b.body IS NOT NULL AS glossed,
          coalesce(list({'lever': j.lever, 'metric': j.metric, 'column': j.col, 'factor': j.factor, 'basis': j.basis, 'reason': j.reason}
                        ORDER BY j.lever) FILTER (WHERE j.lever IS NOT NULL), []) AS levers,
-         CASE WHEN b.body IS NULL THEN 'declared and not glossed: a scenario is a factor per period on declared levers'
+         CASE WHEN b.body IS NULL THEN 'declared and not annotated: a scenario is a factor per period on declared levers'
               WHEN count(j.lever) = 0 THEN 'the scenario names no lever'
               ELSE string_agg(j.reason, '; ' ORDER BY j.lever) END AS reason
   FROM bodies b LEFT JOIN judged j USING (scenario)

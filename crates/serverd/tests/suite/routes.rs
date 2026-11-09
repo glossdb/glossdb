@@ -193,7 +193,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "state"), "next", "{row}");
     assert_eq!(text(&row, "act"), "additivity_test", "{row}");
-    assert_eq!(text(&row, "say"), "gloss the columns of spend", "{row}");
+    assert_eq!(text(&row, "say"), "annotate the columns of spend", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS role ON fin.spend.period"),
         "{row}"
@@ -283,7 +283,7 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(window.contains("next:"), "{window}");
     assert!(
-        window.contains("spend → gloss the columns of spend (next://fin/spend)"),
+        window.contains("spend → annotate the columns of spend (next://fin/spend)"),
         "{window}"
     );
     assert!(window.contains("done: review"), "{window}");

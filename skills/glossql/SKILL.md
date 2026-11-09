@@ -37,7 +37,7 @@ per statement:
   7 refused: … — statement 1 ran; 3–7 not run`, with a
   `{"completed": [...]}` block for what was stored. What was stored stays
   stored.
-- two closing lines on every result. `situation:` says whether your
+- two closing lines on every result. `status:` says whether your
   last statement was done or refused, and for a metric definition
   what its summary row said. `next:` is the test report: per served
   metric its worst test — join fan-out, orphaned keys, additivity, a

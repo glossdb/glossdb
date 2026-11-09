@@ -1,5 +1,5 @@
 //! The two lines on every result: where the call left the agent, on
-//! its last outcome (`situation:`), and one act per goal the catalog
+//! its last outcome (`status:`), and one act per goal the catalog
 //! affords from there (`next:`), each a link into `next://` and the
 //! `next` read. The representation carries the links; the client
 //! holds the goal. Nothing rides the instructions or the stable
@@ -8,15 +8,15 @@
 
 use serde_json::Value;
 
-/// The `situation:` line: refused, with the refusal's first line, or
+/// The `status:` line: refused, with the refusal's first line, or
 /// loaded — and for a metric definition what its fact row said.
 pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     if let Some(text) = refusal {
         let first = text.lines().next().unwrap_or(text);
-        return format!("situation: refused — {first}");
+        return format!("status: refused — {first}");
     }
     let Some(fact) = outcome.filter(|o| o.get("metric").is_some()) else {
-        return "situation: done".to_string();
+        return "status: done".to_string();
     };
     let list = |field: &str| -> String {
         fact.get(field)
@@ -30,7 +30,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             .unwrap_or_default()
     };
     let metric = fact.get("metric").and_then(Value::as_str).unwrap_or("");
-    let mut line = format!("situation: done — {metric}: ");
+    let mut line = format!("status: done — {metric}: ");
     // A re-record says first what it changed against the writing it
     // supersedes — the totals over their shared periods: the line is
     // read left to right, and a moved total unsays the axes after it.

@@ -1824,28 +1824,23 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             };
             if is_metric(candidate)? {
                 metrics.insert((dataset.to_string(), candidate.to_string()));
+            } else if segments.len() >= 2 {
+                // an annotation on a table or its column: every metric
+                // that scans the table
+                scanning(
+                    conn,
+                    dataset,
+                    &format!("{dataset}.{candidate}"),
+                    &is_metric,
+                    &mut metrics,
+                )?;
             }
         } else if let Some(rest) = line.strip_prefix("imported ") {
             let table = rest.split(':').next().unwrap_or("").trim();
             let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
                 continue;
             };
-            let (_, _, views) = arrow_batches(
-                conn,
-                &format!(
-                    "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
-                    dataset.replace('\'', "''"),
-                    table.replace('\'', "''")
-                ),
-                &[],
-            )?;
-            for row in rows_as_text(&views) {
-                if let Some(Some(view)) = row.first()
-                    && is_metric(view)?
-                {
-                    metrics.insert((dataset.to_string(), view.clone()));
-                }
-            }
+            scanning(conn, dataset, table, &is_metric, &mut metrics)?;
         }
     }
     for (dataset, metric) in metrics {
@@ -1873,6 +1868,33 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             {
                 tracing::debug!(error = %e, %statement, "built-in test: not run again");
             }
+        }
+    }
+    Ok(())
+}
+
+/// The metrics of a dataset whose definition scans a table, added to the set.
+fn scanning(
+    conn: &Connection,
+    dataset: &str,
+    table: &str,
+    is_metric: &dyn Fn(&str) -> Result<bool, SessionError>,
+    metrics: &mut std::collections::BTreeSet<(String, String)>,
+) -> Result<(), SessionError> {
+    let (_, _, views) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
+            dataset.replace('\'', "''"),
+            table.replace('\'', "''")
+        ),
+        &[],
+    )?;
+    for row in rows_as_text(&views) {
+        if let Some(Some(view)) = row.first()
+            && is_metric(view)?
+        {
+            metrics.insert((dataset.to_string(), view.clone()));
         }
     }
     Ok(())

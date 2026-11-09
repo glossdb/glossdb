@@ -472,11 +472,11 @@ GLOSS behavior ON priced.value AS $${"value": "flow"}$$;
 statement ok
 DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
 
-# declared and not glossed
+# declared and not annotated
 query TTTT
 SELECT scenario, glossed, applicable, reason FROM scenarios();
 ----
-price_up	false	false	declared and not glossed: a scenario is a factor per period on declared levers
+price_up	false	false	declared and not annotated: a scenario is a factor per period on declared levers
 
 # a lever nobody glossed refuses the scenario at read
 statement ok
@@ -485,7 +485,7 @@ GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"20
 query TT
 SELECT applicable, reason FROM scenarios();
 ----
-false	priced.price carries no lever gloss: a lever is a column someone sets, glossed lever true on the metric's view
+false	priced.price is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric's view
 
 statement ok
 GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;

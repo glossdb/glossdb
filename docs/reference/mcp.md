@@ -72,7 +72,7 @@ early and a sort keeps only the capped rows. Catalog reads —
 
 Every result ends with two lines:
 
-- `situation:` says whether the last statement ran (`situation: done`)
+- `status:` says whether the last statement ran (`status: done`)
   or was refused, with the refusal's first line. For a metric
   definition it adds the summary row: the slicing columns admitted, the
   columns not admitted, the measurements wanted.
