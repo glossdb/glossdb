@@ -850,3 +850,77 @@ SELECT json_merge_patch('{}', to_json({
          'relationships': (SELECT list(edge) FROM edges)
        })) AS document
 FROM ds;
+
+-- A stable UUID from a name: an OpenLineage run id is a UUID, and the same
+-- load or view names the same run every time it is read.
+CREATE OR REPLACE MACRO main.uuid_of(name) AS
+  (substr(md5(name), 1, 8) || '-' || substr(md5(name), 9, 4) || '-4' || substr(md5(name), 14, 3) || '-8' || substr(md5(name), 18, 3) || '-' || substr(md5(name), 21, 12));
+
+--===------------------------------------------------------------------===--
+-- lineage_events(): the bound dataset's lineage as OpenLineage run
+-- events (spec 2-0-2), one row per event, column `event` (JSON): one
+-- COMPLETE event per load, its input the source and its output the
+-- loaded table with the column lineage the load recorded; one per view
+-- (a metric or a derived relation), its inputs the tables it scans and
+-- its output the view with each column's source columns, timed at the
+-- dataset's newest load. A catalog that reads OpenLineage takes the rows
+-- as they are.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.lineage_events() AS TABLE
+WITH ds AS (SELECT current_schema() AS dataset),
+loads AS (
+  SELECT i.dataset, i.table_name, i.imported_at, i.snapshot_id, i.rows, i.lineage::JSON AS lineage,
+         (SELECT r.source FROM main.recipes r WHERE r.dataset = i.dataset AND r.table_name = i.table_name ORDER BY r.seq DESC LIMIT 1) AS source
+  FROM main.imports i, ds WHERE i.dataset = ds.dataset),
+load_fields AS (
+  SELECT l.table_name, l.snapshot_id, k.key AS field,
+         (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': coalesce(l.source, split_part(leaf, '.', 1)), 'field': split_part(leaf, '.', 2)})
+          FROM unnest(regexp_extract_all(json_extract_string(l.lineage, '$."' || k.key || '"'), '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
+  FROM loads l, (SELECT unnest(json_keys(l2.lineage)) AS key, l2.table_name, l2.snapshot_id FROM loads l2) k
+  WHERE k.table_name = l.table_name AND k.snapshot_id = l.snapshot_id),
+load_events AS (
+  SELECT l.imported_at AS happened,
+         to_json({
+           'eventType': 'COMPLETE',
+           'eventTime': strftime(l.imported_at, '%Y-%m-%dT%H:%M:%S.%fZ'),
+           'producer': 'https://github.com/glossdb/glossdb',
+           'schemaURL': 'https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent',
+           'run': {'runId': uuid_of(l.dataset || '.' || l.table_name || '@' || l.snapshot_id)},
+           'job': {'namespace': 'glossdb', 'name': 'load.' || l.dataset || '.' || l.table_name},
+           'inputs': [{'namespace': 'glossdb', 'name': coalesce(l.source, 'source')}],
+           'outputs': [{'namespace': 'glossdb', 'name': l.dataset || '.' || l.table_name,
+                        'facets': {'columnLineage': {
+                          '_producer': 'https://github.com/glossdb/glossdb',
+                          '_schemaURL': 'https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json',
+                          'fields': (SELECT json_group_object(f.field, {'inputFields': coalesce(f.inputs, [])})
+                                     FROM load_fields f WHERE f.table_name = l.table_name AND f.snapshot_id = l.snapshot_id)}}}]
+         }) AS event
+  FROM loads l),
+view_cols AS (
+  SELECT v.view, v."column" AS field,
+         (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)})
+          FROM unnest(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
+  FROM glossql_views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
+view_scans AS (
+  SELECT view, list(DISTINCT {'namespace': 'glossdb', 'name': table_name}) AS inputs
+  FROM glossql_views_scans(current_schema()) GROUP BY view),
+view_events AS (
+  SELECT NULL::TIMESTAMP AS happened,
+         to_json({
+           'eventType': 'COMPLETE',
+           'eventTime': strftime(coalesce((SELECT max(imported_at) FROM loads), TIMESTAMP '1970-01-01'), '%Y-%m-%dT%H:%M:%S.%fZ'),
+           'producer': 'https://github.com/glossdb/glossdb',
+           'schemaURL': 'https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent',
+           'run': {'runId': uuid_of(ds.dataset || '.' || c.view)},
+           'job': {'namespace': 'glossdb', 'name': 'view.' || ds.dataset || '.' || c.view},
+           'inputs': coalesce(s.inputs, []),
+           'outputs': [{'namespace': 'glossdb', 'name': ds.dataset || '.' || c.view,
+                        'facets': {'columnLineage': {
+                          '_producer': 'https://github.com/glossdb/glossdb',
+                          '_schemaURL': 'https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json',
+                          'fields': json_group_object(c.field, {'inputFields': coalesce(c.inputs, [])})}}}]
+         }) AS event
+  FROM view_cols c LEFT JOIN view_scans s ON s.view = c.view, ds
+  GROUP BY ds.dataset, c.view, s.inputs)
+SELECT event FROM (SELECT * FROM load_events UNION ALL SELECT * FROM view_events) ORDER BY happened NULLS LAST;
