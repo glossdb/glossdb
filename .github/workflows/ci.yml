@@ -39,6 +39,15 @@ jobs:
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: cargo-nextest,cargo-deny,cargo-machete
+      # libduckdb-sys unpacks DuckDB's sources once under target/duckdb-sources/<hash>,
+      # marked whole by a .complete file. A cached tree restored without its marker
+      # makes the next unpack fail on the directory it finds, so such a tree goes.
+      - name: Drop unmarked DuckDB source trees from the cache
+        run: |
+          for dir in target/duckdb-sources/*/; do
+            [ -d "$dir" ] && [ ! -e "$dir.complete" ] && rm -rf "$dir"
+          done
+          true
       - run: cargo fmt --all --check
       - run: cargo deny check
       - run: cargo machete
