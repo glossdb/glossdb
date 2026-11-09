@@ -94,6 +94,25 @@ drafts an issue only for its next row, in the issue form; the draft
 leaves when the issue opens. When the direction moves, the plan is
 rewritten, not patched.
 
+## How we work
+
+- **Use the product as the agent does.** Before and after a change to
+  anything an agent reads (kits, skills, the MCP text, the `next`
+  line), start a server on a scratch workspace, connect through the
+  MCP interface and walk the flow: load, describe, define a metric,
+  read `next`. A stale demo workspace is rebuilt, never reported.
+- **The industry's words.** glossdb is sold to data engineers at
+  Carlsberg and Ikea. Everything a person or an agent reads uses the
+  words they already use: test, semantic model, metric, dimension,
+  lineage, data contract, referential integrity, additivity. A coined
+  word in served text, a page or a plan is a defect to fix, not a
+  term to document.
+- **Evaluate against their reality.** Before building, say in their
+  words what works, what breaks and what it costs them; measure where
+  a number exists (glossval), say "estimated" where none does.
+- **Run the repository's lint before pushing**: `cargo fmt`, `cargo
+  clippy`, `cargo test` here; `make lint` in the extension.
+
 ## Ground rules
 
 - **Code is the work.** A task on the server ends in changed code and
