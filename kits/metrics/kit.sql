@@ -437,15 +437,12 @@ FROM (SELECT unnest(regexp_extract_all(l.derivation, '([a-z_][a-z0-9_]*\.[a-z_][
       FROM glossql_views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
--- metric_scans_of(ds, m): every table metric m's definition scans, joins and
--- filters included, from the parse tree of its view; an unqualified name is
--- the metric's own dataset's.
+-- metric_scans_of(ds, m): every table of ds metric m's definition scans,
+-- joins and filters included, from its view's plan.
 CREATE OR REPLACE MACRO main.metric_scans_of(ds, m) AS TABLE
-SELECT DISTINCT r.t AS table_name
-FROM duckdb_views() v,
-     unnest(regexp_extract_all(json_serialize_sql(regexp_replace(v.sql, '^CREATE VIEW \S+ AS ', ''))::VARCHAR,
-            '"type":"BASE_TABLE".*?"schema_name":"([^"]*)","table_name":"([^"]*)"', ['s', 't'])) AS u(r)
-WHERE v.database_name = current_database() AND v.schema_name = ds AND v.view_name = m AND coalesce(nullif(r.s, ''), ds) = ds;
+SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
+FROM glossql_views_scans(ds) s
+WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 
 -- fan_out_check: two tables the metric reads share a key that repeats on
 -- both sides, so a join on it multiplies rows unless the definition narrows
@@ -524,17 +521,21 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 
 --===------------------------------------------------------------------===--
 -- metric_tests(): every test on each metric of the bound dataset and on
--- what it reads — metric, test, subject (the metric, or a table or column it
--- reads), state (red, unassessed, stale, orange, yellow, green), score,
--- evidence (the check's own result), run (the statement that runs it again,
--- empty where there is none). The tests marked x-subject metric appear on
--- every metric, run or not. Ordered by what to look at first.
+-- what it reads — metric, test, declared_by (the kit that ships the test,
+-- kit:<name>, or the agent or person who wrote it), subject (the metric, or
+-- a table or column it reads), state (red, unassessed, stale, orange,
+-- yellow, green), score, evidence (the check's own result), run (the
+-- statement that runs it again, empty where there is none). The tests marked
+-- x-subject metric appear on every metric, run or not. Ordered by what to
+-- look at first.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.metric_tests() AS TABLE
 WITH metrics AS (
   SELECT metric FROM main.metric_axes() WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
 results AS (SELECT subject, aspect, test, band, score, current FROM glossql_tests(current_schema(), NULL)),
+authors AS (
+  SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 expected AS (
   SELECT t.name AS test, t.aspect
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) t
@@ -553,16 +554,18 @@ own AS (
   LEFT JOIN results r ON r.subject = current_schema() || '.' || m.metric AND r.test = e.test
   LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.metric AND v.aspect = e.aspect),
 reads AS (
-  SELECT m.metric, current_schema() || '.' || r.table_name AS tbl,
-         current_schema() || '.' || r.table_name || '.' || r.column_name AS col
-  FROM metrics m, main.metric_reads_of(current_schema(), m.metric) r),
+  SELECT m.metric, current_schema() || '.' || r.table_name || '.' || r.column_name AS subject
+  FROM metrics m, main.metric_reads_of(current_schema(), m.metric) r
+  UNION
+  SELECT m.metric, current_schema() || '.' || s.table_name
+  FROM metrics m, main.metric_scans_of(current_schema(), m.metric) s),
 inputs AS (
   SELECT DISTINCT d.metric, r.test, r.subject,
          CASE WHEN NOT r.current THEN 'stale' ELSE r.band END AS state, r.score, NULL::JSON AS evidence, '' AS run
-  FROM reads d JOIN results r ON r.subject IN (d.tbl, d.col)
+  FROM reads d JOIN results r ON r.subject = d.subject
   WHERE r.test NOT IN (SELECT test FROM expected))
-SELECT metric, test, subject, state, score, evidence, run
-FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs)
+SELECT t.metric, t.test, a.declared_by, t.subject, t.state, t.score, t.evidence, t.run
+FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'unassessed' THEN 1 WHEN 'stale' THEN 2 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 4 ELSE 5 END,
          metric, test, subject;
 
