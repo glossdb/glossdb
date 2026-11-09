@@ -1,157 +1,125 @@
 ---
 name: glossql-metrics
-description: Take a glossql workspace from raw exports to a workspace someone can use — the join structure, the metrics the business trusts, the axes they slice on, the checks that say why a number holds, a page, the plan judged against the forecast, review decisions applied; done when every served metric's tests are green or accepted and nothing waits on you. Use for any substantive work in a workspace: onboarding a source, declaring relationships, defining a metric, authoring a check or a page.
+description: Take a glossql workspace from loaded tables to metrics someone can trust — relationships, metric definitions, the tests on each metric, the questions a person must decide. Use for any substantive work in a workspace: loading a source, declaring relationships, defining a metric, writing a test or a page.
 ---
 
-# From files to numbers someone trusts
+# From tables to metrics someone trusts
 
-The deliverable is a workspace someone can use, and it has eight
-goals: the join structure, the metrics the business trusts, the axes
-they slice on, the bands that watch them, the checks that say why a
-number holds, a page to look at them, the plan judged against the
-forecast, and every review decision a person made applied. The
-`glossql` skill teaches the language and the reads;
-this one teaches the judgment inside each goal — what to decide, what
-to measure, what to ask.
+The `glossql` skill teaches the statements. This page is the work, in
+order. Do what the person asked; this is how each part is done well.
 
-**The work is done when every served metric's tests are green or
-accepted and nothing waits on you.** After every call the server
-reports the tests on each served metric, worst first, on the `next:`
-line:
+**You are done when the `next:` line shows every metric under `done:`
+and nothing under `review` waits on you.** Questions waiting for a
+person do not hold you back.
 
-```text
-next: staff_by_title → the join in staff_by_title fans out on dept_emp.emp_no ~ titles.emp_no (next://hr/staff_by_title) · headcount → say how headcount combines (next://hr/headcount) · done: review
+## 1. Look at the data
+
+List the tables and columns (`information_schema.columns`), read a few
+rows, profile what you will use (`SELECT column_profile() FROM
+orders.amount`). Load only what the question needs
+(`references/land.md`).
+
+## 2. Find the joins
+
+```glossql
+SELECT detect_relationships() FROM ops;
 ```
 
-The built-in tests are join fan-out, orphaned keys on the declared
-joins and the additivity of the value; a test of the team's own lists
-beside them. The server runs the built-in tests itself after a call
-that defines a metric, glosses its columns or imports a table it
-scans, so the line reads results. A metric with a test to settle is
-yours to move. Read its link — `next://<dataset>/<metric>` as a
-resource, or `SELECT * FROM next WHERE surface = '<metric>'` through
-the tool — and send the statement it hands you, edited to your
-judgment: a fix to the definition or the load, or, where the number is
-right as it is, a tolerance a person records on the metric. A metric
-list is one part of the work, not the deliverable: the metrics the
-person names are the ones to define first, and the other goals apply
-whether or not anyone named them. The person's ask sets the order and
-can close a goal ("no page this time"); nothing else does. Beyond that
-there is no fixed order, and the line is never one. The parts of the
-work, and where the judgment inside each is taught:
+Read the candidates, check the ones you will use against the data, and
+declare those: `DECLARE RELATIONSHIP orders.customer_id ->
+customers.id;`. Then `SELECT relationship_coherence() FROM ops;` so
+orphaned keys are measured. A table whose rows are valid from one date
+to another (prices, titles, assignments: one key, many versions) is
+effective-dated. Say so once:
 
-| part | done when | the judgment |
-|---|---|---|
-| `structure` | the edges are declared and the coherence check ran | `references/structure.md` |
-| `metrics` | every metric the dataset claims is served, or stopped with the reason | `references/ground.md`, and below |
-| `slices` | every applicable metric slices by its dimension columns, each served column carrying its `role` — a distinct count or a ratio serves no dimension column, since no column slices it whole | `references/ladder.md` |
-| `bands` | the walk ran and no band is red, or the red carries your question or a review decision | `references/ladder.md` |
-| `checks` | a check of your own exists, every check ran, none is red | `references/validate.md` |
-| `app` | a page exists over the defined metrics | the `glossql-apps` skill |
-| `plan` | every plan is served and judged against the forecast at the current origin, and no plan year lies outside the forecast's band — or the gap carries your question or a review decision | `references/ladder.md`, the plan world |
-| `review` | every review decision is applied and nothing is open | `skill://glossql/references/review.md` |
+```glossql
+GLOSS validity ON titles AS $${"valid_from": "from_date", "valid_to": "to_date"}$$;
+```
 
-**When every served metric's tests are green or accepted, offer one
-next step of each kind, as a proposal.** The tables no metric
-definition reads and the judged columns none serves are what the
-catalog left unused. From those, say what one more metric could be, in a
-sentence, with its grounds. From the served metrics the app's pages
-do not show, say what one more page could be, the same way. One of
-each, in prose. Write nothing until the person says so: the next
-concept is theirs to name, and the proposal is there to help them
-think, not to fill the workspace.
+Details: `references/structure.md`.
 
-`metric_tests()` is the table behind the line — every test on each
-metric and on what it reads, with the statement that runs it —
-and `workspace_next` the map of the workspace: every surface, what
-exists, what is open for you, what waits for a person. Your part is
-done when no test is red or not run on a served metric; questions
-waiting for a person do not hold it open.
+## 3. Define each metric in one statement
 
-## What you are making
+A metric is SQL with one row per period and slice. Say which column is
+the time, which the measure and how it adds up, and which columns
+slice it:
 
-Four things look alike here and are not. Decide which one you mean
-before you write it: the workspace accepts all four under the same
-`GLOSS` statement and reads each differently afterwards. Whichever it is, the serving definition is a view of the dataset under
-the aspect's name: `SELECT … FROM <name>` reads it, filters it and
-joins it as any view, and `information_schema` lists it. Its columns
-are assets: the words that make it a series are annotations on them.
+```glossql
+DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS VIEW;
+GLOSS headcount ON hr AS $${
+  "sql": "SELECT p.period, de.dept_no, count(*) AS value FROM periods p JOIN dept_emp de ON de.from_date <= p.period AND de.to_date > p.period GROUP BY 1, 2",
+  "time": "period",
+  "measure": {"column": "value", "additivity": "semi-additive", "unit": "people"},
+  "dimensions": ["dept_no"],
+  "assumptions": [{"dimension": "definition", "key": "as-of", "assumption": "headcount counts people with an open assignment at month end", "basis": "dept_emp from_date and to_date", "confidence": 0.8}]
+}$$;
+```
 
-- **A metric** — SQL that serves one row per period and slice, with a
-  value column and a period column. Say in the same statement which
-  column is the time, which the measure and how it adds up, and which
-  columns slice it; the server writes the column annotations, profiles
-  the time column and runs the tests:
+- **Additivity.** `additive` sums over time and members (revenue,
+  orders). `semi-additive` is a level: it sums over members, never
+  over time (headcount, a balance, stock on hand); serve one row per
+  entity per period. `ratio` names its `numerator` and `denominator`
+  columns and is re-divided. A distinct count or a median adds up from
+  nothing: serve it without dimension columns.
+- **Assumptions.** Every judgment call you made goes in `assumptions`
+  with a stable `key` and a `confidence` below 1: which rows count,
+  which date, which status. That is how a person sees and decides it.
+  Never guess silently, and never ask a person for something the data
+  can tell you (`skill://glossql/references/settled.md`).
+- **No number is better than a wrong one.** Where the data cannot
+  serve the metric, record `{"stopped": "<what is missing>"}` in place
+  of `sql`.
+- The statement answers with the metric's summary row. Read it:
+  `applicable` false comes with the `reason`.
 
-  ```glossql
-  GLOSS headcount ON hr AS $${
-    "sql": "SELECT p.period, de.dept_no, count(*) AS value FROM periods p JOIN dept_emp de ON de.from_date <= p.period AND de.to_date > p.period GROUP BY 1, 2",
-    "time": "period",
-    "measure": {"column": "value", "additivity": "semi-additive", "unit": "people"},
-    "dimensions": ["dept_no"]
-  }$$;
-  ```
+A single value with no date is declared with `"x-kind": "scalar"`;
+SQL that other definitions build on with `"x-kind": "relation"`.
+Shapes written down, ratios and levels included: `references/ground.md`.
 
-  Additivity: `additive` sums over time and members (revenue, orders);
-  `semi-additive` is a level that sums over members and never over
-  time (headcount, a balance, stock on hand): serve one row per entity
-  per period; `ratio` names its `numerator` and `denominator` columns
-  and re-divides. `references/ground.md` carries the shapes written
-  down, the interval table included.
-- **An effective-dated table** — rows valid from one date to another,
-  a key once per version (titles, prices, assignments). Say so once,
-  `GLOSS validity ON titles AS $${"valid_from": "from_date",
-  "valid_to": "to_date"}$$;`, and every metric that reads the table
-  without bounding both dates fails `validity_test`.
-- **A current fact** — a single value with no as-of definition: a
-  balance the source hands over already summed, a count from a
-  snapshot table. Define it as a VIEW aspect that serves `value` and no date,
-  with `"x-kind": "scalar"` in the aspect's blob — the declaration is
-  what makes it a fact. `FROM <name>` serves it, `fact_values()` serves every declared fact's
-  number, and the console lists it under facts: one number, as of the
-  newest load of the tables it reads. The summary row abstains on it,
-  and that is the right answer. A fact given a date becomes a
-  one-point series — a chart of nothing.
-- **A derived relation** — governed SQL other definitions build on: a
-  snapshot boundary, a cleaned join, a scoped subset. Define it with
-  `"x-kind": "relation"`; every other definition composes `FROM
-  <name>`, so a change a review decides propagates. It serves any
-  columns, needs no `value`, and the summary row abstains on it by
-  design. There is no `CREATE VIEW` here; the definition is the view.
-- **A validation** — an authored expectation (a FACT annotation) with
-  a function that measures it and a detector that scores the two;
-  `TESTS()` is where it shows. Never a metric.
+## 4. Read the tests and fix what is red
 
-"Shows up in the app" is not the goal. The right kind is; the app
-follows.
+The server runs these on every metric after you define it, annotate
+it, or load a table it reads:
 
-**The write answers — read it.** A `GLOSS` on a VIEW aspect returns
-the metric's summary row, the `metric_axes()` shape at the catalog
-version the write moved to: `applicable` and `reason`, `period_column` and
-`value_column`, `behavior` and `behavior_state`, `cadence`, `floor`
-and `rung`, `dims`, `unadmitted` with the annotation each column needs (`missing`),
-`wanted` (the measurement the row reads and nobody ran; `missing` lists
-it until it is stored). A column with no role, a value with no behaviour,
-a series nobody can slice shows there first, and the `next:` line
-under it names the action. For a
-fact or a relation the row abstains, and you move on; for a definition
-you stopped (`stopped` in place of `sql`, `references/ground.md`) it
-abstains with your own text.
-
-## The pages
-
-| reference | open it |
+| Test | Red when |
 |---|---|
-| `references/land.md` | before the first `PREVIEW`: the topic, the set of metrics, loading what the topic needs and nothing more, and what to do with the dirt you find |
-| `references/structure.md` | once tables are loaded: what each table is, the join structure, the slice axes |
-| `references/vocabulary.md` | before annotating a column: role first, behavior with its grounds, unit |
-| `references/ground.md` | before writing a metric definition: the handbook, the row-grain shape, ratios and stocks, keys on assumptions, the alternative, what a basis must be, serve or stop |
-| `references/read-sql.md` | before any read over a metric: flows, stocks and ratios, what this engine has that postgres lacks, and the three refusals that cost most calls |
-| `references/validate.md` | when a number needs a check that says why it holds, and at the close — a reconciliation run by hand becomes a permanent check |
-| `references/ladder.md` | when a metric's floor, window or axes are not what you expected, and after every review decision; the worlds beside the actual |
-| `references/doors.md` | for a bespoke function or an app |
-| `references/close.md` | before the read-back: the three lists and the review |
+| `fan_out_test` | the join repeats rows: two tables share a key that repeats on both sides |
+| `validity_test` | an effective-dated table is read without bounding both of its dates |
+| `orphan_test` | rows on a declared relationship find no parent |
+| `additivity_test` | the measure does not say how it adds up |
 
-Each is served beside this page as `skill://glossql-metrics/<reference>`.
-The measurements that settle a statistic before anyone is asked, the
-brief, and the reads are the `glossql` skill's.
+The `next:` line after every call names the worst one per metric:
+
+```text
+next: staff_by_title → staff_by_title reads titles (from_date, to_date) without its validity dates (next://hr/staff_by_title) · done: headcount, review
+```
+
+Read `SELECT say, why, statement FROM next WHERE surface =
+'staff_by_title'` and send the statement it gives, edited: fix the
+definition or the load. Where the number is right as it is, record a
+tolerance with the reason; a person can overrule it. Every test with
+its evidence: `SELECT * FROM metric_tests()`.
+
+A check of your own (a total that must tie out, a rate that must stay
+under a bound) is a test too: `references/validate.md`.
+
+## 5. Questions and decisions
+
+Assumptions below full confidence become questions for a person. Their
+answers arrive as review decisions; `next:` shows `review → …` when
+one waits. Apply it by recording the definition again with the decided
+assumption at confidence 1.0 (`skill://glossql/references/review.md`).
+
+## More
+
+| Page | When |
+|---|---|
+| `references/land.md` | loading: what to load, typing, dirty rows |
+| `references/structure.md` | what each table is, relationships, hierarchies |
+| `references/vocabulary.md` | annotating a source column: meaning, role, unit |
+| `references/ground.md` | metric definitions in depth |
+| `references/read-sql.md` | querying a metric: `metric_series()`, levels and ratios, engine specifics |
+| `references/validate.md` | writing your own test |
+| `references/ladder.md` | time grains, and the preview features: expected ranges, forecasts, plans, scenarios |
+| `references/doors.md`, `skill://glossql-apps/SKILL.md` | a function of your own, a page over the metrics |
+| `references/close.md` | the summary you hand back |
