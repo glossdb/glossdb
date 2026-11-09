@@ -16,13 +16,15 @@ work="$(mktemp -d)"
 src="$work/glossql"
 git clone --quiet --filter=blob:none https://github.com/glossdb/glossql "$src"
 git -C "$src" checkout --quiet "$ref"
+# the runs listing filters on the whole commit hash, never a prefix
+sha="$(git -C "$src" rev-parse HEAD)"
 mkdir -p "$out"
 cp -r "$src/kits" "$out/kits"
 cp "$src/SPEC.md" "$src/grammar.ebnf" "$out/"
 fetched=
 if [ -n "${GH_TOKEN:-}" ]; then
   api=https://api.github.com/repos/glossdb/glossql/actions
-  for run in $(curl -fsSL "$api/runs?head_sha=$ref&per_page=20" \
+  for run in $(curl -fsSL "$api/runs?head_sha=$sha&per_page=20" \
                | python3 -c 'import json, sys; print(" ".join(str(r["id"]) for r in json.load(sys.stdin)["workflow_runs"] if r["name"] == "Main Extension Distribution Pipeline"))'); do
     url=$(curl -fsSL "$api/runs/$run/artifacts" \
           | python3 -c 'import json, sys; print(next((a["archive_download_url"] for a in json.load(sys.stdin)["artifacts"] if a["name"].endswith("-extension-" + sys.argv[1])), ""))' "$arch")
