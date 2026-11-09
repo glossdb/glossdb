@@ -24,7 +24,7 @@ CREATE OR REPLACE MACRO main.service_soft(route, body) AS glossql_service(route,
 -- as the walk sends it — a month the data's edge falls inside is left out
 -- where rows land finer than monthly, since a short sum against a corridor
 -- fitted on whole months reads as a breach that is only the calendar.
--- band_request(): one row per metric — behavior, the complete months, and
+-- band_request(): one row per metric — additivity, the complete months, and
 -- whether the walk can take it: seven complete months at least, so that
 -- one origin has the six known values the service needs. band_body(): the
 -- request as the service's contract spells it, one table and a
@@ -32,7 +32,7 @@ CREATE OR REPLACE MACRO main.service_soft(route, body) AS glossql_service(route,
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.band_series() AS TABLE
-WITH axes AS (SELECT * FROM main.metric_axes() WHERE applicable),
+WITH axes AS (SELECT * FROM main.metric_summary() WHERE applicable),
 edges AS (
   SELECT c."table" AS metric, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
          count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP))) > count(DISTINCT date_trunc('month', TRY_CAST(c.val AS TIMESTAMP))) AS finer
@@ -41,7 +41,7 @@ edges AS (
 partials AS (
   SELECT metric, date_trunc('month', edge) AS period FROM edges
   WHERE finer AND edge::DATE < (date_trunc('month', edge) + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE)
-SELECT s.metric, s.period, s.value, s.behavior
+SELECT s.metric, s.period, s.value, s.additivity
 FROM main.metric_series(grain := 'month', unclaimed := 'skip') s
 WHERE s.dimension = '' AND s.world = 'actual' AND s.value IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM partials p WHERE p.metric = s.metric AND p.period = s.period)
@@ -49,13 +49,13 @@ ORDER BY s.metric, s.period;
 
 CREATE OR REPLACE MACRO main.band_request() AS TABLE
 WITH counted AS (SELECT metric, count(*) AS months FROM main.band_series() GROUP BY metric)
-SELECT a.metric, a.behavior, coalesce(c.months, 0) AS months,
+SELECT a.metric, a.additivity, coalesce(c.months, 0) AS months,
        a.applicable AND coalesce(c.months, 0) >= 7 AS walkable,
        CASE WHEN NOT a.applicable THEN a.reason
             WHEN c.metric IS NULL THEN 'the month read serves no cell: ' || coalesce(a.reason,
-              'no behavior is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
+              'no additivity is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
             WHEN c.months < 7 THEN 'the walk needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
-FROM main.metric_axes() a LEFT JOIN counted c USING (metric)
+FROM main.metric_summary() a LEFT JOIN counted c USING (metric)
 WHERE coalesce(a.kind, '') NOT IN ('scalar', 'plan', 'scenario')
 ORDER BY a.metric;
 
@@ -77,7 +77,7 @@ GROUP BY t.threshold;
 -- metric_bands: the walk as a measurement on the dataset. served_by names
 -- the service and its version; score, band and threshold are the
 -- service's result over every metric walked; metrics holds one row per
--- metric — applicable and reason, behavior, walked, held_80 and held_90
+-- metric — applicable and reason, additivity, walked, held_80 and held_90
 -- (the share of walked points inside the 10-90 and the 5-95 band), newest
 -- (the latest walked point: period, pit, displacement, withheld), errors
 -- (the origins the service could not walk, in its words) and points, one
@@ -129,7 +129,7 @@ DECLARE FUNCTION metric_bands FOR GLOBAL AS $$
           FROM a WHERE a IS NOT NULL)
     GROUP BY e.member),
   per_metric AS (
-    SELECT r.metric, r.behavior,
+    SELECT r.metric, r.additivity,
            r.walkable AND EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) AS applicable,
            CASE WHEN NOT r.walkable THEN r.reason
                 WHEN NOT EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) THEN coalesce(f.errors[1], 'the service answered no point') END AS reason,
@@ -143,7 +143,7 @@ DECLARE FUNCTION metric_bands FOR GLOBAL AS $$
          (SELECT json_extract(a, '$.answer.walk.score')::DOUBLE FROM a) AS score,
          (SELECT json_extract_string(a, '$.answer.walk.band') FROM a) AS band,
          (SELECT threshold FROM b) AS threshold,
-         (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'behavior': behavior,
+         (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity,
                                 'walked': walked, 'held_80': held_80, 'held_90': held_90, 'newest': newest,
                                 'errors': errors, 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
@@ -164,7 +164,7 @@ DECLARE TEST bands_test ON metric_bands DETECTOR band_breach THRESHOLD 0.98;
 -- band_verdict(): the newest walk's result — served_by, grain, score,
 -- band, threshold, computed_at — one row, none before a walk.
 -- band_points(): the newest walk, one row per metric and walked month —
--- metric, applicable, reason, behavior, walked, held_80, held_90, period,
+-- metric, applicable, reason, additivity, walked, held_80, held_90, period,
 -- actual, p05 to p95, pit, withheld, displacement (|2·pit − 1|), newest
 -- (the latest walked point, the one the result scores), point_seq; a
 -- metric not walked serves one row with its reason and no numbers.
@@ -184,7 +184,7 @@ WITH newest_walk AS (
   WHERE dataset = current_schema() AND function = 'metric_bands' ORDER BY seq DESC LIMIT 1),
 metrics AS (
   SELECT unnest(from_json(json_extract(value, '$.metrics'),
-    '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "behavior": "VARCHAR", "walked": "BIGINT",
+    '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "additivity": "VARCHAR", "walked": "BIGINT",
        "held_80": "DOUBLE", "held_90": "DOUBLE",
        "newest": {"origin": "VARCHAR", "period": "VARCHAR", "pit": "DOUBLE", "displacement": "DOUBLE", "withheld": "VARCHAR"},
        "errors": ["VARCHAR"],
@@ -193,17 +193,17 @@ metrics AS (
          computed_at
   FROM newest_walk),
 walked AS (
-  SELECT m.metric, m.applicable, m.reason, m.behavior, m.walked, m.held_80, m.held_90, m.newest.period AS newest_period,
+  SELECT m.metric, m.applicable, m.reason, m.additivity, m.walked, m.held_80, m.held_90, m.newest.period AS newest_period,
          unnest(m.points) AS p, computed_at
   FROM metrics WHERE cardinality(m.points) > 0)
-SELECT metric, applicable, reason, behavior, walked, held_80, held_90,
+SELECT metric, applicable, reason, additivity, walked, held_80, held_90,
        p.period, p.actual, p.p05, p.p10, p.p50, p.p90, p.p95, p.pit, p.withheld,
        CASE WHEN p.pit IS NOT NULL THEN abs(2.0 * p.pit - 1.0) END AS displacement,
        p.period = newest_period AS newest,
        row_number() OVER (PARTITION BY metric ORDER BY p.period) AS point_seq, computed_at
 FROM walked
 UNION ALL
-SELECT m.metric, m.applicable, m.reason, m.behavior, m.walked, m.held_80, m.held_90,
+SELECT m.metric, m.applicable, m.reason, m.additivity, m.walked, m.held_80, m.held_90,
        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, computed_at
 FROM metrics WHERE cardinality(m.points) = 0
 ORDER BY metric, point_seq NULLS FIRST;
@@ -225,7 +225,7 @@ ORDER BY metric, point_seq NULLS FIRST;
 
 CREATE OR REPLACE MACRO main.forecast_request() AS TABLE
 WITH axes AS (
-  SELECT * FROM main.metric_axes() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
+  SELECT * FROM main.metric_summary() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
 series AS (
   SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
@@ -233,14 +233,14 @@ hist AS (
   SELECT metric, count(*) AS n, max(period) AS origin, list({'period': period, 'value': value} ORDER BY period) AS history
   FROM series GROUP BY metric),
 judged AS (
-  SELECT a.metric, a.behavior, a.floor AS grain,
+  SELECT a.metric, a.additivity, a.floor AS grain,
          CASE a.floor WHEN 'day' THEN 31 WHEN 'week' THEN 13 WHEN 'month' THEN 12 WHEN 'quarter' THEN 4 END AS horizon,
          h.n, h.origin, h.history,
          CASE WHEN NOT a.applicable THEN a.reason
               WHEN a.floor IN ('minute', 'hour') THEN 'a ' || a.floor || ' grain is finer than the grains the service measured its coverage at'
               WHEN a.floor = 'year' THEN 'a year grain has too few periods to forecast'
               WHEN h.metric IS NULL THEN 'the series read serves no cell: ' || coalesce(a.reason,
-                'no behavior is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ' — gloss it')
+                'no additivity is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ' — gloss it')
               WHEN h.n < 6 THEN h.n || ' ' || a.floor || 's of history: a forecast needs 6' END AS reason
   FROM axes a LEFT JOIN hist h USING (metric)),
 ahead AS (
@@ -259,11 +259,11 @@ spans AS (
          unnest(CASE j.grain WHEN 'day' THEN ['month'] WHEN 'week' THEN ['quarter'] WHEN 'month' THEN ['quarter', 'year']
                              WHEN 'quarter' THEN ['year'] ELSE []::VARCHAR[] END) AS s(to_go),
          unnest(ah.periods) AS u(p)
-    WHERE j.behavior = 'flow'
+    WHERE j.additivity = 'additive'
     GROUP BY j.metric, s.to_go, j.horizon)
   WHERE n >= 1 AND reached <= horizon
   GROUP BY metric)
-SELECT j.metric, j.behavior, j.grain, j.horizon, j.origin, j.reason, j.reason IS NULL AS applicable, j.history,
+SELECT j.metric, j.additivity, j.grain, j.horizon, j.origin, j.reason, j.reason IS NULL AS applicable, j.history,
        coalesce(ah.periods[1:j.horizon], []::TIMESTAMP[]) AS ahead,
        coalesce(s.spans, []::STRUCT(span BIGINT, to_go VARCHAR)[]) AS spans
 FROM judged j LEFT JOIN ahead ah USING (metric) LEFT JOIN spans s USING (metric)
@@ -340,7 +340,7 @@ DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
     SELECT p.metric, p.step, p.span, rs.to_go, p.period, p.p05, p.p10, p.p50, p.p90, p.p95
     FROM points p LEFT JOIN req_spans rs ON rs.metric = p.metric AND rs.span = p.span),
   per_metric AS (
-    SELECT r.metric, r.behavior, r.grain, r.origin,
+    SELECT r.metric, r.additivity, r.grain, r.origin,
            r.applicable AND EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) AS applicable,
            CASE WHEN NOT r.applicable THEN r.reason
                 WHEN NOT EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) THEN coalesce(f.errors[1], 'the service answered no point for this metric') END AS reason,
@@ -353,7 +353,7 @@ DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
             WHERE n.metric = r.metric) AS points
     FROM req r LEFT JOIN failures f USING (metric))
   SELECT (SELECT string_agg(DISTINCT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version'), ', ') FROM b) AS served_by,
-         (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'behavior': behavior, 'grain': grain,
+         (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity, 'grain': grain,
                                 'origin': strftime(origin, '%Y-%m-%d'), 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
 $$ RETURNS metric_forecast;
@@ -376,7 +376,7 @@ DECLARE TEST forecast_test ON metric_forecast DETECTOR forecast_exists;
 -- where a point's actual is loaded: points loaded, inside_80, inside_90, held_80,
 -- held_90.
 -- forecast_points(): the newest run, flattened — one row per metric and
--- point: seq, metric, applicable, reason, behavior, grain, origin,
+-- point: seq, metric, applicable, reason, additivity, grain, origin,
 -- served_by, computed_at, current, point_seq, step, span, to_go, period,
 -- p05 to p95, service_80, service_90, actual, actuals (below, low, inside,
 -- high, above against p05, p10, p90 and p95), held_80 and held_90 (how
@@ -393,19 +393,19 @@ WITH runs AS (
 metrics AS (
   SELECT run, computed_at, json_extract_string(value, '$.served_by') AS served_by,
          unnest(from_json(json_extract(value, '$.metrics'),
-           '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "behavior": "VARCHAR", "grain": "VARCHAR", "origin": "VARCHAR",
+           '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "additivity": "VARCHAR", "grain": "VARCHAR", "origin": "VARCHAR",
               "points": [{"step": "BIGINT", "span": "BIGINT", "to_go": "VARCHAR", "period": "VARCHAR", "p05": "DOUBLE", "p10": "DOUBLE",
                           "p50": "DOUBLE", "p90": "DOUBLE", "p95": "DOUBLE", "service_80": "DOUBLE", "service_90": "DOUBLE"}]}]')) AS m
   FROM runs),
 pts AS (
-  SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.behavior, m.grain, m.origin::TIMESTAMP AS origin, unnest(m.points) AS p
+  SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.additivity, m.grain, m.origin::TIMESTAMP AS origin, unnest(m.points) AS p
   FROM metrics WHERE cardinality(m.points) > 0)
-SELECT run, computed_at, served_by, metric, applicable, reason, behavior, grain, origin,
+SELECT run, computed_at, served_by, metric, applicable, reason, additivity, grain, origin,
        p.step AS step, p.span AS span, p.to_go AS to_go, p.period::TIMESTAMP AS period,
        p.p05 AS p05, p.p10 AS p10, p.p50 AS p50, p.p90 AS p90, p.p95 AS p95, p.service_80 AS service_80, p.service_90 AS service_90
 FROM pts
 UNION ALL
-SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.behavior, m.grain, m.origin::TIMESTAMP,
+SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.additivity, m.grain, m.origin::TIMESTAMP,
        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 FROM metrics WHERE cardinality(m.points) = 0;
 
@@ -458,7 +458,7 @@ rows_ AS (
          CASE WHEN f.step IS NULL THEN NULL
               ELSE row_number() OVER (PARTITION BY f.metric ORDER BY f.span NULLS FIRST, f.step, f.to_go) - 1 END AS point_seq
   FROM runs f, newest WHERE f.run = newest.run)
-SELECT r.seq, r.metric, r.applicable, r.reason, r.behavior, r.grain, strftime(r.origin, '%Y-%m-%d') AS origin, r.served_by, r.computed_at,
+SELECT r.seq, r.metric, r.applicable, r.reason, r.additivity, r.grain, strftime(r.origin, '%Y-%m-%d') AS origin, r.served_by, r.computed_at,
        (SELECT current FROM current_) AS current, r.point_seq,
        r.step, r.span, r.to_go, strftime(r.period, '%Y-%m-%d') AS period, r.p05, r.p10, r.p50, r.p90, r.p95, r.service_80, r.service_90,
        r.actual,
@@ -531,7 +531,7 @@ judged AS (
                                WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
                 THEN l.lever || ' is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric''s view'
-              WHEN NOT EXISTS (SELECT 1 FROM main.metric_axes() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
+              WHEN NOT EXISTS (SELECT 1 FROM main.metric_summary() a WHERE a.metric = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
               WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
                 THEN l.metric || ' serves no column named ' || l.col
@@ -553,7 +553,7 @@ CREATE OR REPLACE MACRO main.scenario_request() AS TABLE
 WITH lv AS (
   SELECT s.scenario, u.l.lever AS lever, u.l.metric AS metric, u.l."column" AS col, u.l.factor AS factor
   FROM main.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
-axes AS (SELECT metric, floor, period_column, behavior FROM main.metric_axes() WHERE applicable),
+axes AS (SELECT metric, floor, period_column, additivity FROM main.metric_summary() WHERE applicable),
 series AS (
   SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
@@ -579,9 +579,9 @@ named AS (
   FROM lv l, unnest(json_keys(l.factor)) AS u(k)
   GROUP BY l.scenario, l.lever, l.metric),
 reach AS (
-  SELECT n.scenario, n.metric, a.floor AS grain, a.behavior, o.origin, o.history, max(n.until) AS until
+  SELECT n.scenario, n.metric, a.floor AS grain, a.additivity, o.origin, o.history, max(n.until) AS until
   FROM named n JOIN axes a USING (metric) LEFT JOIN origins o USING (metric)
-  GROUP BY n.scenario, n.metric, a.floor, a.behavior, o.origin, o.history),
+  GROUP BY n.scenario, n.metric, a.floor, a.additivity, o.origin, o.history),
 judged AS (
   SELECT r.*,
          CASE WHEN r.origin IS NULL THEN 'the series read serves no cell for ' || r.metric
@@ -616,7 +616,7 @@ inputs AS (
          string_agg(CASE WHEN NOT m.moves THEN 'every factor on ' || h.lever || ' over the periods ahead is one' END, '; ' ORDER BY h.lever) AS unmoved
   FROM held h JOIN moved m USING (scenario, metric, lever)
   GROUP BY h.scenario, h.metric)
-SELECT j.scenario, j.metric, j.grain, j.behavior, j.origin, j.history,
+SELECT j.scenario, j.metric, j.grain, j.additivity, j.origin, j.history,
        coalesce(j.reason, CASE WHEN i.unmoved IS NOT NULL AND NOT EXISTS (SELECT 1 FROM moved m WHERE m.scenario = j.scenario AND m.metric = j.metric AND m.moves)
                                THEN 'the scenario moves no input of ' || j.metric || ': ' || i.unmoved END) AS reason,
        coalesce(j.reason, CASE WHEN i.unmoved IS NOT NULL AND NOT EXISTS (SELECT 1 FROM moved m WHERE m.scenario = j.scenario AND m.metric = j.metric AND m.moves) THEN 'x' END) IS NULL AS applicable,
@@ -888,7 +888,7 @@ ORDER BY l.scenario, metric, lever;
 
 --===------------------------------------------------------------------===--
 -- The plan. plan_rows(): every applicable plan's rows through the metric
--- it plans — plan, metric, behavior, covers, instant, value, and grain,
+-- it plans — plan, metric, additivity, covers, instant, value, and grain,
 -- the plan's own: the grain its rows are booked against where the
 -- declaration says so, else the rows' cadence. plan_grains(): one row per
 -- plan with it. plan_cells(at_grain): the
@@ -903,39 +903,39 @@ ORDER BY l.scenario, metric, lever;
 
 CREATE OR REPLACE MACRO main.plan_rows() AS TABLE
 WITH p AS (
-  SELECT a.metric AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.behavior
-  FROM main.metric_axes() a WHERE a.kind = 'plan' AND a.applicable),
+  SELECT a.metric AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.additivity
+  FROM main.metric_summary() a WHERE a.kind = 'plan' AND a.applicable),
 rows_ AS (
-  SELECT p.plan, p.metric, p.behavior, p.covers,
+  SELECT p.plan, p.metric, p.additivity, p.covers,
          max(CASE WHEN c."column" = p.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
          max(CASE WHEN c."column" = p.value_column THEN TRY_CAST(c.val AS DOUBLE) END) AS value
   FROM dataset_cells(current_schema(), 'views') c JOIN p ON p.plan = c."table"
-  GROUP BY p.plan, p.metric, p.behavior, p.covers, c.rn),
+  GROUP BY p.plan, p.metric, p.additivity, p.covers, c.rn),
 gaps AS (
   SELECT plan, min(gap) AS gap
   FROM (SELECT plan, date_diff('day', lag(instant) OVER (PARTITION BY plan ORDER BY instant), instant) AS gap
         FROM (SELECT DISTINCT plan, instant FROM rows_ WHERE instant IS NOT NULL))
   GROUP BY plan)
-SELECT r.plan, r.metric, r.behavior, r.covers, r.instant, r.value,
+SELECT r.plan, r.metric, r.additivity, r.covers, r.instant, r.value,
        coalesce(r.covers, CASE WHEN g.gap IS NULL THEN 'month' WHEN g.gap >= 360 THEN 'year' WHEN g.gap >= 89 THEN 'quarter'
                                WHEN g.gap >= 28 THEN 'month' WHEN g.gap >= 7 THEN 'week' ELSE 'day' END) AS grain
 FROM rows_ r LEFT JOIN gaps g USING (plan);
 
 CREATE OR REPLACE MACRO main.plan_grains() AS TABLE
-SELECT DISTINCT plan, metric, behavior, grain FROM main.plan_rows();
+SELECT DISTINCT plan, metric, additivity, grain FROM main.plan_rows();
 
 CREATE OR REPLACE MACRO main.plan_cells(at_grain) AS TABLE
 SELECT r.plan, r.metric, coalesce(at_grain, r.grain) AS grain, date_trunc(coalesce(at_grain, r.grain), r.instant) AS period,
-       CASE r.behavior WHEN 'stock' THEN arg_max(r.value, r.instant) WHEN 'flow' THEN sum(r.value) ELSE avg(r.value) END AS value,
-       coalesce(r.behavior, 'none') AS behavior
+       CASE r.additivity WHEN 'semi-additive' THEN arg_max(r.value, r.instant) WHEN 'additive' THEN sum(r.value) ELSE avg(r.value) END AS value,
+       coalesce(r.additivity, 'none') AS additivity
 FROM main.plan_rows() r
 WHERE r.instant IS NOT NULL AND r.value IS NOT NULL
   AND (at_grain IS NULL OR main.grain_rank(at_grain) >= main.grain_rank(r.grain))
-GROUP BY r.plan, r.metric, coalesce(at_grain, r.grain), date_trunc(coalesce(at_grain, r.grain), r.instant), r.behavior;
+GROUP BY r.plan, r.metric, coalesce(at_grain, r.grain), date_trunc(coalesce(at_grain, r.grain), r.instant), r.additivity;
 
 CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 WITH named AS (
-  SELECT a.metric AS plan, a.applicable, a.reason FROM main.metric_axes() a WHERE a.kind = 'plan' AND a.metric = p),
+  SELECT a.metric AS plan, a.applicable, a.reason FROM main.metric_summary() a WHERE a.kind = 'plan' AND a.metric = p),
 refusal AS (
   SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
               WHEN w = 'scenario' AND s IS NULL THEN error('metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
@@ -950,18 +950,18 @@ refusal AS (
                 'metric_series(plan := ''' || p || '''): ' || (SELECT reason FROM named))
          END AS r),
 plan_world AS (
-  SELECT c.metric, 'plan' AS world, '' AS dimension, '' AS member, c.period, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.behavior
+  SELECT c.metric, 'plan' AS world, '' AS dimension, '' AS member, c.period, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.additivity
   FROM main.plan_cells(g) c WHERE w = 'plan' AND c.plan = p),
 newest AS (SELECT max(run) AS run FROM main.forecast_record()),
 forecast_world AS (
   SELECT f.metric, 'forecast' AS world, '' AS dimension, '' AS member, f.period, f.p50 AS value,
-         NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(f.behavior, 'none') AS behavior
+         NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(f.additivity, 'none') AS additivity
   FROM main.forecast_record() f JOIN newest n ON n.run = f.run
   WHERE w = 'forecast' AND f.applicable AND f.span IS NULL AND f.period IS NOT NULL AND (g IS NULL OR g = f.grain)),
 scenario_world AS (
   SELECT sp.metric, 'scenario' AS world, '' AS dimension, '' AS member, sp.period, sp.value,
-         NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(a.behavior, 'none') AS behavior
-  FROM main.scenario_points(s) sp LEFT JOIN main.metric_axes() a ON a.metric = sp.metric
+         NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(a.additivity, 'none') AS additivity
+  FROM main.scenario_points(s) sp LEFT JOIN main.metric_summary() a ON a.metric = sp.metric
   WHERE w = 'scenario' AND sp.applicable AND sp.value IS NOT NULL AND (g IS NULL OR g = sp.grain))
 SELECT * FROM plan_world
 UNION ALL SELECT * FROM forecast_world
@@ -989,20 +989,20 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 CREATE OR REPLACE MACRO main.plan_points() AS TABLE
 WITH prow AS MATERIALIZED (SELECT * FROM main.plan_rows()),
 g AS (
-  SELECT pg.plan, pg.metric, pg.behavior, pg.grain, m.floor AS metric_floor
-  FROM (SELECT DISTINCT plan, metric, behavior, grain FROM prow) pg
-  JOIN main.metric_axes() m ON m.metric = pg.metric WHERE m.applicable),
+  SELECT pg.plan, pg.metric, pg.additivity, pg.grain, m.floor AS metric_floor
+  FROM (SELECT DISTINCT plan, metric, additivity, grain FROM prow) pg
+  JOIN main.metric_summary() m ON m.metric = pg.metric WHERE m.applicable),
 floor_cells AS MATERIALIZED (
-  SELECT metric, period, value, num, den, behavior FROM main.metric_series(unclaimed := 'skip')
+  SELECT metric, period, value, num, den, additivity FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual'),
 origins AS (SELECT metric, max(period) AS origin FROM floor_cells WHERE value IS NOT NULL GROUP BY metric),
 cells AS (
   -- the plan's cells at its own grain and at the year
   SELECT r.plan, r.metric, gr.step_grain AS grain, date_trunc(gr.step_grain, r.instant) AS period,
-         CASE r.behavior WHEN 'stock' THEN arg_max(r.value, r.instant) WHEN 'flow' THEN sum(r.value) ELSE avg(r.value) END AS value
+         CASE r.additivity WHEN 'semi-additive' THEN arg_max(r.value, r.instant) WHEN 'additive' THEN sum(r.value) ELSE avg(r.value) END AS value
   FROM prow r, unnest(CASE WHEN r.grain = 'year' THEN ['year'] ELSE [r.grain, 'year'] END) AS gr(step_grain)
   WHERE r.instant IS NOT NULL AND r.value IS NOT NULL
-  GROUP BY r.plan, r.metric, gr.step_grain, date_trunc(gr.step_grain, r.instant), r.behavior),
+  GROUP BY r.plan, r.metric, gr.step_grain, date_trunc(gr.step_grain, r.instant), r.additivity),
 own AS (SELECT c.* FROM cells c JOIN g USING (plan) WHERE c.grain = g.grain),
 rows_ AS (SELECT * FROM cells),
 cover AS (
@@ -1016,11 +1016,11 @@ cover AS (
   GROUP BY o.plan, date_trunc('year', o.period), g.grain),
 actuals AS (
   SELECT f.metric, r.grain, date_trunc(r.grain, f.period) AS period,
-         CASE f.behavior WHEN 'stock' THEN arg_max(f.value, f.period) WHEN 'ratio' THEN sum(f.num) / nullif(sum(f.den), 0) ELSE sum(f.value) END AS value
+         CASE f.additivity WHEN 'semi-additive' THEN arg_max(f.value, f.period) WHEN 'ratio' THEN sum(f.num) / nullif(sum(f.den), 0) ELSE sum(f.value) END AS value
   FROM floor_cells f JOIN (SELECT DISTINCT metric, grain FROM rows_) r USING (metric)
-  GROUP BY f.metric, r.grain, date_trunc(r.grain, f.period), f.behavior),
+  GROUP BY f.metric, r.grain, date_trunc(r.grain, f.period), f.additivity),
 judged AS (
-  SELECT r.plan, r.metric, r.grain, r.period, r.value, g.behavior, g.metric_floor, g.grain AS own_grain, o.origin,
+  SELECT r.plan, r.metric, r.grain, r.period, r.value, g.additivity, g.metric_floor, g.grain AS own_grain, o.origin,
          o.origin + main.grain_step(g.metric_floor) AS origin_end,
          r.period + main.grain_step(r.grain) AS period_end,
          date_trunc(g.metric_floor, r.period + main.grain_step(r.grain) - INTERVAL 1 MICROSECOND) AS last_inside,
@@ -1034,10 +1034,10 @@ judged AS (
   LEFT JOIN cover c ON c.plan = r.plan AND r.grain = 'year' AND c.year = r.period),
 part_actual AS (
   SELECT j.plan, j.period AS year,
-         CASE j.behavior WHEN 'flow' THEN sum(a.value) WHEN 'stock' THEN arg_max(a.value, a.period) END AS actual
+         CASE j.additivity WHEN 'additive' THEN sum(a.value) WHEN 'semi-additive' THEN arg_max(a.value, a.period) END AS actual
   FROM judged j JOIN own o ON o.plan = j.plan AND date_trunc('year', o.period) = j.period
   JOIN actuals a ON a.metric = j.metric AND a.grain = o.grain AND a.period = o.period AND o.period <= j.origin
-  WHERE j.part GROUP BY j.plan, j.period, j.behavior),
+  WHERE j.part GROUP BY j.plan, j.period, j.additivity),
 verdict AS (
   SELECT j.*,
     CASE WHEN j.part THEN pa.actual WHEN j.begun THEN j.actual_cell END AS actual,
@@ -1074,12 +1074,12 @@ candidates AS (
   FROM verdict v JOIN fp f ON f.metric = v.metric
   WHERE NOT v.complete AND NOT v.part
     AND ((v.grain = v.metric_floor AND f.span IS NULL AND f.period = v.period)
-      OR (v.grain <> v.metric_floor AND v.behavior = 'stock' AND f.span IS NULL AND f.period = v.last_inside)
-      OR (v.grain <> v.metric_floor AND v.behavior = 'flow' AND v.has_begun AND v.actual IS NOT NULL
+      OR (v.grain <> v.metric_floor AND v.additivity = 'semi-additive' AND f.span IS NULL AND f.period = v.last_inside)
+      OR (v.grain <> v.metric_floor AND v.additivity = 'additive' AND v.has_begun AND v.actual IS NOT NULL
           AND f.span IS NOT NULL AND f.to_go = v.grain AND f.period >= v.period AND f.period < v.period_end))),
 banded AS (
   SELECT v.*, c.p10, c.p50, c.p90, c.held_80, c.held_from, c.origin AS forecast_origin,
-         CASE WHEN v.grain = v.metric_floor OR v.behavior = 'stock' THEN 0.0 ELSE coalesce(v.actual, 0.0) END AS base
+         CASE WHEN v.grain = v.metric_floor OR v.additivity = 'semi-additive' THEN 0.0 ELSE coalesce(v.actual, 0.0) END AS base
   FROM verdict v LEFT JOIN candidates c ON c.plan = v.plan AND c.grain = v.grain AND c.period = v.period AND c.rn = 1)
 SELECT plan, metric, grain, period,
        CASE grain WHEN 'year' THEN strftime(period, '%Y')

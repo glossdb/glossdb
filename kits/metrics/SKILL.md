@@ -19,7 +19,7 @@ stale, and the reads serve it as the catalog has it.
 FROM glossql_kit('kits/kpi/kit.sql');
 FROM glossql_kit('kits/quality/kit.sql');
 FROM glossql_kit('kits/metrics/kit.sql');    -- the same three lines in the opener
-SELECT * FROM metric_axes();       -- one row per metric: what its columns say
+SELECT * FROM metric_summary();       -- one row per metric: what its columns say
 ```
 
 ## A metric is a view, and its columns are assets
@@ -34,13 +34,13 @@ needs is annotated there, never as a key in the definition's body:
 |---|---|---|
 | the period | `role` = `timestamp` | which column the series walks; serve it as `period` where two columns are timestamps |
 | the value | `role` = `measure` | which column is the number; serve it as `value` where two columns are measures |
-| the value | `behavior` = `flow`, `stock` or `ratio` (`numerator`, `denominator` naming the halves the view serves) | how the number combines over periods and members: a flow sums, a stock keeps the period's last level, a ratio re-divides its summed halves |
+| the value | `additivity` = `additive`, `semi-additive` or `ratio` (`numerator`, `denominator` naming the halves the view serves) | how the number combines over periods and members: a flow sums, a stock keeps the period's last level, a ratio re-divides its summed halves |
 | a slice | `role` = `dimension`, `dimension` = `primary`, `supporting` or `none` | which columns slice the series, primary first; `none` closes one |
-| the period | `ladder` (the time grains) — `floor`, `windows` | the finest grain the series is served at (by default the measured cadence) and how many buckets each grain serves (by default the kit's rungs) |
+| the period | `time_grains` (the time grains) — `floor`, `windows` | the finest grain the series is served at (by default the measured cadence) and how many buckets each grain serves (by default the kit's rungs) |
 | the period | `temporal_profile`, a measurement: `SELECT temporal() FROM <dataset>.<metric>.period` | the measured cadence, window, completeness and gaps |
 
-The steps for a new metric: define it; read `metric_axes()`; annotate
-what `missing` lists; run what `wanted` lists; annotate `behavior` on the
+The steps for a new metric: define it; read `metric_summary()`; annotate
+what `missing` lists; run what `wanted` lists; annotate `additivity` on the
 value; read the series.
 
 ```sql
@@ -48,7 +48,7 @@ DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
 GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;
 GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
 GLOSS role ON spend.value AS $${"value": "measure"}$$;
-GLOSS behavior ON spend.value AS $${"value": "flow", "grounds": "a row is the amount booked in its month"}$$;
+GLOSS additivity ON spend.value AS $${"value": "additive", "grounds": "a row is the amount booked in its month"}$$;
 GLOSS role ON spend.fund AS $${"value": "dimension"}$$;
 SELECT temporal() FROM fin.spend.period;
 SELECT * FROM metric_series() WHERE metric = 'spend';
@@ -58,8 +58,8 @@ SELECT * FROM metric_series() WHERE metric = 'spend';
 
 | Read | Serves |
 |---|---|
-| `metric_axes()` | one row per metric of the bound dataset: `kind` (the aspect's `x-kind`), `stopped`, `applicable` and `reason` (what to change when it is not applicable), `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `behavior` and `behavior_state`, `dims`, `unadmitted` (served columns with no role) and `missing` (the annotation each needs), `wanted` (the measurement nobody ran), `judged_current` |
-| `metric_series(grain := …)` | the cells: `metric`, `world`, `dimension` (`''` the total), `member`, `period` (the bucket's start), `value`, `num`, `den`, `behavior`; without a grain each metric at its floor, with one each metric at or below it at that grain, a coarser metric serving no rows; a rung of buckets measured back from the edge; a flow's empty periods zero in the total; a dimension wider than 24 members as its top 23 and `other` |
+| `metric_summary()` | one row per metric of the bound dataset: `kind` (the aspect's `x-kind`), `stopped`, `applicable` and `reason` (what to change when it is not applicable), `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `additivity` and `additivity_state`, `dims`, `unadmitted` (served columns with no role) and `missing` (the annotation each needs), `wanted` (the measurement nobody ran), `judged_current` |
+| `metric_series(grain := …)` | the cells: `metric`, `world`, `dimension` (`''` the total), `member`, `period` (the bucket's start), `value`, `num`, `den`, `additivity`; without a grain each metric at its floor, with one each metric at or below it at that grain, a coarser metric serving no rows; a rung of buckets measured back from the edge; a flow's empty periods zero in the total; a dimension wider than 24 members as its top 23 and `other` |
 | `fact_values()` | one row per metric whose aspect carries `x-kind: scalar`: `value` where the view is one row with a `value` column, else `reason` |
 | `metric_sources(for_metric := …)` | what feeds each metric, or the one named, through the views' lineage: `field`, `source` (`table.column`), `table_name`; one row per table read beside; a view that does not plan serves `reason` |
 
@@ -67,15 +67,15 @@ SELECT * FROM metric_series() WHERE metric = 'spend';
 
 Where rows have to be combined — a grain coarser than the floor, or
 several rows in one period — and the value column has no current
-`behavior` annotation, `metric_series()` refuses and names the
+`additivity` annotation, `metric_series()` refuses and names the
 annotation to write:
 
 ```
-no behaviour stands on fin.spend.value, and spend serves several rows in one
-period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
+no additivity stands on fin.spend.value, and spend serves several rows in one
+period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio>"}$$
 ```
 
-It defaults nothing. A behaviour in conflict — the test (`DECLARE TEST`)
+It defaults nothing. A additivity in conflict — the test (`DECLARE TEST`)
 withholding the value — refuses the same way, naming the conflict. At
 the floor, with one row per period, nothing is combined and the series
 serves what the view returns.
@@ -83,6 +83,6 @@ serves what the view returns.
 ## What is not here
 
 A plan, a forecast and a scenario are worlds on the same cells; the
-outlook kit (preview) brings them. The behaviour evidence a detector
+outlook kit (preview) brings them. The additivity evidence a detector
 measures on a value column is a measurement of its own; where none was
 run, the refusal names the annotation alone.

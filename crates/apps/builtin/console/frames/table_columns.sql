@@ -1,6 +1,6 @@
 -- One table's columns, every value the catalog holds on each: the judged
 -- role with the slice rank beside a dimension (the engine's type where
--- none is judged), the unit and behaviour where required, the meaning or
+-- none is judged), the unit and additivity where required, the meaning or
 -- `not yet said` where the meaning is required and nobody spoke, and what
 -- was measured on the column. The mark is the column's worst standing
 -- across its authored slots. A row opens the column's page.
@@ -12,7 +12,7 @@ slots AS (
            ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject LIKE (SELECT subject FROM tbl) || '.%'
-    AND g.aspect IN ('role', 'meaning', 'unit', 'behavior', 'dimension') AND g.actor_kind IN ('human', 'agent')),
+    AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
 cur AS (SELECT subject, aspect, actor_kind, written_at, json_extract_string(body, '$.value') AS value FROM slots WHERE rn = 1),
 states AS (
   SELECT subject,
@@ -20,7 +20,7 @@ states AS (
          count(*) FILTER (WHERE aspect = 'meaning' AND state = 'missing') AS meaning_owed
   FROM GLOSSARY()
   WHERE subject LIKE (SELECT subject FROM tbl) || '.%'
-    AND aspect IN ('role', 'meaning', 'unit', 'behavior', 'dimension')
+    AND aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension')
   GROUP BY subject),
 human AS (SELECT subject, max(written_at) AS spoken_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
 entity AS (
@@ -78,7 +78,7 @@ LEFT JOIN cur r ON r.subject = c.subject AND r.aspect = 'role'
 LEFT JOIN cur x ON x.subject = c.subject AND x.aspect = 'dimension'
 LEFT JOIN cur m ON m.subject = c.subject AND m.aspect = 'meaning'
 LEFT JOIN cur u ON u.subject = c.subject AND u.aspect = 'unit'
-LEFT JOIN cur b ON b.subject = c.subject AND b.aspect = 'behavior'
+LEFT JOIN cur b ON b.subject = c.subject AND b.aspect = 'additivity'
 LEFT JOIN states st ON st.subject = c.subject
 LEFT JOIN human h ON h.subject = c.subject
 LEFT JOIN entity e ON e.rn = 1

@@ -1,5 +1,5 @@
 # name: kits/metrics/kit.test
-# description: the metrics kit — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over the collapsed values and the view, the no-claim refusal, the ladder, facts, sources
+# description: the metrics kit — a metric is a view whose columns carry the vocabulary; the fact row per metric, the series over the collapsed values and the view, the no-claim refusal, the time_grains, facts, sources
 # group: [sql]
 
 require glossql
@@ -50,12 +50,12 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 # --- the fact row: what the view's columns owe before anything is said
 
 query TTTT
-SELECT metric, applicable, reason, unadmitted FROM metric_axes();
+SELECT metric, applicable, reason, unadmitted FROM metric_summary();
 ----
 spend	false	no column carries role timestamp: annotate the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
 
 query T
-SELECT missing[1] FROM metric_axes();
+SELECT missing[1] FROM metric_summary();
 ----
 GLOSS role ON fin.spend.period AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;
 
@@ -76,15 +76,15 @@ GLOSS role ON spend.object AS $${"value": "dimension"}$$;
 
 # the roles stand and no cadence does: the row wants the profile
 query TTTT
-SELECT applicable, reason, dims, wanted FROM metric_axes();
+SELECT applicable, reason, dims, wanted FROM metric_summary();
 ----
-false	no cadence is known on period: SELECT temporal() FROM fin.spend.period, or gloss ladder with a floor	[fund, object]	[temporal over fin.spend.period]
+false	no cadence is known on period: SELECT temporal() FROM fin.spend.period, or gloss time_grains with a floor	[fund, object]	[temporal over fin.spend.period]
 
 statement ok
 SELECT temporal() FROM spend.period;
 
 query TTTTTTTTTT
-SELECT applicable, period_column, value_column, cadence, floor, rung, behavior, behavior_state, dims, judged_current FROM metric_axes();
+SELECT applicable, period_column, value_column, cadence, floor, rung, additivity, additivity_state, dims, judged_current FROM metric_summary();
 ----
 true	period	value	month	month	48	NULL	none	[fund, object]	true
 
@@ -93,10 +93,10 @@ true	period	value	month	month	48	NULL	none	[fund, object]	true
 statement error
 SELECT * FROM metric_series();
 ----
-no behavior is annotated on fin.spend.value, and spend serves several rows in one period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
+no additivity is annotated on fin.spend.value, and spend serves several rows in one period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio>"}$$
 
 statement ok
-GLOSS behavior ON spend.value AS $${"value": "flow"}$$;
+GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
 
 # the total at the floor, by the primary slice, at a coarser grain; a finer grain serves no rows
 query TTTR
@@ -155,10 +155,10 @@ statement ok
 GLOSS role ON reach.value AS $${"value": "measure"}$$;
 
 statement ok
-GLOSS ladder ON reach.period AS $${"floor": "month"}$$;
+GLOSS time_grains ON reach.period AS $${"floor": "month"}$$;
 
 statement ok
-GLOSS behavior ON reach.value AS $${"value": "stock"}$$;
+GLOSS additivity ON reach.value AS $${"value": "semi-additive"}$$;
 
 query TTR
 SELECT metric, period::DATE, value FROM metric_series() WHERE dimension = '' AND period >= DATE '2024-04-01' ORDER BY metric, period;
@@ -210,7 +210,7 @@ statement ok
 SELECT temporal() FROM headcount.period;
 
 statement ok
-GLOSS behavior ON headcount.value AS $${"value": "stock"}$$;
+GLOSS additivity ON headcount.value AS $${"value": "semi-additive"}$$;
 
 query TR
 SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
@@ -253,7 +253,7 @@ statement ok
 GLOSS role ON win_rate.dept AS $${"value": "dimension"}$$;
 
 statement ok
-GLOSS behavior ON win_rate.value AS $${"value": "ratio", "numerator": "won", "denominator": "offered"}$$;
+GLOSS additivity ON win_rate.value AS $${"value": "ratio", "numerator": "won", "denominator": "offered"}$$;
 
 statement ok
 SELECT temporal() FROM win_rate.period;
@@ -271,13 +271,13 @@ SELECT member, period::DATE, value, num, den FROM metric_series(grain := 'quarte
 ops	2024-01-01	0.5	4.0	8.0
 sales	2024-01-01	0.5	2.0	4.0
 
-# --- the ladder: a floor coarser than the cadence, and a rung of one bucket
+# --- the time_grains: a floor coarser than the cadence, and a rung of one bucket
 
 statement ok
-GLOSS ladder ON headcount.period AS $${"floor": "quarter", "windows": {"quarter": 1}}$$;
+GLOSS time_grains ON headcount.period AS $${"floor": "quarter", "windows": {"quarter": 1}}$$;
 
 query TTI
-SELECT cadence, floor, rung FROM metric_axes() WHERE metric = 'headcount';
+SELECT cadence, floor, rung FROM metric_summary() WHERE metric = 'headcount';
 ----
 month	quarter	1
 
@@ -292,9 +292,9 @@ statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n * 1 AS value, dept FROM fin.levels"}$$;
 
 query TTTT
-SELECT applicable, judged_current, behavior, behavior_state FROM metric_axes() WHERE metric = 'headcount';
+SELECT applicable, judged_current, additivity, additivity_state FROM metric_summary() WHERE metric = 'headcount';
 ----
-true	false	stock	stale
+true	false	semi-additive	stale
 
 # --- a fact serves one number; a stop serves its reason
 
@@ -310,7 +310,7 @@ SELECT * FROM fact_values();
 fte_cap	40.0	NULL
 
 query TT
-SELECT applicable, reason FROM metric_axes() WHERE metric = 'fte_cap';
+SELECT applicable, reason FROM metric_summary() WHERE metric = 'fte_cap';
 ----
 false	a fact serves one number, read through fact_values()
 
@@ -318,7 +318,7 @@ statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;
 
 query TT
-SELECT applicable, reason FROM metric_axes() WHERE metric = 'win_rate';
+SELECT applicable, reason FROM metric_summary() WHERE metric = 'win_rate';
 ----
 false	stopped: offers are not booked before 2024
 
@@ -330,7 +330,7 @@ SELECT count(*) FROM metric_series() WHERE metric = 'win_rate';
 # --- a list over every metric skips what needs a claim nobody made, and says so in the fact row
 
 statement ok
-GLOSS behavior ON headcount.value AS $${"value": "none"}$$;
+GLOSS additivity ON headcount.value AS $${"value": "non-additive"}$$;
 
 query I
 SELECT count(DISTINCT metric) FROM metric_series(unclaimed := 'skip');
@@ -340,9 +340,9 @@ SELECT count(DISTINCT metric) FROM metric_series(unclaimed := 'skip');
 statement error
 SELECT count(*) FROM metric_series();
 ----
-the behaviour on fin.headcount.value is none, so its rows do not combine
+the additivity on fin.headcount.value is non-additive, so its rows do not combine
 
-# --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its behaviour
+# --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its additivity
 
 statement ok
 SELECT fan_out_check() FROM fin.spend;
@@ -356,8 +356,8 @@ SELECT additivity_check() FROM fin.spend;
 query TTTT
 SELECT test, declared_by, state, run FROM metric_tests() WHERE metric = 'spend' ORDER BY test;
 ----
-additivity_test	kit:metrics	green	SELECT additivity_check() FROM fin.spend
 fan_out_test	kit:metrics	green	SELECT fan_out_check() FROM fin.spend
+measure_additivity_test	kit:metrics	green	SELECT additivity_check() FROM fin.spend
 orphan_test	kit:metrics	green	SELECT orphan_check() FROM fin.spend
 validity_test	kit:metrics	not_run	SELECT validity_check() FROM fin.spend
 

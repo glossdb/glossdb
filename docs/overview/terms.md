@@ -36,7 +36,7 @@ defined once here. How they fit together: [how it works](how-it-works.md).
 | `meaning` | description | What a table, column or relationship means, and the business term it carries |
 | `role` | column role | key, measure, dimension, timestamp, attribute |
 | `unit` | unit of measure | A measure's unit or currency |
-| `behavior`: flow · stock · ratio | additivity: additive · semi-additive · non-additive | Whether a measure may be summed, and over which axes |
+| `additivity`: flow · stock · ratio | additivity: additive · semi-additive · non-additive | Whether a measure may be summed, and over which axes |
 | `dimension`: primary · supporting | dimension | Whether a dimension column is one to slice a metric by |
 | `entity` | grain and key | What one row of a table is, and the columns that identify it |
 | `definitions` | business glossary | Each metric's meaning, unit, owner, source and formula, kept per dataset |
@@ -58,7 +58,7 @@ ours:
 | `datasets[]`: `name`, `source`, `primary_key`, `unique_keys` | table, with its `entity` | the keys from the entity's identity |
 | `fields[]` with `dimension.is_time` | column with `role` timestamp | |
 | `fields[]` with `dimension` | column with `role` dimension or attribute, ranked by `dimension` | |
-| `metrics[].expression.sql` | metric definition (a `VIEW` aspect) and `behavior` on its value | Ossie's metric is an aggregate expression; ours is a row-grain view whose value's additivity says how it aggregates |
+| `metrics[].expression.sql` | metric definition (a `VIEW` aspect) and `additivity` on its value | Ossie's metric is an aggregate expression; ours is a row-grain view whose value's additivity says how it aggregates |
 | `relationships[]`: `from_columns`, `to_columns` | `DECLARE RELATIONSHIP` | |
 | `ai_context`: `instructions`, `synonyms`, `examples` | `meaning`, `definitions`, `conventions` | |
 | `custom_extensions` | `unit`, tests, review decisions | what Ossie does not carry rides here on export |
@@ -71,7 +71,7 @@ An export to Ossie and an import from it are planned.
 |---|---|---|
 | `fan_out_test` | join fan-out, many-to-many join | Two tables a metric scans share a key that repeats on both sides; the join multiplies rows unless the definition narrows it |
 | `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
-| `additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
+| `measure_additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
 | `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
 | `red` · `not_run` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `metric_tests()`, and whether its result still holds |
 | `tolerance`, `breach_rate` | threshold, failure rate | The rate a person accepts; the violation share a check measures |

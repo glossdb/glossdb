@@ -127,16 +127,16 @@ More: [relationships](../usage/relationships.md).
 ## 8. Describe the columns
 
 Start with each column's role; what else a column must carry follows
-from it. A measure's additivity (`behavior`: stock or flow) says how
+from it. A measure's additivity (`additivity`: stock or flow) says how
 the number combines over periods; read it off the rows, not the name.
 Where a declared join reaches an event table, `SELECT
-behavior_evidence() FROM <table>.<column>` measures it first: the level
+additivity_evidence() FROM <table>.<column>` measures it first: the level
 reconciled against the movements.
 
 ```glossql
 GLOSS meaning ON work_orders.duration_min AS $${"value": "on-site working time per visit, in minutes"}$$;
 GLOSS role ON work_orders.duration_min AS $${"value": "measure"}$$;
-GLOSS behavior ON work_orders.duration_min AS $${"value": "flow"}$$;
+GLOSS additivity ON work_orders.duration_min AS $${"value": "additive"}$$;
 GLOSS unit ON work_orders.duration_min AS $${"value": "minutes"}$$;
 ```
 
@@ -163,7 +163,7 @@ GLOSS throughput ON ops AS $${
   "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, s.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
   "assumptions": [
     {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
+    {"dimension": "additivity", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
   ]
 }$$;
 ```
@@ -218,7 +218,7 @@ More: [data tests](../usage/data-tests.md).
 
 `metric_series()` serves each metric's values at its finest grain, the
 total and the slices along its dimensions, computed when you read it.
-`metric_axes()` says what the catalog knows of each metric's columns:
+`metric_summary()` says what the catalog knows of each metric's columns:
 
 ```sql
 SELECT name, title, unit, meaning, formula
@@ -226,8 +226,8 @@ FROM metric_surfaces ORDER BY name
 ```
 
 ```sql
-SELECT metric, applicable, reason, behavior, floor, dims
-FROM metric_axes() ORDER BY metric
+SELECT metric, applicable, reason, additivity, floor, dims
+FROM metric_summary() ORDER BY metric
 ```
 
 ```sql
@@ -282,11 +282,11 @@ SELECT surface, state, say, statement FROM next ORDER BY goal, surface
 ```
 
 A statement there is a proposal: edit it, send it, or skip it.
-`workspace_next` lists every surface the workspace can grow along, with
+`workspace_status` lists every surface the workspace can grow along, with
 what exists, what is open for the agent, and what waits for a person:
 
 ```sql
-SELECT surface, how, existing, open, waiting FROM workspace_next ORDER BY open DESC;
+SELECT surface, how, existing, open, waiting FROM workspace_status ORDER BY open DESC;
 ```
 
 More: [next steps](../extending/next-steps.md).

@@ -600,7 +600,7 @@ async fn body_text(response: Response<Body>) -> String {
 
 /// The same shapes on DuckDB, the metrics kit's way: the metric is a
 /// view whose columns carry the vocabulary — the period and the value
-/// glossed by role, the behaviour on the value, the slice ranked — and
+/// glossed by role, the additivity on the value, the slice ranked — and
 /// the period column profiled.
 async fn seed_model_shapes(plane: &Arc<Plane>) {
     let agent = plane
@@ -633,7 +633,7 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
                  "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
-               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
+               GLOSS additivity ON dso.value AS $${"value": "additive"}$$;
                GLOSS role ON dso.cohort AS $${"value": "dimension"}$$;
                GLOSS dimension ON dso.cohort AS $${"value": "primary"}$$;
                DECLARE DATASET second SET (purpose: 'multi-dataset guard');
@@ -1381,7 +1381,7 @@ async fn the_checks_face_serves_verdicts_not_the_vocabulary() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metrics_faces_serve_the_cube() {
     // The business surface end to end from the cube: nothing is
-    // planted — the frames read `metric_series()` and `metric_axes()`,
+    // planted — the frames read `metric_series()` and `metric_summary()`,
     // which build the cube from the metric definition and the judged results
     // the workspace carries. The pulse is the catalog, its numbers a
     // data frame joined in the browser by the metric's name; the
@@ -1606,7 +1606,7 @@ async fn the_plan_stands_beside_its_metric() {
                GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
-               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;
+               GLOSS additivity ON dso.value AS $${"value": "additive"}$$;
                SELECT temporal() FROM dso.month;
                DECLARE ASPECT dso_budget WITH $${"title": "DSO budget", "x-kind": "plan", "x-plan-of": "dso"}$$ AS VIEW;
                GLOSS dso_budget ON perf AS $${"sql": "SELECT month, value * 2 AS value FROM perf.ledger"}$$;"#,
@@ -1672,7 +1672,7 @@ async fn the_list_serves_a_workspace_without_a_fact() {
                GLOSS undated ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
-               GLOSS behavior ON dso.value AS $${"value": "flow"}$$;"#,
+               GLOSS additivity ON dso.value AS $${"value": "additive"}$$;"#,
         )
         .await
         .unwrap();
@@ -2976,7 +2976,7 @@ async fn the_model_draws_each_table_as_its_entity() {
             r#"USE perf;
                GLOSS entity ON ledger AS $${"value": "one booking", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}$$;
                GLOSS role ON ledger.value AS $${"value": "measure"}$$;
-               GLOSS behavior ON ledger.value AS $${"value": "flow"}$$;
+               GLOSS additivity ON ledger.value AS $${"value": "additive"}$$;
                GLOSS unit ON ledger.value AS $${"value": "EUR"}$$;"#,
         )
         .await
@@ -2984,7 +2984,7 @@ async fn the_model_draws_each_table_as_its_entity() {
     let nodes = body_text(get(&app, "/perf/app/console/frames/model_nodes").await).await;
     for line in [
         "one booking\n",
-        "measure · flow · EUR\n",
+        "measure · additive · EUR\n",
         "grain · time axis\n",
         "/perf/app/console/p/glossary?table=ledger\n",
     ] {

@@ -1,7 +1,7 @@
 -- Why the metric moved: every slice's member cells at the viewer's
 -- grain, each member ranked by its own move between the newest two
 -- periods, largest first, the top eight. A member's move is at the
--- value column's behaviour; a ratio member's move is its own ratio
+-- value column's additivity; a ratio member's move is its own ratio
 -- shifting.
 WITH cells AS (
   SELECT dimension, member, period, value,

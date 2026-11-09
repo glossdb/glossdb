@@ -73,7 +73,7 @@ as a reference point. Labels stay small: `bug` · `ruling-candidate` ·
 become issues — SPEC.md §9 keeps that role.
 
 Code and its comments are the source of truth for what is implemented
-and live. A comment states a constraint or behavior the code cannot
+and live. A comment states a constraint or additivity the code cannot
 show — never history, never a run anecdote.
 
 Docs state what the system is and what is planned — never what was

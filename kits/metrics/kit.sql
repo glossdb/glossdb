@@ -1,6 +1,6 @@
 -- The metrics kit: a metric is a view, its columns carry the vocabulary,
 -- and the reads are SQL over the collapsed annotations and the view. Loaded after
--- the KPI kit, whose words the columns carry (role, behavior, dimension),
+-- the KPI kit, whose words the columns carry (role, additivity, dimension),
 -- and the quality kit, whose temporal profile measures a time column's
 -- cadence. What an actor must learn about these words is SKILL.md beside
 -- this file.
@@ -12,19 +12,19 @@
 -- A metric definition's view is a table of its dataset: the column that carries
 -- role timestamp is the metric's period, the column that carries role
 -- measure its value (the one named value where several do), the columns
--- that carry role dimension its slices. The behavior on the value column
+-- that carry role dimension its slices. The additivity on the value column
 -- says how a number combines over periods and members. Nothing is
 -- re-marked at read: a claim older than its data is stale by the
 -- catalog's own rule, and the reads serve it as the catalog does.
 
 --===------------------------------------------------------------------===--
--- The time grains (aspect `ladder`): how a time column's periods are walked. floor is the grain
+-- The time grains (aspect `time_grains`): how a time column's periods are walked. floor is the grain
 -- the series is served at, by default the measured cadence; windows is the
 -- rung per grain, how many whole buckets a read serves, measured back from
 -- the data's edge, by default the kit's. Required where the role is timestamp.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT ladder WITH $${
+DECLARE ASPECT time_grains WITH $${
   "type": "object",
   "properties": {
     "floor": {"enum": ["minute", "hour", "day", "week", "month", "quarter", "year"]},
@@ -37,7 +37,7 @@ DECLARE ASPECT ladder WITH $${
   }
 }$$ AS FACT ON COLUMN WHEN role = 'timestamp';
 
-DECLARE TEST ladder_test ON ladder BY (AGENT, HUMAN);
+DECLARE TEST time_grains_test ON time_grains BY (AGENT, HUMAN);
 
 -- The grains in order, a bucket's step, and the kit's rung per grain.
 CREATE OR REPLACE MACRO main.grain_rank(g) AS
@@ -52,15 +52,15 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
          WHEN 'month' THEN 48 WHEN 'quarter' THEN 40 WHEN 'year' THEN 20 END;
 
 --===------------------------------------------------------------------===--
--- metric_axes(): one row per metric of the bound dataset — a VIEW aspect
+-- metric_summary(): one row per metric of the bound dataset — a VIEW aspect
 -- whose metric definition is a view — what the catalog says its columns are
 -- and whether a series can be served: metric, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
 -- against), stopped (the author's text), applicable, reason (the road out
 -- when it is not), period_column, value_column, numerator and denominator
 -- (a ratio's halves), cadence (the period column's measured granularity),
--- floor (the time grains', else the cadence), rung (how many buckets the floor serves), behavior
--- and behavior_state (the collapsed claim on the value column, NULL and
+-- floor (the time grains', else the cadence), rung (how many buckets the floor serves), additivity
+-- and additivity_state (the collapsed claim on the value column, NULL and
 -- 'none' where nobody annotated it, 'conflict' where the test withholds it),
 -- dims (the slicing columns, primary first), unranked (the dimension
 -- columns no dimension gloss ranks), unadmitted (the served columns with
@@ -68,7 +68,7 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- wanted (the measurement the row reads and nobody ran), judged_current
 -- (the profile is current at the data's own version). A plan (x-kind plan) is
 -- read through the metric it names: its period and value are the columns
--- named as that metric's, or period and value, its behaviour the metric's,
+-- named as that metric's, or period and value, its additivity the metric's,
 -- its floor the grain its rows are booked against where the declaration
 -- says so (x-covers); nothing is glossed on a plan's own columns. A served
 -- plan's row wants the judgement the outlook kit measures on the plan
@@ -76,7 +76,7 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- the profile over its period column.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.metric_axes() AS TABLE
+CREATE OR REPLACE MACRO main.metric_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (
   SELECT name, schema FROM (
@@ -97,7 +97,7 @@ cols AS (
 slots AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
   FROM glossql_glossary(current_schema(), NULL, false)
-  WHERE aspect IN ('role', 'behavior', 'dimension', 'ladder', 'temporal_profile')
+  WHERE aspect IN ('role', 'additivity', 'dimension', 'time_grains', 'temporal_profile')
     AND len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
 claims AS (SELECT * FROM slots WHERE state IN ('current', 'stale') AND value IS NOT NULL),
@@ -115,20 +115,20 @@ chosen AS (
          p.cols AS period_cols, m.cols AS measure_cols,
          b.metric IN (SELECT metric FROM views) AS served
   FROM bodies b LEFT JOIN periods p USING (metric) LEFT JOIN measures m USING (metric)),
-behaviors AS (
+additivitys AS (
   SELECT s.metric, s.col,
-         CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'value' END AS behavior,
+         CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'value' END AS additivity,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'numerator' END AS numerator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'denominator' END AS denominator,
-         CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'conflict' END AS behavior_state
-  FROM slots s WHERE s.aspect = 'behavior' AND s.state <> 'missing'),
+         CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'conflict' END AS additivity_state
+  FROM slots s WHERE s.aspect = 'additivity' AND s.state <> 'missing'),
 profiles AS (
   SELECT metric, col,
          CASE WHEN (value->>'applicable') = 'true' AND (value->>'granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
               THEN value->>'granularity' END AS cadence,
          state = 'current' AS judged_current
   FROM claims WHERE aspect = 'temporal_profile'),
-ladders AS (SELECT metric, col, value->>'floor' AS floor, value->'windows' AS windows FROM claims WHERE aspect = 'ladder'),
+ladders AS (SELECT metric, col, value->>'floor' AS floor, value->'windows' AS windows FROM claims WHERE aspect = 'time_grains'),
 dims AS (
   SELECT r.metric, list(r.col ORDER BY CASE d.rank WHEN 'primary' THEN 0 WHEN 'supporting' THEN 1 ELSE 2 END, c.pos) AS cols
   FROM roles r JOIN cols c USING (metric, col)
@@ -154,7 +154,7 @@ rows_ AS (
          json_extract_string(a.schema, '$.x-covers') AS covers,
          json_extract_string(b.body, '$.stopped') AS stopped,
          ch.period_column, ch.value_column, ch.period_cols, ch.measure_cols, ch.served,
-         bh.behavior, bh.numerator, bh.denominator, coalesce(bh.behavior_state, 'none') AS behavior_state,
+         bh.additivity, bh.numerator, bh.denominator, coalesce(bh.additivity_state, 'none') AS additivity_state,
          pr.cadence, coalesce(pr.judged_current, false) AS judged_current,
          coalesce(la.floor, pr.cadence) AS floor, la.windows,
          coalesce(d.cols, []::VARCHAR[]) AS dims, coalesce(ur.cols, []::VARCHAR[]) AS unranked,
@@ -163,7 +163,7 @@ rows_ AS (
   FROM chosen ch
   JOIN aspects a ON a.name = ch.metric
   LEFT JOIN bodies b USING (metric)
-  LEFT JOIN behaviors bh ON bh.metric = ch.metric AND bh.col = ch.value_column
+  LEFT JOIN additivitys bh ON bh.metric = ch.metric AND bh.col = ch.value_column
   LEFT JOIN profiles pr ON pr.metric = ch.metric AND pr.col = ch.period_column
   LEFT JOIN ladders la ON la.metric = ch.metric AND la.col = ch.period_column
   LEFT JOIN dims d ON d.metric = ch.metric
@@ -184,9 +184,9 @@ judged AS (
          WHEN value_column IS NULL THEN
               'no column carries role measure: annotate the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
          WHEN floor IS NULL AND NOT profiled THEN
-              'no cadence is known on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss ladder with a floor'
+              'no cadence is known on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss time_grains with a floor'
          WHEN floor IS NULL THEN
-              'the profile finds no cadence on ' || period_column || ': gloss ladder with a floor, GLOSS ladder ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<grain>"}$$'
+              'the profile finds no cadence on ' || period_column || ': gloss time_grains with a floor, GLOSS time_grains ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<grain>"}$$'
     END AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || metric || '.' || period_column] ELSE []::VARCHAR[] END AS wanted
@@ -199,7 +199,7 @@ plans AS (
          CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
          m.metric IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
          m.period_column AS of_period, m.value_column AS of_value,
-         m.numerator, m.denominator, m.behavior, m.behavior_state
+         m.numerator, m.denominator, m.additivity, m.additivity_state
   FROM rows_ p
   LEFT JOIN plan_cols pc ON pc.metric = p.metric
   LEFT JOIN judged m ON m.metric = p.plan_of
@@ -219,12 +219,12 @@ judged_plans AS (
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, cadence, floor,
        CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.rung_default(floor)) END AS rung,
-       behavior, behavior_state, dims, unranked, unadmitted, missing, wanted, judged_current
+       additivity, additivity_state, dims, unranked, unadmitted, missing, wanted, judged_current
 FROM judged
 UNION ALL
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, NULL AS cadence, covers AS floor, NULL AS rung,
-       behavior, behavior_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
+       additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
        CASE WHEN reason IS NULL AND NOT EXISTS (SELECT 1 FROM main.measurements m
                                                 WHERE m.dataset = current_schema() AND m.function = 'metric_plan'
                                                   AND m.subject = current_schema() || '.' || judged_plans.metric)
@@ -237,7 +237,7 @@ ORDER BY metric;
 -- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
 -- of every applicable metric of the bound dataset — metric, world,
 -- dimension ('' the total, else a slicing column), member, period (the
--- bucket's start), value, num and den (a ratio's summed halves), behavior.
+-- bucket's start), value, num and den (a ratio's summed halves), additivity.
 -- Without a grain, each metric at its own floor; with one, each metric at
 -- or below it at that grain, a metric coarser than the asked grain serving
 -- no rows. A rung of n buckets is served, the edge's bucket the last. A
@@ -253,7 +253,7 @@ ORDER BY metric;
 -- world_cells(), which is empty until that kit is loaded.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
--- the floor, or several rows in one period — and no behaviour is annotated on
+-- the floor, or several rows in one period — and no additivity is annotated on
 -- the value column, the read refuses and names the gloss. It defaults
 -- nothing. A list over every metric asks unclaimed := 'skip' instead:
 -- such a metric serves no cell, and its fact row says what it needs.
@@ -261,13 +261,13 @@ ORDER BY metric;
 
 CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS behavior
+       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
 
 CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.*, coalesce(grain, m.floor) AS at_grain
-  FROM main.metric_axes() m
+  FROM main.metric_summary() m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
@@ -281,22 +281,22 @@ all_rows AS MATERIALIZED (
          list({'dimension': c."column", 'member': coalesce(c.val, 'NULL')}) FILTER (WHERE list_contains(a.dims, c."column")) AS members
   FROM cells c JOIN asked a ON a.metric = c."table"
   GROUP BY c."table", c.rn),
--- a value column with no behaviour, a conflicting one, or one said not to
+-- a value column with no additivity, a conflicting one, or one said not to
 -- combine (none) cannot be combined over rows
 combining AS (
-  SELECT a.metric, a.value_column, a.behavior, a.behavior_state,
+  SELECT a.metric, a.value_column, a.additivity, a.additivity_state,
          main.grain_rank(a.at_grain) > main.grain_rank(a.floor) AS coarser,
          count(*) > count(DISTINCT r.instant) AS shared
   FROM asked a JOIN all_rows r USING (metric)
-  WHERE a.behavior IS NULL OR a.behavior = 'none'
-  GROUP BY a.metric, a.value_column, a.behavior, a.behavior_state, a.at_grain, a.floor),
+  WHERE a.additivity IS NULL OR a.additivity = 'non-additive'
+  GROUP BY a.metric, a.value_column, a.additivity, a.additivity_state, a.at_grain, a.floor),
 refused AS (
   SELECT CASE WHEN count(*) > 0 AND unclaimed = 'refuse' THEN error(string_agg(
-           CASE WHEN behavior_state = 'conflict' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is in conflict'
-                WHEN behavior = 'none' THEN 'the behaviour on ' || current_schema() || '.' || metric || '.' || value_column || ' is none, so its rows do not combine'
-                ELSE 'no behavior is annotated on ' || current_schema() || '.' || metric || '.' || value_column END
+           CASE WHEN additivity_state = 'conflict' THEN 'the additivity on ' || current_schema() || '.' || metric || '.' || value_column || ' is in conflict'
+                WHEN additivity = 'non-additive' THEN 'the additivity on ' || current_schema() || '.' || metric || '.' || value_column || ' is non-additive, so its rows do not combine'
+                ELSE 'no additivity is annotated on ' || current_schema() || '.' || metric || '.' || value_column END
            || CASE WHEN coarser THEN ', and ' || metric || ' is asked at a coarser grain than its floor' ELSE ', and ' || metric || ' serves several rows in one period' END
-           || ': gloss it — GLOSS behavior ON ' || current_schema() || '.' || metric || '.' || value_column || ' AS $${"value": "<flow|stock|ratio>"}$$', '; ')) END AS refusal
+           || ': annotate it — GLOSS additivity ON ' || current_schema() || '.' || metric || '.' || value_column || ' AS $${"value": "<additive|semi-additive|ratio>"}$$', '; ')) END AS refusal
   FROM combining WHERE coarser OR shared),
 -- the metrics served: every asked one but those that need a claim nobody made; the refusal gates the
 -- cells served, below, where the rows are few
@@ -305,18 +305,18 @@ rows_ AS (
   WHERE r.metric NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
 bucketed AS (
   SELECT r.metric, r.instant, date_trunc(a.at_grain, r.instant) AS period, r.value, r.num, r.den, r.members,
-         coalesce(a.behavior, 'none') AS behavior, a.at_grain, a.rung
+         coalesce(a.additivity, 'none') AS additivity, a.at_grain, a.rung
   FROM rows_ r JOIN asked a USING (metric)
   WHERE r.instant IS NOT NULL),
 -- a metric's edge is its last bucket; a flow's is the data's edge — the last instant any served metric
 -- reaches, at the flow's grain — so a flow whose rows stopped early shows its zeros, not an older window
 own_edges AS (
   SELECT metric, min(period) AS first, max(period) AS own_edge, max(instant) AS last_at, any_value(at_grain) AS at_grain,
-         any_value(rung) AS rung, any_value(behavior) AS behavior
+         any_value(rung) AS rung, any_value(additivity) AS additivity
   FROM bucketed GROUP BY metric),
 edges AS (
-  SELECT metric, first, at_grain, rung, behavior,
-         CASE WHEN behavior = 'flow' THEN greatest(own_edge, date_trunc(at_grain, max(last_at) OVER ())) ELSE own_edge END AS edge
+  SELECT metric, first, at_grain, rung, additivity,
+         CASE WHEN additivity = 'additive' THEN greatest(own_edge, date_trunc(at_grain, max(last_at) OVER ())) ELSE own_edge END AS edge
   FROM own_edges),
 windowed AS (
   SELECT b.* FROM bucketed b JOIN edges e USING (metric)
@@ -324,22 +324,22 @@ windowed AS (
 -- a stock's level in a bucket is what holds at the bucket's last instant: that instant, per stock metric and bucket,
 -- grouped rather than windowed, since a window over every row of every flow costs the read more than the rest
 levels AS (
-  SELECT metric, period, max(instant) AS last_at FROM windowed WHERE behavior = 'stock' GROUP BY metric, period),
+  SELECT metric, period, max(instant) AS last_at FROM windowed WHERE additivity = 'semi-additive' GROUP BY metric, period),
 total AS (
-  SELECT w.metric, '' AS dimension, '' AS member, w.period, w.behavior,
-         CASE w.behavior WHEN 'stock' THEN sum(w.value) FILTER (WHERE w.instant = l.last_at)
+  SELECT w.metric, '' AS dimension, '' AS member, w.period, w.additivity,
+         CASE w.additivity WHEN 'semi-additive' THEN sum(w.value) FILTER (WHERE w.instant = l.last_at)
                          WHEN 'ratio' THEN sum(w.num) / nullif(sum(w.den), 0)
                          ELSE sum(w.value) END AS value,
-         CASE w.behavior WHEN 'ratio' THEN sum(w.num) END AS num,
-         CASE w.behavior WHEN 'ratio' THEN sum(w.den) END AS den
-  FROM windowed w LEFT JOIN levels l USING (metric, period) GROUP BY w.metric, w.period, w.behavior),
+         CASE w.additivity WHEN 'ratio' THEN sum(w.num) END AS num,
+         CASE w.additivity WHEN 'ratio' THEN sum(w.den) END AS den
+  FROM windowed w LEFT JOIN levels l USING (metric, period) GROUP BY w.metric, w.period, w.additivity),
 filled AS (
-  SELECT e.metric, '' AS dimension, '' AS member, g.period, e.behavior, 0.0 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den
+  SELECT e.metric, '' AS dimension, '' AS member, g.period, e.additivity, 0.0 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den
   FROM edges e, unnest(generate_series(greatest(e.first, e.edge - main.grain_step(e.at_grain) * (e.rung - 1)), e.edge, main.grain_step(e.at_grain))) AS g(period)
-  WHERE e.behavior = 'flow'
+  WHERE e.additivity = 'additive'
     AND NOT EXISTS (SELECT 1 FROM total t WHERE t.metric = e.metric AND t.period = g.period)),
 long AS (
-  SELECT w.metric, u.m.dimension AS dimension, u.m.member AS member, w.instant, w.period, w.value, w.num, w.den, w.behavior,
+  SELECT w.metric, u.m.dimension AS dimension, u.m.member AS member, w.instant, w.period, w.value, w.num, w.den, w.additivity,
          max(w.instant) OVER (PARTITION BY w.metric, u.m.dimension, u.m.member, w.period) AS member_last_at
   FROM windowed w, unnest(w.members) AS u(m)),
 weights AS (
@@ -347,19 +347,19 @@ weights AS (
          row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(abs(value)) DESC NULLS LAST, member) AS rank
   FROM long GROUP BY metric, dimension, member),
 member_cells AS (
-  SELECT l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END AS member, l.period, l.behavior,
-         CASE l.behavior WHEN 'stock' THEN sum(l.value) FILTER (WHERE l.instant = l.member_last_at)
+  SELECT l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END AS member, l.period, l.additivity,
+         CASE l.additivity WHEN 'semi-additive' THEN sum(l.value) FILTER (WHERE l.instant = l.member_last_at)
                          WHEN 'ratio' THEN sum(l.num) / nullif(sum(l.den), 0)
                          ELSE sum(l.value) END AS value,
-         CASE l.behavior WHEN 'ratio' THEN sum(l.num) END AS num,
-         CASE l.behavior WHEN 'ratio' THEN sum(l.den) END AS den
+         CASE l.additivity WHEN 'ratio' THEN sum(l.num) END AS num,
+         CASE l.additivity WHEN 'ratio' THEN sum(l.den) END AS den
   FROM long l JOIN weights wt USING (metric, dimension, member)
-  GROUP BY l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END, l.period, l.behavior)
-SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, behavior
+  GROUP BY l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END, l.period, l.additivity)
+SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, additivity
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL
 UNION ALL
-SELECT metric, world, dimension, member, period, value, num, den, behavior
+SELECT metric, world, dimension, member, period, value, num, den, additivity
 FROM main.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
 ORDER BY metric, dimension, member, period;
 
@@ -370,7 +370,7 @@ ORDER BY metric, dimension, member, period;
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
-WITH facts AS (SELECT metric, stopped FROM main.metric_axes() WHERE kind = 'scalar'),
+WITH facts AS (SELECT metric, stopped FROM main.metric_summary() WHERE kind = 'scalar'),
 cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
@@ -396,7 +396,7 @@ ORDER BY f.metric;
 
 CREATE OR REPLACE MACRO main.metric_sources(for_metric := NULL) AS TABLE
 WITH metrics AS (
-  SELECT m.metric FROM main.metric_axes() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
+  SELECT m.metric FROM main.metric_summary() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
 lineage AS (
   SELECT l.view AS metric, l."column" AS field, l.derivation, l.complete
   FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT metric FROM metrics)),
@@ -502,28 +502,28 @@ $$ RETURNS fan_out_check;
 DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 -- additivity_check: the metric's value column says how it combines over
--- time and members (behavior: a flow sums, a stock keeps the period's last
+-- time and members (additivity: a flow sums, a stock keeps the period's last
 -- level, a ratio re-divides its summed halves); without it a total or a
 -- coarser grain sums whatever the column holds, a stock or a ratio included.
 DECLARE ASPECT additivity_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "breach_rate": {"type": ["number", "null"]}, "behavior": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH a AS (SELECT * FROM main.metric_axes() WHERE metric = split_part($subject, '.', 2)),
+  WITH a AS (SELECT * FROM main.metric_summary() WHERE metric = split_part($subject, '.', 2)),
   ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable)
   SELECT ok.applicable,
          CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM a WHERE coalesce(kind, '') IN ('scalar', 'relation')),
                                                   'the definition does not say yet which column is the time and which the measure') END AS reason,
-         CASE WHEN ok.applicable THEN (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a) END AS breach_rate,
-         (SELECT behavior FROM a) AS behavior
+         CASE WHEN ok.applicable THEN (SELECT CASE WHEN additivity IS NULL OR additivity_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a) END AS breach_rate,
+         (SELECT additivity FROM a) AS additivity
   FROM ok
 $$ RETURNS additivity_check;
 
-DECLARE TEST additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 -- orphan_check: the share of rows on a declared edge between two tables the
 -- metric scans whose key finds no parent, from the stored coherence result
@@ -632,7 +632,7 @@ DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tol
 
 CREATE OR REPLACE MACRO main.metric_tests() AS TABLE
 WITH metrics AS (
-  SELECT metric FROM main.metric_axes()
+  SELECT metric FROM main.metric_summary()
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
 results AS (SELECT subject, aspect, test, band, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
@@ -702,9 +702,9 @@ report AS (
 $ctes$ AS ctes, $arms$
 SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
        CASE
-         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'say how ' || r.metric || ' combines'
-         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'annotate the columns of ' || r.metric
-         WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'say how ' || r.metric || ' combines'
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'annotate the columns of ' || r.metric
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'the join in ' || r.metric || ' fans out on ' || r.pairs
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'run the relationship screen for ' || r.metric
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.metric || ' reads ' || r.undated || ' without its validity dates'
@@ -714,7 +714,7 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          ELSE r.test || ' ' || r.state || ' on ' || r.subject
        END AS say,
        CASE
-         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'no behavior is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves'
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'no additivity is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves'
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'two tables ' || r.metric || ' scans share a key that repeats on both sides (' || r.pairs || '): the join multiplies rows unless the definition narrows it by the dates or a filter; where the join is right as it is, a tolerance on the metric says so'
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.undated || ' is effective-dated: a key repeats once per version, and a join or a filter that does not bound both validity columns counts a row once per version'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN 'rows on a declared join between tables ' || r.metric || ' scans find no parent: an inner join drops them, an outer join counts them under no member; fix the load, or record the rate as the tolerance'
@@ -723,9 +723,9 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          ELSE coalesce(r.reason, r.test || ' scored ' || coalesce(CAST(r.score AS VARCHAR), '?') || ' on ' || r.subject)
        END || CASE WHEN r.state <> 'not_run' AND NOT r.current THEN '; the result predates a change to what it read, and runs again at the next touch' ELSE '' END AS why,
        CASE
-         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'GLOSS behavior ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<flow|stock|ratio>", "grounds": "<why, in the business''s words>"}$$;'
-         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
-         WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'GLOSS additivity ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<additive|semi-additive|ratio>", "grounds": "<why, in the business''s words>"}$$;'
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- narrow the join on ' || r.pairs || ' by its dates or a filter, then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'SELECT detect_relationships() FROM ' || ds.dataset
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN '-- bound the validity columns of ' || r.undated || ' by the period (valid_from <= period AND valid_to > period), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
@@ -734,7 +734,7 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          ELSE r.run
        END AS statement,
        CASE
-         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'SELECT * FROM metric_series(grain := ''' || coalesce(a.floor, 'month') || ''') WHERE metric = ''' || r.metric || ''''
+         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'SELECT * FROM metric_series(grain := ''' || coalesce(a.floor, 'month') || ''') WHERE metric = ''' || r.metric || ''''
          WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- where one of the tables is effective-dated, say so and the validity test names the fix: GLOSS validity ON <table> AS $${"valid_from": "<column>", "valid_to": "<column>"}$$;' || chr(10) || '-- or, where the join is right as it is: GLOSS fan_out_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why the fan-out is meant>"}$$;'
          WHEN r.state = 'yellow' AND r.test IN ('fan_out_test', 'orphan_test') THEN r.run
          ELSE ''

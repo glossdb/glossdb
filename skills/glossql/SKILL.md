@@ -31,7 +31,7 @@ per statement:
   tables are uncapped.
 - a write — `{"affected": n}` or `{"done": "…"}`. One write answers
   with rows: a `GLOSS` on a VIEW aspect returns the metric's summary
-  row in the `metric_axes()` shape — read it before the next write.
+  row in the `metric_summary()` shape — read it before the next write.
 - a refused statement — a tool error whose text is the refusal. It
   names what was wrong and, in a sequence, its place: `statement 2 of
   7 refused: … — statement 1 ran; 3–7 not run`, with a
@@ -93,9 +93,9 @@ inside, nothing escaped — and closes as `}$$;`.
 ## Reading live state
 
 A fresh workspace is not empty: the kits — the KPI kit's `meaning`,
-`role`, `behavior`, `unit`, `dimension`, `entity` and the rest with
+`role`, `additivity`, `unit`, `dimension`, `entity` and the rest with
 their tests, the quality kit's measurements, the metrics kit's
-`ladder`, the outlook kit's worlds — are declared at open; read them
+`time_grains`, the outlook kit's worlds — are declared at open; read them
 back before declaring anything.
 
 - The catalog tables, as plain tables — these columns and no others;
@@ -148,16 +148,16 @@ guessed column costs a refusal. A named argument spells `:=`.
 
 | read | serves |
 |---|---|
-| `workspace_next` | every surface the workspace can grow along: what exists, what is open, what waits for a person |
+| `workspace_status` | every surface the workspace can grow along: what exists, what is open, what waits for a person |
 | `metric_tests()` | every test on each metric of the bound dataset and on what it reads — `metric`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
 | `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
 | `review_decisions` | the person's review decisions in force, with `folded_in` |
 | `open_items` | what waits on an action: a load-query approval, a formula answer, a conflicting value, a measurement stale or never made, a review decision not yet applied |
 | `agent_assumptions` | every assumption you currently disclose |
-| `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_axes()` |
-| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
-| `metric_axes()` | one row per metric: `metric`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `behavior`, `behavior_state`, `dims`, `unranked`, `unadmitted`, `missing` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
-| `band_points()` | the stored `metric_bands` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `behavior`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `band_verdict()` is the walk's verdict in one row |
+| `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_summary()` |
+| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `additivity`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `additivity` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
+| `metric_summary()` | one row per metric: `metric`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `additivity`, `additivity_state`, `dims`, `unranked`, `unadmitted`, `missing` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
+| `band_points()` | the stored `metric_bands` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `band_verdict()` is the walk's verdict in one row |
 | `forecast_points()` | the stored `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `actuals` fill as the periods arrive in the data; `held_80` is how often such a band held — this metric's own history once 30 of its points have arrived at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
 | `forecast_coverage()` | over every stored forecast where a point has arrived: `metric` (`''` the dataset as a whole), `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90` (the counts), `held_80`, `held_90` (the shares) — the rows `held_80` comes from once one reaches 30 points |
 | `scenario_points('name')` | the newest estimate cell by cell, `scenario_points(NULL)` every scenario — `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass` (`estimated`), `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at`; a lever is declared on a metric's column, `GLOSS lever ON metric.column AS $${"value": true, "grounds": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` annotated with `levers` — per lever the column as `metric.column`, a factor per period (`"2027-01": 1.15`) and a basis; `SELECT metric_scenario() FROM <dataset>` runs the estimate; hand an estimate out with its band and `held_80` |

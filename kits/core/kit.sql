@@ -61,7 +61,7 @@ CREATE OR REPLACE VIEW main.review_decisions AS
 
 -- What is still open for a person to judge: a keyed assumption below
 -- full confidence in a metric definition, in a dimension no function
--- owns (behavior, sign and grain are statistics), with no current
+-- owns (additivity, sign and grain are statistics), with no current
 -- review decision on its (dataset, subject, aspect, key). `sibling`
 -- carries a decision on the same key under another aspect, so the
 -- review can offer it back. No ORDER BY: order where you consume.
@@ -81,7 +81,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
-    AND coalesce(o.dimension, '-') NOT IN ('behavior', 'sign', 'grain')
+    AND coalesce(o.dimension, '-') NOT IN ('additivity', 'sign', 'grain')
     AND NOT EXISTS (SELECT 1 FROM main.review_decisions r
                     WHERE r.dataset = o.dataset AND r.subject = o.subject
                       AND r.aspect = o.aspect AND r.key = o.key)
@@ -140,7 +140,7 @@ CREATE OR REPLACE VIEW main.app_releases AS
 -- x-kind), unit and meaning from the definitions handbook, grounded
 -- (a definition with sql was written), stopped (the collapsed
 -- definition's own text, '' where it serves). The numbers are
--- metric_axes() and metric_series(); join on name.
+-- metric_summary() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.metric_surfaces AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (
@@ -185,7 +185,7 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
 -- surface and the agent can finish, `waiting` what waits for a person,
 -- `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
-CREATE OR REPLACE VIEW main.workspace_next AS
+CREATE OR REPLACE VIEW main.workspace_status AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
   ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
@@ -309,7 +309,7 @@ CREATE OR REPLACE VIEW main.workspace_next AS
     ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
     ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, behavior and dimension'),
+    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, additivity and dimension'),
     ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
     ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),

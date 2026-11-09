@@ -8,7 +8,7 @@
 // SQL clips the span.
 //
 // The grains offered start at the metric's resolution, read from the
-// cube's fact row (the `frame` attribute, `metric_axes()`): a finer
+// cube's fact row (the `frame` attribute, `metric_summary()`): a finer
 // grain would serve nothing. Without the row every grain is offered.
 // A URL naming no grain opens at the default — and when the metric's
 // resolution is coarser than that, the control replaces the URL with

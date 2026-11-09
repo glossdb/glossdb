@@ -32,7 +32,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
              || coalesce(' · one row per ' || array_to_string(json_extract(s.body, '$.grain')::VARCHAR[], ', '), '')
              || coalesce(' · time axis ' || json_extract_string(s.body, '$.time_axis'), '')
            WHEN 'unit' THEN json_extract_string(s.body, '$.value') || coalesce(', varying by ' || json_extract_string(s.body, '$.source_column'), '')
-           WHEN 'behavior' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
+           WHEN 'additivity' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
            WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            WHEN 'conventions' THEN array_to_string(json_keys(s.body), ', ')

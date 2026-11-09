@@ -15,7 +15,7 @@ annotated is open work. `WHEN` narrows what a column requires to what
 its role makes meaningful: a column without a role requires only
 `role`. A metric's view is a table of its dataset, so its columns
 carry these properties too: how its value adds up over periods and
-members is the `behavior` on its value column. Statistics are the
+members is the `additivity` on its value column. Statistics are the
 agent's work and never a question for a person; the review queue asks
 for judgment only.
 
@@ -25,17 +25,17 @@ for judgment only.
 | --- | --- | --- |
 | `meaning` | FACT ON TABLE, COLUMN, RELATIONSHIP | `value` (prose), optional `term` |
 | `role` | FACT ON COLUMN | `key` / `measure` / `dimension` / `timestamp` / `attribute` |
-| `behavior` | FACT ON COLUMN WHEN `role = 'measure'` | `stock` / `flow` / `ratio` / `none`, with `grounds`; a ratio names its halves, `numerator` and `denominator`. A flow sums, a stock keeps its last level, a ratio divides its summed halves; `none` does not combine |
+| `additivity` | FACT ON COLUMN WHEN `role = 'measure'` | `additive` / `semi-additive` / `ratio` / `non-additive`, with `grounds`; a ratio names its halves, `numerator` and `denominator`. A flow sums, a stock keeps its last level, a ratio divides its summed halves; `none` does not combine |
 | `unit` | FACT ON COLUMN WHEN `role = 'measure'` | the unit, optional `source_column` |
 | `dimension` | FACT ON COLUMN WHEN `role = 'dimension'` | `primary` / `supporting` / `none`, with `grounds` |
 | `entity` | FACT ON TABLE | what the table is: `value`, `role` (fact/dimension), `grain`, `time_axis`, `identity_columns` |
 | `conventions` | FACT ON SOURCE | fiscal calendar, sign conventions, what an export's nulls mean; shared by every dataset |
 | `definitions` | FACT ON DATASET | the business glossary, keyed by metric name: meaning, unit, owner, source, formula. The metric's own aspect keeps only `title` and `x-kind`; a field lives in exactly one place |
 
-The other kits add theirs beside these: `ladder` on a time column, the
+The other kits add theirs beside these: `time_grains` on a time column, the
 metrics kit's (the finest grain a series is served at and how many
 periods per grain, required where `role = 'timestamp'`, test
-`ladder_test`); `lever` on a column, the outlook kit's (`value` true: a
+`time_grains_test`); `lever` on a column, the outlook kit's (`value` true: a
 column someone sets, the input a scenario moves, with `grounds`; no
 test). The core kit declares `recipe_change`, `review_decision` and the app
 properties before any other kit.
@@ -54,7 +54,7 @@ open work reach zero.
 | `meaning_test` | `meaning` | AGENT, HUMAN | — |
 | `entity_test` | `entity` | AGENT, HUMAN | — |
 | `role_test` | `role` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `behavior_test` | `behavior` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
+| `additivity_test` | `additivity` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
 | `unit_test` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
 | `dimension_test` | `dimension` | AGENT, HUMAN | — |
 

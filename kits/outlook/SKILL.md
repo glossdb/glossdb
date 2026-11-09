@@ -59,7 +59,7 @@ SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() W
 ```
 
 `metric_bands` stores the service's verdict over every metric walked and,
-per metric, whether it was applicable and why not, its behaviour, the
+per metric, whether it was applicable and why not, its additivity, the
 months walked, the share of points inside the 80% and the 90% band, the
 newest point and every walked point. The test `bands_test` repeats the
 verdict through `band_breach` at 0.98. A metric too short for the walk

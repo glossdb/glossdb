@@ -154,7 +154,7 @@ impl GlossqlMcp {
         // the metrics skill's load page is where it starts.
         let opening = if datasets == 0 {
             "No dataset exists yet, so there is nothing to brief: `SELECT * FROM \
-             workspace_next` is the whole live state, and \
+             workspace_status` is the whole live state, and \
              `skill://glossql-metrics/SKILL.md` is where to begin."
         } else {
             "Open with the brief the glossql skill teaches — `USE` a dataset, then the \
@@ -247,7 +247,7 @@ impl GlossqlMcp {
     /// The next open question the workspace derives — judged
     /// assumptions below full confidence on the winning value, lowest
     /// confidence first. Judgment only, never statistics: a claim a
-    /// measurement can settle — behavior, unit,
+    /// measurement can settle — additivity, unit,
     /// role — is the agent's work through the shipped functions, and
     /// the interface never asks the human for it. A workspace with no
     /// dataset bound (or nothing open) derives nothing, and the round
@@ -572,7 +572,7 @@ impl GlossqlMcp {
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
                  {} (GLOSSARY(), TESTS() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
                  VIEW aspect — a metric definition — answers with the metric's summary row in \
-                 the `metric_axes()` shape: whether the SQL plans, its additivity and where \
+                 the `metric_summary()` shape: whether the SQL plans, its additivity and where \
                  that came from, the axes admitted, and every served column not admitted with \
                  how to admit it — read it before the next write. A refused statement is an \
                  error naming its place; what was stored before it stays stored \
@@ -645,7 +645,7 @@ struct RulingEntry<'a> {
 }
 
 /// What still holds open for a human to judge, and the round's ONLY
-/// derivation — missing tested claims (behavior, unit, role) are
+/// derivation — missing tested claims (additivity, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
 /// shipped functions settle them. The derivation itself is the core's
 /// `open_questions` read (`kits/core/kit.sql`), which carries

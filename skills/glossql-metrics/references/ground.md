@@ -78,7 +78,7 @@ the bucket's last instant, because that is how a multi-account
 balance totals — multiplies the level by the day's event count. The
 number is exact on every row and wrong in every sum. An interval
 table is a stock with two event columns, `+1` at the start date and
-`-1` at the end date, unioned into one served date. Annotate `behavior`
+`-1` at the end date, unioned into one served date. Annotate `additivity`
 stock on the value column with its grounds — a value without it does
 not combine at all, and a value annotated flow sums. Both shapes
 written down:
@@ -89,7 +89,7 @@ GLOSS payables_outstanding ON fin AS $${
 }$$;
 GLOSS role ON payables_outstanding.date AS $${"value": "timestamp"}$$;
 GLOSS role ON payables_outstanding.value AS $${"value": "measure"}$$;
-GLOSS behavior ON payables_outstanding.value AS $${"value": "stock", "grounds": "the running balance at the day's end"}$$;
+GLOSS additivity ON payables_outstanding.value AS $${"value": "semi-additive", "grounds": "the running balance at the day's end"}$$;
 ```
 
 ```glossql
@@ -98,7 +98,7 @@ GLOSS headcount ON hr AS $${
 }$$;
 GLOSS role ON headcount.date AS $${"value": "timestamp"}$$;
 GLOSS role ON headcount.value AS $${"value": "measure"}$$;
-GLOSS behavior ON headcount.value AS $${"value": "stock", "grounds": "open stints at the day's end"}$$;
+GLOSS additivity ON headcount.value AS $${"value": "semi-additive", "grounds": "open stints at the day's end"}$$;
 ```
 
 A flow, written down, with its judgment disclosed:
@@ -108,7 +108,7 @@ GLOSS throughput ON ops AS $${
   "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, w.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
   "assumptions": [
     {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
+    {"dimension": "additivity", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
   ]
 }$$;
 ```
@@ -160,7 +160,7 @@ it is not free — an axis you carry must exist on both sides, so pick
 the axes the question actually needs rather than every one available.
 
 **A ratio must serve its halves beside `value`, and name them.** Annotate
-`behavior` ratio on the value column with `numerator` and
+`additivity` ratio on the value column with `numerator` and
 `denominator` naming the served halves: they are how the series and
 the bands walk total it — `sum(num)/sum(den)` at every grain, which
 is right for the headline and for every member. A value annotated flow
@@ -197,13 +197,13 @@ belong — record the default you chose at the confidence it deserves,
 and the review serves it for confirmation. Judgment recorded at 1.0
 silences the review on exactly what it exists to ask.
 
-**Behaviour is claimed, never defaulted.** The series combines a
-metric's rows by the `behavior` on its value column — flow, stock or
+**Additivity is claimed, never defaulted.** The series combines a
+metric's rows by the `additivity` on its value column — flow, stock or
 ratio — and refuses to combine them while there is none; the write's
 answer says so, and `missing` lists the annotation until it is stored. The claim
 is yours, with its grounds: the column's meaning and the table's
 grain, never a name. The test (`DECLARE TEST`) scores disagreement between actors and
-measurements, and `metric_axes().behavior_state` says where the claim
+measurements, and `metric_summary().additivity_state` says where the claim
 is — `current`, `conflict`, `none` where nobody annotated it.
 
 **After defining, run `detect_grounding_collisions`.** Two concepts

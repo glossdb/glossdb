@@ -183,8 +183,8 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     assert_eq!(
         states,
         [
-            ("additivity_test".into(), "yellow".into()),
             ("fan_out_test".into(), "green".into()),
+            ("measure_additivity_test".into(), "yellow".into()),
             ("orphan_test".into(), "green".into()),
             ("validity_test".into(), "green".into()),
         ],
@@ -192,7 +192,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     );
     let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "state"), "next", "{row}");
-    assert_eq!(text(&row, "act"), "additivity_test", "{row}");
+    assert_eq!(text(&row, "act"), "measure_additivity_test", "{row}");
     assert_eq!(text(&row, "say"), "annotate the columns of spend", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS role ON fin.spend.period"),
@@ -200,7 +200,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     );
 
     // The roles stand and the period is profiled: the server ran the
-    // tests again after each call, and the behaviour is the act.
+    // tests again after each call, and the additivity is the act.
     say(
         &app,
         r#"GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
@@ -212,7 +212,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "say"), "say how spend combines", "{row}");
     assert!(
-        text(&row, "statement").contains("GLOSS behavior ON fin.spend.value"),
+        text(&row, "statement").contains("GLOSS additivity ON fin.spend.value"),
         "{row}"
     );
     let refusal = refused(
@@ -221,7 +221,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     )
     .await;
     assert!(
-        refusal.contains("no behavior is annotated on fin.spend.value"),
+        refusal.contains("no additivity is annotated on fin.spend.value"),
         "{refusal}"
     );
 
@@ -229,7 +229,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     // series serves at its floor and coarser.
     say(
         &app,
-        r#"GLOSS behavior ON spend.value AS $${"value": "flow"}$$;"#,
+        r#"GLOSS additivity ON spend.value AS $${"value": "additive"}$$;"#,
     )
     .await;
     let row = goal(&app, "spend").await;
@@ -273,7 +273,7 @@ async fn the_next_page_carries_the_test_and_its_statement() {
         .unwrap_or_else(|| panic!("{body}"));
     assert!(page.starts_with("# next on fin"), "{page}");
     assert!(page.contains("## spend: next"), "{page}");
-    assert!(page.contains("additivity_test"), "{page}");
+    assert!(page.contains("measure_additivity_test"), "{page}");
     assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
     assert!(!page.contains("```glossql\n\n```"), "no empty form: {page}");
 
@@ -303,7 +303,7 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     .await;
     let written = &outcomes[1]["rows"][0];
     assert_eq!(written["applicable"], json!(true), "{outcomes}");
-    assert_eq!(written["behavior"], json!("flow"), "{outcomes}");
+    assert_eq!(written["additivity"], json!("additive"), "{outcomes}");
     let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "state"), "done", "{row}");
     let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;

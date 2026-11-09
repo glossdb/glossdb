@@ -1,9 +1,9 @@
 -- The picked slice: one dimension's members at the viewer's grain, at
--- the value column's behaviour, the span clipped here. The page renders
+-- the value column's additivity, the span clipped here. The page renders
 -- this tile only when the URL carries a dim.
-SELECT period, member AS series, value, num, den, behavior
+SELECT period, member AS series, value, num, den, additivity
 FROM (
-  SELECT period, member, value, num, den, behavior,
+  SELECT period, member, value, num, den, additivity,
          dense_rank() OVER (ORDER BY period DESC) AS recency
   FROM metric_series(grain := $grain)
   WHERE metric = CAST($metric AS VARCHAR) AND dimension = CAST($dim AS VARCHAR))

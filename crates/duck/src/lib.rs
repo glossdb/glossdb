@@ -465,10 +465,10 @@ const RECORD: &[&str] = &[
     "agent_assumptions",
     "open_items",
     "metric_surfaces",
-    "metric_axes",
+    "metric_summary",
     "metric_sources",
     "metric_tests",
-    "workspace_next",
+    "workspace_status",
     "app_parts",
     "app_releases",
     "next",
@@ -830,7 +830,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
     };
     let shared = format!(
         "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
-         axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_axes()), \
+         axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_summary()), \
          open_items AS MATERIALIZED (SELECT * FROM {LAKE}.main.open_items), \
          reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
@@ -1659,7 +1659,7 @@ impl Session {
                      WHERE r.actor = 'function' AND NOT r.current \
                      UNION \
                      SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_axes()) \
+                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_summary()) \
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
                      FROM {LAKE}.main.open_items o \
@@ -1952,7 +1952,7 @@ fn grounding_row(
     inline_columns(conn, aspect, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
-        &format!("SELECT * FROM {LAKE}.main.metric_axes() WHERE metric = '{quoted}'"),
+        &format!("SELECT * FROM {LAKE}.main.metric_summary() WHERE metric = '{quoted}'"),
         &[],
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
@@ -2022,9 +2022,9 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                 .get("additivity")
                 .and_then(|a| a.as_str())
                 .map(|a| match a {
-                    "additive" => "flow",
-                    "semi-additive" => "stock",
-                    "non-additive" => "none",
+                    "flow" => "additive",
+                    "stock" => "semi-additive",
+                    "none" => "non-additive",
                     other => other,
                 });
             if let Some(value) = additivity {
@@ -2034,7 +2034,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                         said[half] = v.clone();
                     }
                 }
-                annotate("behavior", &column, said)?;
+                annotate("additivity", &column, said)?;
             }
             if let Some(unit) = measure.get("unit").and_then(|u| u.as_str()) {
                 annotate("unit", &column, serde_json::json!({"value": unit}))?;

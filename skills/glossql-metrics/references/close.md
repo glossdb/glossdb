@@ -45,7 +45,7 @@ says judgment.
 The read-back covers the whole agreed set of metrics, not just what
 was defined: name every metric that has no definition yet and what
 would close it. Size the review honestly. Name the load-bearing
-judgments (entity, behavior, unit, anything a wrong value silently
+judgments (entity, additivity, unit, anything a wrong value silently
 corrupts) one by one. For a hundred `meaning` annotations exhaustive
 review is theater: show the distribution and a spot-check sample, and
 treat a failed spot-check as the batch's problem, not the row's.

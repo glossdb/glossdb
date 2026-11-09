@@ -137,7 +137,7 @@ reads as healthy. The SQL computes the change; the tile only shows it.
 `<gl-window frame="frames/axes">`
 
 The viewer's grain and span as links over the page URL (`grain`,
-`span`). It reads the metric's finest grain from a `metric_axes()`
+`span`). It reads the metric's finest grain from a `metric_summary()`
 frame and offers the grains from there up.
 
 ### gl-query
@@ -182,7 +182,7 @@ fetches again in place.
 own page (`/<dataset>/app` opens it): pages `index.html` (the review
 queue), `metrics.html`, `quality.html`, `glossary.html`,
 `lineage.html`, `export.html` and `query.html`; frames over the views
-and table functions, `metric_series()`, `metric_axes()`,
+and table functions, `metric_series()`, `metric_summary()`,
 `forecast_points()`, `plan_points()`, `metric_sources()` and `imports`;
 two specs. Every built-in frame runs under the test suite. What each
 page shows: [the console](../usage/console.md).

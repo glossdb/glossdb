@@ -7,7 +7,7 @@ A property must be declared before anyone can annotate it. The language
 reference is [SPEC.md §5](https://github.com/glossdb/glossql/blob/main/SPEC.md).
 
 The `kpi` kit declares the properties most datasets need: `meaning`,
-`role`, `behavior`, `unit`, `dimension`, `entity`, `conventions`,
+`role`, `additivity`, `unit`, `dimension`, `entity`, `conventions`,
 `definitions` ([the KPI kit](../reference/kpi-kit.md)).
 
 ## Declare a property

@@ -135,8 +135,8 @@ A frame is planned through the same path every other read takes, so
 every read is available inside one — a metric definition under its name,
 `metric_series(grain := $grain)` for the cells at a grain
 (`dimension = ''` is the total; a row carries `num`/`den` for a
-ratio's summed halves and `behavior`, the verb that made it),
-`metric_axes()` for what the catalog says of each metric's columns,
+ratio's summed halves and `additivity`, the verb that made it),
+`metric_summary()` for what the catalog says of each metric's columns,
 and `band_points()` for the stored walk beside the real books:
 
 ```sql
@@ -149,7 +149,7 @@ a read's argument counts as a value (`metric_series(grain := $grain)` works). Th
 
 A viewer's window is ordinary params: `?grain=quarter&span=24` binds
 as `$grain` and `$span`, and the frame SQL is the filter — the series
-serves the grain by the metric's behaviour on the server, the frame
+serves the grain by the metric's additivity on the server, the frame
 clips the span (`dense_rank() OVER (ORDER BY period DESC)` against `$span`).
 A reference's own params are the author's defaults
 (`frames/trend?grain=month&span=24`); the page URL overrides them, and
@@ -197,7 +197,7 @@ frame, a spec, a tile or a link. Four macros and a prose block:
   numbers by metric name).
 - `<gl-window frame="frames/<axes>">` — the viewer's grain and span as
   links over the page URL; it reads the metric's resolution from a
-  `metric_axes()` frame and offers the grains from there up. Member
+  `metric_summary()` frame and offers the grains from there up. Member
   moves are a frame, not a component: rank them in SQL (the console's
   `drivers.sql` is the shape) and place them with `gl-rows`.
 - `<gl-graph nodes="frames/<nodes>" edges="frames/<edges>">` — column

@@ -9,7 +9,7 @@ WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 said AS (
   SELECT subject, aspect, value FROM GLOSSARY()
-  WHERE aspect IN ('role', 'behavior', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
+  WHERE aspect IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
 landed AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 ent AS (
   SELECT substr(s.subject, len(d.dataset) + 2) AS tbl,
@@ -21,7 +21,7 @@ ent AS (
 colsaid AS (
   SELECT subject,
          max(CASE WHEN aspect = 'role' THEN json_extract_string(value, '$.value') END) AS role,
-         max(CASE WHEN aspect = 'behavior' THEN json_extract_string(value, '$.value') END) AS behavior,
+         max(CASE WHEN aspect = 'additivity' THEN json_extract_string(value, '$.value') END) AS additivity,
          max(CASE WHEN aspect = 'unit' THEN json_extract_string(value, '$.value') END) AS unit,
          max(CASE WHEN aspect = 'dimension' THEN json_extract_string(value, '$.value') END) AS dimension
   FROM said
@@ -33,7 +33,7 @@ cols AS (
          coalesce(cs.role, '') AS role,
          concat_ws(' · ',
            nullif(cs.role, ''),
-           CASE WHEN cs.role = 'measure' THEN nullif(cs.behavior, 'none') END,
+           CASE WHEN cs.role = 'measure' THEN nullif(cs.additivity, 'none') END,
            CASE WHEN cs.role = 'measure' THEN cs.unit END,
            CASE WHEN cs.role = 'dimension' THEN nullif(cs.dimension, 'none') END,
            CASE WHEN list_contains(e.grain, c.column_name) THEN 'grain' END,
@@ -47,7 +47,7 @@ cols AS (
   LEFT JOIN ent e ON e.tbl = c.table_name
   WHERE c.table_catalog = current_database()),
 axes AS (
-  SELECT metric, "floor" AS grain, behavior FROM metric_axes()),
+  SELECT metric, "floor" AS grain, additivity FROM metric_summary()),
 -- a served field's role: the view's own column's where one holds, else
 -- the column's it descends from
 fields AS (
@@ -63,7 +63,7 @@ fields AS (
 SELECT node, kind, col, ord, role, detail, sub, link FROM cols
 UNION ALL
 SELECT f.node, f.kind, f.col, f.ord, f.role, f.role AS detail,
-       concat_ws(' · ', 'by ' || a.grain, nullif(a.behavior, 'none')) AS sub,
+       concat_ws(' · ', 'by ' || a.grain, nullif(a.additivity, 'none')) AS sub,
        (SELECT b FROM base) || 'metrics?metric=' || f.node AS link
 FROM fields f
 LEFT JOIN axes a ON a.metric = f.node

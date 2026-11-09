@@ -15,7 +15,7 @@ slots AS (
          row_number() OVER (PARTITION BY g.subject, g.aspect
            ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect IN ('meaning', 'role', 'unit', 'behavior', 'dimension') AND g.actor_kind IN ('human', 'agent')),
+  WHERE g.aspect IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
 cur AS (SELECT subject, aspect, actor_kind, actor_id, body, written_at FROM slots WHERE rn = 1),
 states AS (SELECT subject, state FROM GLOSSARY() WHERE aspect = 'meaning'),
 joined AS (
@@ -59,7 +59,7 @@ cols AS (
   CROSS JOIN d
   LEFT JOIN cur r ON r.subject = m.subject AND r.aspect = 'role'
   LEFT JOIN cur x ON x.subject = m.subject AND x.aspect = 'dimension'
-  LEFT JOIN cur b ON b.subject = m.subject AND b.aspect = 'behavior'
+  LEFT JOIN cur b ON b.subject = m.subject AND b.aspect = 'additivity'
   LEFT JOIN cur u ON u.subject = m.subject AND u.aspect = 'unit'
   LEFT JOIN joined j ON j.path = m.subject
   LEFT JOIN states st ON st.subject = m.subject

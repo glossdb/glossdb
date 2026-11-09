@@ -61,7 +61,7 @@ turns red when the source drifts.
 ## Read the results
 
 ```glossql
-SELECT * FROM TESTS(orders.amount::behavior);
+SELECT * FROM TESTS(orders.amount::additivity);
 SELECT subject, band FROM TESTS(fin.trial_balance) WHERE band = 'red';
 ```
 
@@ -106,10 +106,10 @@ whose truth is known by construction ([functions](../reference/functions.md),
   where every other statistic mistakes it for a real price move. A
   confirmed identity, checked again on each load, is the standing test
   for subtle corruption.
-- **`behavior_evidence`**: whether a numeric column is a stock or a
+- **`additivity_evidence`**: whether a numeric column is a stock or a
   flow, reconciled against the movements a related event table carries
-  ([behavior](../methods/behavior.md)). Read it before annotating
-  `behavior`.
+  ([additivity](../methods/additivity.md)). Read it before annotating
+  `additivity`.
 - **`relationship_coherence`**: orphans and date order on every
   declared join ([relationships](relationships.md)).
 - **`detect_relationships`, `column_profile`, `outlier_profile`,
@@ -119,7 +119,7 @@ whose truth is known by construction ([functions](../reference/functions.md),
   definition scans: `fan_out_test`, join fan-out (two tables sharing a
   key that repeats on both sides, so the join multiplies rows);
   `orphan_test`, referential integrity on its declared joins (the
-  share of rows whose key finds no parent); `additivity_test`, whether
+  share of rows whose key finds no parent); `measure_additivity_test`, whether
   its value column says how it combines over time and members.
   `metric_tests()` lists every test on each metric and on what it
   reads, worst first, with the statement that runs it; a person

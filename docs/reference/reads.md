@@ -13,7 +13,7 @@ Common rules:
 - A table function's named arguments use `:=` and come in any order.
 - Formatting, glyphs and links are the caller's business.
 - `open_questions`, `agent_assumptions`, `review_decisions`, `app_parts`,
-  `app_releases` and `workspace_next` cover the whole workspace and
+  `app_releases` and `workspace_status` cover the whole workspace and
   carry `dataset` on every row; `current_dataset` names the dataset a
   call is bound to. The kits' table functions and `open_items` answer for the
   bound dataset and refuse a call bound to none.
@@ -25,7 +25,7 @@ Common rules:
 The bound dataset: one row, column `dataset`; no row on a call bound to
 no dataset. Join it to narrow a workspace-wide view.
 
-### workspace_next
+### workspace_status
 
 Where the workspace stands on each thing it can be extended with. Not
 a task list. Columns: `surface` (`sources`, `tables`, `relationships`,
@@ -51,7 +51,7 @@ agent's part is done.
 The review queue: what waits for a person to decide. Derived from
 `agent_assumptions`: an assumption with a key, below full confidence,
 on a metric definition, in a dimension no function measures
-(`behavior`, `sign` and `grain` are statistics), with no review
+(`additivity`, `sign` and `grain` are statistics), with no review
 decision on its (dataset, subject, aspect, key). Columns: `dataset`,
 `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`,
 `alternative`, `conf`, and `sibling`, `sibling_stance`,
@@ -106,24 +106,24 @@ glossary. Columns: `name`, `title`, `kind` (the aspect's `x-kind`),
 `unit` and `meaning` (from `definitions`), `formula` (from
 `definitions`, or the default for a base metric), `grounded` (a
 definition with `sql` was written), `stopped` (the stop reason; empty
-while it serves). The numbers are in `metric_axes()` and
+while it serves). The numbers are in `metric_summary()` and
 `metric_series()`; join on `name`.
 
 ## The metrics kit
 
 A metric's view is a table of its dataset. Its columns carry roles:
 `timestamp` is the period, `measure` the value (the one named `value`
-where several are), `dimension` the slices. The `behavior` on the value
+where several are), `dimension` the slices. The `additivity` on the value
 column says how a number adds up over periods and members: a flow
 sums, a stock keeps its last level, a ratio divides its summed halves,
-named `numerator` and `denominator`. The `ladder` on the period column
+named `numerator` and `denominator`. The `time_grains` on the period column
 sets the time grains: `floor`, the finest grain the series is served
 at, by default the measured cadence; `windows`, how many whole periods
 each grain serves, counted back from the data's edge. Nothing is
 recomputed at read: an annotation older than its data is stale, and
 the functions return it as the catalog has it.
 
-### metric_axes()
+### metric_summary()
 
 One row per metric of the bound dataset: what its columns are, and
 whether a series can be served. Columns: `metric`, `kind` (the
@@ -131,9 +131,9 @@ aspect's `x-kind`), `plan_of` and `covers` (a plan's metric, and the
 grain its rows are booked at), `stopped` (the stop reason),
 `applicable`, `reason` (what to do when it is not), `period_column`,
 `value_column`, `numerator`, `denominator`, `cadence` (the period
-column's measured grain), `floor` (the ladder's, else the cadence),
-`rung` (how many periods the floor serves), `behavior` and
-`behavior_state` (the value column's additivity: NULL and `none` where
+column's measured grain), `floor` (the time_grains's, else the cadence),
+`rung` (how many periods the floor serves), `additivity` and
+`additivity_state` (the value column's additivity: NULL and `none` where
 nobody said, `conflict` where the test withholds it), `dims` (the
 slicing columns, primary first), `unranked` (dimension columns no
 `dimension` annotation ranks), `unadmitted` (served columns with no
@@ -150,8 +150,8 @@ outlook kit's `metric_plan` until one exists, as a metric's row asks
 for the profile of its period column.
 
 ```sql
-SELECT metric, applicable, reason, behavior, floor, rung, dims, missing, wanted
-FROM metric_axes() ORDER BY metric
+SELECT metric, applicable, reason, additivity, floor, rung, dims, missing, wanted
+FROM metric_summary() ORDER BY metric
 ```
 
 ### metric_series()
@@ -163,7 +163,7 @@ metric_series(grain := …, world := …, plan := …, scenario := …, unclaime
 The cells of every applicable metric of the bound dataset. Columns:
 `metric`, `world`, `dimension` (`''` for the total, else a slicing
 column), `member`, `period` (a timestamp, the start of the period),
-`value`, `num` and `den` (a ratio's summed halves), `behavior`. Without
+`value`, `num` and `den` (a ratio's summed halves), `additivity`. Without
 a grain, each metric at its own floor. With one (`minute` … `year`),
 each metric at or below it at that grain; a metric coarser than the
 grain asked serves no rows. The floor's window of `n` periods is
@@ -177,9 +177,9 @@ instant. A ratio divides its summed halves. A dimension with more than
 24 members serves its top 23 by weight and `other`.
 
 No default: where rows must be combined and the value column has no
-`behavior`, the function refuses and names the annotation it needs. A
+`additivity`, the function refuses and names the annotation it needs. A
 list over every metric passes `unclaimed := 'skip'`: such a metric
-serves no cell, and its `metric_axes()` row says what it needs.
+serves no cell, and its `metric_summary()` row says what it needs.
 
 `world := 'actual'` is the default: what the definitions compute from
 the data. `world := 'forecast'` serves the newest forecast's medians at
@@ -237,7 +237,7 @@ stands and the test runs again at the next touch), `score`, `evidence`
 (the check's own result), `run` (the statement that runs it again;
 empty where none does). The metrics kit's own tests appear on every
 metric, run or not: `fan_out_test` (join fan-out), `orphan_test`
-(referential integrity on the declared joins) and `additivity_test`
+(referential integrity on the declared joins) and `measure_additivity_test`
 (whether the value column says how it combines). Each reads the
 evidence the quality kit stored, never the data again; a check whose
 evidence is not stored yet reads `yellow` and says what to run. A test
@@ -268,7 +268,7 @@ The newest walk's verdict, one row, none before a walk: `served_by`
 ### band_points()
 
 The newest walk, one row per metric and month walked. Columns:
-`metric`, `applicable`, `reason`, `behavior`, `walked`, `held_80` and
+`metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80` and
 `held_90` (the share of walked points inside the 10–90 and the 5–95
 band), `period`, `actual`, `p05` … `p95`, `pit`, `withheld`,
 `displacement` (|2·pit − 1|, what the detector scores), `newest` (the
@@ -285,7 +285,7 @@ WHERE newest ORDER BY displacement DESC
 ### forecast_points()
 
 The newest forecast, one row per metric and point. Columns: `seq`,
-`metric`, `applicable`, `reason`, `behavior`, `grain` (the metric's
+`metric`, `applicable`, `reason`, `additivity`, `grain` (the metric's
 floor), `origin` (the last period with a value), `served_by`,
 `computed_at`, `current` (whether the measurement is current),
 `point_seq`, `step` (periods after the origin), `span` (on a total: the
@@ -400,7 +400,7 @@ a metric's row reads and nobody ran, or a tested measurement on the
 dataset with no result while a metric is defined), `apply-decision` (a review
 decision whose key is still below full confidence). Each row clears by
 the action it names, never by a flag. Refuses a call bound to no
-dataset; a workspace with no dataset yet reads `workspace_next`.
+dataset; a workspace with no dataset yet reads `workspace_status`.
 
 ### pages()
 

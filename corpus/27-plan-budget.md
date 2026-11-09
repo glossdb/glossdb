@@ -77,7 +77,7 @@ DECLARE ASPECT expense WITH $${
 
 GLOSS expense ON brla AS $${
   "sql": "SELECT fiscalmonth, actual AS value, fund, segment2, charactercodedescription FROM expense_budget",
-  "behavior": "flow",
+  "additivity": "additive",
   "axes": ["fund", "segment2", "charactercodedescription"],
   "assumptions": [
     {"dimension": "grain", "assumption": "actual is the month's amount, not the year to date",
@@ -106,7 +106,7 @@ its metric by `x-plan-of` in the declaration — the tie is the plan's
 identity, checked at `DECLARE` against the declared VIEW aspects,
 never re-tied. The body is the standard grounding schema (SPEC §5.2),
 unchanged: a plan's numbers are a landed table, read by SQL as the
-actual's are. The plan has its own `behavior`, `axes` and
+actual's are. The plan has its own `additivity`, `axes` and
 assumptions, its own slot under the supersession key, its own test
 if wanted. An edition is an aspect: the adopted budget and the amended
 budget both stand, and a re-gloss of either corrects that edition's
@@ -128,7 +128,7 @@ DECLARE ASPECT revised_budget WITH $${
 
 GLOSS revised_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, revisedbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",
-  "behavior": "flow",
+  "additivity": "additive",
   "axes": ["fund", "segment2", "charactercodedescription"],
   "assumptions": [
     {"dimension": "grain", "assumption": "a year's budget: the adopted figure in January, each amendment in its month; read at year grain",
@@ -144,7 +144,7 @@ DECLARE ASPECT original_budget WITH $${
 
 GLOSS original_budget ON brla AS $${
   "sql": "SELECT fiscalmonth, originalbudget AS value, fund, segment2, charactercodedescription FROM expense_budget",
-  "behavior": "flow",
+  "additivity": "additive",
   "axes": ["fund", "segment2", "charactercodedescription"]
 }$$;
 ```
@@ -206,7 +206,7 @@ grain asked, as the actual does; it spreads nothing.
   no cube read. The plan would have no name of its own — the catalog's
   view under the metric's name is the actual's, `read.<metric>()`
   serves the actual — so the plan's rows would need a second spelling
-  and a second view name. And `behavior`, `axes` and `grain` would be
+  and a second view name. And `additivity`, `axes` and `grain` would be
   shared, right here and wrong where a budget comes by department
   and the actual by account.
 - **One SQL with a `world` column** (`'actual' AS world … UNION ALL
@@ -233,7 +233,7 @@ grain asked, as the actual does; it spreads nothing.
   fixture 19 pays per scenario. The column would also have been the
   first gloss whose output names other aspects by value — a tie
   carried in data, found at the read instead of at `DECLARE` — and one
-  body's `behavior` and `axes` would speak for every line at once.
+  body's `additivity` and `axes` would speak for every line at once.
   Here the two placements coincide, one metric; the generator's
   budget, many metrics in one table, is where they part.
 
@@ -254,13 +254,13 @@ about what the read does:
   the cube keeps the plans apart, and the walk, the forecast and the
   collision pass pass them over. The catalog holds the plan's view
   under its own name, `read.<plan>()` serves its rows, and
-  `metric_axes()` lists it with `plan_of`.
+  `metric_summary()` lists it with `plan_of`.
 - The tie is checked at `DECLARE` (`crates/session/src/plan_world.rs`,
   `check_declaration`): `x-kind: plan` on a FACT, no `x-plan-of`, a
   metric nobody declared, a FACT or MEASUREMENT aspect, or another
   plan is refused before the declaration lands. A metric stopped
   later leaves its plan standing; the stop is the metric's own
-  `metric_axes()` row.
+  `metric_summary()` row.
 - `plan_points()` (`crates/session/src/plan_world.rs`) serves every
   plan against the actual and the forecast, one row per plan and
   period at the plan's own resolution and at the year — the plan's

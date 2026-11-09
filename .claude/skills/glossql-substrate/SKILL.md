@@ -74,7 +74,7 @@ mode; this file is so nobody has to rediscover it.
   subject as `$subject`.
 - **A view's columns are subjects.** A metric's definition is a view
   under its name, and the words that make it a series — role,
-  behaviour, the time grains — are glosses on its columns. A re-gloss of
+  additivity, the time grains — are glosses on its columns. A re-gloss of
   the view retires its columns' glosses by the stale rule; the reads
   serve what the catalog says and re-mark nothing.
 - **Measurements carry their provenance.** A measurement is current
