@@ -463,6 +463,9 @@ SELECT 'metrics' AS surface, 1 AS step, 'next' AS state, 'GLOSS definitions' AS 
        'GLOSS ' || a.name || ' ON ' || ds.dataset || ' AS $${"sql": "<the metric definition>"}$$;' AS "then"
 FROM metrics_declared a, ds
 WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
+  AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.subject = g.dataset AND g.aspect = a.name)
+  AND NOT EXISTS (SELECT 1 FROM main.glossary d WHERE d.subject = d.dataset AND d.aspect = 'definitions'
+                  AND json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL)
 UNION ALL
 SELECT 'metrics', 2, 'next', 'DECLARE ASPECT view',
        'declare the first concept',
