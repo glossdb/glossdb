@@ -1,29 +1,49 @@
 # Next steps
 
-After every call, the agent is told where each goal stands and the one
-action that moves it. This is the `next` view, built from the kits.
-Kits add goals the same way.
+After every call, the agent is told where each served metric stands:
+its worst test, the evidence, and the statement that settles it. Then
+what a person decided and the agent has not applied. This is the `next`
+view, built from the kits. Kits add goals the same way.
 
 ## The goals
 
 | Goal | Done when | From |
 |---|---|---|
-| `structure` | tables loaded, relationships declared and checked | `goals` kit |
-| `metrics` | every metric the dataset claims is served or stopped | `metrics` kit |
-| `slices` | every applicable metric slices by its dimension columns | `metrics` kit |
-| `bands` | the expected-range walk exists and no band is red, or the red carries a question or a review decision (preview) | `outlook` kit |
-| `checks` | the dataset's own tests exist, every test ran, none is red | `goals` kit |
-| `app` | an app exists over the metrics | `goals` kit |
-| `plan` | every plan is served and compared, none lies outside the forecast's band, or the gap carries a question or a review decision (preview) | `outlook` kit |
+| one per served metric, named by the metric | every test on the metric is green or accepted: no red, none unrun | `metrics` kit |
 | `review` | nothing waits: review decisions applied, approved load queries declared again, contested values read | `goals` kit |
+| `bands` | the expected-range walk exists and no band is red, or the red carries a question or a review decision (preview; only where a model service is named) | `outlook` kit |
+| `plan` | every plan is served and compared, none lies outside the forecast's band, or the gap carries a question or a review decision (preview; only where a model service is named) | `outlook` kit |
 
-The goal is the caller's: what the person asked for decides which one
-the agent follows. Nothing is stored about it, and no step is an order.
+A dataset with no served metric gets one row, `metrics`, saying so.
+The goal is the caller's: what the person asked for decides which
+metric the agent works on. Nothing is stored about it, and no step is
+an order.
+
+## The tests behind a metric's goal
+
+The metrics kit ships three tests on every metric, over the tables its
+definition scans: `fan_out_test`, join fan-out; `orphan_test`,
+referential integrity on the declared joins; `additivity_test`,
+whether the value column says how it combines. Each reads the evidence
+the quality kit stored and never the data again. The server runs them
+after a call that defines a metric, glosses its columns or imports a
+table it scans, and again the ones whose result predates a measurement
+the call made, so the line reads results. `metric_tests()` lists every
+test on each metric and on what it reads, a team's own tests included
+([views and table functions](../reference/reads.md#metric_tests)).
+
+The step is the worst state: red, then orange, yellow (a check whose
+evidence is not stored yet, or a definition whose columns carry no
+role), unassessed. A result that predates a change to what it read
+keeps its band and says so; the server runs it again at the next touch.
+The statement settles it: a fix to the definition or the load, the
+measurement to run, or, where the number is right as it is, a tolerance
+a person records on the metric.
 
 ## Reading it
 
 ```sql
-SELECT surface, step, state, say, statement FROM next ORDER BY goal
+SELECT surface, step, state, say, statement FROM next ORDER BY goal, surface
 ```
 
 One row per goal: `state` is `next`, `blocked` or `done`; `say` is the
@@ -34,8 +54,8 @@ only the author can fill in; `then` is what follows it
 
 Over MCP, every tool result ends with the same rows as one line:
 
-```
-next: structure: done · metrics → define churn (next://ops/metrics) · slices → blocked: no applicable metric exists · …
+```text
+next: staff_by_title → the join in staff_by_title fans out on dept_emp.emp_no ~ titles.emp_no (next://hr/staff_by_title) · done: headcount, review
 ```
 
 Each link is a resource, `next://<dataset>/<goal>`, which serves the
@@ -58,10 +78,10 @@ row decides. The last step of a goal is an unconditional `done`.
 At every open the server writes `next` from every `routes_<name>()`
 macro in the lake's `main` schema. The steps read the catalog, never
 the data, through relations the server computes once: `ds` (the bound
-dataset), `axes` (`metric_axes()`), `open_items`, `reds` (red test results),
-`bodies` (the current metric definition per metric) and `applicable`
-(the applicable metrics). Goals sort in the order of the table above;
-a goal the server does not know sorts last.
+dataset), `axes` (`metric_axes()`), `open_items`, `reds` (red test
+results) and `bodies` (the current metric definition per metric). The
+metrics' goals sort first, `review` next, the outlook's after; a goal
+the server does not know sorts with the metrics.
 
 ## Adding a goal
 

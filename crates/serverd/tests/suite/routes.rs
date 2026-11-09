@@ -137,122 +137,78 @@ async fn fin() -> (Router, tempfile::TempDir) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_fresh_dataset_routes_every_goal() {
+async fn a_fresh_dataset_is_told_once_that_no_metric_is_served() {
     let (app, _dir) = fin().await;
-    let all = rows(&app, "SELECT * FROM next ORDER BY goal").await;
+    let all = rows(&app, "SELECT * FROM next ORDER BY goal, surface").await;
     let surfaces: Vec<String> = all.iter().map(|r| text(r, "surface")).collect();
-    assert_eq!(
-        surfaces,
-        [
-            "structure",
-            "metrics",
-            "slices",
-            "bands",
-            "checks",
-            "app",
-            "plan",
-            "review"
-        ],
-        "{all:?}"
-    );
-    let state = |surface: &str| {
-        all.iter()
-            .find(|r| r["surface"] == json!(surface))
-            .map(|r| text(r, "state"))
-            .unwrap_or_default()
-    };
-    // The table came by SQL, not by a recipe: the structure goal still
-    // asks for the source the files come from.
-    assert_eq!(state("structure"), "next");
-    assert_eq!(
-        text(&goal(&app, "structure").await, "act"),
-        "DECLARE SOURCE"
-    );
+    // No metric is served: one row says so, and the review queue is
+    // empty. The outlook's preview goals stay out while no model
+    // service is named.
+    assert_eq!(surfaces, ["metrics", "review"], "{all:?}");
     let metrics = goal(&app, "metrics").await;
-    assert_eq!(text(&metrics, "state"), "next");
-    assert_eq!(text(&metrics, "say"), "declare the first concept");
-    assert_eq!(state("slices"), "blocked");
-    assert_eq!(state("app"), "blocked");
-    assert_eq!(state("review"), "done");
-    // The bands goal is the outlook kit's: blocked while no metric is
-    // applicable. The plan goal is done while no plan is declared.
-    let bands = goal(&app, "bands").await;
-    assert_eq!(text(&bands, "state"), "blocked", "{bands}");
+    assert_eq!(text(&metrics, "state"), "next", "{metrics}");
     assert_eq!(
-        text(&bands, "why"),
-        "no applicable metric exists",
-        "{bands}"
+        text(&metrics, "say"),
+        "define the first metric",
+        "{metrics}"
     );
-    let plan = goal(&app, "plan").await;
-    assert_eq!(text(&plan, "state"), "done", "{plan}");
-    assert!(
-        text(&plan, "why").starts_with("no plan is declared"),
-        "{plan}"
-    );
+    assert_eq!(text(&goal(&app, "review").await, "state"), "done");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_metric_walks_from_its_claim_to_its_behaviour() {
+async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     let (app, _dir) = fin().await;
 
-    // Declared and claimed by nobody: the claim is the act.
-    say(
-        &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
-    )
-    .await;
-    let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "say"), "claim spend for fin", "{row}");
-    assert!(
-        text(&row, "statement").starts_with("GLOSS definitions ON fin"),
-        "{row}"
-    );
-
-    // Claimed and not grounded: the metric definition, or a stop.
-    say(&app, r#"GLOSS definitions ON fin AS $${"definitions": {"spend": {"unit": "EUR", "meaning": "what was booked"}}}$$;"#).await;
-    let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "say"), "define spend, or stop it", "{row}");
-    assert!(text(&row, "statement").contains("\"stopped\""), "{row}");
-
-    // Grounded: the write answers with the metric's row, and the
-    // view's columns owe their roles.
+    // Defined: the write answers with the metric's row, the server runs
+    // the built-in tests, and the additivity test says the columns owe
+    // their roles. One table scanned: nothing to fan out, no join to check.
     let outcomes = say(
         &app,
-        r#"GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
-    let written = &outcomes[0]["rows"][0];
+    let written = &outcomes[1]["rows"][0];
     assert_eq!(written["metric"], json!("spend"), "{outcomes}");
     assert_eq!(written["applicable"], json!(false), "{outcomes}");
-    let row = goal(&app, "metrics").await;
+    let tests = rows(
+        &app,
+        "SELECT test, state FROM metric_tests() WHERE metric = 'spend' ORDER BY test",
+    )
+    .await;
+    let states: Vec<(String, String)> = tests
+        .iter()
+        .map(|r| (text(r, "test"), text(r, "state")))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("additivity_test".into(), "yellow".into()),
+            ("fan_out_test".into(), "green".into()),
+            ("orphan_test".into(), "green".into()),
+        ],
+        "{tests:?}"
+    );
+    let row = goal(&app, "spend").await;
+    assert_eq!(text(&row, "state"), "next", "{row}");
+    assert_eq!(text(&row, "act"), "additivity_test", "{row}");
     assert_eq!(text(&row, "say"), "gloss the columns of spend", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS role ON fin.spend.period"),
         "{row}"
     );
-    assert_eq!(text(&goal(&app, "slices").await, "state"), "blocked");
 
-    // The roles stand and no cadence does: the profile is the act.
+    // The roles stand and the period is profiled: the server ran the
+    // tests again after each call, and the behaviour is the act.
     say(
         &app,
         r#"GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
            GLOSS role ON spend.value AS $${"value": "measure"}$$;
-           GLOSS role ON spend.fund AS $${"value": "dimension"}$$;"#,
+           GLOSS role ON spend.fund AS $${"value": "dimension"}$$;
+           SELECT temporal() FROM fin.spend.period;"#,
     )
     .await;
-    let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "say"), "profile period of spend", "{row}");
-    assert_eq!(
-        text(&row, "statement"),
-        "SELECT temporal() FROM fin.spend.period",
-        "{row}"
-    );
-
-    // Profiled: the metric is applicable, and the behaviour is the act —
-    // the view serves a row per fund in each period, so the series
-    // refuses to combine them until it is said; the slice wants its rank.
-    say(&app, "SELECT temporal() FROM fin.spend.period;").await;
-    let row = goal(&app, "metrics").await;
+    let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "say"), "say how spend combines", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS behavior ON fin.spend.value"),
@@ -267,55 +223,38 @@ async fn a_metric_walks_from_its_claim_to_its_behaviour() {
         refusal.contains("no behavior is annotated on fin.spend.value"),
         "{refusal}"
     );
-    assert!(
-        refusal.contains("GLOSS behavior ON fin.spend.value"),
-        "{refusal}"
-    );
-    let slices = goal(&app, "slices").await;
-    assert_eq!(text(&slices, "say"), "rank fund on spend", "{slices}");
-    assert_eq!(
-        text(&goal(&app, "app").await, "say"),
-        "write the first page over 1 metric"
-    );
 
-    // Said: the series serves at its floor and coarser, the metrics
-    // goal is done, the slices goal once the rank stands.
+    // Said: every test is green and the metric's goal is done; the
+    // series serves at its floor and coarser.
     say(
         &app,
         r#"GLOSS behavior ON spend.value AS $${"value": "flow"}$$;"#,
     )
     .await;
+    let row = goal(&app, "spend").await;
+    assert_eq!(text(&row, "state"), "done", "{row}");
+    assert!(text(&row, "why").contains("green or accepted"), "{row}");
     let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
-    let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "state"), "done", "{row}");
-    assert!(text(&row, "why").contains("served or stopped"), "{row}");
-    let quarters = rows(&app, "SELECT period, value FROM metric_series(grain := 'quarter') WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
-    assert_eq!(quarters.len(), 2, "{quarters:?}");
-    say(
-        &app,
-        r#"GLOSS dimension ON spend.fund AS $${"value": "primary"}$$;"#,
-    )
-    .await;
-    assert_eq!(text(&goal(&app, "slices").await, "state"), "done");
 
-    // A stop ends the view and holds no goal.
+    // A stop ends the view and its goal with it.
     say(
         &app,
         r#"GLOSS spend ON fin AS $${"stopped": "the ledger is not booked before 2024"}$$;"#,
     )
     .await;
-    let row = goal(&app, "metrics").await;
-    assert_eq!(text(&row, "state"), "done", "{row}");
-    assert_eq!(text(&goal(&app, "app").await, "state"), "blocked");
+    let all = rows(&app, "SELECT surface FROM next ORDER BY goal, surface").await;
+    let surfaces: Vec<String> = all.iter().map(|r| text(r, "surface")).collect();
+    assert_eq!(surfaces, ["metrics", "review"], "{all:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_next_page_carries_the_forms() {
+async fn the_next_page_carries_the_test_and_its_statement() {
     let (app, _dir) = fin().await;
     say(
         &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;"#,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
     let body = expect_ok(
@@ -323,7 +262,7 @@ async fn the_next_page_carries_the_forms() {
             app.clone(),
             "/fin/mcp",
             json!({"jsonrpc": "2.0", "id": 5, "method": "resources/read",
-                   "params": {"_meta": meta(), "uri": "next://fin/metrics"}}),
+                   "params": {"_meta": meta(), "uri": "next://fin/spend"}}),
         )
         .await,
     )
@@ -332,52 +271,19 @@ async fn the_next_page_carries_the_forms() {
         .as_str()
         .unwrap_or_else(|| panic!("{body}"));
     assert!(page.starts_with("# next on fin"), "{page}");
-    assert!(page.contains("## metrics: next"), "{page}");
-    assert!(page.contains("claim spend for fin"), "{page}");
-    assert!(page.contains("GLOSS definitions ON fin"), "{page}");
+    assert!(page.contains("## spend: next"), "{page}");
+    assert!(page.contains("additivity_test"), "{page}");
+    assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
     assert!(!page.contains("```glossql\n\n```"), "no empty form: {page}");
 
-    // Every result on the dataset's interface closes with the line.
+    // Every result on the dataset's interface closes with the line: the
+    // metric with its test to settle, the done goals folded at the end.
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(6, "SELECT 1 AS one")).await).await;
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(window.contains("next:"), "{window}");
     assert!(
-        window.contains("metrics → claim spend for fin (next://fin/metrics)"),
+        window.contains("spend → gloss the columns of spend (next://fin/spend)"),
         "{window}"
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_metric_another_dataset_claimed_is_not_offered() {
-    let (app, _dir) = fin().await;
-    say(
-        &app,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS definitions ON fin AS $${"definitions": {"spend": {"unit": "EUR", "meaning": "what was booked"}}}$$;"#,
-    )
-    .await;
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/mcp",
-            call(0, "DECLARE DATASET ops SET (purpose: 'a second dataset');"),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    // fin's metric is fin's: ops is told to declare its own, never to claim spend.
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/ops/mcp",
-            call(1, "SELECT * FROM next WHERE surface = 'metrics'"),
-        )
-        .await,
-    )
-    .await;
-    let text_out = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text_out).unwrap();
-    let row = &outcomes[0]["rows"][0];
-    assert_eq!(text(row, "say"), "declare the first concept", "{row}");
+    assert!(window.contains("done: review"), "{window}");
 }

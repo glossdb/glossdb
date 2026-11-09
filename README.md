@@ -72,8 +72,8 @@ works](docs/overview/how-it-works.md). Every word: [terms](docs/overview/terms.m
 
 - an MCP server with one tool for glossql and SQL, the skills served as
   resources and prompts, every result ending with the next steps;
-- goals per dataset (structure, metrics, slices, checks, apps, review),
-  each with what is done, what is open, and the next statement;
+- the test report after every call: per metric its worst test, the
+  evidence and the statement that settles it, then the review queue;
 - a review queue, answered in the console or in the agent's client;
 - the semantic layer's queries: a metric's series by time grain, its
   slices by dimension, what moved;

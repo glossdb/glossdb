@@ -71,7 +71,8 @@ WHERE dimension = '' ORDER BY metric, period
 After applying a batch of review decisions, run `temporal()` over the
 period columns once; `judged_current` is true on the console's next
 load. The
-`review` and `slices` goals carry that order on the `next:` line.
+`review` goal and the metric's test report carry that order on the
+`next:` line.
 
 ## The bands walk
 

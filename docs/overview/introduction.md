@@ -26,8 +26,9 @@ down, checks it against the data, and serves it back on every call.
   time grain and dimension.
 - **A review queue.** Assumptions below full confidence go to a person;
   the answer outranks every agent's.
-- **Next steps.** Every result over MCP ends with what is still open,
-  one action per goal.
+- **Next steps.** Every result over MCP ends with the test report:
+  per metric its worst test and the statement that settles it, then
+  the review queue.
 - **A console** for people, an **MCP server** for agents, and **Arrow
   over HTTP** for tools — one binary with DuckDB inside, on a DuckLake.
 

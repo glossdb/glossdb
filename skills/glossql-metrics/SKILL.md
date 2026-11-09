@@ -1,6 +1,6 @@
 ---
 name: glossql-metrics
-description: Take a glossql workspace from raw exports to a workspace someone can use — the eight goals the next: line tracks: structure, metrics, slices, bands, checks, a page, the plan judged against the forecast, review decisions applied; done when every goal is done or blocked. Use for any substantive work in a workspace: onboarding a source, declaring relationships, defining a metric, authoring a check or a page.
+description: Take a glossql workspace from raw exports to a workspace someone can use — the join structure, the metrics the business trusts, the axes they slice on, the checks that say why a number holds, a page, the plan judged against the forecast, review decisions applied; done when every served metric's tests are green or accepted and nothing waits on you. Use for any substantive work in a workspace: onboarding a source, declaring relationships, defining a metric, authoring a check or a page.
 ---
 
 # From files to numbers someone trusts
@@ -14,24 +14,33 @@ forecast, and every review decision a person made applied. The
 this one teaches the judgment inside each goal — what to decide, what
 to measure, what to ask.
 
-**The work is done when every goal is done or blocked.** The server
-says where you are on each after every call, on the `next:` line:
+**The work is done when every served metric's tests are green or
+accepted and nothing waits on you.** After every call the server
+reports the tests on each served metric, worst first, on the `next:`
+line:
 
 ```text
-next: structure: done · metrics → define churn (next://ops/metrics) · slices → record churn again — serving one of region, channel (next://ops/slices) · bands → blocked: no applicable metric exists · checks → run metric_bands (next://ops/checks) · app → write the first page over 3 metrics (next://ops/app) · plan: done · review: done
+next: staff_by_title → the join in staff_by_title fans out on dept_emp.emp_no ~ titles.emp_no (next://hr/staff_by_title) · headcount → say how headcount combines (next://hr/headcount) · done: review
 ```
 
-A goal that is neither done nor blocked is yours to move. Read its
-link — `next://<dataset>/<goal>` as a resource, or `SELECT * FROM
-next WHERE surface = '<goal>'` through the tool — and send the statement
-it hands you, edited to your judgment. A metric list is one goal of
-eight, not the deliverable: the metrics the person names are the ones
-to define first, and the other seven goals apply whether or not anyone
-named them. The person's ask sets the order and can close a goal ("no
-page this time"); nothing else does. Beyond that there is no fixed
-order, and the line is never one.
+The built-in tests are join fan-out, orphaned keys on the declared
+joins and the additivity of the value; a test of the team's own lists
+beside them. The server runs the built-in tests itself after a call
+that defines a metric, glosses its columns or imports a table it
+scans, so the line reads results. A metric with a test to settle is
+yours to move. Read its link — `next://<dataset>/<metric>` as a
+resource, or `SELECT * FROM next WHERE surface = '<metric>'` through
+the tool — and send the statement it hands you, edited to your
+judgment: a fix to the definition or the load, or, where the number is
+right as it is, a tolerance a person records on the metric. A metric
+list is one part of the work, not the deliverable: the metrics the
+person names are the ones to define first, and the other goals apply
+whether or not anyone named them. The person's ask sets the order and
+can close a goal ("no page this time"); nothing else does. Beyond that
+there is no fixed order, and the line is never one. The parts of the
+work, and where the judgment inside each is taught:
 
-| goal | done when | the judgment |
+| part | done when | the judgment |
 |---|---|---|
 | `structure` | the edges are declared and the coherence check ran | `references/structure.md` |
 | `metrics` | every metric the dataset claims is served, or stopped with the reason | `references/ground.md`, and below |
@@ -42,20 +51,22 @@ order, and the line is never one.
 | `plan` | every plan is served and judged against the forecast at the current origin, and no plan year lies outside the forecast's band — or the gap carries your question or a review decision | `references/ladder.md`, the plan world |
 | `review` | every review decision is applied and nothing is open | `skill://glossql/references/review.md` |
 
-**When every goal is done or blocked, offer one next step of each
-kind, as a proposal.** The metrics done row's why names what the
-catalog left unused: the tables no metric definition reads, the judged
-columns none serves. From those, say what one more metric could be, in a
+**When every served metric's tests are green or accepted, offer one
+next step of each kind, as a proposal.** The tables no metric
+definition reads and the judged columns none serves are what the
+catalog left unused. From those, say what one more metric could be, in a
 sentence, with its grounds. From the served metrics the app's pages
 do not show, say what one more page could be, the same way. One of
 each, in prose. Write nothing until the person says so: the next
 concept is theirs to name, and the proposal is there to help them
 think, not to fill the workspace.
 
-`workspace_next` is the map behind the line — every surface, what
-exists, what is open for you, what waits for a person — when you want
-the counts. Your part is done when nothing is open; questions waiting
-for a person do not hold it open.
+`metric_tests()` is the table behind the line — every test on each
+metric and on what it reads, with the statement that runs it —
+and `workspace_next` the map of the workspace: every surface, what
+exists, what is open for you, what waits for a person. Your part is
+done when no test is red or unrun on a served metric; questions
+waiting for a person do not hold it open.
 
 ## What you are making
 

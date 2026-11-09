@@ -433,7 +433,15 @@ SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.functi
 ----
 2	true
 
-# the routes judge the plan from the catalog: the judgement asked for, asked again, then the gap
+# the routes judge the plan from the catalog: the judgement asked for, asked again, then the gap; served only where a model service is named
+query I
+SELECT count(*) FILTER (WHERE arms <> '') FROM routes_outlook();
+----
+0
+
+statement ok
+SET GLOBAL glossql_service_url = 'http://model.test';
+
 query III
 SELECT count(*) FILTER (WHERE arms LIKE '%''plan'', 7, ''next'', ''metric_plan''%'),
        count(*) FILTER (WHERE arms LIKE '%''plan'', 8, ''next'', ''metric_plan''%'),

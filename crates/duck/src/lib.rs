@@ -781,9 +781,10 @@ impl std::fmt::Debug for Plane {
 /// The `next` read, written at open from every `routes_<kit>()` macro
 /// the kits and the interface declare: each serves its goals' CTEs and arms
 /// as SQL text over the reads this query takes once — `ds`, `axes`,
-/// `open_items`, `reds`, `bodies`, `applicable` — so one `next` reads the
-/// record once per relation, and the lowest step decides each goal, in
-/// the goals' order.
+/// `open_items`, `reds`, `bodies` — so one `next` reads the record once
+/// per relation, and the lowest step decides each goal. The goals' order:
+/// one per served metric, named by the metric, then review, then the
+/// outlook's preview goals.
 fn next_view(conn: &Connection) -> Result<String, SessionError> {
     let (_, _, batches) = arrow_batches(
         conn,
@@ -834,9 +835,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
          reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
          bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
            SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
-           FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1), \
-         applicable AS (SELECT count(*) AS n, string_agg(metric, ', ' ORDER BY metric) AS metrics, \
-           string_agg(chr(39) || metric || chr(39), ', ' ORDER BY metric) AS metric_list FROM axes WHERE applicable)"
+           FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1)"
     );
     let kit_ctes = if ctes.is_empty() {
         String::new()
@@ -847,9 +846,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
          steps AS ({steps}), \
          first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
-         SELECT CASE surface WHEN 'structure' THEN 1 WHEN 'metrics' THEN 2 WHEN 'slices' THEN 3 \
-                             WHEN 'bands' THEN 4 WHEN 'checks' THEN 5 WHEN 'app' THEN 6 \
-                             WHEN 'plan' THEN 7 ELSE 8 END AS goal, \
+         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'bands' THEN 3 WHEN 'plan' THEN 4 ELSE 1 END AS goal, \
                 surface, step, state, act, say, why, statement, \"then\" \
          FROM first WHERE rn = 1"
     ))
@@ -1475,6 +1472,7 @@ impl Session {
             let pieces: Vec<String> = split_statements(&text);
             let total = pieces.len();
             let mut outcomes = Vec::with_capacity(total);
+            let mut lines = Vec::new();
             for (i, piece) in pieces.iter().enumerate() {
                 let ran = if root {
                     execute_one(&conn, piece, cap)
@@ -1482,7 +1480,10 @@ impl Session {
                     admitted(piece).and_then(|()| execute_one(&conn, piece, cap))
                 };
                 match ran {
-                    Ok(outcome) => outcomes.push(outcome),
+                    Ok((outcome, line)) => {
+                        outcomes.push(outcome);
+                        lines.extend(line);
+                    }
                     Err(e) if total == 1 => return Err(e),
                     Err(e) => {
                         return Err(SessionError::Sequence {
@@ -1494,6 +1495,19 @@ impl Session {
                         });
                     }
                 }
+            }
+            // What the call wrote decides which metrics' tests run now;
+            // a failed sequence runs none, and the next call's write does.
+            // A measurement the call ran may be the evidence a check reads,
+            // so the checks whose result predates it run again too.
+            let measured = pieces.iter().any(|p| measurement_call(p));
+            if (measured
+                || lines
+                    .iter()
+                    .any(|l| l.starts_with("glossed ") || l.starts_with("imported ")))
+                && let Err(e) = built_in_tests(&conn, &lines, measured)
+            {
+                tracing::debug!(error = %e, "built-in tests: not run");
             }
             Ok(outcomes)
         })
@@ -1710,8 +1724,14 @@ impl Session {
 }
 
 /// One statement, run once: a glossql statement answers one line, a
-/// write its count, a read its rows under the cap.
-fn execute_one(conn: &Connection, sql: &str, cap: usize) -> Result<Outcome, SessionError> {
+/// write its count, a read its rows under the cap. The language's own
+/// outcome line rides beside the outcome, where there is one, so the
+/// call can tell afterwards what it glossed and what it imported.
+fn execute_one(
+    conn: &Connection,
+    sql: &str,
+    cap: usize,
+) -> Result<(Outcome, Option<String>), SessionError> {
     let cap = if reads_record(sql) { usize::MAX } else { cap };
     let (kind, _, batches) = arrow_batches(conn, sql, &[])?;
     match kind {
@@ -1719,25 +1739,167 @@ fn execute_one(conn: &Connection, sql: &str, cap: usize) -> Result<Outcome, Sess
             let n = one_cell(&batches)
                 .and_then(|c| c.parse::<u64>().ok())
                 .unwrap_or(0);
-            Ok(Outcome::Affected(n))
+            Ok((Outcome::Affected(n), None))
         }
-        ResultType::Nothing => Ok(Outcome::Done(String::new())),
+        ResultType::Nothing => Ok((Outcome::Done(String::new()), None)),
         _ => {
             if is_glossql_head(sql)
                 && let Some(text) = one_cell(&batches)
             {
                 if let Some(row) = grounding_row(conn, &text)? {
-                    return Ok(Outcome::Rows {
-                        batches: row,
-                        truncated: false,
-                    });
+                    return Ok((
+                        Outcome::Rows {
+                            batches: row,
+                            truncated: false,
+                        },
+                        Some(text),
+                    ));
                 }
-                return Ok(Outcome::Done(text));
+                return Ok((Outcome::Done(text.clone()), Some(text)));
             }
             let (batches, truncated) = cut(batches, cap);
-            Ok(Outcome::Rows { batches, truncated })
+            Ok((Outcome::Rows { batches, truncated }, None))
         }
     }
+}
+
+/// The built-in tests the server runs itself, once per call, after the
+/// statements ran: for every metric the call defined, glossed (the view
+/// or one of its columns) or whose scanned table it imported, every test
+/// whose aspect is marked `x-subject: metric` runs over the metric, as
+/// CI runs a suite after a commit. A check that fails is logged and
+/// never fails the call; its row stays unassessed and the test report
+/// says so.
+fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result<(), SessionError> {
+    let newest = |table: &str| {
+        format!(
+            "(SELECT * FROM {LAKE}.main.{table} QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)"
+        )
+    };
+    let (_, _, batches) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT a.name FROM {} w JOIN {} a ON a.name = w.aspect \
+             WHERE json_extract_string(a.schema, '$.x-subject') = 'metric' ORDER BY a.name",
+            newest("tests"),
+            newest("aspects")
+        ),
+        &[],
+    )?;
+    let checks: Vec<String> = rows_as_text(&batches)
+        .into_iter()
+        .filter_map(|row| row.into_iter().next().flatten())
+        .collect();
+    if checks.is_empty() {
+        return Ok(());
+    }
+    // A metric is a VIEW aspect that serves a series: a plan, a sample,
+    // a single value and a derived relation have no tests of this kind.
+    let is_metric = |name: &str| -> Result<bool, SessionError> {
+        let quoted = name.replace('\'', "''");
+        let (_, _, kind) = arrow_batches(
+            conn,
+            &format!(
+                "SELECT kind = 'VIEW' AND coalesce(json_extract_string(schema, '$.x-kind'), '') \
+                 NOT IN ('plan', 'sample', 'scalar', 'relation') \
+                 FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
+            ),
+            &[],
+        )?;
+        Ok(one_cell(&kind).as_deref() == Some("true"))
+    };
+    let mut metrics: std::collections::BTreeSet<(String, String)> = Default::default();
+    for line in lines {
+        if let Some(rest) = line.strip_prefix("glossed ") {
+            // `glossed <aspect> on <subject> as <actor>`
+            let Some((aspect, subject)) = rest.split_once(" on ") else {
+                continue;
+            };
+            let subject = subject.split(" as ").next().unwrap_or(subject).trim();
+            let segments: Vec<&str> = subject.split('.').collect();
+            let (dataset, candidate) = match segments.as_slice() {
+                [dataset] => (*dataset, aspect.trim()),
+                [dataset, view, ..] => (*dataset, *view),
+                _ => continue,
+            };
+            if is_metric(candidate)? {
+                metrics.insert((dataset.to_string(), candidate.to_string()));
+            }
+        } else if let Some(rest) = line.strip_prefix("imported ") {
+            let table = rest.split(':').next().unwrap_or("").trim();
+            let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
+                continue;
+            };
+            let (_, _, views) = arrow_batches(
+                conn,
+                &format!(
+                    "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
+                    dataset.replace('\'', "''"),
+                    table.replace('\'', "''")
+                ),
+                &[],
+            )?;
+            for row in rows_as_text(&views) {
+                if let Some(Some(view)) = row.first()
+                    && is_metric(view)?
+                {
+                    metrics.insert((dataset.to_string(), view.clone()));
+                }
+            }
+        }
+    }
+    for (dataset, metric) in metrics {
+        for check in &checks {
+            if let Err(e) = run(conn, &format!("SELECT {check}() FROM {dataset}.{metric}")) {
+                tracing::debug!(error = %e, %dataset, %metric, %check, "built-in test: not run");
+            }
+        }
+    }
+    // The kits' checks whose result predates what they read, on the
+    // bound dataset: a call bound to none has no report to read.
+    if measured
+        && let Ok((_, _, stale)) = arrow_batches(
+            conn,
+            &format!(
+                "SELECT run FROM {LAKE}.main.metric_tests() \
+                 WHERE NOT current AND declared_by LIKE 'kit:%' AND run <> ''"
+            ),
+            &[],
+        )
+    {
+        for row in rows_as_text(&stale) {
+            if let Some(Some(statement)) = row.first()
+                && let Err(e) = run(conn, statement)
+            {
+                tracing::debug!(error = %e, %statement, "built-in test: not run again");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether a statement is a measurement call, `SELECT <function>() FROM
+/// <subject>`: the shape every function in the library is run by.
+fn measurement_call(sql: &str) -> bool {
+    let lower = sql.trim().to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("select") else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    let name_end = rest
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(rest.len());
+    if name_end == 0 {
+        return false;
+    }
+    let rest = rest[name_end..].trim_start();
+    let Some(rest) = rest.strip_prefix('(') else {
+        return false;
+    };
+    let Some(rest) = rest.trim_start().strip_prefix(')') else {
+        return false;
+    };
+    rest.trim_start().starts_with("from")
 }
 
 /// A metric definition's write answers with the metric's fact row: what the

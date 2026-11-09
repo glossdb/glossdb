@@ -70,9 +70,9 @@ Then close what waits on an action, in the same session:
   moves the pin: the series reads the newest claims at its next read,
   `metric_axes().judged_current` says whether the profile is current
   at the data's version, and the walk is stored at the pin it runs at.
-  The `review`, `slices` and `bands` goals on the `next:` line carry
-  the order — the decisions applied, then the profile once, then the
-  walk once. **That closing re-measure is the audit of the batch, not
+  The `review` goal, each metric's test report and the `bands` goal
+  on the `next:` line carry the order — the decisions applied, then
+  the profile once, then the walk once. **That closing re-measure is the audit of the batch, not
   hygiene**: a review decision outranks your judgment, never the
   measurements — and the batch moved the pin, so every check function's
   value is stale until it runs again (`open_items` counts them as

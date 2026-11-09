@@ -228,16 +228,24 @@ metric_tests()
 ```
 
 Every test on each metric of the bound dataset and on what it reads,
-worst first. Columns: `metric`, `test`, `declared_by` (`kit:<name>`
-for a shipped test, else the actor as `kind:id`), `subject` (the
-metric, or a table or column it reads), `state` (`red`, `unassessed`,
-`stale`, `orange`, `yellow`, `green`), `score`, `evidence` (the check's
-own result), `run` (the statement that runs it again; empty where none
-does). The metrics kit's own tests appear on every metric, run or not:
-`fan_out_test` (join fan-out), `orphan_test` (referential integrity on
-the declared joins) and `additivity_test` (whether the value column
-says how it combines). A test on a table or column the metric reads
-lists under the metric.
+worst first. Columns: `metric`, `test`, `aspect`, `declared_by`
+(`kit:<name>` for a shipped test, else the actor as `kind:id`),
+`subject` (the metric, or a table or column it reads), `state` (`red`,
+`orange`, `yellow`, `green`, or `unassessed` while the test has not
+run), `current` (false once what the result read has moved; the band
+stands and the test runs again at the next touch), `score`, `evidence`
+(the check's own result), `run` (the statement that runs it again;
+empty where none does). The metrics kit's own tests appear on every
+metric, run or not: `fan_out_test` (join fan-out), `orphan_test`
+(referential integrity on the declared joins) and `additivity_test`
+(whether the value column says how it combines). Each reads the
+evidence the quality kit stored, never the data again; a check whose
+evidence is not stored yet reads `yellow` and says what to run. A test
+on a table or column the metric reads lists under the metric. A single
+value, a derived relation, a plan and a sample are not metrics here.
+The server runs these tests itself after a call that defines a metric,
+glosses its columns or imports a table it scans, and runs the ones
+whose result predates a measurement the call made.
 
 ## The outlook kit (preview)
 
@@ -407,9 +415,10 @@ reads one. Needs no dataset.
 ### next
 
 Where the bound dataset stands on each goal, and the one action that
-moves it. One row per goal — `structure`, `metrics`, `slices`, `bands`,
-`checks`, `app`, `plan`, `review` — or the one `WHERE surface = '…'`
-names. Columns: `goal` (the goal's order), `surface`, `step`, `state`
+moves it. One row per goal — a served metric, named by the metric,
+whose step is its worst test; `review`; the outlook's `bands` and
+`plan` where a model service is named — or the one `WHERE surface =
+'…'` names. Columns: `goal` (the goal's order), `surface`, `step`, `state`
 (`next`, `blocked`, `done`), `act` (the statement kind, function or
 view), `say` (the action in a clause), `why` (what in the catalog
 decided), `statement` (the action as a statement, filled from the
@@ -418,7 +427,7 @@ follows it). How the goals are built and how a kit adds one:
 [next steps](../extending/next-steps.md).
 
 ```sql
-SELECT surface, step, state, say FROM next ORDER BY surface
+SELECT surface, step, state, say FROM next ORDER BY goal, surface
 ```
 
 The MCP interface serves the same rows as the resource
