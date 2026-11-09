@@ -752,3 +752,95 @@ SELECT 'metrics', 1, 'next', 'GLOSS view', 'define the first metric',
        ''
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM report)
 $arms$ AS arms;
+
+--===------------------------------------------------------------------===--
+-- semantic_model(): the bound dataset as one Apache Ossie document
+-- (the open format for exchanging a semantic model; spec 0.3.0.dev0),
+-- one row, column `document` (JSON). Each loaded table and each served
+-- metric is an Ossie dataset with its fields; a column annotated as the
+-- time or a dimension carries `dimension`; a table's key comes from its
+-- entity's identity columns; a metric's value is an Ossie metric whose
+-- expression follows its additivity (a sum for additive, the ratio of
+-- the summed halves for a ratio; a semi-additive or non-additive value
+-- is exported as a sum with the additivity in `custom_extensions`, since
+-- Ossie has no word for it); declared relationships are its
+-- relationships. Meanings ride as descriptions.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.semantic_model() AS TABLE
+WITH ds AS (SELECT current_schema() AS dataset),
+known AS (SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false) WHERE value IS NOT NULL),
+metrics AS (
+  SELECT metric, value_column, period_column, additivity, numerator, denominator
+  FROM main.metric_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+cols AS (
+  SELECT c.table_name, c.column_name, c.column_type, c.ordinal_position
+  FROM glossql_columns(current_schema(), true) c
+  WHERE c.table_type = 'BASE TABLE' OR c.table_name IN (SELECT metric FROM metrics)),
+fields AS (
+  SELECT c.table_name, c.ordinal_position,
+         json_merge_patch('{}', to_json({
+           'name': c.column_name,
+           'expression': {'sql': '"' || c.column_name || '"'},
+           'dimension': CASE WHEN r.value->>'value' = 'timestamp' THEN {'is_time': true}
+                             WHEN r.value->>'value' = 'dimension' THEN {'is_time': false} END,
+           'datatype': CASE WHEN c.column_type LIKE 'TIMESTAMP WITH TIME ZONE%' THEN 'DateTimeTz'
+                            WHEN c.column_type LIKE 'TIMESTAMP%' THEN 'DateTime'
+                            WHEN c.column_type = 'DATE' THEN 'Date' WHEN c.column_type LIKE 'TIME%' THEN 'Time'
+                            WHEN c.column_type LIKE 'DECIMAL%' THEN 'Decimal'
+                            WHEN c.column_type IN ('DOUBLE', 'FLOAT', 'REAL') THEN 'Float'
+                            WHEN c.column_type LIKE '%INT%' THEN 'Integer'
+                            WHEN c.column_type = 'BOOLEAN' THEN 'Boolean'
+                            WHEN c.column_type = 'VARCHAR' THEN 'String' ELSE 'Opaque' END,
+           'description': m.value->>'value',
+           'custom_extensions': CASE WHEN u.value IS NOT NULL THEN
+             [{'vendor_name': 'glossdb', 'data': to_json({'unit': u.value->>'value'})::VARCHAR}] END
+         })) AS field
+  FROM cols c CROSS JOIN ds
+  LEFT JOIN known r ON r.subject = ds.dataset || '.' || c.table_name || '.' || c.column_name AND r.aspect = 'role'
+  LEFT JOIN known m ON m.subject = ds.dataset || '.' || c.table_name || '.' || c.column_name AND m.aspect = 'meaning'
+  LEFT JOIN known u ON u.subject = ds.dataset || '.' || c.table_name || '.' || c.column_name AND u.aspect = 'unit'),
+measures AS (
+  SELECT x.metric,
+         json_merge_patch('{}', to_json({
+           'name': x.metric,
+           'expression': {'sql': CASE WHEN x.additivity = 'ratio' AND x.numerator IS NOT NULL AND x.denominator IS NOT NULL
+                                      THEN 'SUM("' || x.numerator || '") / SUM("' || x.denominator || '")'
+                                      ELSE 'SUM("' || x.value_column || '")' END},
+           'description': coalesce(json_extract_string(d.value, '$.definitions.' || x.metric || '.meaning'),
+                                   json_extract_string(a.schema, '$.title')),
+           'custom_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
+             [{'vendor_name': 'glossdb', 'data': to_json({'additivity': x.additivity, 'time_column': x.period_column})::VARCHAR}] END
+         })) AS measure
+  FROM metrics x CROSS JOIN ds
+  LEFT JOIN known d ON d.subject = ds.dataset AND d.aspect = 'definitions'
+  LEFT JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = x.metric),
+datasets AS (
+  SELECT t.table_name,
+         json_merge_patch('{}', to_json({
+           'name': t.table_name,
+           'source': ds.dataset || '.' || t.table_name,
+           'primary_key': from_json(json_extract(e.value, '$.identity_columns'), '["VARCHAR"]'),
+           'description': coalesce(tm.value->>'value', e.value->>'value'),
+           'fields': (SELECT list(f.field ORDER BY f.ordinal_position) FROM fields f WHERE f.table_name = t.table_name),
+           'metrics': (SELECT list(m.measure) FROM measures m WHERE m.metric = t.table_name)
+         })) AS dataset
+  FROM (SELECT DISTINCT table_name FROM cols) t CROSS JOIN ds
+  LEFT JOIN known e ON e.subject = ds.dataset || '.' || t.table_name AND e.aspect = 'entity'
+  LEFT JOIN known tm ON tm.subject = ds.dataset || '.' || t.table_name AND tm.aspect = 'meaning'),
+edges AS (
+  SELECT to_json({
+           'name': split_part(r.left_side, '.', 2) || '_to_' || split_part(r.right_side, '.', 2) || '_' || r.seq,
+           'from': split_part(r.left_side, '.', 2), 'to': split_part(r.right_side, '.', 2),
+           'from_columns': string_split(regexp_replace(regexp_replace(r.left_side, '^[^.]*\.[^.]*\.', ''), '[() ]', '', 'g'), ','),
+           'to_columns': string_split(regexp_replace(regexp_replace(r.right_side, '^[^.]*\.[^.]*\.', ''), '[() ]', '', 'g'), ',')
+         }) AS edge
+  FROM main.relationships r, ds WHERE r.dataset = ds.dataset)
+SELECT json_merge_patch('{}', to_json({
+         'version': '0.3.0.dev0',
+         'name': ds.dataset,
+         'description': (SELECT json_extract_string(settings, '$.purpose') FROM main.datasets WHERE name = ds.dataset ORDER BY seq DESC LIMIT 1),
+         'datasets': (SELECT list(dataset ORDER BY table_name) FROM datasets),
+         'relationships': (SELECT list(edge) FROM edges)
+       })) AS document
+FROM ds;

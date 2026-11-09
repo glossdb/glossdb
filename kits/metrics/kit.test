@@ -447,3 +447,22 @@ query T
 SELECT state FROM metric_tests() WHERE metric = 'priced_spend' AND test = 'validity_test';
 ----
 green
+
+# --- the semantic model as an Apache Ossie document: a dataset per table and per served metric, time and dimension fields, the metric's expression
+
+query TTT
+SELECT json_extract_string(document, '$.version'), json_extract_string(document, '$.name'),
+       (SELECT list(json_extract_string(d, '$.name') ORDER BY 1) FROM unnest(json_extract(document, '$.datasets')::JSON[]) t(d)
+        WHERE json_extract(d, '$.metrics') IS NOT NULL)::VARCHAR
+FROM semantic_model();
+----
+0.3.0.dev0	fin	[headcount, spend]
+
+query TT
+SELECT json_extract_string(f, '$.name'), json_extract(f, '$.dimension.is_time')::VARCHAR
+FROM semantic_model(), unnest(json_extract(document, '$.datasets')::JSON[]) t(d), unnest(json_extract(d, '$.fields')::JSON[]) u(f)
+WHERE json_extract_string(d, '$.name') = 'spend' AND json_extract(f, '$.dimension') IS NOT NULL ORDER BY 1;
+----
+fund	false
+object	false
+period	true

@@ -247,6 +247,24 @@ The server runs these tests itself after a call that defines a metric,
 glosses its columns or imports a table it scans, and runs the ones
 whose result predates a measurement the call made.
 
+### semantic_model()
+
+```
+semantic_model()
+```
+
+The bound dataset as one [Apache Ossie](https://ossie.apache.org/)
+document, the open format for exchanging a semantic model with BI
+tools and catalogs: one row, column `document` (JSON, spec
+0.3.0.dev0). Each loaded table and each served metric is an Ossie
+dataset with its fields; the time column and the dimensions carry
+`dimension`; a table's `primary_key` is its entity's identity columns;
+a metric's value is an Ossie metric, a sum for an additive value and
+the ratio of the summed halves for a ratio; declared relationships are
+its relationships; meanings are descriptions. What Ossie has no word
+for rides in `custom_extensions` under the vendor `glossdb`: a unit,
+and the additivity of a semi-additive or non-additive value.
+
 ## The outlook kit (preview)
 
 Forecasts, expected ranges, plans and scenarios beside the actual,
