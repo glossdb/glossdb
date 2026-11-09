@@ -1,7 +1,7 @@
 -- The numbers beside each metric surface: the newest period of the
 -- total series at the metric's own floor, the move into it, and the
 -- slices. Data-class, joined to `frames/pulse` in the browser by
--- `name`. A metric whose value column carries no behaviour and serves
+-- `name`. A metric whose value column carries no additivity and serves
 -- several rows a period has no row here; its pulse row says so.
 WITH totals AS (
   SELECT metric, period, value,

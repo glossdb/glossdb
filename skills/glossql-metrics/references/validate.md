@@ -42,7 +42,7 @@ GLOSS hours_reconcile ON work_logs AS $${
   The console's Quality tab is where the person sees both: what each
   load dropped and nulled, and every check with its band.
 - **Promote confirmed reconciliations.** A data test that settled a
-  behaviour claim — an event table's movements reconciling with a
+  additivity claim — an event table's movements reconciling with a
   level — is a permanent invariant; make it a check.
 - **A window has two bounds.** A readmission, a return, a repeat
   within N days tests the next event against both ends: after the

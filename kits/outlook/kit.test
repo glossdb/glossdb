@@ -62,7 +62,7 @@ statement ok
 SELECT temporal() FROM spend.period;
 
 statement ok
-GLOSS behavior ON spend.value AS $${"value": "flow"}$$;
+GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
 
 # a second metric with four whole months: too short for the walk
 statement ok
@@ -84,15 +84,15 @@ statement ok
 SELECT temporal() FROM hires.period;
 
 statement ok
-GLOSS behavior ON hires.value AS $${"value": "flow"}$$;
+GLOSS additivity ON hires.value AS $${"value": "additive"}$$;
 
 # --- the request: whole months only, the month the edge falls inside left out; seven at least
 
 query TTIT
-SELECT metric, behavior, months, walkable FROM band_request();
+SELECT metric, additivity, months, walkable FROM band_request();
 ----
-hires	flow	4	false
-spend	flow	13	true
+hires	additive	4	false
+spend	additive	13	true
 
 query T
 SELECT reason FROM band_request() WHERE metric = 'hires';
@@ -215,12 +215,12 @@ statement ok
 SELECT temporal() FROM sales.period;
 
 statement ok
-GLOSS behavior ON sales.value AS $${"value": "flow"}$$;
+GLOSS additivity ON sales.value AS $${"value": "additive"}$$;
 
 query TTTITTIT
-SELECT metric, behavior, grain, horizon, applicable, origin::DATE, len(ahead), spans::VARCHAR FROM forecast_request() WHERE metric = 'sales';
+SELECT metric, additivity, grain, horizon, applicable, origin::DATE, len(ahead), spans::VARCHAR FROM forecast_request() WHERE metric = 'sales';
 ----
-sales	flow	month	12	true	2025-02-01	12	[{'span': 1, 'to_go': quarter}, {'span': 10, 'to_go': year}]
+sales	additive	month	12	true	2025-02-01	12	[{'span': 1, 'to_go': quarter}, {'span': 10, 'to_go': year}]
 
 # a stock at month grain asks no total: a second body at the month, beside the flow's
 statement ok
@@ -239,7 +239,7 @@ statement ok
 SELECT temporal() FROM balance.period;
 
 statement ok
-GLOSS behavior ON balance.value AS $${"value": "stock"}$$;
+GLOSS additivity ON balance.value AS $${"value": "semi-additive"}$$;
 
 # the daily flows ask the month to go from the data's edge, which they share; one request per grain and set of totals
 query TTI
@@ -306,7 +306,7 @@ DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "
 
 # declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the metric definition
 query I
-SELECT count(*) FROM metric_axes() WHERE metric = 'sales_budget';
+SELECT count(*) FROM metric_summary() WHERE metric = 'sales_budget';
 ----
 0
 
@@ -314,9 +314,9 @@ statement ok
 GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
 
 query TTTTTT
-SELECT metric, plan_of, applicable, period_column, value_column, behavior FROM metric_axes() WHERE metric = 'sales_budget';
+SELECT metric, plan_of, applicable, period_column, value_column, additivity FROM metric_summary() WHERE metric = 'sales_budget';
 ----
-sales_budget	sales	true	period	value	flow
+sales_budget	sales	true	period	value	additive
 
 # a plan is no metric of the actual world, and neither the walk nor the forecast reads it
 query I
@@ -385,7 +385,7 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 
 # --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the routes read it
 query T
-SELECT wanted FROM metric_axes() WHERE metric = 'sales_budget';
+SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
 ----
 [metric_plan over fin.sales_budget]
 
@@ -393,7 +393,7 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query T
-SELECT wanted FROM metric_axes() WHERE metric = 'sales_budget';
+SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
 ----
 []
 
@@ -467,7 +467,7 @@ statement ok
 SELECT temporal() FROM priced.period;
 
 statement ok
-GLOSS behavior ON priced.value AS $${"value": "flow"}$$;
+GLOSS additivity ON priced.value AS $${"value": "additive"}$$;
 
 statement ok
 DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;

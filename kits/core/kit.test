@@ -95,7 +95,7 @@ GLOSS kind_of ON orders.qty AS $${"value": "measure"}$$;
 
 # measures exist, but no metric reads anything: no test is open
 query I
-SELECT open FROM workspace_next WHERE surface = 'validations';
+SELECT open FROM workspace_status WHERE surface = 'validations';
 ----
 0
 
@@ -108,7 +108,7 @@ GLOSS sales ON shop AS $${"sql": "SELECT id AS period, amount AS value FROM shop
 # the metric reads orders and its amount: the unit is open on amount, not on qty, which no metric reads;
 # the table property is open on orders, not on notes
 query I
-SELECT open FROM workspace_next WHERE surface = 'validations';
+SELECT open FROM workspace_status WHERE surface = 'validations';
 ----
 2
 
@@ -116,7 +116,7 @@ statement ok
 GLOSS money_unit ON orders.amount AS $${"value": "EUR"}$$;
 
 query I
-SELECT open FROM workspace_next WHERE surface = 'validations';
+SELECT open FROM workspace_status WHERE surface = 'validations';
 ----
 1
 
@@ -124,6 +124,6 @@ statement ok
 GLOSS about ON orders AS $${"value": "one row per order"}$$;
 
 query I
-SELECT open FROM workspace_next WHERE surface = 'validations';
+SELECT open FROM workspace_status WHERE surface = 'validations';
 ----
 0

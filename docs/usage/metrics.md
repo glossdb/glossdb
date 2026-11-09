@@ -23,7 +23,7 @@ GLOSS throughput ON ops AS $${
   "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, s.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
   "assumptions": [
     {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "behavior", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
+    {"dimension": "additivity", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
   ]
 }$$;
 ```
@@ -41,7 +41,7 @@ GLOSS throughput ON ops AS $${
   replaces the whole map. Read the current entries before you add one.
 - **A level is a stock.** Payables outstanding, inventory, headcount:
   anything you could state as of any date. Collapse the events to one
-  row per entity per period, and annotate `behavior` stock on the value.
+  row per entity per period, and annotate `additivity` stock on the value.
 
 A metric is a view of the dataset: `SELECT … FROM <name>` reads,
 filters and joins it like any view. A person's definition outranks the
@@ -54,7 +54,7 @@ ORDER BY month
 ```
 
 The write answers with the metric's summary row, in the
-`metric_axes()` shape: whether the SQL plans, the period and value
+`metric_summary()` shape: whether the SQL plans, the period and value
 columns, the additivity, the cadence, the slices admitted, and every
 column still missing an annotation. Read it before the next write.
 
@@ -79,27 +79,27 @@ Annotate the view's columns:
 - `role` timestamp on the period column, `role` measure on the value
   column (the one named `value` where several are measures), `role`
   dimension on each column to slice by;
-- `behavior` on the value column: `flow` sums, `stock` keeps each
+- `additivity` on the value column: `additive` (a flow) sums, `semi-additive` (a stock) keeps each
   bucket's last level, `ratio` divides its summed halves, named by
   `numerator` and `denominator`;
 - `dimension` on a slice column to rank it: `primary` first, `none`
   closes it.
 
 Then run `temporal()` over the period column. Its measured cadence is
-the grain the series is served at by default. The `ladder` annotation
+the grain the series is served at by default. The `time_grains` annotation
 on the period column sets the time grains instead: `floor`, the finest
 grain served, and `windows`, how many whole buckets a read serves per
 grain, counted back from the data's newest point.
 
 ```glossql
-GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
+GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
 ```
 
 Check what the catalog says of each metric's columns:
 
 ```sql
-SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, missing
-FROM metric_axes() ORDER BY metric
+SELECT metric, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
+FROM metric_summary() ORDER BY metric
 ```
 
 ## Read the series
@@ -118,7 +118,7 @@ the metric's total.
 - A flow's empty period is a zero up to the data's newest point. A
   stock's or a ratio's empty period has no row.
 - Where rows have to be combined and the value column has no
-  `behavior`, the read refuses and names the missing annotation; it
+  `additivity`, the read refuses and names the missing annotation; it
   assumes nothing. `unclaimed := 'skip'` serves the other metrics.
 - A dimension with more than 24 members serves its top 23 by weight
   and `other`. `other` is not a business member; serve a narrower

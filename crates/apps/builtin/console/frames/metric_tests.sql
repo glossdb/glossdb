@@ -12,7 +12,7 @@ open AS (
                 THEN 'the join repeats rows on ' || list_aggregate(from_json(json_extract(t.evidence, '$.pairs'), '["VARCHAR"]'), 'string_agg', ', ') END,
            CASE WHEN json_extract(t.evidence, '$.tables') IS NOT NULL AND t.state = 'red'
                 THEN 'reads ' || list_aggregate(from_json(json_extract(t.evidence, '$.tables'), '["VARCHAR"]'), 'string_agg', ', ') || ' without its validity dates' END,
-           CASE WHEN t.test = 'additivity_test' AND t.state = 'red' THEN 'the value does not say how it adds up' END,
+           CASE WHEN t.test = 'measure_additivity_test' AND t.state = 'red' THEN 'the value does not say how it adds up' END,
            json_extract_string(t.evidence, '$.reason'),
            CASE WHEN t.state = 'not_run' THEN 'not run yet' END,
            t.test || ' on ' || substr(t.subject, len(d.dataset) + 2)) AS what,

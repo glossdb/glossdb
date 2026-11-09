@@ -7,17 +7,17 @@ view at read: nothing is built, nothing is stored. The view's
 columns carry the words: the column with `role` timestamp is the
 period, the column with `role` measure the value (the one named
 `value` where several do), the columns with `role` dimension the
-slices. The `behavior` on the value column says how the number
+slices. The `additivity` on the value column says how the number
 combines — a flow sums, a stock keeps the bucket's last level, a ratio
 re-divides its summed halves, `numerator` and `denominator` naming
-them. The time grains, the `ladder` aspect on the period column, say how
+them. The time grains, the `time_grains` aspect on the period column, say how
 the periods are read: `floor`, the grain the series is served at, by default the
 cadence `temporal()` measured on that column; `windows`, the window (rung) per
 grain, how many whole buckets a read serves, measured back from the
 data's edge.
 
 ```glossql
-GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
+GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
 ```
 
 - `metric_series(grain := 'month')` serves every applicable metric
@@ -29,7 +29,7 @@ GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120
   stopped early shows its zeros, not an older window. A stock's or a
   ratio's empty period is no cell.
 - **The no-claim rule.** Where rows have to be combined and the value
-  column has no `behavior`, the read refuses and names the missing
+  column has no `additivity`, the read refuses and names the missing
   annotation; it defaults nothing. `unclaimed := 'skip'` lists the
   rest, and the summary row says what the metric still needs.
 - A dimension wider than 24 members serves its top 23 by weight and
@@ -37,7 +37,7 @@ GLOSS ladder ON throughput.date AS $${"floor": "month", "windows": {"month": 120
   coarse, serve a narrower column from the metric's own SQL.
 - The axes are the served columns that carry `role` dimension; a
   `dimension` annotation ranks them, `primary` first, `none` closes one.
-  `metric_axes().unranked` names the ones no annotation ranks,
+  `metric_summary().unranked` names the ones no annotation ranks,
   `unadmitted` the served columns with no role, and `missing` the
   annotation each needs.
 
@@ -52,14 +52,14 @@ What the catalog says of each metric's columns, and what a series can
 be served from:
 
 ```sql
-SELECT metric, applicable, reason, behavior, cadence, floor, rung, dims, unadmitted, missing
-FROM metric_axes() ORDER BY metric
+SELECT metric, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
+FROM metric_summary() ORDER BY metric
 ```
 
 And the cells — one row per metric, dimension, member and period at
 the asked grain. `dimension = ''` is the metric's own total, anything
 else a served dimension; a ratio row carries `num` / `den`, and
-`behavior` is the verb that made the row. `world` says which set of
+`additivity` is the verb that made the row. `world` says which set of
 numbers a row is: `actual` unless asked. This is what an app frame
 charts:
 
@@ -169,8 +169,8 @@ revised_budget WITH $${"title": "Revised budget", "x-kind": "plan",
 revised_budget ON fin AS $${"sql": "SELECT month AS date, revised AS
 value FROM budget"}$$;`. The plan is read through the metric it
 plans: its period and value are the columns named as that metric's,
-or `period` and `value`; its behaviour is the metric's; nothing is
-annotated on its own columns. `metric_axes()` lists it with its result,
+or `period` and `value`; its additivity is the metric's; nothing is
+annotated on its own columns. `metric_summary()` lists it with its result,
 `plan_of` naming the metric. A row covers its own period; where a
 row's value is booked against the year — the adopted budget on the
 January row — the declaration adds `x-covers: year` and the plan

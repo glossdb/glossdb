@@ -71,7 +71,7 @@ basis — the assumptions discipline the grounding glosses already
 carry (fixture 16 §2). A period is `YYYY-MM`, a calendar month, or
 `YYYY-MM-DD`, a day; a period not named keeps a factor of one. A
 column without a current `lever` gloss refuses the scenario before it
-lands. A behavioral response the history never saw (demand
+lands. A additivityal response the history never saw (demand
 elasticity) is not declared here: it is what the estimate reads from
 the history, with its basis, and where the history shows none the
 cell says so.
@@ -138,7 +138,7 @@ Removal is ordinary glossary SQL, as everywhere.
   (settings are context, never call arguments) and
   leaves no record: not superseded, not attested, not reproducible.
 - **A lever as a sixth `role` value** — dies on the kit's own
-  conditions: `behavior` and `unit` are owed where `role = 'measure'`,
+  conditions: `additivity` and `unit` are owed where `role = 'measure'`,
   so a price glossed `lever` would stop being a measure. A lever is a
   further fact about a column, beside its role.
 - **One factor from a start month** — dies on the wire: the what-if

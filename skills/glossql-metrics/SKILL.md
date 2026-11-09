@@ -86,7 +86,7 @@ it, or load a table it reads:
 | `fan_out_test` | the join repeats rows: two tables share a key that repeats on both sides |
 | `validity_test` | an effective-dated table is read without bounding both of its dates |
 | `orphan_test` | rows on a declared relationship find no parent |
-| `additivity_test` | the measure does not say how it adds up |
+| `measure_additivity_test` | the measure does not say how it adds up |
 
 The `next:` line after every call names the worst one per metric:
 
@@ -120,6 +120,6 @@ assumption at confidence 1.0 (`skill://glossql/references/review.md`).
 | `references/ground.md` | metric definitions in depth |
 | `references/read-sql.md` | querying a metric: `metric_series()`, levels and ratios, engine specifics |
 | `references/validate.md` | writing your own test |
-| `references/ladder.md` | time grains, and the preview features: expected ranges, forecasts, plans, scenarios |
+| `references/time-grains.md` | time grains, and the preview features: expected ranges, forecasts, plans, scenarios |
 | `references/doors.md`, `skill://glossql-apps/SKILL.md` | a function of your own, a page over the metrics |
 | `references/close.md` | the summary you hand back |

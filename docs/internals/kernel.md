@@ -30,7 +30,7 @@ the `next` read, and a page.
   one load query per table.
 - **Metrics.** A metric is a view. Its columns carry the vocabulary,
   and the time grains on its period column say how its periods are
-  walked. Four reads serve it: `metric_series()`, `metric_axes()`,
+  walked. Four reads serve it: `metric_series()`, `metric_summary()`,
   `fact_values()` and `metric_sources()`
   ([views and table functions](../reference/reads.md)).
 - **Tests and review.** Tests (`DECLARE TEST`), detectors, `TESTS()`, the

@@ -62,7 +62,7 @@ CREATE OR REPLACE VIEW main.open_items AS
                                  WHERE json_extract_string(schema, '$.x-subject') = 'metric')) v),
   wanted AS (
     SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
-    FROM (SELECT unnest(wanted) AS w FROM main.metric_axes())),
+    FROM (SELECT unnest(wanted) AS w FROM main.metric_summary())),
   unmeasured AS (
     SELECT 'never measured' AS kind, w.function AS subject,
            'never measured: ' || w.function || '() over ' || string_agg(w.over, ', ' ORDER BY w.over) AS what,

@@ -16,7 +16,7 @@ authored AS (
   SELECT s.aspect, 'said' AS kind,
          CASE s.aspect
            WHEN 'unit' THEN json_extract_string(s.body, '$.value') || coalesce(', varying by ' || json_extract_string(s.body, '$.source_column'), '')
-           WHEN 'behavior' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
+           WHEN 'additivity' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
            WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            ELSE coalesce(json_extract_string(s.body, '$.value'), substr(s.body::VARCHAR, 1, 200)) END AS value,
@@ -72,5 +72,5 @@ SELECT aspect, kind, value, voice, state,
             ELSE '' END AS mark_title
 FROM every
 ORDER BY CASE kind WHEN 'said' THEN 0 ELSE 1 END,
-         CASE aspect WHEN 'role' THEN 0 WHEN 'meaning' THEN 1 WHEN 'unit' THEN 2 WHEN 'behavior' THEN 3 WHEN 'dimension' THEN 4 ELSE 5 END,
+         CASE aspect WHEN 'role' THEN 0 WHEN 'meaning' THEN 1 WHEN 'unit' THEN 2 WHEN 'additivity' THEN 3 WHEN 'dimension' THEN 4 ELSE 5 END,
          aspect, rn

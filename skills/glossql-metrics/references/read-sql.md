@@ -37,7 +37,7 @@ outranking the agent's, so a person's answer is what runs.
   Densify the axis, or use a RANGE frame with an interval.
 
 Percentiles and medians are level statistics — safe for both
-behaviors, which makes p50/p95 the honest summary when behavior is
+additivitys, which makes p50/p95 the honest summary when additivity is
 not annotated.
 
 ### This is columnar, not postgres

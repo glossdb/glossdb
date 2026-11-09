@@ -34,7 +34,7 @@ once.
    data version it describes.
 3. **Measurements and tests check what is said.** Functions profile
    the data, find keys, joins and hierarchies, and test derivations and
-   stock-or-flow behaviour. Tests score where measurements, agents and
+   stock-or-flow additivity. Tests score where measurements, agents and
    people disagree. Results are tied to the data version they read and
    go stale when it changes.
 4. **What is known is served back.** What is known about any table is

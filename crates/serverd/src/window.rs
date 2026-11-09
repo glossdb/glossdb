@@ -69,9 +69,9 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             Some("measured over authored") => format!(
                 " (measured over the definition's empty list — a {} keeps its verdicts; the empty \
                  list closes a distinct count or a ratio)",
-                fact.get("behavior")
+                fact.get("additivity")
                     .and_then(Value::as_str)
-                    .unwrap_or("flow")
+                    .unwrap_or("additive")
             ),
             _ => String::new(),
         };

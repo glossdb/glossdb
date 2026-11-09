@@ -186,7 +186,7 @@
     <header><span class="eyebrow" title="The dimensions this metric may be sliced by, most relevant first. A wide dimension shows its largest members and &#x27;other&#x27;.">Slice</span>
       <code class="chip">metric_series()</code></header>
     <p class="hint">pick a dimension: the slice is in the URL, so what you see is a link you can share.</p>
-    <gl-rows frame="frames/dims?grain=month&span=24" empty="no dimensions admitted: the metric definition serves no dimension column with a role, or no time column with a role anchors it (metric_axes() says which)">
+    <gl-rows frame="frames/dims?grain=month&span=24" empty="no dimensions admitted: the metric definition serves no dimension column with a role, or no time column with a role anchors it (metric_summary() says which)">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:1fr auto">
           <span class="r-subj">{dimension}</span>
@@ -206,11 +206,11 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="What the metric is served at and why: its time grain (its measured cadence, never finer than the declared floor), the window, the additivity, the dimensions, and the outcome of the alternative reading. A metric that serves nothing says why.">Why these axes · {{ metric }}</span>
-      <code class="chip">metric_axes()</code></header>
+      <code class="chip">metric_summary()</code></header>
     <gl-rows frame="frames/axes" empty="no current grounding named {{ metric }}">
       <template>
         <div class="rrow" style="grid-template-columns:1fr">
-          <span class="r-meta">resolution {resolution} · window {window} · {behavior} · axes: {dims}</span>
+          <span class="r-meta">resolution {resolution} · window {window} · {additivity} · axes: {dims}</span>
           <span class="r-meta">{reason} {alternative_error}</span>
         </div>
       </template>
@@ -277,7 +277,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="Every metric with its review state, or why it charts nothing, beside the newest period, the change into it and its dimensions. A review decision refreshes the first part and leaves the numbers alone.">Metrics</span>
-      <code class="chip">metric_surfaces · metric_axes() · metric_series()</code></header>
+      <code class="chip">metric_surfaces · metric_summary() · metric_series()</code></header>
     <gl-rows frame="frames/pulse?stopped=0" join="frames/latest" on="name" empty="no metric surfaces declared yet">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 7rem 5rem 1fr 11rem">

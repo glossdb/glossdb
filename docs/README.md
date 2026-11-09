@@ -63,7 +63,7 @@ How each measurement computes its result, and its limits:
 [relationship discovery](methods/discovery.md),
 [join coherence](methods/coherence.md),
 [derivations](methods/derivations.md),
-[stock or flow](methods/behavior.md),
+[stock or flow](methods/additivity.md),
 [the judge](methods/judge.md).
 
 ## Preview

@@ -10,7 +10,7 @@ leaves the workspace, walk this map and run what answers it:
 | what values a column holds — range, nulls, distincts, top values | `column_profile()` |
 | outliers on a numeric column | `outlier_profile()` |
 | a date column's grain, span, gaps | `temporal()` — on a table's column and on a metric's period column alike; the cadence is the floor the series is served at |
-| **stock or flow — may it be summed** | `behavior_evidence()` over the declared edges: the level reconciled against a related event table's movements per entity and period, with the anchor that decided; then your reading of the column's meaning and the table's grain, annotated as `behavior` on the column citing the anchor in `grounds`; the test bands disagreement, and a series over the column refuses to combine rows until a claim is in force |
+| **stock or flow — may it be summed** | `additivity_evidence()` over the declared edges: the level reconciled against a related event table's movements per entity and period, with the anchor that decided; then your reading of the column's meaning and the table's grain, annotated as `additivity` on the column citing the anchor in `grounds`; the test bands disagreement, and a series over the column refuses to combine rows until a claim is in force |
 | **a sign convention** (source-signed vs natural) | the `conventions` annotation on the source, read before the first probe |
 | which columns join, and how well | `detect_relationships()`, then your anti-join judging; ongoing health is `relationship_coherence()` |
 | whether a column derives from siblings (a = b × c) | `detect_derivations()` |
@@ -18,7 +18,7 @@ leaves the workspace, walk this map and run what answers it:
 | hierarchies inside dimensions | `detect_hierarchies()` |
 | two metrics accidentally identical | `detect_grounding_collisions()` |
 | whether a metric's month is surprising | `metric_bands()`, the service's verdict carried by `bands_test` |
-| the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `metric_axes()` says what the catalog says of its columns, and what each still needs |
+| the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `metric_summary()` says what the catalog says of its columns, and what each still needs |
 | whether a written expectation holds | a check function's value and the detector you bind, read via `TESTS()` |
 
 A measurement is called in the SELECT list with its subject in FROM,
@@ -30,7 +30,7 @@ for a column, `SELECT detect_hierarchies() FROM orders` for a table.
 What remains askable after the map is walked is what the review
 serves: an assumption whose basis is your judgment, held below full
 confidence. The review enforces the boundary: it never serves an
-assumption whose `dimension` is `behavior`, `sign`, or `grain` —
+assumption whose `dimension` is `additivity`, `sign`, or `grain` —
 those are the functions' and the annotations' work, so record them at
 1.0 citing the measurement or the annotation. When a measurement abstains, the
 abstention names why: close the claim on your strongest remaining

@@ -35,7 +35,7 @@ GLOSS revised_budget ON brla AS $${
 The link is checked when the plan is read. `x-plan-of` must name a
 declared view aspect of the dataset that is not itself a plan. The plan
 must return the columns named as that metric's period and value, or
-`period` and `value`. `metric_axes()` lists the plan with the result of
+`period` and `value`. `metric_summary()` lists the plan with the result of
 that check and how to fix it, with `plan_of` naming the metric.
 
 **Coverage.** A row covers its own period: a monthly schedule plans
@@ -235,7 +235,7 @@ department, each its own aspect with a filter in its definition.
 - The plan's additivity is its metric's: a budget for a stock keeps its
   last level at a coarser grain, like the stock.
 - A metric whose definition is stopped leaves its plans in place. The
-  stop is in the metric's own `metric_axes()` row.
+  stop is in the metric's own `metric_summary()` row.
 - A plan's table does not extend the actuals. A flow's empty periods
   are zeros up to the data's edge, the latest period the metrics'
   definitions return. A budget loaded through the year's end extends no

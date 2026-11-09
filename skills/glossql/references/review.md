@@ -68,7 +68,7 @@ Then close what waits on an action, in the same session:
   closed for you both. Keep the key and rewrite the prose as freely as
   the correction requires — the join is on the key alone. Each write
   moves the pin: the series reads the newest claims at its next read,
-  `metric_axes().judged_current` says whether the profile is current
+  `metric_summary().judged_current` says whether the profile is current
   at the data's version, and the walk is stored at the pin it runs at.
   The `review` goal, each metric's test report and the `outlook` goal
   on the `next:` line carry the order — the decisions applied, then
@@ -78,7 +78,7 @@ Then close what waits on an action, in the same session:
   value is stale until it runs again (`open_items` counts them as
   `re-measure` rows). Re-run them, then read the results back on the
   metrics the batch touched: `TESTS()` on their check aspects,
-  `metric_axes().alternative_divergence` where an alternative reading
+  `metric_summary().alternative_divergence` where an alternative reading
   is disclosed. A test that applying a decision turned red is a
   conflict for the console — leave it open so the person decides again
   with the measurement in front of them, and never redefine to quiet

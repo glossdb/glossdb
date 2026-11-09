@@ -149,9 +149,9 @@ async fn a_refusal_answers_by_its_class() {
     let (status, body) = ask(missing).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert!(body["error"].as_str().unwrap().contains(said), "{body}");
-    let (status, body) = ask("SELECT * FROM metric_axes('revenue')").await;
+    let (status, body) = ask("SELECT * FROM metric_summary('revenue')").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    let fault = "metric_axes";
+    let fault = "metric_summary";
     assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
 }
 
@@ -1170,7 +1170,7 @@ async fn the_mcp_door_serves_the_skills_as_resources_and_prompts() {
         body["result"]["contents"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("metric_axes()"),
+            .contains("metric_summary()"),
         "{body}"
     );
 
@@ -1420,7 +1420,7 @@ fn meta_elicit() -> Value {
 }
 
 /// The same round on DuckDB: the kits are declared at open, a source
-/// and a recipe land the table, and the role gloss leaves the behavior
+/// and a recipe land the table, and the role gloss leaves the additivity
 /// claim required — the tested claim a measurement settles, never a
 /// question for the human.
 #[tokio::test(flavor = "multi_thread")]
@@ -2313,7 +2313,7 @@ async fn the_brief_rides_the_call_that_moved_it() {
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let blocks = body["result"]["content"].as_array().unwrap();
     // The metric definition's write answers with its fact row through the
-    // interface — the `metric_axes()` shape, abstaining here with its
+    // interface — the `metric_summary()` shape, abstaining here with its
     // reason (this app declares no `cube` aspect) and loaded all the
     // same.
     let outcomes = blocks[0]["text"].as_str().unwrap();
@@ -2618,7 +2618,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 161,
-                "SELECT surface, existing, open, waiting FROM workspace_next ORDER BY surface;",
+                "SELECT surface, existing, open, waiting FROM workspace_status ORDER BY surface;",
                 None,
             ),
         )
@@ -2700,7 +2700,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 163,
-                "SELECT open FROM workspace_next WHERE surface = 'validations';",
+                "SELECT open FROM workspace_status WHERE surface = 'validations';",
                 None,
             ),
         )
@@ -2716,7 +2716,7 @@ async fn the_workspace_says_what_it_affords() {
     );
 }
 
-/// Run 4 read `workspace_next` twice in one session and got two
+/// Run 4 read `workspace_status` twice in one session and got two
 /// different answers: filtered by `surface`, it came back with every row
 /// and reported `aspects` and `functions` as 0 standing, while the same
 /// read unfiltered — and the relations read directly — reported the
@@ -2747,7 +2747,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     };
 
     let whole = read(
-        "SELECT surface, existing FROM workspace_next ORDER BY surface;",
+        "SELECT surface, existing FROM workspace_status ORDER BY surface;",
         171,
     )
     .await;
@@ -2763,7 +2763,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
 
     // The same question, filtered.
     let one = read(
-        "SELECT surface, existing FROM workspace_next WHERE surface = 'aspects';",
+        "SELECT surface, existing FROM workspace_status WHERE surface = 'aspects';",
         172,
     )
     .await;
@@ -2781,7 +2781,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
 
     // And a filter that keeps several rows keeps exactly those.
     let some = read(
-        "SELECT surface, existing FROM workspace_next \
+        "SELECT surface, existing FROM workspace_status \
          WHERE surface IN ('tables', 'sources') ORDER BY surface;",
         173,
     )
@@ -2817,7 +2817,7 @@ async fn the_opening_names_where_to_begin() {
         instructions.contains("No dataset exists yet"),
         "{instructions}"
     );
-    assert!(instructions.contains("workspace_next"), "{instructions}");
+    assert!(instructions.contains("workspace_status"), "{instructions}");
 
     expect_ok(
         mcp(

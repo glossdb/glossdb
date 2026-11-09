@@ -25,7 +25,7 @@ removes the false positives.
 
 Each column is expected to carry some measurements, by its role: the
 profile on every column, `temporal` where `role = 'timestamp'`,
-`behavior_evidence` where `role = 'measure'`. Any measurement still
+`additivity_evidence` where `role = 'measure'`. Any measurement still
 runs on any column when asked.
 
 ## Column measurements
@@ -59,7 +59,7 @@ calendar buckets over the column's own window. A gap is a stretch
 longer than twice the median; the twenty largest are sampled. Only a
 date or timestamp has a window; for a number or text the reason names
 the type. The cadence is the default finest grain of a metric's series
-([views and table functions](reads.md), `metric_axes()`).
+([views and table functions](reads.md), `metric_summary()`).
 
 ## Table measurements
 
@@ -87,9 +87,9 @@ on every load catches subtle corruption: a damaged slice breaks the
 identity on exactly its rows, while every summary statistic mistakes
 it for a real business change ([derivations](../methods/derivations.md)).
 
-### behavior_evidence
+### additivity_evidence
 
-`SELECT behavior_evidence() FROM <table>.<column>` → `behavior_evidence`
+`SELECT additivity_evidence() FROM <table>.<column>` → `additivity_evidence`
 
 Whether a numeric column is a stock (a level at a point in time) or a
 flow (a movement that sums over a period). A column's own values
@@ -101,11 +101,11 @@ the verdict, the event table and alignment that decided, its
 convention, the Wilson support over the entities both sides share, the
 voted count, the median residuals of both readings and the sign split.
 Every candidate reads back through
-`GLOSSARY(<table>.<column>::behavior_evidence)`, with the reasons for
+`GLOSSARY(<table>.<column>::additivity_evidence)`, with the reasons for
 those that did not apply. A table with no declared relationship to an
 event table, no time column, or a column that is not a number is not
-applicable. It never annotates `behavior` itself: the agent reads the
-evidence, then annotates ([behavior](../methods/behavior.md)).
+applicable. It never annotates `additivity` itself: the agent reads the
+evidence, then annotates ([additivity](../methods/additivity.md)).
 
 ## Dataset measurements
 
@@ -197,7 +197,7 @@ again once a newer forecast exists ([plans](../preview/plans.md)).
 
 ### slot_entropy
 
-Used by the KPI kit's tests `role_test`, `behavior_test` and `unit_test`
+Used by the KPI kit's tests `role_test`, `additivity_test` and `unit_test`
 (threshold 0.7). The score is the share of extra distinct values among
 the values for the aspect: 0.0 when all agree. Green at 0, yellow up
 to the threshold, red above it.

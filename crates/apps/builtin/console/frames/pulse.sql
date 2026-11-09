@@ -21,7 +21,7 @@ SELECT s.title,
        CASE
          WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped
          WHEN x.applicable IS FALSE THEN split_part(x.reason, ':', 1)
-         WHEN x.applicable AND x.behavior IS NULL THEN 'no additivity annotated'
+         WHEN x.applicable AND x.additivity IS NULL THEN 'no additivity annotated'
          ELSE 'no axes admitted' END AS axes,
        CASE
          WHEN s.stopped <> '' THEN 'stopped'
@@ -39,7 +39,7 @@ SELECT s.title,
 FROM metric_surfaces s
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN ruled r ON r.aspect = s.name
-LEFT JOIN metric_axes() x ON x.metric = s.name
+LEFT JOIN metric_summary() x ON x.metric = s.name
 WHERE s.kind NOT IN ('scalar', 'plan', 'relation')
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY name

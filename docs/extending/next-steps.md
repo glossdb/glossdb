@@ -22,7 +22,7 @@ an order.
 
 The metrics kit ships three tests on every metric, over the tables its
 definition scans: `fan_out_test`, join fan-out; `orphan_test`,
-referential integrity on the declared joins; `additivity_test`,
+referential integrity on the declared joins; `measure_additivity_test`,
 whether the value column says how it combines. Each reads the evidence
 the quality kit stored and never the data again. The server runs them
 after a call that defines a metric, glosses its columns or imports a
@@ -77,7 +77,7 @@ row decides. The last step of a goal is an unconditional `done`.
 At every open the server writes `next` from every `routes_<name>()`
 macro in the lake's `main` schema. The steps read the catalog, never
 the data, through relations the server computes once: `ds` (the bound
-dataset), `axes` (`metric_axes()`), `open_items`, `reds` (red test
+dataset), `axes` (`metric_summary()`), `open_items`, `reds` (red test
 results) and `bodies` (the current metric definition per metric). The
 metrics' goals sort first, `review` next, `outlook` after; a goal
 the server does not know sorts with the metrics.

@@ -50,7 +50,7 @@ The result is a JSON array, one outcome per statement:
   no rows, so `LIMIT 0` returns the schema.
 - **A write:** `{"done": "…"}` or `{"affected": n}`.
 - **An annotation of a metric definition** (`GLOSS` on a `VIEW`
-  aspect): the metric's summary row in the `metric_axes()` shape, at
+  aspect): the metric's summary row in the `metric_summary()` shape, at
   the catalog version the write created: whether the SQL plans, its
   additivity and where that came from, the slicing columns admitted,
   and each served column not admitted with how to admit it
@@ -92,7 +92,7 @@ what waits: review decisions not yet applied, approved load-query
 changes not yet declared again, questions open for a person. Then the
 catalog's size: how many annotations people wrote, and the latest. The
 instructions then say where to begin: a workspace with no dataset reads
-`workspace_next`; one with a dataset starts with the brief, once, as a
+`workspace_status`; one with a dataset starts with the brief, once, as a
 read and never a gate.
 
 ## Resources and prompts

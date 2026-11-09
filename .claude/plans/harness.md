@@ -17,8 +17,8 @@ databases), `clients.md` and `chat.md` (the trial).
 | 8 | Console: Quality opens on the tests per metric | done |
 | 9 | Skills: the metrics skill rewritten as the work in order; the reference pages still to shorten | partly |
 | 10 | glossval: finish line updated (uncommitted in glossval); still to do: rerun the eight seats against the stored bare runs, then the Monday test | open |
-| 11 | Remaining coined words: `behavior` → additivity, `entity` → grain, `ladder` → time grains, `band` → severity, `metric_axes()`, `workspace_next`, kit, actor | open, after 10 |
-| 12 | Keywords `GLOSS`, `ASPECT`, `RECIPE`: corpus forks, the lead's call | open |
+| 11 | Renamed: `additivity` (was behavior) with additive, semi-additive, ratio, non-additive; `time_grains` (was ladder); `metric_summary()`, `workspace_status`. Left as they are: `entity`, `band`, kit, actor | done |
+| 12 | Keywords `GLOSS`, `ASPECT`, `RECIPE` stay; each explained in ordinary words in SPEC and the docs, the way a SQL reference explains a command | open |
 | 13 | Semantic model export as Apache Ossie; lineage export as OpenLineage | open, after 7 |
 | 14 | Results page and websites | open, after 10 |
 

@@ -1,10 +1,10 @@
 # Stock or flow
 
-`behavior_evidence` measures whether a numeric column behaves as a
+`additivity_evidence` measures whether a numeric column behaves as a
 stock or a flow. A stock is a level that is correct at a point in time,
 such as a balance. A flow is a movement that sums over a period, such
 as sales. It runs on a column
-(`SELECT behavior_evidence() FROM balances.balance`) and returns a
+(`SELECT additivity_evidence() FROM balances.balance`) and returns a
 summary:
 
 - the reading that won, and the anchor that decided it, with its
@@ -13,10 +13,10 @@ summary:
 - the sign partition.
 
 Every anchor can be read in full through
-`GLOSSARY(table.column::behavior_evidence)`.
+`GLOSSARY(table.column::additivity_evidence)`.
 
 Summing a stock corrupts a metric silently. The metrics kit rolls a
-metric up to a coarser grain by the `behavior` annotated on its value
+metric up to a coarser grain by the `additivity` annotated on its value
 column, and refuses where none is annotated. This measurement is what
 the agent reads before writing that annotation. It never counts as a
 value in its own right: ranking a measured value against people's
@@ -53,7 +53,7 @@ The reading that reconciles wins, and the other stays visible.
 
 ## How it works
 
-**Cells.** The engine function `glossql_behavior_cells` turns the
+**Cells.** The engine function `glossql_additivity_cells` turns the
 catalog's names into cells. For every way the column's table aligns
 with an event table over the declared relationships, it returns the
 level per entity and day on the measure side, and each movement
@@ -68,7 +68,7 @@ column's sum per entity and day on the event side. Tables align by:
 A side's time axis is its own date column, else one borrowed over a
 relationship.
 
-**Anchors.** The quality kit's `behavior_anchors` screen is SQL over the
+**Anchors.** The quality kit's `additivity_anchors` screen is SQL over the
 cells.
 
 - It rolls them up to the anchor's grain, the coarser of the two
