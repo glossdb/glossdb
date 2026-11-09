@@ -347,7 +347,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 
 /* A value mark: who holds a value, said once and quietly. Nothing
    for the agent's unchallenged word — that is the ordinary case; a
-   person's word, a contested value and a stale one each get a word.
+   person's word, a conflicting value and a stale one each get a word.
    The who and the when ride the hover. */
 .v {
   font-family: var(--mono);

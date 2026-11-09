@@ -59,7 +59,7 @@ The agent's value, the person's value and each measurement stay side
 by side. `GLOSSARY()` serves one value per asset and aspect, by
 precedence: **person over agent over measurement**. It withholds the
 value only when a test scores the disagreement above its threshold;
-the state is then `contested`, with the band and score saying how
+the state is then `conflict`, with the band and score saying how
 badly. A person's decision outranks the agent without deleting
 anything: the agent's value stays, visible in the full read:
 

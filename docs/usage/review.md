@@ -87,7 +87,7 @@ So:
 
 What waits on an action rather than an answer is a different view,
 `open_items`: an approved load-query change not yet loaded, a formula answer
-newer than the stored result, a contested value, a measurement stale or
+newer than the stored result, a conflicting value, a measurement stale or
 never run, a decision not yet applied. `open_items` covers the dataset in
 use ([views and table functions](../reference/reads.md)).
 

@@ -37,7 +37,7 @@ per statement:
   7 refused: … — statement 1 ran; 3–7 not run`, with a
   `{"completed": [...]}` block for what was stored. What was stored stays
   stored.
-- two closing lines on every result. `situation:` says whether your
+- two closing lines on every result. `status:` says whether your
   last statement was done or refused, and for a metric definition
   what its summary row said. `next:` is the test report: per served
   metric its worst test — join fan-out, orphaned keys, additivity, a
@@ -115,8 +115,8 @@ back before declaring anything.
   serve the whole workspace — the binding does not narrow them, so say
   which dataset you mean.
 - `GLOSSARY(subject)` — the collapsed read, `(subject, aspect, value,
-  band, score, state)`, `state` in `current | stale | contested |
-  unassessed`; a contested value is withheld, and a missing value is a
+  band, score, state)`, `state` in `current | stale | conflict |
+  missing`; a conflicting value is withheld, and a missing value is a
   visible row. A subject is a bare path, never a string:
   `GLOSSARY(orders)`, `GLOSSARY(orders.amount)`, `GLOSSARY(fin::revenue)`
   for one aspect; `TESTS(fin::revenue)` likewise.
@@ -152,7 +152,7 @@ guessed column costs a refusal. A named argument spells `:=`.
 | `metric_tests()` | every test on each metric of the bound dataset and on what it reads — `metric`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
 | `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
 | `review_decisions` | the person's review decisions in force, with `folded_in` |
-| `open_items` | what waits on an action: a load-query approval, a formula answer, a contested value, a measurement stale or never made, a review decision not yet applied |
+| `open_items` | what waits on an action: a load-query approval, a formula answer, a conflicting value, a measurement stale or never made, a review decision not yet applied |
 | `agent_assumptions` | every assumption you currently disclose |
 | `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_axes()` |
 | `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `behavior`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `behavior` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
@@ -186,7 +186,7 @@ A person's answers arrive while you are away, as **review decisions**
 judgment alone, naming your claim by its `key`, never a copy of your
 body. The `review` goal on the `next:` line carries every action
 that waits on you — a decision to apply, an approved load-query
-change, a formula answer, a contested value — and gives you the
+change, a formula answer, a conflicting value — and gives you the
 statement. A question is served once, through the MCP interface's
 forms, and waits; the work goes on and the metric definition stays
 yours. A client without forms gets none: read `open_questions` and

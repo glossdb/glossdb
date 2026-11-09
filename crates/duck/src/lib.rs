@@ -846,7 +846,7 @@ fn next_view(conn: &Connection) -> Result<String, SessionError> {
         "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
          steps AS ({steps}), \
          first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
-         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'bands' THEN 3 WHEN 'plan' THEN 4 ELSE 1 END AS goal, \
+         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'outlook' THEN 3 ELSE 1 END AS goal, \
                 surface, step, state, act, say, why, statement, \"then\" \
          FROM first WHERE rn = 1"
     ))
@@ -1768,7 +1768,7 @@ fn execute_one(
 /// or one of its columns) or whose scanned table it imported, every test
 /// whose aspect is marked `x-subject: metric` runs over the metric, as
 /// CI runs a suite after a commit. A check that fails is logged and
-/// never fails the call; its row stays unassessed and the test report
+/// never fails the call; its row stays missing and the test report
 /// says so.
 fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result<(), SessionError> {
     let newest = |table: &str| {
@@ -1824,28 +1824,23 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             };
             if is_metric(candidate)? {
                 metrics.insert((dataset.to_string(), candidate.to_string()));
+            } else if segments.len() >= 2 {
+                // an annotation on a table or its column: every metric
+                // that scans the table
+                scanning(
+                    conn,
+                    dataset,
+                    &format!("{dataset}.{candidate}"),
+                    &is_metric,
+                    &mut metrics,
+                )?;
             }
         } else if let Some(rest) = line.strip_prefix("imported ") {
             let table = rest.split(':').next().unwrap_or("").trim();
             let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
                 continue;
             };
-            let (_, _, views) = arrow_batches(
-                conn,
-                &format!(
-                    "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
-                    dataset.replace('\'', "''"),
-                    table.replace('\'', "''")
-                ),
-                &[],
-            )?;
-            for row in rows_as_text(&views) {
-                if let Some(Some(view)) = row.first()
-                    && is_metric(view)?
-                {
-                    metrics.insert((dataset.to_string(), view.clone()));
-                }
-            }
+            scanning(conn, dataset, table, &is_metric, &mut metrics)?;
         }
     }
     for (dataset, metric) in metrics {
@@ -1873,6 +1868,33 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             {
                 tracing::debug!(error = %e, %statement, "built-in test: not run again");
             }
+        }
+    }
+    Ok(())
+}
+
+/// The metrics of a dataset whose definition scans a table, added to the set.
+fn scanning(
+    conn: &Connection,
+    dataset: &str,
+    table: &str,
+    is_metric: &dyn Fn(&str) -> Result<bool, SessionError>,
+    metrics: &mut std::collections::BTreeSet<(String, String)>,
+) -> Result<(), SessionError> {
+    let (_, _, views) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
+            dataset.replace('\'', "''"),
+            table.replace('\'', "''")
+        ),
+        &[],
+    )?;
+    for row in rows_as_text(&views) {
+        if let Some(Some(view)) = row.first()
+            && is_metric(view)?
+        {
+            metrics.insert((dataset.to_string(), view.clone()));
         }
     }
     Ok(())
@@ -1927,6 +1949,7 @@ fn grounding_row(
     if one_cell(&kind).as_deref() != Some("VIEW") {
         return Ok(None);
     }
+    inline_columns(conn, aspect, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
         &format!("SELECT * FROM {LAKE}.main.metric_axes() WHERE metric = '{quoted}'"),
@@ -1934,6 +1957,105 @@ fn grounding_row(
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
     Ok((rows > 0).then_some(row))
+}
+
+/// A metric definition may say what its columns are, beside its SQL:
+/// `time` (the period column), `measure` (`column`, `additivity`, and
+/// `unit`, `numerator`, `denominator` where they apply) and `dimensions`
+/// (the first leads the slices). The server writes them as the column
+/// annotations the kits read, and profiles the time column, so one
+/// statement serves the metric. Additivity takes the industry's words
+/// or the kit's: additive is a flow, semi-additive a stock, a ratio
+/// re-divides its halves, non-additive combines by no rule.
+fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), SessionError> {
+    let Some(dataset) = rest
+        .split(" on ")
+        .nth(1)
+        .and_then(|s| s.split(" as ").next())
+        .map(str::trim)
+        .filter(|d| !d.is_empty() && !d.contains('.'))
+    else {
+        return Ok(());
+    };
+    let (_, _, body) = arrow_batches(
+        conn,
+        &format!(
+            "SELECT body::VARCHAR FROM {LAKE}.main.glossary WHERE dataset = '{d}' AND subject = '{d}' \
+             AND aspect = '{m}' ORDER BY seq DESC LIMIT 1",
+            d = dataset.replace('\'', "''"),
+            m = metric.replace('\'', "''")
+        ),
+        &[],
+    )?;
+    let Some(body) =
+        one_cell(&body).and_then(|b| serde_json::from_str::<serde_json::Value>(&b).ok())
+    else {
+        return Ok(());
+    };
+    let name = |v: &serde_json::Value| -> Option<String> {
+        v.as_str()
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+            .map(str::to_string)
+    };
+    let annotate =
+        |aspect: &str, column: &str, value: serde_json::Value| -> Result<(), SessionError> {
+            run(
+                conn,
+                &format!("GLOSS {aspect} ON {dataset}.{metric}.{column} AS $${value}$$"),
+            )
+        };
+    let mut wrote = false;
+    let time = body.get("time").and_then(name);
+    if let Some(column) = &time {
+        annotate("role", column, serde_json::json!({"value": "timestamp"}))?;
+        wrote = true;
+    }
+    if let Some(measure) = body.get("measure") {
+        let column = measure
+            .get("column")
+            .and_then(name)
+            .or_else(|| name(measure));
+        if let Some(column) = column {
+            annotate("role", &column, serde_json::json!({"value": "measure"}))?;
+            wrote = true;
+            let additivity = measure
+                .get("additivity")
+                .and_then(|a| a.as_str())
+                .map(|a| match a {
+                    "additive" => "flow",
+                    "semi-additive" => "stock",
+                    "non-additive" => "none",
+                    other => other,
+                });
+            if let Some(value) = additivity {
+                let mut said = serde_json::json!({"value": value});
+                for half in ["numerator", "denominator", "grounds"] {
+                    if let Some(v) = measure.get(half) {
+                        said[half] = v.clone();
+                    }
+                }
+                annotate("behavior", &column, said)?;
+            }
+            if let Some(unit) = measure.get("unit").and_then(|u| u.as_str()) {
+                annotate("unit", &column, serde_json::json!({"value": unit}))?;
+            }
+        }
+    }
+    if let Some(dimensions) = body.get("dimensions").and_then(|d| d.as_array()) {
+        for (i, column) in dimensions.iter().filter_map(name).enumerate() {
+            annotate("role", &column, serde_json::json!({"value": "dimension"}))?;
+            let rank = if i == 0 { "primary" } else { "supporting" };
+            annotate("dimension", &column, serde_json::json!({"value": rank}))?;
+            wrote = true;
+        }
+    }
+    if wrote && let Some(column) = &time {
+        run(
+            conn,
+            &format!("SELECT temporal() FROM {dataset}.{metric}.{column}"),
+        )?;
+    }
+    Ok(())
 }
 
 /// Statements split on `;` outside quotes, dollar quotes (`$$` and

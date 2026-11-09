@@ -186,13 +186,14 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
             ("additivity_test".into(), "yellow".into()),
             ("fan_out_test".into(), "green".into()),
             ("orphan_test".into(), "green".into()),
+            ("validity_test".into(), "green".into()),
         ],
         "{tests:?}"
     );
     let row = goal(&app, "spend").await;
     assert_eq!(text(&row, "state"), "next", "{row}");
     assert_eq!(text(&row, "act"), "additivity_test", "{row}");
-    assert_eq!(text(&row, "say"), "gloss the columns of spend", "{row}");
+    assert_eq!(text(&row, "say"), "annotate the columns of spend", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS role ON fin.spend.period"),
         "{row}"
@@ -282,8 +283,29 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(window.contains("next:"), "{window}");
     assert!(
-        window.contains("spend → gloss the columns of spend (next://fin/spend)"),
+        window.contains("spend → annotate the columns of spend (next://fin/spend)"),
         "{window}"
     );
     assert!(window.contains("done: review"), "{window}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
+    let (app, _dir) = fin().await;
+    // The definition says which column is the time, which the measure
+    // and how it adds up, and which slice it: the server writes the
+    // column annotations, profiles the time column and runs the tests.
+    let outcomes = say(
+        &app,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#,
+    )
+    .await;
+    let written = &outcomes[1]["rows"][0];
+    assert_eq!(written["applicable"], json!(true), "{outcomes}");
+    assert_eq!(written["behavior"], json!("flow"), "{outcomes}");
+    let row = goal(&app, "spend").await;
+    assert_eq!(text(&row, "state"), "done", "{row}");
+    let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
+    assert_eq!(cells.len(), 4, "{cells:?}");
 }

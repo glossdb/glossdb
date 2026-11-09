@@ -215,7 +215,7 @@ Used by the outlook kit's test `bands_test` on `metric_bands` (threshold
 0.98). Repeats the service's verdict over the walk: the worst
 displacement, |2·PIT − 1|, across the newest point of every metric
 walked, raised to the number of metrics scored. `TESTS()` carries it
-and the `bands` goal acts on it where a model service is named. Which metric and month is in the
+and the metric's goal in `next` acts on it where a model service is named. Which metric and month is in the
 measurement's own output; `band_points()` returns them as rows.
 
 ### forecast_exists, scenario_exists

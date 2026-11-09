@@ -14,5 +14,5 @@ SELECT g.aspect,
 FROM GLOSSARY() g JOIN a ON a.name = g.aspect
 WHERE a.kind = 'measurement'
 GROUP BY g.aspect, a.grains, a.condition
-HAVING count(*) FILTER (WHERE g.state <> 'unassessed') = 0
+HAVING count(*) FILTER (WHERE g.state <> 'missing') = 0
 ORDER BY g.aspect

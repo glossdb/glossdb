@@ -28,7 +28,7 @@ misspelled sibling is silent, so read your own operand names back
 against `SELECT name FROM aspects WHERE kind = 'VIEW'`. A base
 concept defined as an extract has no formula.
 
-Whatever sits in a `WITH` blob cannot be corrected, contested or
+Whatever sits in a `WITH` blob cannot be corrected, put in conflict or
 outranked once anything is annotated on the aspect. The blob keeps only
 the `title` display label and the `x-kind` tooling flag. A unit
 written in both copies goes out of date in one. `x-kind` lives in the
@@ -204,7 +204,7 @@ answer says so, and `missing` lists the annotation until it is stored. The claim
 is yours, with its grounds: the column's meaning and the table's
 grain, never a name. The test (`DECLARE TEST`) scores disagreement between actors and
 measurements, and `metric_axes().behavior_state` says where the claim
-is — `current`, `contested`, `none` where nobody annotated it.
+is — `current`, `conflict`, `none` where nobody annotated it.
 
 **After defining, run `detect_grounding_collisions`.** Two concepts
 defined as the same extract make every ratio between them compute

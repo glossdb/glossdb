@@ -75,7 +75,7 @@ no behaviour stands on fin.spend.value, and spend serves several rows in one
 period: gloss it — GLOSS behavior ON fin.spend.value AS $${"value": "<flow|stock|ratio>"}$$
 ```
 
-It defaults nothing. A contested behaviour — the test (`DECLARE TEST`)
+It defaults nothing. A behaviour in conflict — the test (`DECLARE TEST`)
 withholding the value — refuses the same way, naming the conflict. At
 the floor, with one row per period, nothing is combined and the series
 serves what the view returns.

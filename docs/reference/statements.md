@@ -175,7 +175,7 @@ DECLARE TEST <name> ON <aspect> [BY (AGENT[, HUMAN])] [DETECTOR <function>] [THR
 A test on one aspect. `BY` lists the kinds of actor that may annotate
 it; `DETECTOR` names the function that scores how far the values
 agree; `THRESHOLD` is the score above which differing values read as
-`contested`. Name `BY`, `DETECTOR`, or both; a `MEASUREMENT` aspect
+`conflict`. Name `BY`, `DETECTOR`, or both; a `MEASUREMENT` aspect
 takes only a detector ([data tests](../usage/data-tests.md)).
 
 ```glossql
@@ -222,8 +222,8 @@ GLOSSARY([<asset>[::<aspect>]][, all => true])
 What is known: one row per asset and aspect, `(subject, aspect, value,
 band, score, state)`. The value is a person's over an agent's over a
 function's. `state` is `current`, `stale` (the data changed after the
-annotation), `contested` (actors disagree past the test's threshold)
-or `unassessed` (required, and nobody annotated it). A missing value is
+annotation), `conflict` (actors disagree past the test's threshold)
+or `missing` (required, and nobody annotated it). A missing value is
 a visible row, never an omitted one. `all => true` returns every value
 side by side. No argument covers the dataset in use; `::aspect`
 narrows to one aspect.

@@ -56,7 +56,7 @@ a tuple), or a source.
   workspace, so the value is read in every dataset
   ([source conventions](loading-data.md#record-source-conventions)).
 
-A required property nobody has annotated shows as `unassessed` in
+A required property nobody has annotated shows as `missing` in
 `GLOSSARY()`, on the assets it applies to only.
 
 ## Annotate

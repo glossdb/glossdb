@@ -19,7 +19,7 @@ defined once here. How they fit together: [how it works](how-it-works.md).
 | test (`DECLARE TEST`) | data test | Declared on an aspect: who may annotate it and which detector scores agreement, with a threshold |
 | `TESTS()` | test results | One row per asset and aspect: band, score, whether it is current |
 | `GLOSSARY()` | the glossary | What is known: one row per asset and aspect, with its state |
-| `current` · `stale` · `contested` · `unassessed` | valid · outdated · conflict · missing | The state of an asset's aspect in the glossary |
+| `current` · `stale` · `conflict` · `missing` | valid · outdated · conflict · missing | The state of an asset's aspect in the glossary |
 | band | severity, confidence | green, yellow, orange, red, or error |
 | `pin`, `reads` | provenance | The versions of what a measurement read |
 | source | connection | A directory, a URL prefix, or an attached database |
@@ -73,7 +73,7 @@ An export to Ossie and an import from it are planned.
 | `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
 | `additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
 | `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
-| `red` · `unassessed` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `metric_tests()`, and whether its result still holds |
+| `red` · `not_run` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `metric_tests()`, and whether its result still holds |
 | `tolerance`, `breach_rate` | threshold, failure rate | The rate a person accepts; the violation share a check measures |
 
 ## The server

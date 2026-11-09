@@ -2,7 +2,7 @@
 -- definitions registry as metric_surfaces serves it — and every column
 -- whose meaning entry names a term, in one alphabet. A person's review decision
 -- on a metric's definition, or a person's meaning on a column, shows as
--- a mark; a contested meaning shows as one. A row opens the metric's
+-- a mark; a conflicting meaning shows as one. A row opens the metric's
 -- page or the column's.
 WITH d AS (SELECT dataset FROM current_dataset),
 rulings AS (
@@ -47,10 +47,10 @@ cols AS (
            json_extract_string(b.body, '$.value'),
            json_extract_string(u.body, '$.value'),
            CASE WHEN j.n > 0 THEN CAST(j.n AS VARCHAR) || CASE WHEN j.n = 1 THEN ' join' ELSE ' joins' END END) AS aside,
-         CASE WHEN st.state = 'contested' THEN 'contested'
+         CASE WHEN st.state = 'conflict' THEN 'conflict'
               WHEN st.state = 'stale' THEN 'stale'
               WHEN m.actor_kind = 'human' THEN 'ruled' ELSE '' END AS mark,
-         CASE WHEN st.state = 'contested' THEN 'the annotations on the meaning differ; the test withholds it'
+         CASE WHEN st.state = 'conflict' THEN 'the annotations on the meaning differ; the test withholds it'
               WHEN st.state = 'stale' THEN 'written before the column last changed'
               WHEN m.actor_kind = 'human' THEN 'a person''s word, ' || strftime(m.written_at, '%d %b %Y %H:%M')
               ELSE '' END AS mark_title,
@@ -66,7 +66,7 @@ cols AS (
   WHERE m.aspect = 'meaning' AND json_extract_string(m.body, '$.term') IS NOT NULL),
 every AS (SELECT * FROM surfaces UNION ALL SELECT * FROM cols)
 SELECT term, name, kind, meaning, aside, mark,
-       CASE mark WHEN 'ruled' THEN 'v-ruled' WHEN 'contested' THEN 'v-open' WHEN 'stale' THEN 'v-stale' ELSE 'v-none' END AS mcls,
+       CASE mark WHEN 'ruled' THEN 'v-ruled' WHEN 'conflict' THEN 'v-open' WHEN 'stale' THEN 'v-stale' ELSE 'v-none' END AS mcls,
        mark_title, link
 FROM every
 ORDER BY lower(term), name

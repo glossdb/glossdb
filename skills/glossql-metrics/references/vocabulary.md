@@ -37,9 +37,9 @@ author a workspace-scoped function that decides behavior the way
 *this* dataset demands. That function is the installation's written-down
 thinking — versioned, re-runnable, honest about its method. Not
 willing to go that far? Don't annotate: absence shows as an honest
-`unassessed` row, a guess does not.
+`missing` row, a guess does not.
 
 "Does not apply" *within* relevance is still a judgment: a ratio is a
 measure with no stock/flow nature, and that is stored as
-`{"value": "none", "grounds": "…"}`, never as a permanent unassessed
+`{"value": "none", "grounds": "…"}`, never as a permanent missing
 row.

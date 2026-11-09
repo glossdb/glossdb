@@ -24,6 +24,14 @@ cp "$src/SPEC.md" "$src/grammar.ebnf" "$out/"
 fetched=
 if [ -n "${GH_TOKEN:-}" ]; then
   api=https://api.github.com/repos/glossdb/glossql/actions
+  # the extension's pipeline may still be building this commit: its build
+  # takes about six minutes, a build here fifteen, so wait for it
+  waited=0
+  while [ "$waited" -lt 600 ] && curl -fsSL "$api/runs?head_sha=$sha&per_page=20" \
+      | python3 -c 'import json, sys; sys.exit(0 if any(r["name"] == "Main Extension Distribution Pipeline" and r["status"] != "completed" for r in json.load(sys.stdin)["workflow_runs"]) else 1)'; do
+    sleep 20
+    waited=$((waited + 20))
+  done
   for run in $(curl -fsSL "$api/runs?head_sha=$sha&per_page=20" \
                | python3 -c 'import json, sys; print(" ".join(str(r["id"]) for r in json.load(sys.stdin)["workflow_runs"] if r["name"] == "Main Extension Distribution Pipeline"))'); do
     url=$(curl -fsSL "$api/runs/$run/artifacts" \

@@ -68,7 +68,7 @@ extension's `kits/` and two from this repository's:
   and the test report per metric in `next`.
 - **The outlook kit** (`kits/outlook` here, preview): expected ranges,
   forecasts, plan judgments and scenario estimates, each a measurement;
-  the `bands` and `plan` goals.
+  the `outlook` goal, and a metric's steps for a point outside its expected range or a plan outside the forecast's.
 
 The kits are part of the core, not add-ons: the `next` read and the
 console name their aspects and functions. A workspace's own vocabulary

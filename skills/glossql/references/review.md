@@ -70,7 +70,7 @@ Then close what waits on an action, in the same session:
   moves the pin: the series reads the newest claims at its next read,
   `metric_axes().judged_current` says whether the profile is current
   at the data's version, and the walk is stored at the pin it runs at.
-  The `review` goal, each metric's test report and the `bands` goal
+  The `review` goal, each metric's test report and the `outlook` goal
   on the `next:` line carry the order — the decisions applied, then
   the profile once, then the walk once. **That closing re-measure is the audit of the batch, not
   hygiene**: a review decision outranks your judgment, never the
@@ -101,7 +101,7 @@ Then close what waits on an action, in the same session:
 - **An approved `recipe_change`** (a person's annotation carrying
   `{table, sql, reason}`): run the `DECLARE RECIPE` it approves — the
   approval is data, the action is yours.
-- **A contested value**: redefine and judge again as the conflict
+- **A value in conflict**: redefine and judge again as the conflict
   section below says.
 - **A person's values over your own**: read each back and rebuild what
   you still hold on top of the person's decision — their word governs.
@@ -133,15 +133,15 @@ why — in the report's front matter, not softened or buried. An
 honest "two readings hold, I took A because B breaks the grain
 check" is worth more than fluent certainty.
 
-## When a value is contested
+## When a value is in conflict
 
-`state = 'contested'` means the authors' values differ on one asset's
+`state = 'conflict'` means the authors' values differ on one asset's
 aspect and the detector's score crossed the test's
 threshold — the value is withheld, never decided for you. Read the
 raw values (`GLOSSARY(subject, all => true)`), go back to the data,
 and annotate again only if the evidence moved you: your new annotation
 supersedes your old one, and agreeing values turn the band green. If
-the evidence still says you were right, leave it contested — a person
+the evidence still says you were right, leave it in conflict — a person
 closes it by conceding in their own annotation. (Striking a value with
 `DELETE FROM glossary WHERE …` removes it from the catalog for good;
 concede in your own annotation instead, which keeps the history.)

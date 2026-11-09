@@ -47,9 +47,9 @@ CREATE OR REPLACE VIEW main.open_items AS
     WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   contests AS (
-    SELECT 'conflict' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
+    SELECT 'conflict' AS kind, c.subject, 'conflict: ' || c.subject || ' ' || c.aspect AS what,
            'withheld at read — a detector crossed its threshold or the values differ' AS why, '' AS since
-    FROM collapsed c WHERE c.state = 'contested'),
+    FROM collapsed c WHERE c.state = 'conflict'),
   -- a kit's check on a metric (x-subject metric) is the server's to run
   -- again, at the next touch of the metric: never an item here
   remeasures AS (
@@ -94,7 +94,7 @@ CREATE OR REPLACE VIEW main.open_items AS
 
 -- The review goal, the core's one goal for the `next` read: what a
 -- person decided or approved and the agent has not applied yet, and a
--- value withheld as contested. Served as the arms' SQL text, like a
+-- value withheld as conflict. Served as the arms' SQL text, like a
 -- kit's next steps, over the relations the engine's next read takes
 -- once: ds, open_items, bodies. The metrics kit answers one goal per
 -- served metric, its test report; the outlook kit bands and plan where
@@ -116,7 +116,7 @@ SELECT 'review', 2, 'next', 'DECLARE RECIPE', 'declare ' || o.subject || ' again
 FROM open_items o, ds
 WHERE o.kind = 'recipe-change'
 UNION ALL
-SELECT 'review', 3, 'next', 'GLOSSARY', 'read the contested value on ' || o.subject, o.why,
+SELECT 'review', 3, 'next', 'GLOSSARY', 'read the conflicting value on ' || o.subject, o.why,
        'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || o.subject || ', all => true)',
        ''
 FROM open_items o, ds

@@ -72,14 +72,14 @@ early and a sort keeps only the capped rows. Catalog reads —
 
 Every result ends with two lines:
 
-- `situation:` says whether the last statement ran (`situation: done`)
+- `status:` says whether the last statement ran (`status: done`)
   or was refused, with the refusal's first line. For a metric
   definition it adds the summary row: the slicing columns admitted, the
   columns not admitted, the measurements wanted.
 - `next:` is the test report: per served metric its worst test with a
   link, `next://<dataset>/<metric>`, then `review` where a person's
-  decision waits to be applied, and the outlook's `bands` and `plan`
-  where a model service is named. A blocked goal says what blocks it;
+  decision waits to be applied, and `outlook` where a model service is
+  named. A blocked goal says what blocks it;
   the finished ones close the line as `done: …`. The goal is the
   caller's choice, never stored. How the goals work:
   [next steps](../extending/next-steps.md).

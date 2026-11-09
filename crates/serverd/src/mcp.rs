@@ -135,7 +135,7 @@ impl GlossqlMcp {
     fn instructions(&self, bound: Option<&str>) -> String {
         let opening = match bound {
             Some(dataset) => format!(
-                "Open with the brief the glossql skill teaches — human slots, contested, red \
+                "Open with the brief the glossql skill teaches — human annotations, conflicts, red \
                  bands, `open_items` on `{dataset}` — once, before the first write. It is a read, \
                  not a gate: what it counts waits for the human while the work goes on."
             ),
@@ -158,7 +158,7 @@ impl GlossqlMcp {
              `skill://glossql-metrics/SKILL.md` is where to begin."
         } else {
             "Open with the brief the glossql skill teaches — `USE` a dataset, then the \
-             human annotations, contested values, red bands, `open_items` — once, before the \
+             human annotations, conflicts, red bands, `open_items` — once, before the \
              first write. It is a read, not a gate: what waits for a person waits while \
              the work goes on."
         }
@@ -645,7 +645,7 @@ struct RulingEntry<'a> {
 }
 
 /// What still holds open for a human to judge, and the round's ONLY
-/// derivation — unassessed tested claims (behavior, unit, role) are
+/// derivation — missing tested claims (behavior, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
 /// shipped functions settle them. The derivation itself is the core's
 /// `open_questions` read (`kits/core/kit.sql`), which carries
@@ -927,8 +927,8 @@ impl ServerHandler for GlossqlMcp {
                     .with_description(
                         "Where one goal stands on a dataset — a served metric, named by \
                          the metric, with its worst test and the statement that settles it; \
-                         `review`, what a person decided and the agent has not applied; the \
-                         outlook's `bands` and `plan` where a model service is named. \
+                         `review`, what a person decided and the agent has not applied; \
+                         `outlook`, the forecast runs due, where a model service is named. \
                          `next://{dataset}` serves every goal; the same rows through the tool \
                          are `SELECT * FROM next WHERE surface = '<surface>'`.",
                     )

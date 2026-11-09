@@ -44,7 +44,7 @@ Names the server reads, shipped by this kit: `title` and `x-kind` on
 VIEW aspects and `unit` and `meaning` in `definitions` entries (the
 console's metric pages and `metric_surfaces`), and `none` as the
 examined negative in the enum properties. "Examined, does not apply" is
-a different fact from an unassessed row, and the one that lets the
+a different fact from an missing row, and the one that lets the
 open work reach zero.
 
 ## Tests

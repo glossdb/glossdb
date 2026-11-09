@@ -52,7 +52,7 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 query TTTT
 SELECT metric, applicable, reason, unadmitted FROM metric_axes();
 ----
-spend	false	no column carries role timestamp: gloss role on the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
+spend	false	no column carries role timestamp: annotate the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
 
 query T
 SELECT missing[1] FROM metric_axes();
@@ -359,6 +359,7 @@ SELECT test, declared_by, state, run FROM metric_tests() WHERE metric = 'spend' 
 additivity_test	kit:metrics	green	SELECT additivity_check() FROM fin.spend
 fan_out_test	kit:metrics	green	SELECT fan_out_check() FROM fin.spend
 orphan_test	kit:metrics	green	SELECT orphan_check() FROM fin.spend
+validity_test	kit:metrics	not_run	SELECT validity_check() FROM fin.spend
 
 # a single value and a stopped definition have no tests of this kind
 query I
@@ -389,7 +390,7 @@ query TTT
 SELECT test, state, json_extract_string(evidence, '$.reason') FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
 ----
 fan_out_test	yellow	no relationship screen is stored: run detect_relationships() over the dataset
-orphan_test	yellow	no relationship is declared between the tables the metric scans (lines, notes): declare the join it uses
+orphan_test	green	no relationship is declared between the tables the metric scans (lines, notes): nothing to check
 
 # the screen lands: the check's result predates it and says so, and the next run reads the screen
 statement ok
@@ -413,3 +414,36 @@ query I
 SELECT count(*) FROM routes_metrics() WHERE arms LIKE '%fan_out_test%' AND arms LIKE '%every test on%';
 ----
 1
+
+# --- an effective-dated table read without its validity dates: the scan's columns are the evidence
+
+statement ok
+CREATE TABLE fin.prices AS SELECT (i % 40) AS line_id, DATE '2024-01-01' + INTERVAL (i * 30) DAY AS valid_from, DATE '2024-01-01' + INTERVAL (i * 30 + 30) DAY AS valid_to, 2.0 AS price FROM range(120) r(i);
+
+statement ok
+GLOSS validity ON fin.prices AS $${"valid_from": "valid_from", "valid_to": "valid_to"}$$;
+
+statement ok
+DECLARE ASPECT priced_spend WITH $${"title": "Priced spend"}$$ AS VIEW;
+
+statement ok
+GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id GROUP BY ALL"}$$;
+
+statement ok
+SELECT validity_check() FROM fin.priced_spend;
+
+query TT
+SELECT state, json_extract_string(evidence, '$.tables') FROM metric_tests() WHERE metric = 'priced_spend' AND test = 'validity_test';
+----
+red	["prices (valid_from, valid_to)"]
+
+statement ok
+GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id AND p.valid_from <= l.booked AND p.valid_to > l.booked GROUP BY ALL"}$$;
+
+statement ok
+SELECT validity_check() FROM fin.priced_spend;
+
+query T
+SELECT state FROM metric_tests() WHERE metric = 'priced_spend' AND test = 'validity_test';
+----
+green
