@@ -40,7 +40,7 @@ runs glossql statements and plain SQL over the workspace's data and its catalog;
 description is the contract for every call. Start here, in this order. \
 1. Read the two skills through the tool: `SELECT body FROM pages() WHERE uri IN \
 ('skill://glossql/SKILL.md', 'skill://glossql-metrics/SKILL.md')` — the interface and the \
-language, then the eight goals; each names its references (`skill://<name>/references/…`) \
+language, then the work; each names its references (`skill://<name>/references/…`) \
 for when they matter, and every page this server serves is a row of `pages()`. \
 2. `SELECT * FROM datasets`, then what the brief below names. \
 The objects: a dataset holds tables, loaded from sources by load queries (recipes); an \
@@ -50,10 +50,11 @@ gloss is SQL, served as a view under the aspect's name — a metric, a single va
 derived relation, which the metrics skill tells apart. Functions measure the data, and \
 their measurements are the evidence. Tests (TEST) score where measurements, agents and \
 people disagree. A person's review decision outranks every agent's annotation. Read live \
-state through the tool; never assume it. Every result ends with `next:`, one action per \
-goal — structure, metrics, slices, bands, checks, app, plan, review — and \
-the work is done when every goal is done or blocked; a goal's link gives the statement \
-that moves it. The docs are `doc://docs/…`, the language `doc://SPEC.md` and \
+state through the tool; never assume it. Every result ends with `next:`, the test report: \
+per served metric its worst test (join fan-out, orphaned keys, additivity, the team's own) \
+with the statement that settles it, and the review queue; the work is done when every \
+served metric's tests are green or accepted and nothing waits on you; a goal's link gives \
+the statement. The docs are `doc://docs/…`, the language `doc://SPEC.md` and \
 `doc://grammar.ebnf` — rows of `pages()` too.";
 
 /// What the brief is decided on: the store's counts plus the open
@@ -924,11 +925,12 @@ impl ServerHandler for GlossqlMcp {
             resource_templates: vec![
                 ResourceTemplate::new("next://{dataset}/{surface}", "next")
                     .with_description(
-                        "Where one goal stands on a dataset — structure, metrics, slices, \
-                         bands, checks, app, plan, review — and the one action \
-                         that moves it, as a statement to send. `next://{dataset}` serves every \
-                         goal; the same rows through the tool are \
-                         `SELECT * FROM next WHERE surface = '<surface>'`.",
+                        "Where one goal stands on a dataset — a served metric, named by \
+                         the metric, with its worst test and the statement that settles it; \
+                         `review`, what a person decided and the agent has not applied; the \
+                         outlook's `bands` and `plan` where a model service is named. \
+                         `next://{dataset}` serves every goal; the same rows through the tool \
+                         are `SELECT * FROM next WHERE surface = '<surface>'`.",
                     )
                     .with_mime_type("text/markdown"),
             ],
@@ -1352,7 +1354,7 @@ impl GlossqlMcp {
                 "SELECT * FROM next WHERE surface = '{}'",
                 s.replace('\'', "''")
             ),
-            None => "SELECT * FROM next ORDER BY goal".to_string(),
+            None => "SELECT * FROM next ORDER BY goal, surface".to_string(),
         };
         read_rows(&session, &sql).await
     }

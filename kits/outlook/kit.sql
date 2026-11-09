@@ -1193,7 +1193,9 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- current origin, the plan judged against it, every gap judged by a
 -- person — with a scenario's estimate where one is annotated. Served as
 -- CTEs and arms over the relations the server reads once (ds, axes, open_items,
--- reds, bodies, applicable); every CTE reads the catalog, none the data:
+-- reds, bodies), served only where the deployment names a model service
+-- (glossql_service_url), since every step here calls it; every CTE reads
+-- the catalog, none the data:
 -- futures_red is the metric whose newest point the red result scores,
 -- futures_judged the plans' current judgements, futures_gaps the
 -- plan years the forecast's band does not hold, futures_estimate what
@@ -1201,7 +1203,7 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.routes_outlook() AS TABLE
-SELECT $ctes$
+SELECT CASE WHEN coalesce(current_setting('glossql_service_url'), '') <> '' THEN $ctes$
 futures_walk AS (SELECT * FROM main.band_verdict()),
 futures_red AS (
   SELECT metric, period FROM main.band_points()
@@ -1232,7 +1234,7 @@ futures_levers AS (
   FROM glossql_glossary(current_schema(), NULL, false) WHERE aspect = 'lever' AND state = 'current' AND (value->>'value') = 'true'),
 futures_estimate AS (
   SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM main.scenario_points(NULL))
-$ctes$ AS ctes, $arms$
+$ctes$ ELSE '' END AS ctes, CASE WHEN coalesce(current_setting('glossql_service_url'), '') <> '' THEN $arms$
 SELECT 'bands' AS surface, 1 AS step, 'blocked' AS state, '' AS act, '' AS say, 'no applicable metric exists' AS why, '' AS statement, '' AS "then"
 FROM ds WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable AND coalesce(kind, '') <> 'plan')
 UNION ALL
@@ -1382,4 +1384,4 @@ WHERE EXISTS (SELECT 1 FROM main.review_decisions r WHERE r.dataset = ds.dataset
 UNION ALL
 SELECT 'plan', 15, 'done', '', '', 'every plan is served and judged, no plan period lies outside the forecast''s band, or the gap carries a question or a review decision', '', ''
 FROM ds
-$arms$ AS arms;
+$arms$ ELSE '' END AS arms;

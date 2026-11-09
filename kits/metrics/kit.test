@@ -341,3 +341,75 @@ statement error
 SELECT count(*) FROM metric_series();
 ----
 the behaviour on fin.headcount.value is none, so its rows do not combine
+
+# --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its behaviour
+
+statement ok
+SELECT fan_out_check() FROM fin.spend;
+
+statement ok
+SELECT orphan_check() FROM fin.spend;
+
+statement ok
+SELECT additivity_check() FROM fin.spend;
+
+query TTTT
+SELECT test, declared_by, state, run FROM metric_tests() WHERE metric = 'spend' ORDER BY test;
+----
+additivity_test	kit:metrics	green	SELECT additivity_check() FROM fin.spend
+fan_out_test	kit:metrics	green	SELECT fan_out_check() FROM fin.spend
+orphan_test	kit:metrics	green	SELECT orphan_check() FROM fin.spend
+
+# a single value and a stopped definition have no tests of this kind
+query I
+SELECT count(*) FROM metric_tests() WHERE metric IN ('fte_cap', 'win_rate');
+----
+0
+
+# a metric joining two tables on a key that repeats on both sides fans out: the stored screen is the evidence, and until it is stored the test says so
+statement ok
+CREATE TABLE fin.notes AS SELECT CASE WHEN i < 90 THEN i ELSE i - 90 END AS line_id, 'note ' || i AS text FROM range(100) r(i);
+
+statement ok
+CREATE TABLE fin.lines AS SELECT (i % 90) AS line_id, DATE '2024-01-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(270) r(i);
+
+statement ok
+DECLARE ASPECT noted_spend WITH $${"title": "Noted spend"}$$ AS VIEW;
+
+statement ok
+GLOSS noted_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.lines l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
+
+statement ok
+SELECT fan_out_check() FROM fin.noted_spend;
+
+statement ok
+SELECT orphan_check() FROM fin.noted_spend;
+
+query TTT
+SELECT test, state, json_extract_string(evidence, '$.reason') FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
+----
+fan_out_test	yellow	no relationship screen is stored: run detect_relationships() over the dataset
+orphan_test	yellow	no relationship is declared between the tables the metric scans (lines, notes): declare the join it uses
+
+# the screen lands: the check's result predates it and says so, and the next run reads the screen
+statement ok
+SELECT detect_relationships() FROM fin;
+
+query TT
+SELECT state, current FROM metric_tests() WHERE metric = 'noted_spend' AND test = 'fan_out_test';
+----
+yellow	false
+
+statement ok
+SELECT fan_out_check() FROM fin.noted_spend;
+
+query TTT
+SELECT state, current, json_extract_string(evidence, '$.pairs') FROM metric_tests() WHERE metric = 'noted_spend' AND test = 'fan_out_test';
+----
+red	true	["lines.line_id ~ notes.line_id"]
+
+# the test report: one goal per metric, the worst test first, with the statement that settles it
+query I
+SELECT count(*) FROM routes_metrics() WHERE arms LIKE '%fan_out_test%' AND arms LIKE '%every test on%';
+----
+1

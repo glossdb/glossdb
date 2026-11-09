@@ -14,7 +14,7 @@ and `doc://grammar.ebnf` — read them, don't reconstruct them. Every
 pages() WHERE uri = '…'` reads one — and a resource for a client that
 reads resources. Everything live — the vocabulary, the tables, the
 catalog — is read through the language, never assumed. The work
-itself — the eight goals and the judgment inside each — is
+itself — the goals and the judgment inside each — is
 `skill://glossql-metrics/SKILL.md`.
 
 ## The MCP interface
@@ -39,14 +39,19 @@ per statement:
   stored.
 - two closing lines on every result. `situation:` says whether your
   last statement was done or refused, and for a metric definition
-  what its summary row said. `next:` names one action per goal —
-  structure, metrics, slices, bands, checks, app, plan, review —
-  each with a link. To move a goal, read its link —
-  `next://<dataset>/<goal>` as a resource, or `SELECT * FROM next
-  WHERE surface = '<goal>'` through the tool — and send the statement
-  it gives you, edited to your judgment; `<…>` marks what only you can
-  fill. A blocked goal names what blocks it. None of it is an order:
-  the goal is what the person asked for.
+  what its summary row said. `next:` is the test report: per served
+  metric its worst test — join fan-out, orphaned keys, additivity, a
+  test of the team's own — with a link, then `review`, what a person
+  decided and you have not applied; the goals that are done close the
+  line. The server runs the built-in tests itself after a call that
+  defines a metric, glosses its columns or imports a table it scans,
+  so the line reads results, never chores. To settle one, read its
+  link — `next://<dataset>/<metric>` as a resource, or `SELECT * FROM
+  next WHERE surface = '<metric>'` through the tool — and send the
+  statement it gives you, edited to your judgment; `<…>` marks what
+  only you can fill. A red test is settled by a fix to the definition
+  or the load, or accepted by a tolerance a person records. None of it
+  is an order: the goal is what the person asked for.
 
 Who you are — agent or person — comes with the connection; there is
 no BY clause. The dataset comes with the endpoint: on a dataset's
@@ -143,7 +148,8 @@ guessed column costs a refusal. A named argument spells `:=`.
 
 | read | serves |
 |---|---|
-| `workspace_next` | every goal, what is done and what is open — the counts behind the `next:` line |
+| `workspace_next` | every surface the workspace can grow along: what exists, what is open, what waits for a person |
+| `metric_tests()` | every test on each metric of the bound dataset and on what it reads — `metric`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
 | `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
 | `review_decisions` | the person's review decisions in force, with `folded_in` |
 | `open_items` | what waits on an action: a load-query approval, a formula answer, a contested value, a measurement stale or never made, a review decision not yet applied |

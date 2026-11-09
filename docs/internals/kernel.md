@@ -64,8 +64,8 @@ extension's `kits/` and two from this repository's:
   their coherence, derivations, metric definition collisions, the
   temporal profile.
 - **The metrics kit** (`kits/metrics` here): time grains, the metric
-  summary row, the cells, single values, lineage; the `metrics` and
-  `slices` goals.
+  summary row, the cells, single values, lineage; the built-in tests
+  and the test report per metric in `next`.
 - **The outlook kit** (`kits/outlook` here, preview): expected ranges,
   forecasts, plan judgments and scenario estimates, each a measurement;
   the `bands` and `plan` goals.

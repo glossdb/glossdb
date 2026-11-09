@@ -418,16 +418,21 @@ UNION ALL
 SELECT metric, NULL, NULL, NULL, 'the metric definition does not plan' FROM lineage WHERE field IS NULL
 ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 
---===------------------------------------------------------------------===--
+--===------------------------------------------------------------------===------------------------------------------------------------------===--
 -- The built-in tests on a metric: what can break its number, checked
--- against its lineage and the data: fan_out_check is join fan-out,
--- orphan_check referential integrity on the declared joins,
--- additivity_check the additivity of the value. Each is a measurement over the
--- metric's view, `SELECT <check>() FROM <dataset>.<metric>`, whose
--- breach_rate rate_tolerance scores: 0 is green. A person who accepts a
--- result records a tolerance at or above it on the metric; their value
--- outranks the agent's. `x-subject: metric` marks a test metric_tests()
--- expects on every metric, run or not.
+-- against its lineage and the evidence the quality kit stored, never
+-- against the data again. fan_out_check is join fan-out, orphan_check
+-- referential integrity on the declared joins, additivity_check the
+-- additivity of the value. Each is a measurement over the metric's
+-- view, `SELECT <check>() FROM <dataset>.<metric>`, whose breach_rate
+-- rate_tolerance scores: 0 is green. A check whose evidence is not
+-- stored yet says so in `reason` and serves no rate, which reads
+-- yellow; a metric over one table cannot fan out and has no join to
+-- check. A person who accepts a result records a tolerance at or above
+-- it on the metric; their value outranks the agent's. `x-subject:
+-- metric` marks a test metric_tests() expects on every metric, run or
+-- not, and the test the server runs itself after a call that defined
+-- the metric, glossed its columns or imported a table it scans.
 --
 -- metric_reads_of(ds, m): the tables and columns metric m of dataset ds
 -- descends from, through its view's lineage; none when it does not plan.
@@ -446,10 +451,11 @@ SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
 FROM glossql_views_scans(ds) s
 WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 
--- fan_out_check: two tables the metric reads share a key that repeats on
+-- fan_out_check: two tables the metric scans share a key that repeats on
 -- both sides, so a join on it multiplies rows unless the definition narrows
--- it (by dates, by a filter). The pairs come from relationship_candidates:
--- a many-to-many between two of its tables is the evidence.
+-- it (by dates, by a filter). The pairs come from the stored relationship
+-- screen, detect_relationships' newest result on the dataset: a
+-- many-to-many between two of its tables is the evidence.
 DECLARE ASPECT fan_out_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -460,23 +466,36 @@ DECLARE ASPECT fan_out_check WITH $${
 
 DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
   WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  n AS (SELECT count(*) AS tables FROM reads),
+  screen AS (
+    SELECT value FROM main.measurements
+    WHERE dataset = split_part($subject, '.', 1) AND function = 'detect_relationships' AND subject = split_part($subject, '.', 1)
+    ORDER BY seq DESC LIMIT 1),
+  candidates AS (
+    SELECT json_extract_string(j, '$.from') AS from_col, json_extract_string(j, '$.to') AS to_col,
+           json_extract_string(j, '$.cardinality') AS cardinality
+    FROM screen, unnest(coalesce(json_extract(screen.value, '$.candidates')::JSON[], [])) t(j)),
   pairs AS (
     SELECT DISTINCT least(from_col, to_col) || ' ~ ' || greatest(from_col, to_col) AS pair
-    FROM main.relationship_candidates(split_part($subject, '.', 1))
+    FROM candidates
     WHERE cardinality = 'many-to-many' AND split_part(from_col, '.', 1) <> split_part(to_col, '.', 1)
       AND split_part(from_col, '.', 1) IN (SELECT table_name FROM reads)
       AND split_part(to_col, '.', 1) IN (SELECT table_name FROM reads))
-  SELECT EXISTS (SELECT 1 FROM reads) AS applicable,
-         CASE WHEN NOT EXISTS (SELECT 1 FROM reads) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
-         CASE WHEN EXISTS (SELECT 1 FROM reads) THEN CASE WHEN EXISTS (SELECT 1 FROM pairs) THEN 1.0 ELSE 0.0 END END AS breach_rate,
+  SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true ELSE EXISTS (SELECT 1 FROM screen) END AS applicable,
+         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM screen) THEN 'no relationship screen is stored: run detect_relationships() over the dataset' END AS reason,
+         CASE WHEN n.tables = 1 THEN 0.0
+              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM screen) THEN CASE WHEN EXISTS (SELECT 1 FROM pairs) THEN 1.0 ELSE 0.0 END END AS breach_rate,
          (SELECT list(pair ORDER BY pair) FROM pairs) AS pairs
+  FROM n
 $$ RETURNS fan_out_check;
 
 DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
--- additivity_check: the metric's value column says how it combines over time
--- and members (behavior); without it a total or a coarser grain sums
--- whatever the column holds, a stock or a ratio included.
+-- additivity_check: the metric's value column says how it combines over
+-- time and members (behavior: a flow sums, a stock keeps the period's last
+-- level, a ratio re-divides its summed halves); without it a total or a
+-- coarser grain sums whatever the column holds, a stock or a ratio included.
 DECLARE ASPECT additivity_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -485,18 +504,23 @@ DECLARE ASPECT additivity_check WITH $${
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH a AS (SELECT * FROM main.metric_axes() WHERE metric = split_part($subject, '.', 2))
-  SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) AS applicable,
-         CASE WHEN NOT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) THEN 'no value column: not a metric, or its columns carry no role yet' END AS reason,
-         (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a WHERE value_column IS NOT NULL) AS breach_rate,
+  WITH a AS (SELECT * FROM main.metric_axes() WHERE metric = split_part($subject, '.', 2)),
+  ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable)
+  SELECT ok.applicable,
+         CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM a WHERE coalesce(kind, '') IN ('scalar', 'relation')),
+                                                  'no value column: not a metric, or its columns carry no role yet') END AS reason,
+         CASE WHEN ok.applicable THEN (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a) END AS breach_rate,
          (SELECT behavior FROM a) AS behavior
+  FROM ok
 $$ RETURNS additivity_check;
 
 DECLARE TEST additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 -- orphan_check: the share of rows on a declared edge between two tables the
--- metric reads whose key finds no parent; an inner join drops them, an
--- outer join counts them under no member.
+-- metric scans whose key finds no parent, from the stored coherence result
+-- (relationship_coherence' newest on the dataset); an inner join drops
+-- them, an outer join counts them under no member. A metric that scans two
+-- tables with no edge declared between any of them is told so.
 DECLARE ASPECT orphan_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -507,34 +531,56 @@ DECLARE ASPECT orphan_check WITH $${
 
 DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
   WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
+  declared AS (
+    SELECT 1 FROM main.relationships r
+    WHERE r.dataset = split_part($subject, '.', 1)
+      AND split_part(r.left_side, '.', 2) IN (SELECT table_name FROM reads)
+      AND split_part(r.right_side, '.', 2) IN (SELECT table_name FROM reads)
+      AND split_part(r.left_side, '.', 2) <> split_part(r.right_side, '.', 2)),
+  coherence AS (
+    SELECT value FROM main.measurements
+    WHERE dataset = split_part($subject, '.', 1) AND function = 'relationship_coherence' AND subject = split_part($subject, '.', 1)
+    ORDER BY seq DESC LIMIT 1),
   edges AS (
-    SELECT DISTINCT relationship, orphan_rate
-    FROM main.relationship_checks(split_part($subject, '.', 1))
-    WHERE applicable AND relationship IS NOT NULL
-      AND split_part(split_part(relationship, ' ', 1), '.', 2) IN (SELECT table_name FROM reads)
+    SELECT json_extract_string(j, '$.relationship') AS relationship, try_cast(json_extract(j, '$.orphan_rate') AS DOUBLE) AS orphan_rate
+    FROM coherence, unnest(coalesce(json_extract(coherence.value, '$.relationships')::JSON[], [])) t(j)),
+  mine AS (
+    SELECT * FROM edges
+    WHERE split_part(split_part(relationship, ' ', 1), '.', 2) IN (SELECT table_name FROM reads)
       AND split_part(split_part(relationship, ' ', 3), '.', 2) IN (SELECT table_name FROM reads))
-  SELECT EXISTS (SELECT 1 FROM reads) AS applicable,
-         CASE WHEN NOT EXISTS (SELECT 1 FROM reads) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
-         CASE WHEN EXISTS (SELECT 1 FROM reads) THEN coalesce((SELECT max(orphan_rate) FROM edges), 0.0) END AS breach_rate,
-         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM edges) AS edges
+  SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
+              WHEN NOT EXISTS (SELECT 1 FROM declared) THEN false
+              ELSE EXISTS (SELECT 1 FROM coherence) END AS applicable,
+         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): declare the join it uses'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM coherence) THEN 'no coherence result is stored: run relationship_coherence() over the dataset' END AS reason,
+         CASE WHEN n.tables = 1 THEN 0.0
+              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM declared) AND EXISTS (SELECT 1 FROM coherence) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
+         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges
+  FROM n
 $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
 -- metric_tests(): every test on each metric of the bound dataset and on
--- what it reads — metric, test, declared_by (the kit that ships the test,
--- kit:<name>, or the agent or person who wrote it), subject (the metric, or
--- a table or column it reads), state (red, unassessed, stale, orange,
--- yellow, green), score, evidence (the check's own result), run (the
--- statement that runs it again, empty where there is none). The tests marked
--- x-subject metric appear on every metric, run or not. Ordered by what to
--- look at first.
+-- what it reads — metric, test, aspect, declared_by (the kit that ships
+-- the test, kit:<name>, or the agent or person who wrote it), subject
+-- (the metric, or a table or column it reads), state (red, orange,
+-- yellow, green, or unassessed while the test has not run), current
+-- (false once what the result read has moved: the band stands and the
+-- test runs again at the next touch), score, evidence (the check's own
+-- result), run (the statement that runs it again, empty where there is
+-- none). The tests marked x-subject metric appear on every metric, run
+-- or not. A single value, a derived relation, a plan and a sample are
+-- not metrics here. Ordered by what to look at first.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.metric_tests() AS TABLE
 WITH metrics AS (
-  SELECT metric FROM main.metric_axes() WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
+  SELECT metric FROM main.metric_axes()
+  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
 results AS (SELECT subject, aspect, test, band, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
@@ -548,8 +594,8 @@ evidence AS (
   SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY seq DESC) = 1),
 own AS (
-  SELECT m.metric, e.test, current_schema() || '.' || m.metric AS subject,
-         CASE WHEN r.band IS NULL THEN 'unassessed' WHEN NOT r.current THEN 'stale' ELSE r.band END AS state,
+  SELECT m.metric, e.test, e.aspect, current_schema() || '.' || m.metric AS subject,
+         coalesce(r.band, 'unassessed') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.metric AS run
   FROM metrics m CROSS JOIN expected e
@@ -562,145 +608,90 @@ reads AS (
   SELECT m.metric, current_schema() || '.' || s.table_name
   FROM metrics m, main.metric_scans_of(current_schema(), m.metric) s),
 inputs AS (
-  SELECT DISTINCT d.metric, r.test, r.subject,
-         CASE WHEN NOT r.current THEN 'stale' ELSE r.band END AS state, r.score, NULL::JSON AS evidence, '' AS run
+  SELECT DISTINCT d.metric, r.test, r.aspect, r.subject,
+         r.band AS state, r.current, r.score, NULL::JSON AS evidence, '' AS run
   FROM reads d JOIN results r ON r.subject = d.subject
   WHERE r.test NOT IN (SELECT test FROM expected))
-SELECT t.metric, t.test, a.declared_by, t.subject, t.state, t.score, t.evidence, t.run
+SELECT t.metric, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
-ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'unassessed' THEN 1 WHEN 'stale' THEN 2 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 4 ELSE 5 END,
-         metric, test, subject;
+ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'unassessed' THEN 3 ELSE 4 END,
+         current, metric, test, subject;
 
 --===------------------------------------------------------------------===--
--- The two goals this kit answers for the `next` read. A goal's next
--- steps are in order, one arm per step; an arm serves a row when its
--- condition holds on the catalog, and the lowest step that serves decides
--- the goal. The server composes one next read from every routes_<kit>()
--- macro: this one serves its CTEs and its arms as SQL text over the
--- relations the server reads once — ds (the bound dataset), axes (the
--- fact rows), bodies (the current metric definition per metric). Columns
--- of an arm: surface, step, state (next, blocked, done), act, say, why,
--- statement (the action as a statement, filled from the catalog; <...>
--- marks what only the author can fill), "then".
---
--- metrics: every metric the dataset claims is served, or stopped.
--- slices: every applicable metric slices by its dimension columns.
+-- The test report this kit answers for the `next` read: one goal per
+-- served metric, named by the metric, whose step is the worst test on
+-- it — red, then orange, yellow (a check whose evidence is not stored
+-- yet, or a definition whose columns carry no role), unassessed — with
+-- the statement that settles it, filled from the catalog; a result that
+-- predates a change to what it read keeps its band and says so; `done`
+-- when every test on the metric is green or accepted. A dataset with no
+-- metric is told so once. The server composes one next read from every
+-- routes_<kit>() macro: this one serves its CTEs and its arms as SQL
+-- text over the relations the server reads once — ds (the bound
+-- dataset), axes (the fact rows), bodies (the current metric definition
+-- per metric). Columns of an arm: surface, step, state (next, blocked,
+-- done), act, say, why, statement (<...> marks what only the author can
+-- fill), "then".
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.routes_metrics() AS TABLE
 SELECT $ctes$
-metrics_aspects AS (
-  SELECT name, schema FROM (
-    SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-    FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
-metrics_declared AS (
-  SELECT name FROM metrics_aspects WHERE coalesce(json_extract_string(schema, '$.x-kind'), '') <> 'plan'),
-metrics_claimed AS (
-  SELECT a.name FROM metrics_declared a, ds
-  WHERE EXISTS (SELECT 1 FROM main.glossary g WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = a.name)
-     OR EXISTS (SELECT 1 FROM main.glossary d WHERE d.dataset = ds.dataset AND d.subject = ds.dataset AND d.aspect = 'definitions'
-                AND json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL)),
-metrics_read_tables AS (
-  SELECT DISTINCT split_part(path, '.', 2) AS table_name
-  FROM (SELECT unnest(regexp_extract_all(derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
-        FROM glossql_views_lineage(current_schema()))),
-metrics_unread AS (
-  SELECT nullif(string_agg(t.table_name, ', ' ORDER BY t.table_name), '') AS tables
-  FROM (SELECT DISTINCT table_name FROM glossql_columns(current_schema(), false)) t
-  WHERE t.table_name NOT IN (SELECT table_name FROM metrics_read_tables))
+report AS (
+  SELECT r.*,
+         CASE r.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 WHEN 'yellow' THEN 3 WHEN 'unassessed' THEN 4 END AS rank,
+         json_extract_string(r.evidence, '$.reason') AS reason,
+         coalesce(list_aggregate(from_json(json_extract(r.evidence, '$.pairs'), '["VARCHAR"]'), 'string_agg', ', '), '') AS pairs,
+         coalesce((SELECT string_agg(round(try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) * 100, 1) || '% of rows on ' || json_extract_string(e, '$.relationship'), ', ')
+                   FROM unnest(coalesce(json_extract(r.evidence, '$.edges')::JSON[], [])) t(e)
+                   WHERE try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) > 0), '') AS orphans
+  FROM main.metric_tests() r)
 $ctes$ AS ctes, $arms$
-SELECT 'metrics' AS surface, 1 AS step, 'next' AS state, 'GLOSS definitions' AS act,
-       'claim ' || a.name || ' for ' || ds.dataset AS say,
-       a.name || ' is declared and no dataset claims it: its definitions entry or its metric definition makes it this dataset''s' AS why,
-       'GLOSS definitions ON ' || ds.dataset || ' AS $${"definitions": {"' || a.name || '": {"unit": "<unit>", "meaning": "<what it measures, in the business''s words>"}}}$$;' AS statement,
-       'GLOSS ' || a.name || ' ON ' || ds.dataset || ' AS $${"sql": "<the metric definition>"}$$;' AS "then"
-FROM metrics_declared a, ds
-WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
-  AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.subject = g.dataset AND g.aspect = a.name)
-  AND NOT EXISTS (SELECT 1 FROM main.glossary d WHERE d.subject = d.dataset AND d.aspect = 'definitions'
-                  AND json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL)
+SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
+       CASE
+         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'say how ' || r.metric || ' combines'
+         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'gloss the columns of ' || r.metric
+         WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'the join in ' || r.metric || ' fans out on ' || r.pairs
+         WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'run the relationship screen for ' || r.metric
+         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN r.orphans || ' find no parent in ' || r.metric
+         WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'declare the join ' || r.metric || ' uses'
+         WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'run the coherence check for ' || r.metric
+         WHEN r.state = 'unassessed' THEN 'run ' || r.test || ' on ' || r.metric
+         ELSE r.test || ' ' || r.state || ' on ' || r.subject
+       END AS say,
+       CASE
+         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'no behavior is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves'
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN 'two tables ' || r.metric || ' scans share a key that repeats on both sides (' || r.pairs || '): the join multiplies rows unless the definition narrows it by the dates or a filter; where the join is right as it is, a tolerance on the metric says so'
+         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN 'rows on a declared join between tables ' || r.metric || ' scans find no parent: an inner join drops them, an outer join counts them under no member; fix the load, or record the rate as the tolerance'
+         WHEN r.state = 'yellow' THEN coalesce(a.reason, r.reason, r.test || ' has no rate yet')
+         WHEN r.state = 'unassessed' THEN r.test || ' has not run on ' || r.metric
+         ELSE coalesce(r.reason, r.test || ' scored ' || coalesce(CAST(r.score AS VARCHAR), '?') || ' on ' || r.subject)
+       END || CASE WHEN r.state <> 'unassessed' AND NOT r.current THEN '; the result predates a change to what it read, and runs again at the next touch' ELSE '' END AS why,
+       CASE
+         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'GLOSS behavior ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<flow|stock|ratio>", "grounds": "<why, in the business''s words>"}$$;'
+         WHEN r.test = 'additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
+         WHEN r.test = 'additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- narrow the join on ' || r.pairs || ' by its dates or a filter, then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
+         WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'SELECT detect_relationships() FROM ' || ds.dataset
+         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN '-- fix the load that leaves rows without a parent, or accept the rate:' || chr(10) || 'GLOSS orphan_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": ' || coalesce(CAST(r.score AS VARCHAR), '<the rate>') || ', "grounds": "<why these rows have no parent>"}$$;'
+         WHEN r.test = 'orphan_test' AND r.state = 'yellow' AND r.reason LIKE 'no relationship is declared%' THEN 'DECLARE RELATIONSHIP <child>.<column> -> <parent>.<column>;'
+         WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'SELECT relationship_coherence() FROM ' || ds.dataset
+         ELSE r.run
+       END AS statement,
+       CASE
+         WHEN r.test = 'additivity_test' AND r.state = 'red' THEN 'SELECT * FROM metric_series(grain := ''' || coalesce(a.floor, 'month') || ''') WHERE metric = ''' || r.metric || ''''
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- or, where the join is right as it is: GLOSS fan_out_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why the fan-out is meant>"}$$;'
+         WHEN r.state = 'yellow' AND r.test IN ('fan_out_test', 'orphan_test') THEN r.run
+         ELSE ''
+       END AS "then"
+FROM report r LEFT JOIN axes a ON a.metric = r.metric LEFT JOIN bodies b ON b.metric = r.metric, ds
+WHERE r.rank IS NOT NULL
 UNION ALL
-SELECT 'metrics', 2, 'next', 'DECLARE ASPECT view',
-       'declare the first concept',
-       'no metric is claimed by this dataset: a declared VIEW aspect is this dataset''s once its definitions entry or its metric definition exists; the names are the person''s to choose',
+SELECT m.metric, 9, 'done', '', '', 'every test on ' || m.metric || ' is green or accepted', '', ''
+FROM (SELECT DISTINCT metric FROM report) m, ds
+UNION ALL
+SELECT 'metrics', 1, 'next', 'GLOSS view', 'define the first metric',
+       'no metric is served on ' || ds.dataset || ': the person''s question names it, and the glossql-metrics skill says how a definition is written',
        '', ''
-FROM ds WHERE NOT EXISTS (SELECT 1 FROM metrics_claimed)
-UNION ALL
-SELECT 'metrics', 3, 'next', 'GLOSS view',
-       'define ' || c.name || ', or stop it',
-       c.name || ' is declared and has no metric definition: a declaration nobody defines holds this goal — define it, or stop it with the reason no number is served',
-       'GLOSS ' || c.name || ' ON ' || ds.dataset || ' AS $${' || chr(10)
-         || '  "sql": "SELECT <period column> AS period, <measure> AS value, <slicing columns> FROM <table>",' || chr(10)
-         || '  "assumptions": [{"dimension": "<scope|definition>", "key": "<stable-key>", "assumption": "<the judgment call, and the reading you rejected>", "basis": "<what it rests on>", "confidence": 0.7}]' || chr(10)
-         || '}$$;' || chr(10)
-         || '-- or, where no number should be served: GLOSS ' || c.name || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;',
-       ''
-FROM metrics_claimed c, ds
-WHERE NOT EXISTS (SELECT 1 FROM axes a WHERE a.metric = c.name)
-UNION ALL
-SELECT 'metrics', 4, 'next', 'temporal',
-       'profile ' || a.period_column || ' of ' || a.metric,
-       a.reason,
-       'SELECT temporal() FROM ' || ds.dataset || '.' || a.metric || '.' || a.period_column,
-       ''
-FROM axes a, ds
-WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') <> 'plan' AND len(a.wanted) > 0
-UNION ALL
-SELECT 'metrics', 5, 'next', 'GLOSS role',
-       'gloss the columns of ' || a.metric,
-       a.reason,
-       list_aggregate(a.missing, 'string_agg', chr(10)),
-       ''
-FROM axes a, ds
-WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
-  AND len(a.wanted) = 0 AND len(a.missing) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL)
-UNION ALL
-SELECT 'metrics', 6, 'next', 'GLOSS view',
-       'record ' || a.metric || ' again' || ' — ' || split_part(a.reason, ':', 1),
-       a.reason,
-       'GLOSS ' || a.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
-       ''
-FROM axes a LEFT JOIN bodies b ON b.metric = a.metric, ds
-WHERE NOT a.applicable AND a.stopped IS NULL AND coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan')
-  AND len(a.wanted) = 0 AND NOT (len(a.missing) > 0 AND (a.period_column IS NULL OR a.value_column IS NULL))
-UNION ALL
-SELECT 'metrics', 7, 'next', 'GLOSS behavior',
-       'say how ' || a.metric || ' combines',
-       'no behavior is annotated on ' || a.value_column || ' of ' || a.metric || ': a coarser grain than ' || a.floor || ' and a total over its members need it — a flow sums, a stock keeps the period''s last level, a ratio re-divides its summed halves',
-       'GLOSS behavior ON ' || ds.dataset || '.' || a.metric || '.' || a.value_column || ' AS $${"value": "<flow|stock|ratio>", "grounds": "<why, in the business''s words>"}$$;',
-       'SELECT * FROM metric_series(grain := ' || chr(39) || a.floor || chr(39) || ') WHERE metric = ' || chr(39) || a.metric || chr(39)
-FROM axes a, ds
-WHERE a.applicable AND coalesce(a.kind, '') <> 'plan' AND a.behavior IS NULL AND a.behavior_state = 'none'
-UNION ALL
-SELECT 'metrics', 8, 'done', '', '',
-       'every metric the dataset claims is served or stopped; the next concept is the person''s to name'
-         || coalesce(' — unread: ' || u.tables, ''),
-       '', ''
-FROM ds CROSS JOIN metrics_unread u
-UNION ALL
-SELECT 'slices', 1, 'blocked', '', '', 'no applicable metric exists', '', ''
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable)
-UNION ALL
-SELECT 'slices', 2, 'next', 'GLOSS role',
-       'gloss ' || a.unadmitted[1] || ' on ' || a.metric,
-       a.unadmitted[1] || ' is served by ' || a.metric || ' and carries no role: a dimension slices the series, an attribute rides along',
-       a.missing[1],
-       ''
-FROM axes a, ds
-WHERE a.applicable AND len(a.unadmitted) > 0
-UNION ALL
-SELECT 'slices', 3, 'next', 'GLOSS dimension',
-       'rank ' || a.unranked[1] || ' on ' || a.metric,
-       a.unranked[1] || ' slices ' || a.metric || ' and no dimension gloss ranks it: primary leads the slices, supporting follows, none closes it',
-       'GLOSS dimension ON ' || ds.dataset || '.' || a.metric || '.' || a.unranked[1] || ' AS $${"value": "<primary|supporting|none>"}$$;',
-       ''
-FROM axes a, ds
-WHERE a.applicable AND len(a.unranked) > 0
-UNION ALL
-SELECT 'slices', 4, 'done', '', '',
-       'every applicable metric slices by its dimension columns, ranked'
-         || coalesce(' — no dimension on: ' || (SELECT string_agg(metric, ', ' ORDER BY metric) FROM axes WHERE applicable AND len(dims) = 0), ''),
-       '', ''
-FROM ds
+FROM ds WHERE NOT EXISTS (SELECT 1 FROM report)
 $arms$ AS arms;

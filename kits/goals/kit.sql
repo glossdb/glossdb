@@ -50,12 +50,16 @@ CREATE OR REPLACE VIEW main.open_items AS
     SELECT 'conflict' AS kind, c.subject, 'contested: ' || c.subject || ' ' || c.aspect AS what,
            'withheld at read — a detector crossed its threshold or the values differ' AS why, '' AS since
     FROM collapsed c WHERE c.state = 'contested'),
+  -- a kit's check on a metric (x-subject metric) is the server's to run
+  -- again, at the next touch of the metric: never an item here
   remeasures AS (
     SELECT 're-measure' AS kind, v.actor AS subject, 'stale results from ' || v.actor AS what,
            'stored before the last change — run the function again, or use Re-measure in the console' AS why, '' AS since
     FROM (SELECT DISTINCT m.function AS actor FROM glossql_glossary(current_schema(), NULL, true) r
           JOIN main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
-          WHERE r.actor = 'function' AND NOT r.current) v),
+          WHERE r.actor = 'function' AND NOT r.current
+            AND r.aspect NOT IN (SELECT name FROM main.aspects
+                                 WHERE json_extract_string(schema, '$.x-subject') = 'metric')) v),
   wanted AS (
     SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
     FROM (SELECT unnest(wanted) AS w FROM main.metric_axes())),
@@ -88,129 +92,21 @@ CREATE OR REPLACE VIEW main.open_items AS
   UNION ALL SELECT * FROM unwalked
   UNION ALL SELECT * FROM foldins;
 
--- The goals the interfaces' own reads answer, as next steps each: structure,
--- checks, app, review; the metrics kit answers metrics and slices, the
--- outlook kit bands and plan. Served as the arms' SQL text, like a kit's
--- next steps, over the relations the engine's next read takes once: ds,
--- axes, open_items, reds, bodies, applicable.
+-- The review goal, the core's one goal for the `next` read: what a
+-- person decided or approved and the agent has not applied yet, and a
+-- value withheld as contested. Served as the arms' SQL text, like a
+-- kit's next steps, over the relations the engine's next read takes
+-- once: ds, open_items, bodies. The metrics kit answers one goal per
+-- served metric, its test report; the outlook kit bands and plan where
+-- a model service is named.
 CREATE OR REPLACE MACRO main.routes_core() AS TABLE
 SELECT '' AS ctes, $arms$
-SELECT 'structure' AS surface, 1 AS step, 'next' AS state, 'DECLARE SOURCE' AS act,
-       'declare the source the files come from' AS say,
-       'no source is declared and no table is loaded' AS why,
-       'DECLARE SOURCE <name> SET (type: parquet, location: ''<the root the files sit under>'');' AS statement,
-       '' AS "then"
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.dataset)
-  AND NOT EXISTS (SELECT 1 FROM main.sources)
-UNION ALL
-SELECT 'structure', 2, 'next', 'DECLARE RECIPE',
-       'load the tables from ' || s.name,
-       s.name || ' is declared and no table is loaded; a load query (recipe) loads one table, typed, and nothing more',
-       'DECLARE RECIPE <table> ON ' || ds.dataset || ' FROM ' || s.name || ' AS $$SELECT * FROM read_parquet(''<path under the root>'')$$;',
-       ''
-FROM (SELECT DISTINCT name FROM main.sources) s, ds
-WHERE NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.dataset)
-UNION ALL
-SELECT 'structure', 3, 'next', 'detect_relationships',
-       'run the relationship detector',
-       'the candidates come from the detector; you judge them',
-       'SELECT detect_relationships() FROM ' || ds.dataset,
-       'SELECT * FROM relationship_candidates(' || chr(39) || ds.dataset || chr(39) || ')'
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = 'detect_relationships')
-UNION ALL
-SELECT 'structure', 4, 'next', 'DECLARE RELATIONSHIP',
-       'declare the edges you judge from the candidates',
-       'no edge is declared; the detector''s candidates are waiting',
-       'SELECT * FROM relationship_candidates(' || chr(39) || ds.dataset || chr(39) || ')',
-       'DECLARE RELATIONSHIP <child>.<column> -> <parent>.<column>;'
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM main.relationships r WHERE r.dataset = ds.dataset)
-UNION ALL
-SELECT 'structure', 5, 'next', 'relationship_coherence',
-       'run the coherence check over the declared edges',
-       'edges declared and never checked: orphan rate, child before parent',
-       'SELECT relationship_coherence() FROM ' || ds.dataset, ''
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = 'relationship_coherence')
-UNION ALL
-SELECT 'structure', 6, 'done', '', '', 'tables loaded, edges declared and checked', '', ''
-FROM ds
-UNION ALL
-SELECT 'checks', 1, 'next', 'EXTRACT', 're-run ' || o.subject, o.why,
-       'SELECT ' || o.subject || '() FROM ' || ds.dataset, ''
-FROM open_items o, ds
-WHERE o.kind = 're-measure'
-UNION ALL
-SELECT 'checks', 2, 'next', 'EXTRACT', 'run ' || o.subject, o.why,
-       'SELECT ' || o.subject || '() FROM ' || ds.dataset, ''
-FROM open_items o, ds
-WHERE o.kind = 'never measured' AND o.what LIKE '% over ' || ds.dataset
-UNION ALL
-SELECT 'checks', 3, 'next', 'TESTS', 'read the red test results',
-       v.test || ' bands ' || v.subject || ' red',
-       'SELECT subject, aspect, test, band, score FROM TESTS(' || ds.dataset || ') WHERE band = ''red'' ORDER BY test, subject',
-       ''
-FROM reds v, ds
-WHERE v.test IS DISTINCT FROM 'bands_test'
-UNION ALL
-SELECT 'checks', 4, 'next', 'DECLARE TEST',
-       'turn a reconciliation into a permanent test',
-       'no check is open and none is yours: a tie-out you ran by hand becomes a test that runs again whenever its inputs change',
-       'DECLARE ASPECT <name>_check WITH $${' || chr(10)
-         || '  "type": "object", "required": ["outcome"],' || chr(10)
-         || '  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "breach_rate": {"type": "number"}}' || chr(10)
-         || '}$$ AS FACT ON DATASET;' || chr(10)
-         || 'DECLARE FUNCTION <name>_check_fn FOR ' || ds.dataset || ' AS $$' || chr(10)
-         || '  SELECT ''<what was compared>'' AS outcome, <the violation share, as DOUBLE> AS breach_rate' || chr(10)
-         || '  FROM <the second route to the number>' || chr(10)
-         || '$$ RETURNS <name>_check;' || chr(10)
-         || 'DECLARE TEST <name>_test ON <name>_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;' || chr(10)
-         || 'GLOSS <name>_check ON ' || ds.dataset || ' AS $${"outcome": "<what must hold>", "tolerance": <the rate you measured>}$$;',
-       'SELECT <name>_check_fn() FROM ' || ds.dataset
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM main.functions f WHERE f.scope = ds.dataset)
-UNION ALL
-SELECT 'checks', 5, 'done', '', '', 'your own tests exist, every test ran, none is red', '', ''
-FROM ds
-UNION ALL
-SELECT 'app', 1, 'blocked', '', '', 'no applicable metric exists; an app over nothing is a picture of nothing', '', ''
-FROM ds
-WHERE NOT EXISTS (SELECT 1 FROM axes WHERE applicable)
-UNION ALL
-SELECT 'app', 2, 'next', 'GLOSS app',
-       'write the first page over ' || m.n || CASE WHEN m.n = 1 THEN ' metric' ELSE ' metrics' END,
-       m.metrics || ' exist and no app does; the page is the proposal made concrete, shape it with the person from there',
-       'GLOSS app ON review AS $${"title": "' || ds.dataset || ' review"}$$;' || chr(10)
-         || 'GLOSS app_frame ON review.series AS $${"sql": "SELECT metric, period, value FROM metric_series(grain := ''month'') WHERE dimension = '''' AND metric IN (' || m.metric_list || ') ORDER BY metric, period"}$$;' || chr(10)
-         || 'GLOSS app_spec ON review.trend AS $${"spec": "{\"$schema\":\"https://vega.github.io/schema/vega-lite/v6.json\",\"data\":{\"name\":\"frame\"},\"mark\":\"line\",\"encoding\":{\"x\":{\"field\":\"period\",\"type\":\"temporal\"},\"y\":{\"field\":\"value\",\"type\":\"quantitative\"},\"color\":{\"field\":\"metric\",\"type\":\"nominal\"}}}"}$$;' || chr(10)
-         || 'GLOSS app_page ON review.index AS $${"html": "{% extends \"shell.html\" %}\n{% import \"modules/tiles.html\" as tiles %}\n{% block main %}\n<div class=\"tiles\">\n  {{ tiles::chart(frame=\"frames/series\", spec=\"specs/trend.vl.json\", title=\"By month\", chip=\"metric_series(grain := ''month'')\") }}\n</div>\n{% endblock %}\n"}$$;',
-       '-- serves at /' || ds.dataset || '/app/review'
-FROM applicable m, ds
-WHERE m.n > 0 AND NOT EXISTS (SELECT 1 FROM main.app_parts p WHERE p.dataset = ds.dataset)
-UNION ALL
-SELECT 'app', 3, 'next', 'GLOSS app_page',
-       'write the page of ' || p.app,
-       p.app || ' exists without its page: the console serves index.html, so nothing is served yet; the frames and the specs are parts like it',
-       'GLOSS app_page ON ' || p.app || '.index AS $${"html": "{% extends \"shell.html\" %}\n{% import \"modules/tiles.html\" as tiles %}\n{% block main %}\n<the page over the app''s frames and specs — the glossql-apps skill>\n{% endblock %}\n"}$$;',
-       '-- serves at /' || ds.dataset || '/app/' || p.app
-FROM (SELECT DISTINCT p.app FROM main.app_parts p, ds
-      WHERE p.dataset = ds.dataset
-        AND NOT EXISTS (SELECT 1 FROM main.app_parts i WHERE i.dataset = p.dataset AND i.app = p.app AND i.path = 'index.html')) p, ds
-UNION ALL
-SELECT 'app', 4, 'done', '', '', 'an app exists: /' || ds.dataset || '/app/' || p.app, '', ''
-FROM (SELECT DISTINCT app FROM main.app_parts p, ds WHERE p.dataset = ds.dataset AND p.path = 'index.html') p, ds
-UNION ALL
-SELECT 'app', 5, 'done', '', '', 'an app exists', '', ''
-FROM ds
-UNION ALL
-SELECT 'review', 1, 'next', 'GLOSS view',
-       'apply the review decision on ' || r.aspect || ' (' || r.key || ': ' || r.stance || ')',
-       coalesce(r.note, ''),
+SELECT 'review' AS surface, 1 AS step, 'next' AS state, 'GLOSS view' AS act,
+       'apply the review decision on ' || r.aspect || ' (' || r.key || ': ' || r.stance || ')' AS say,
+       coalesce(r.note, '') AS why,
        '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "decided-by-person"; an unclear answer means rewording the question under a new key' || chr(10)
-         || 'GLOSS ' || r.aspect || ' ON ' || r.subject || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
-       ''
+         || 'GLOSS ' || r.aspect || ' ON ' || r.subject || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;' AS statement,
+       '' AS "then"
 FROM main.review_decisions r LEFT JOIN bodies b ON b.metric = r.aspect, ds
 WHERE r.dataset = ds.dataset AND NOT r.folded_in
 UNION ALL

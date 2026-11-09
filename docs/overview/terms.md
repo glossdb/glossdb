@@ -73,7 +73,7 @@ An export to Ossie and an import from it are planned.
 | `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
 | `additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
 | `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
-| `red` · `unassessed` · `stale` · `green` | fail · skipped · stale · pass | A test's state in `metric_tests()` |
+| `red` · `unassessed` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `metric_tests()`, and whether its result still holds |
 | `tolerance`, `breach_rate` | threshold, failure rate | The rate a person accepts; the violation share a check measures |
 
 ## The server
@@ -86,8 +86,8 @@ An export to Ossie and an import from it are planned.
 | MCP interface | MCP server | `/mcp` and `/<dataset>/mcp`: one tool for glossql and SQL |
 | query endpoint | Arrow over HTTP | `/<dataset>/query`: a query in the request body, an Arrow IPC stream back |
 | console | data catalog UI | `/<dataset>/app`: the review queue, metrics, quality, a page per table and column |
-| goal | objective | structure, metrics, slices, bands, checks, app, plan, review |
-| `next` | next steps | The line every MCP result ends with: one action per goal |
+| goal | objective | One row of `next`: a served metric with its tests, the review queue, and the preview goals bands and plan where a model service is named |
+| `next` | next steps, test results | The line every MCP result ends with: per served metric its worst test and the statement that settles it, then the review queue |
 | review queue (`open_questions`) | review queue | Assumptions below full confidence, waiting for a person |
 | review decision | approval | A person's answer, stored as their annotation; it outranks every agent's |
 | `open_items` | open items | What waits on an action: a required annotation, a load, a measurement |

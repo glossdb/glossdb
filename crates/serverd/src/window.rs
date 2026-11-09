@@ -112,24 +112,28 @@ fn field(row: &Value, name: &str) -> String {
         .to_string()
 }
 
-/// The `next:` line: one act per goal, the link beside it; a blocked
-/// goal says what blocks it; a done goal says so.
+/// The `next:` line: one act per goal that is open — a served metric
+/// with a test to settle, the review queue — with the link beside it; a
+/// blocked goal says what blocks it; the goals that are done close the
+/// line as one list.
 pub fn next_line(dataset: &str, rows: &[Value]) -> String {
-    let parts: Vec<String> = rows
-        .iter()
-        .map(|row| {
-            let surface = field(row, "surface");
-            match field(row, "state").as_str() {
-                "next" => format!(
-                    "{surface} → {} (next://{dataset}/{surface})",
-                    field(row, "say")
-                ),
-                "blocked" => format!("{surface} → blocked: {}", field(row, "why")),
-                _ => format!("{surface}: done"),
-            }
-        })
-        .collect();
-    format!("next: {}", parts.join(" · "))
+    let mut open = Vec::new();
+    let mut done = Vec::new();
+    for row in rows {
+        let surface = field(row, "surface");
+        match field(row, "state").as_str() {
+            "next" => open.push(format!(
+                "{surface} → {} (next://{dataset}/{surface})",
+                field(row, "say")
+            )),
+            "blocked" => open.push(format!("{surface} → blocked: {}", field(row, "why"))),
+            _ => done.push(surface),
+        }
+    }
+    if !done.is_empty() {
+        open.push(format!("done: {}", done.join(", ")));
+    }
+    format!("next: {}", open.join(" · "))
 }
 
 /// The `next://<dataset>[/<surface>]` page: every answer with its form.

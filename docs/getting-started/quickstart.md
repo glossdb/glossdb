@@ -266,16 +266,19 @@ the data over. More: [the console](../usage/console.md).
 Every tool result ends with two lines; the last one reads:
 
 ```text
-next: structure: done · metrics: done · slices: done · bands → run the walk (next://ops/bands) · checks: done · app → write the first page over 1 metric (next://ops/app) · plan: done · review: done
+next: work_orders_open → say how work_orders_open combines (next://ops/work_orders_open) · done: hours_logged, review
 ```
 
-One action per goal: structure, metrics, slices, bands, checks, app,
-plan, review. The work is done when every goal is done or blocked.
-The link is an MCP resource; the same rows come through the tool, with
-the statement to send:
+The test report: per served metric its worst test, with the statement
+that settles it, then the review queue. The built-in tests are join
+fan-out, orphaned keys on the declared joins and the additivity of the
+value; the server runs them after a definition is written and after a
+load. The work is done when every served metric's tests are green or
+accepted and nothing waits on the agent. The link is an MCP resource;
+the same rows come through the tool, with the statement to send:
 
 ```sql
-SELECT surface, state, say, statement FROM next ORDER BY goal
+SELECT surface, state, say, statement FROM next ORDER BY goal, surface
 ```
 
 A statement there is a proposal: edit it, send it, or skip it.
