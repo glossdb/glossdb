@@ -221,6 +221,24 @@ table the view reads, with `table_name` alone. A view that does not
 plan returns one row with `reason`. The console's lineage page draws
 this beside the declared relationships.
 
+### metric_tests()
+
+```
+metric_tests()
+```
+
+Every test on each metric of the bound dataset and on what it reads,
+worst first. Columns: `metric`, `test`, `declared_by` (`kit:<name>`
+for a shipped test, else the actor as `kind:id`), `subject` (the
+metric, or a table or column it reads), `state` (`red`, `unassessed`,
+`stale`, `orange`, `yellow`, `green`), `score`, `evidence` (the check's
+own result), `run` (the statement that runs it again; empty where none
+does). The metrics kit's own tests appear on every metric, run or not:
+`fan_out_test` (join fan-out), `orphan_test` (referential integrity on
+the declared joins) and `additivity_test` (whether the value column
+says how it combines). A test on a table or column the metric reads
+lists under the metric.
+
 ## The outlook kit (preview)
 
 Forecasts, expected ranges, plans and scenarios beside the actual,

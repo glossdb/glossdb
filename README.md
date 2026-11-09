@@ -9,14 +9,18 @@ review tell them when they are wrong. Data agents have none of this.
 glossdb gives them one, built inside the database, on the live data and
 its versions.
 
-## Why agents get data wrong
+## Why data agents need a harness
 
-The meaning of company data is not in the rows. A column called
+Getting one number right once is the easy part. The hard part is the
+second session, the second person and the next load. A column called
 `amount` does not say whether it is net of tax, a balance or a
-movement, or which currency it is in. No query fails when an agent
-guesses. Code carries most of its own meaning, and compilers and tests
-catch the rest. Data has neither, so agents answer with confidence and
-without the facts.
+movement; the agent decides, and without a record the next session
+decides again, differently. A join that fans out or a key without its
+parent breaks a total, and no query fails. The data under a definition
+changes and nothing says so. Code has compilers, tests, CI and review
+for this. glossdb gives data the same: definitions, tests and decisions
+kept in the database, checked again on every load, decided by a person
+once.
 
 ## How it works
 
@@ -73,6 +77,10 @@ works](docs/overview/how-it-works.md). Every word: [terms](docs/overview/terms.m
 - a review queue, answered in the console or in the agent's client;
 - the semantic layer's queries: a metric's series by time grain, its
   slices by dimension, what moved;
+- built-in tests on every metric, over the tables its definition
+  scans: join fan-out, referential integrity on its joins, the
+  additivity of its value; `metric_tests()` lists every test per
+  metric, worst first;
 - the console: the review queue, metrics, quality, a page per table,
   column and property, lineage, export, and a query pane;
 - data apps that agents write over the metrics, stored in the catalog;

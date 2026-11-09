@@ -2,7 +2,7 @@
 
 What comes in: workbooks, documents, search, and the ranking
 experiments. The shared frame, the terms, the gates and the
-decisions are in `kernel.md`. A source is what a recipe reads: a
+decisions are in `harness.md`. A source is what a recipe reads: a
 reader the engine has over files, a database DuckDB attaches, or a
 service called through the extension's `glossql_service`, one table in
 and one table out, which stands; the scalar shape lands here with
@@ -15,7 +15,7 @@ and one table out, which stands; the scalar shape lands here with
 | Spreadsheets as a source: the values through DuckDB's `excel` extension, the formulas, defined names and macro modules as rows through a reader the engine does not carry | Easy for the values; the formulas need a reader | SPEC §3, `reader_functions()` in `crates/duck`, the image's extensions | First | |
 | Documents as a source, a processor service the recipe calls | Easy | SPEC §3, one service through `glossql_service` | After workbooks | |
 | Search: `embed(text)` as a service scalar, distance in plain SQL (`array_distance`, the engine's own) | Easy | the extension's service seam, one service | After documents | |
-| The relational source on the engine: a database DuckDB attaches (`postgres`, `sqlite`, `mysql`), named by `location`, read by a recipe | Low: the extensions exist and the image carries `postgres` | SPEC §3's `via`, the facade's open, a suite case | When a customer names one | |
+| The relational source on the engine: a database DuckDB attaches (`postgres`, `sqlite`, `mysql`), or an Iceberg catalogue through DuckDB's `iceberg` extension, read-only, named by `location`, read by a recipe | Low: the extensions exist and the image carries `postgres` | SPEC §3's `via`, the facade's open, a suite case | When a customer names one | |
 | Ranking and CLM experiments | Easy, outside the tree | nothing here; glossval | Beside it; blocks nothing | |
 | Vector index | Medium | DuckDB's `vss` extension | When the full scan is too slow | |
 
@@ -115,4 +115,4 @@ leaves this file.
   one pass per new text; the training signal is glossval's record of
   every door call of every scored session. If it wins, it becomes a
   service point, `GLOSSDB_RANK_URL`, refused by name when unset, on
-  the kernel service's GPU.
+  the model service's GPU.

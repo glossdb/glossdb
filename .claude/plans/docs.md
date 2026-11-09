@@ -15,7 +15,7 @@ out in the old words.
 | 1. House rules: the prose skill's list of protected terms is replaced by the terms table below; CLAUDE.md and the build skills use the plain words | Low. Without it every agent session writes the old words again | `.claude/skills/glossql-prose/`, `CLAUDE.md`, `.claude/skills/` | done on `readme-harness` |
 | 2. One terms page and one analogy page (the coding harness table below), in both repositories | Low | `docs/terms.md`, `docs/harness.md`, the extension's `docs/` | done on `readme-harness` |
 | 3. The READMEs in the shape DuckLake and SurrealDB use: category sentence, the coding-harness analogy, features in industry words, a quick look, status per feature (stable, preview, planned). Out: "proof-of-concept", "working draft", the research file, "not built on purpose", the corpus and the DuckDB mapping table (to the docs) | Low | `README.md` here and in the extension | done on `readme-harness` |
-| 4. A results page: the same tasks with and without the harness, in plain numbers; glossval runs them again, the lead approves them | Low | `docs/results.md`, linked from both READMEs | drafted below |
+| 4. A results page: the same tasks with and without the harness, in plain numbers, in one session (a tie on accuracy at four times the cost) and across sessions (definitions held after a person's answers and a new load); glossval runs them, the lead approves them | Low | `docs/results.md`, linked from both READMEs | drafted below |
 | 5. What agents read: the MCP server instructions, the tool description, the four skills, the `next:` lines, error and refusal text. Hosts show this text to users | Medium: the door suites assert some strings | `crates/serverd/src/`, `skills/`, `kits/door/` | done on `readme-harness` |
 | 6. The console: Docket becomes Console (title and path); plain section names, the reads' names behind a toggle; formatted numbers; the lineage defects | Low to medium: the path rides links, skills and docs | `crates/apps/builtin/docket/`, `crates/apps/assets/`, the apps suite | done on `readme-harness` |
 | 8. glossdb's docs by reader: overview, getting started, concepts, guides, the console, running it, reference; `onboarding/` and `system/` folded in; preview pages marked | Low: every page is also a `doc://` resource; the suite parses examples | `docs/`, `crates/serverd/build.rs`, `crates/serverd/tests/suite/docs.rs` | done on `readme-harness` |
@@ -25,6 +25,7 @@ out in the old words.
 | 12. The console's navigation: a tree, a breadcrumb, one page shape per object with sub-tabs, the overview with the scorecard, units beside numbers | Medium | `crates/apps/` | done on `readme-harness` |
 | 12b. The console's Model view (entities, keys, joins, measures, dimensions, time grains in one picture) and History view (loads, annotations and review decisions over time) | Medium: new frames over recorded rows, a graph | `crates/apps/` | done on `readme-harness` |
 | 13. The websites from the two docs trees | Low | `../dataraum-website` | |
+| 14. The industry word beside every test and state, the semantic model beside Apache Ossie's, and the README's claim moved from in-session accuracy to durability, review and regression | Low | `docs/overview/terms.md`, `how-it-works.md`, `README.md`, the extension's `docs/terms.md` | done on `industry-terms` |
 
 ## The analogy
 
@@ -103,5 +104,5 @@ Keywords for step 10. Kept: `GLOSS`, `GLOSSARY()`, `ASPECT`.
 
 ## Issue, drafted
 
-The next row is the results page (step 4); it waits on the glossval
-rerun. The websites (step 13) follow it.
+The next row is the results page (step 4); it waits on glossval's
+Monday test. The websites (step 13) follow it.

@@ -23,13 +23,13 @@ can be tested.
 | type annotations, docstrings | annotations: what one row is, a column's unit, a measure's additivity | `GLOSS` |
 | compiler error | validation on write against the aspect's JSON Schema | |
 | linter | quality screens: keys, joins, hierarchies, stock or flow | the `quality` kit |
-| unit test | measurements and tests on the data | `FUNCTION`, `TEST` |
+| unit test | measurements and tests on the data; built-in tests on every metric: join fan-out, referential integrity, additivity | `FUNCTION`, `TEST`, `metric_tests()` |
 | test coverage | coverage of required annotations | `GLOSSARY()` state `unassessed` |
 | CI on every commit | results tied to the data version they read; stale when it changes | |
 | git history | snapshots of the data and the catalog together | DuckLake |
 | code review | the review queue: a person decides | `open_questions` |
 | rule packs | kits: a domain's schema, measurements and tests | `kits/` |
-| the failing test that says what to fix | next steps after every call | `next` |
+| the failing test that says what to fix | the test results per metric; next steps after every call | `metric_tests()`, `next` |
 | IDE | the console | `/<dataset>/app` |
 
 ## Each part
@@ -60,7 +60,12 @@ detector function scores how far they agree, and returns a band
 (green to red) and a score. When the score crosses the threshold and
 the values differ, the glossary marks the asset `contested`.
 `TESTS()` returns the results. Tests run when they are read and never
-write into the data.
+write into the data. The metrics kit ships three tests on every
+metric, over the tables its definition scans: join fan-out,
+referential integrity on its joins, and the additivity of its value.
+`metric_tests()` lists every test on a metric and on what it reads,
+worst first, with the statement that runs it; a person accepts a
+result by recording a tolerance.
 
 **Coverage.** Every required aspect that nobody has annotated is
 `unassessed` in `GLOSSARY()`. Coverage, conflicts, failing tests and

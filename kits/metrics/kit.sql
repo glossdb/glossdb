@@ -420,7 +420,9 @@ ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 
 --===------------------------------------------------------------------===--
 -- The built-in tests on a metric: what can break its number, checked
--- against its lineage and the data. Each is a measurement over the
+-- against its lineage and the data: fan_out_check is join fan-out,
+-- orphan_check referential integrity on the declared joins,
+-- additivity_check the additivity of the value. Each is a measurement over the
 -- metric's view, `SELECT <check>() FROM <dataset>.<metric>`, whose
 -- breach_rate rate_tolerance scores: 0 is green. A person who accepts a
 -- result records a tolerance at or above it on the metric; their value
@@ -472,25 +474,25 @@ $$ RETURNS fan_out_check;
 
 DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
--- combine_check: the metric's value column says how it combines over time
+-- additivity_check: the metric's value column says how it combines over time
 -- and members (behavior); without it a total or a coarser grain sums
 -- whatever the column holds, a stock or a ratio included.
-DECLARE ASPECT combine_check WITH $${
+DECLARE ASPECT additivity_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]}, "behavior": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
-DECLARE FUNCTION combine_check FOR GLOBAL AS $$
+DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
   WITH a AS (SELECT * FROM main.metric_axes() WHERE metric = split_part($subject, '.', 2))
   SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) AS applicable,
          CASE WHEN NOT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL) THEN 'no value column: not a metric, or its columns carry no role yet' END AS reason,
          (SELECT CASE WHEN behavior IS NULL OR behavior_state <> 'current' THEN 1.0 ELSE 0.0 END FROM a WHERE value_column IS NOT NULL) AS breach_rate,
          (SELECT behavior FROM a) AS behavior
-$$ RETURNS combine_check;
+$$ RETURNS additivity_check;
 
-DECLARE TEST combine_test ON combine_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 -- orphan_check: the share of rows on a declared edge between two tables the
 -- metric reads whose key finds no parent; an inner join drops them, an

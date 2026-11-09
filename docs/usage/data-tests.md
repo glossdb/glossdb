@@ -115,6 +115,15 @@ whose truth is known by construction ([functions](../reference/functions.md),
 - **`detect_relationships`, `column_profile`, `outlier_profile`,
   `temporal`, `detect_hierarchies`, `detect_grounding_collisions`**:
   the structure and the shape of each column.
+- **The metrics kit's tests on every metric**, over the tables its
+  definition scans: `fan_out_test`, join fan-out (two tables sharing a
+  key that repeats on both sides, so the join multiplies rows);
+  `orphan_test`, referential integrity on its declared joins (the
+  share of rows whose key finds no parent); `additivity_test`, whether
+  its value column says how it combines over time and members.
+  `metric_tests()` lists every test on each metric and on what it
+  reads, worst first, with the statement that runs it; a person
+  accepts a result by recording a tolerance at or above it.
 - **Detectors**: `slot_entropy` scores agreement across a property's
   values; `rate_tolerance` scores a measured rate against its
   tolerance; `band_breach` scores the expected ranges
