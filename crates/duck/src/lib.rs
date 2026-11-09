@@ -1939,7 +1939,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_warehouse_sink_replaces_the_secret() {
         let dir = tempfile::tempdir().expect("a directory");
-        let mut config = Config::laptop(dir.path());
+        let mut config = testing::golden(dir.path()).await.expect("the golden copy");
         config.service = Some(Service {
             url: "http://127.0.0.1:1".into(),
             token: Some("k".into()),
@@ -1989,7 +1989,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn the_service_is_named_once_for_the_instance() {
         let dir = tempfile::tempdir().expect("a directory");
-        let mut config = Config::laptop(dir.path());
+        let mut config = testing::golden(dir.path()).await.expect("the golden copy");
         config.service = Some(Service {
             url: "http://127.0.0.1:1".into(),
             token: Some("k1".into()),
@@ -2020,11 +2020,10 @@ mod tests {
         plane.token_sink().set("k2").expect("set");
         let rows = rows_as_text(&channel.batches(read, &[]).await.expect("reads"));
         assert_eq!(rows[0][1].as_deref(), Some("k2"));
-        let unnamed = Plane::open(Config::laptop(
-            tempfile::tempdir().expect("a directory").path(),
-        ))
-        .await
-        .expect("opens");
+        let bare = tempfile::tempdir().expect("a directory");
+        let unnamed = Plane::open(testing::golden(bare.path()).await.expect("the golden copy"))
+            .await
+            .expect("opens");
         let channel = unnamed
             .channel(
                 Actor {
@@ -2079,6 +2078,46 @@ pub mod testing {
         if dir.is_dir() {
             return Ok(dir);
         }
+        // One process builds, the rest wait for its rename: a suite's
+        // processes start together, and each building its own copy
+        // loads the kits as many times over at once. A lock older than
+        // any build is a crashed builder's, and is taken over.
+        let lock = root.join(format!("{}.lock", key(config).map_err(io)?));
+        let stale = std::time::Duration::from_secs(600);
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock)
+            {
+                Ok(_) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if dir.is_dir() {
+                        return Ok(dir);
+                    }
+                    let age = std::fs::metadata(&lock)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok());
+                    if age.is_some_and(|age| age > stale) {
+                        let _ = std::fs::remove_file(&lock);
+                        continue;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                Err(e) => return Err(io(e)),
+            }
+        }
+        let built = build_golden(&root, &dir).await;
+        let _ = std::fs::remove_file(&lock);
+        built
+    }
+
+    async fn build_golden(root: &Path, dir: &Path) -> Result<PathBuf, SessionError> {
+        let io = |e: std::io::Error| SessionError::Engine(format!("the golden workspace: {e}"));
+        if dir.is_dir() {
+            return Ok(dir.to_path_buf());
+        }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -2087,14 +2126,14 @@ pub mod testing {
         std::fs::create_dir_all(&scratch).map_err(io)?;
         let built = Plane::open(Config::laptop(&scratch)).await?;
         drop(built);
-        match std::fs::rename(&scratch, &dir) {
+        match std::fs::rename(&scratch, dir) {
             Ok(()) => {}
             Err(_) if dir.is_dir() => {
                 let _ = std::fs::remove_dir_all(&scratch);
             }
             Err(e) => return Err(io(e)),
         }
-        Ok(dir)
+        Ok(dir.to_path_buf())
     }
 
     /// What the golden workspace is made of: the extension artifact (by
