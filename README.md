@@ -188,7 +188,7 @@ it.
 ## Repository layout
 
 - `crates/` — the server: `duck` (DuckDB with the glossql extension
-  and a DuckLake, behind one facade), `apps` (the console and the data
+  and a DuckLake, behind one API), `apps` (the console and the data
   apps), `serverd` (the binary and its interfaces).
 - `kits/` — the server's kits, loaded at open around the extension's
   `kpi` and `quality`: `core`, `metrics`, `outlook` (preview), `goals`

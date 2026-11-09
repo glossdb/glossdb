@@ -84,7 +84,7 @@ Every result ends with two lines:
   caller's choice, never stored. How the goals work:
   [next steps](../extending/next-steps.md).
 
-### The brief
+### The status line
 
 The initialize instructions end with one line over live counts, and the
 same line comes back on any tool result whose call changed them. First
@@ -92,8 +92,7 @@ what waits: review decisions not yet applied, approved load-query
 changes not yet declared again, questions open for a person. Then the
 catalog's size: how many annotations people wrote, and the latest. The
 instructions then say where to begin: a workspace with no dataset reads
-`workspace_status`; one with a dataset starts with the brief, once, as a
-read and never a gate.
+`workspace_status`; one with a dataset starts by reading the status line once.
 
 ## Resources and prompts
 

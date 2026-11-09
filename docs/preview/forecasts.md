@@ -6,7 +6,7 @@ Preview: forecasts need a model service, named by `GLOSSDB_SERVICE_URL`
 `metric_forecast` asks the model service, for every applicable metric,
 what the periods ahead should be from the last period with an actual.
 It runs on a dataset (`SELECT metric_forecast() FROM fin`) and stores,
-per metric, the ranges per step and, for a flow, the totals of the
+per metric, the ranges per step and, for an additive metric, the totals of the
 quarter and the year to go. Every run is kept at its origin.
 
 - `forecast_points()` returns the latest run, with the actuals joined
@@ -36,7 +36,7 @@ It sends one request per grain and set of totals, with columns
 `status`. The history goes as `actual` rows, then the horizon's periods
 as `forecast` rows with no value. The specification names the target,
 the five levels (0.05, 0.1, 0.5, 0.9, 0.95), the grain and the horizon,
-and for a flow the totals as spans. `forecast_request()` and
+and for an additive metric the totals as spans. `forecast_request()` and
 `forecast_bodies()` return the request as it is sent.
 
 The horizon is fixed per grain, where the service measured its
@@ -53,7 +53,7 @@ coverage:
   year or month that period falls in. It is asked only where it fits in
   the horizon. Two spans of the same length are asked once and returned
   under both names.
-- A stock or a ratio has no total.
+- A semi-additive metric or a ratio has no total.
 - These metrics are not applicable:
   - minute or hour metrics, since the service forecasts days and
     coarser;
@@ -84,7 +84,7 @@ actual and says where it landed:
 | `above` | over p95 |
 
 A span's actual is the sum of its periods' actuals, once every one is
-known. A flow's empty period is a zero up to the data's edge
+known. An additive metric's empty period is a zero up to the data's edge
 ([views and table functions](../reference/reads.md)), so its point
 lands on zero.
 
