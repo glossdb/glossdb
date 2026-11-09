@@ -265,6 +265,21 @@ its relationships; meanings are descriptions. What Ossie has no word
 for rides in `custom_extensions` under the vendor `glossdb`: a unit,
 and the additivity of a semi-additive or non-additive value.
 
+### lineage_events()
+
+```
+lineage_events()
+```
+
+The bound dataset's lineage as [OpenLineage](https://openlineage.io/)
+run events (spec 2-0-2), one row per event, column `event` (JSON): one
+`COMPLETE` event per load, its input the source and its output the
+loaded table with the column lineage the load recorded; one per view
+(a metric or a derived relation), its inputs the tables it scans and
+its output the view with each column's source columns. Read it over
+the query endpoint and post the rows to a catalog that takes
+OpenLineage.
+
 ## The outlook kit (preview)
 
 Forecasts, expected ranges, plans and scenarios beside the actual,

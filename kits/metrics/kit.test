@@ -466,3 +466,12 @@ WHERE json_extract_string(d, '$.name') = 'spend' AND json_extract(f, '$.dimensio
 fund	false
 object	false
 period	true
+
+# --- lineage as OpenLineage run events: one per view, its inputs the tables it scans, its output's columns traced to theirs
+
+query TTT
+SELECT json_extract_string(event, '$.eventType'), json_extract_string(event, '$.job.name'),
+       json_extract_string(event, '$.outputs[0].facets.columnLineage.fields.value.inputFields[0].field')
+FROM lineage_events() WHERE json_extract_string(event, '$.job.name') = 'view.fin.spend';
+----
+COMPLETE	view.fin.spend	amount
