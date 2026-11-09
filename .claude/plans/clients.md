@@ -1,132 +1,122 @@
-# The clients plan
+# Trial plan
 
-What a person meets on the trial: sign up, connect Claude or
-ChatGPT, put a file in, work. The shared frame is `harness.md`. How a
-result reaches the person inside the chat, and how a ruling gets
-back, is `chat.md`. What a file is once it is in, a workbook or a
-PDF, is `sources.md`; the road in comes before the readers, since a
-reader helps nobody who cannot hand the file over. The platform is
-`../glossdeploy/platform.md`; this plan names what glossql needs
-from it and in what order. Build order is risk order: what can stop
-the trial comes first.
-
-## The table
+What a person does on the hosted trial: sign up, connect Claude or
+ChatGPT, upload a file, work. How results reach the person inside
+the chat is `chat.md`. What a file becomes once it is uploaded is
+`sources.md`. The platform is `../glossdeploy/platform.md`; this plan
+says what the server needs from it and in what order. Build order is
+risk order.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The spike: one workspace reachable at its own name from Claude Desktop and ChatGPT, end to end | High: nothing is built; every item is on platform.md's bring-up list | glossdeploy: the Worker route, the WorkOS wildcards; glossql: the next row | First; one to two days | |
-| The organization check and the extra allowed host | Low | `crates/serverd/src/auth.rs`, `config.rs`, the install page | With the spike; one day | |
-| Registration: a stranger gets a workspace without us | Medium: the order of the sign-up events is unverified; creation takes minutes | glossdeploy: the cockpit, cut down | After the spike; about five days | |
-| The upload page on the human door | Low: the object store and the human writes exist | `crates/apps`, `crates/serverd` | After the spike; one to two days | |
-| The shared connector address | Low once the spike stands: the same Worker, routing by the organization in the token instead of the hostname | glossdeploy; a second audience on the agent door | When the directory listing is near | |
+| Spike: one workspace reachable at its own hostname from Claude Desktop and ChatGPT, end to end | High: nothing is built, and every item is on platform.md's list to verify | glossdeploy: the Worker route, the WorkOS wildcards; here: the next row | First; one to two days | |
+| Organization check and extra allowed hosts | Low | `crates/serverd/src/auth.rs`, `config.rs`, the installation page | With the spike; one day | drafted below |
+| Registration: a stranger gets a workspace without us | Medium: the order of the sign-up events is unverified; creation takes minutes | glossdeploy: the admin page, cut down | After the spike; about five days | |
+| Upload page in the console | Low: the object store and the person's writes exist | `crates/apps`, `crates/serverd` | After the spike; one to two days | |
+| One shared connector address | Low once the spike works: the same Worker, routing by the token's organization instead of the hostname | glossdeploy; a second audience on the MCP endpoint | When the directory listing is near | |
 
 ## The spike
 
-One workspace made by hand with the trial program, behind one
-Cloudflare route on `<name>.glossdb.com`, the WorkOS wildcards set.
-Then, through Claude Desktop and through ChatGPT: add the connector,
-sign in, run a session, a streamed answer, a cold start from zero,
-the browser sign-in on the docket at the same name. Recorded: the
-handshake end to end; the cold-start time against each client's tool
-timeout; whether the Worker streams the MCP session; whether
-creation at sign-up or on the first call is the cheaper road. The
-list is platform.md's "To verify at bring-up". What it decides: the
-hostname road, the Worker or Cloud Run's domain mapping, and whether
-the trial can open at all.
+One workspace created by hand, behind one Cloudflare route on
+`<name>.glossdb.com`, with the WorkOS wildcards set. Then, from Claude
+Desktop and from ChatGPT: add the connector, sign in, run a session
+with a streamed answer, start from a stopped instance, and sign in to
+the console in the browser at the same name.
 
-## What stands
+Record: the sign-in handshake end to end; the cold-start time against
+each client's tool timeout; whether the Worker streams the MCP
+session; whether creating the workspace at sign-up or on the first
+call is cheaper. It decides the hostname approach (the Worker or
+Cloud Run's domain mapping) and whether the trial can open at all.
 
-- **One process, one address.** The address is the audience; a token
-  must name it (`crates/serverd/src/auth.rs:226`). The server answers
-  its own hostname and loopback (`config.rs:254`). Behind the
-  Cloudflare route the Host header is the run.app host, so the door
-  needs one more allowed host from the environment. `Claims` reads
-  `sub` and `aud` (`auth.rs:137`), not the organization; with a
-  wildcard audience over `*.glossdb.com`, any signed-up person could
-  get a token for another workspace, so the gate must refuse a token
-  whose `org_id` is not the workspace's, bearer and cookie alike.
-  Both settings are named in platform.md and not in the code.
+## What is there
+
+- **One process, one address.** A token must name the server's
+  address as its audience (`crates/serverd/src/auth.rs`). The server
+  answers its own hostname and loopback (`allowed_hosts` in
+  `config.rs`). Behind the Cloudflare route the Host header is the
+  run.app host, so the server needs more allowed hosts from the
+  environment. `Claims` reads `sub` and `aud`, not the organization.
+  With a wildcard audience over `*.glossdb.com`, anyone signed up
+  could get a token for another workspace, so the server must refuse
+  a token whose `org_id` is not the workspace's, for bearer tokens and
+  cookies alike. Neither setting is in the code yet.
 - **Connecting.** A connector is added by URL in Claude on every plan
-  and in ChatGPT; both register themselves at the issuer. No deep
-  link exists; the person pastes `https://<name>.glossdb.com/mcp`.
-- **Registration.** glossql has no user table; it verifies the
-  issuer's tokens. WorkOS AuthKit's hosted page does sign-up. A
-  sign-up makes a person, not an organization; the application
-  creates the organization after the first sign-in. A workspace is a
-  service, a bucket and a database, two to four minutes to create.
-  The events `user.created` and `organization.created` exist; their
-  order on a fresh sign-up is not verified.
-- **Files.** MCP carries no file bytes; in Claude an attached file
-  goes to the model's sandbox, never to a tool. A file is a source
-  once it sits under a location a `DECLARE SOURCE` names, and a
-  recipe reads it through the engine's readers (`reader_functions()`
-  in `crates/duck`); the GCP program exports `gs://<bucket>/sources`;
-  the server reaches the object store through httpfs with the
-  warehouse's credential (`crates/serverd/src/config.rs`); on a laptop
-  it reads a directory. The app door takes human
-  writes with the cookie's standing (`crates/apps/src/rule.rs`,
-  `remeasure.rs`). So the upload page is a page of the docket with a
-  drop zone and a PUT on the human door that streams into that
-  location: no signing, every lake family, the laptop too.
+  and in ChatGPT. Both register themselves with the identity
+  provider. There is no deep link; the person pastes
+  `https://<name>.glossdb.com/mcp`.
+- **Registration.** The server has no user table; it verifies the
+  identity provider's tokens. WorkOS AuthKit's hosted page does the
+  sign-up. A sign-up creates a person, not an organization; the
+  application creates the organization after the first sign-in. A
+  workspace is a service, a bucket and a database, and takes two to
+  four minutes to create. The events `user.created` and
+  `organization.created` exist; their order on a fresh sign-up is
+  unverified.
+- **Files.** MCP carries no file bytes. In Claude an attached file
+  goes to the model's sandbox, never to a tool. A file can be loaded
+  once it sits under a location a `DECLARE SOURCE` names. The GCP
+  deployment exports `gs://<bucket>/sources`; the server reaches the
+  object store through httpfs with the warehouse credential; on a
+  laptop it reads a directory. The console already takes a person's
+  writes with their cookie (`crates/apps/src/rule.rs`,
+  `remeasure.rs`). So the upload page is a console page with a drop
+  zone and a PUT that streams into that location. It needs no signed
+  URLs and works on every storage backend and on a laptop.
 - **The first session** is about 30 tool calls and runs well from
-  Claude and ChatGPT. No preparation job and no onboarding command:
-  the glossing needs the conversation.
-- **Cold start.** The process starts in 0.24 s fresh on the laptop;
-  Cloud Run's part is unmeasured. The spike measures it against the
-  clients' tool timeouts.
+  Claude and ChatGPT. There is no preparation job and no onboarding
+  command.
+- **Cold start.** The process starts in 0.24 s on the laptop. Cloud
+  Run's part is unmeasured; the spike measures it.
 - **Claude for Excel.** Connectors work the same in the Office
-  add-ins; where its links open is not documented. A test when the
-  trial stands.
+  add-ins. Where its links open is undocumented. Test it when the
+  trial runs.
 
-## The cockpit, cut down
+## The admin page, cut down
 
-What the platform must do and nothing else: create the workspace,
-tell the person how to connect, stop and delete it, show usage
-against the caps, run the caps on a cron. So: sign-up on the identity
-provider's hosted page; one status page per workspace, preparing or
-ready, the connect lines for Claude, ChatGPT and Excel, the docket
-link, usage, stop, delete; the caps on a cron. No upload page, since
-it is the docket's; no import button, since the agent imports on the
-first prompt; no organization page. About half of platform.md's
-Worker.
+The platform creates the workspace, tells the person how to connect,
+stops and deletes it, shows usage against the caps, and enforces the
+caps on a cron. So: sign-up on the identity provider's hosted page;
+one status page per workspace with its state, the connect lines for
+Claude, ChatGPT and Excel, the console link, usage, stop and delete.
+No upload page (the console has it), no import button (the agent
+loads on the first prompt), no organization page. About half of
+platform.md's Worker.
 
-## Decisions that are the lead's
+## For the lead to decide
 
-- The cockpit's cut, above.
-- Creation at sign-up by the webhook, or on the first call with a
-  stand-in answer; the spike says which is cheaper.
-- Whether boot declares the deployment's upload location as a
-  standing source, so the structure goal's first step is done before
-  the first prompt.
+- The cut of the admin page, above.
+- Create the workspace at sign-up by webhook, or on the first call
+  with a placeholder answer. The spike says which is cheaper.
+- Whether the server declares the upload location as a source at
+  start, so loading works before the first prompt.
 - A size cap on an upload, if any.
 
 ## Issue, drafted
 
-### The organization check and the extra allowed host
+### Organization check and extra allowed hosts
 
 - **What it buys.** A workspace behind a wildcard audience refuses
-  tokens of other organizations, and the agent door answers behind a
-  route whose Host is not the audience's.
-- **What stands.** `Claims` reads `sub` and `aud`
-  (`crates/serverd/src/auth.rs:137`); the audience check is one
-  compare (`auth.rs:226`). The allowed hosts are loopback and the
-  audience's host (`crates/serverd/src/config.rs:254`). The issuer's
-  tokens carry `org_id`. `GLOSSDB_ORGANIZATION` and
+  tokens of other organizations, and the MCP endpoint answers behind
+  a route whose Host is not the audience's.
+- **What is there.** `Claims` reads `sub` and `aud`
+  (`crates/serverd/src/auth.rs`); the audience check is one compare.
+  The allowed hosts are loopback and the audience's host
+  (`allowed_hosts` in `crates/serverd/src/config.rs`). The identity
+  provider's tokens carry `org_id`. `GLOSSDB_ORGANIZATION` and
   `GLOSSDB_ALLOWED_HOSTS` are named in the platform design and not in
   the code.
-- **Done when.** With `GLOSSDB_ORGANIZATION` set, the gate refuses a
-  token whose `org_id` differs and admits one that matches, bearer
-  and cookie alike; unset, nothing changes. `GLOSSDB_ALLOWED_HOSTS`
-  adds hosts to the allowed set. The install page names both. The
-  suite holds a refused token, an admitted token, and a request on
-  the extra host.
+- **Done when.** With `GLOSSDB_ORGANIZATION` set, the server refuses a
+  token whose `org_id` differs and accepts one that matches, for
+  bearer tokens and cookies alike; unset, nothing changes.
+  `GLOSSDB_ALLOWED_HOSTS` adds hosts to the allowed set. The
+  installation page names both. The suite asserts a refused token, an
+  accepted token and a request on the extra host.
 
-## For the other repos
+## For the other repositories
 
-- **glossdeploy**: the spike, then the cockpit cut down, the Worker
-  route and the WorkOS wildcards. The organization check and the
-  extra host land in glossql. The shared address, when it comes, is
-  the same Worker routing by the token's organization and a stand-in
+- **glossdeploy**: the spike, then the admin page, the Worker route
+  and the WorkOS wildcards. The shared address later is the same
+  Worker routing by the token's organization, with a placeholder
   answer while a workspace starts.
-- **glossval**: nothing on this plan. The ranking experiment is
-  `sources.md`'s; the recommendations read is #174.
+- **glossval**: nothing here.
