@@ -1255,7 +1255,7 @@ impl GlossqlMcp {
         }
         Self::refresh_brief(&self.plane, &self.brief).await;
         let after = self.brief.facts.read().ok().and_then(|f| f.clone());
-        (after.is_some() && after != before).then(|| format!("brief: {}", self.brief.line()))
+        (after.is_some() && after != before).then(|| format!("summary: {}", self.brief.line()))
     }
 }
 

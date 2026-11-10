@@ -72,7 +72,7 @@ annotation to write:
 
 ```
 no additivity stands on fin.spend.value, and spend serves several rows in one
-period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio>"}$$
+period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio|non-additive>"}$$
 ```
 
 It defaults nothing. A additivity in conflict — the test (`DECLARE TEST`)

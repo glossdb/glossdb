@@ -2321,9 +2321,11 @@ async fn the_brief_rides_the_call_that_moved_it() {
         outcomes.contains("\"unadmitted\"") && outcomes.contains("\"applicable\":false"),
         "{outcomes}"
     );
-    let brief = blocks
-        .iter()
-        .find(|b| b["text"].as_str().is_some_and(|t| t.starts_with("brief: ")));
+    let brief = blocks.iter().find(|b| {
+        b["text"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("summary: "))
+    });
     let brief = brief.unwrap_or_else(|| panic!("the landing moved the brief: {body}"));
     let brief = brief["text"].as_str().unwrap();
     assert!(brief.contains("judgment question"), "{body}");
@@ -2339,9 +2341,9 @@ async fn the_brief_rides_the_call_that_moved_it() {
         expect_ok(mcp(app.clone(), call_with(meta(), 121, "SELECT 1 AS ok", None)).await).await;
     let blocks = body["result"]["content"].as_array().unwrap();
     assert!(
-        !blocks
-            .iter()
-            .any(|b| b["text"].as_str().is_some_and(|t| t.starts_with("brief: "))),
+        !blocks.iter().any(|b| b["text"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("summary: "))),
         "{body}"
     );
 
@@ -2359,9 +2361,9 @@ async fn the_brief_rides_the_call_that_moved_it() {
         expect_ok(mcp(app.clone(), call_with(other, 122, "SELECT 1 AS ok", None)).await).await;
     let blocks = body["result"]["content"].as_array().unwrap();
     assert!(
-        !blocks
-            .iter()
-            .any(|b| b["text"].as_str().is_some_and(|t| t.starts_with("brief: "))),
+        !blocks.iter().any(|b| b["text"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("summary: "))),
         "the shared baseline says nothing moved: {body}"
     );
 }

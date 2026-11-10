@@ -93,7 +93,7 @@ true	period	value	month	month	48	NULL	none	[fund, object]	true
 statement error
 SELECT * FROM metric_series();
 ----
-no additivity is annotated on fin.spend.value, and spend serves several rows in one period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio>"}$$
+no additivity is annotated on fin.spend.value, and spend serves several rows in one period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio|non-additive>"}$$
 
 statement ok
 GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
@@ -337,10 +337,11 @@ SELECT count(DISTINCT metric) FROM metric_series(unclaimed := 'skip');
 ----
 1
 
-statement error
-SELECT count(*) FROM metric_series();
+# a metric marked non-additive whose rows would have to be combined is left out; it does not refuse the read
+query I
+SELECT count(DISTINCT metric) FROM metric_series();
 ----
-the additivity on fin.headcount.value is non-additive, so its rows do not combine
+1
 
 # --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its additivity
 
@@ -505,3 +506,62 @@ SELECT json_extract_string(event, '$.eventType'), json_extract_string(event, '$.
 FROM lineage_events() WHERE json_extract_string(event, '$.job.name') = 'view.fin.spend';
 ----
 COMPLETE	view.fin.spend	amount
+
+# --- the additivity test reads how the value is computed: a ratio of two aggregates marked additive is red, and so is a metric that sums it; marked ratio with its two halves it is green
+
+statement ok
+DECLARE ASPECT amount_per_line WITH $${"title": "Amount per line"}$$ AS VIEW;
+
+statement ok
+GLOSS amount_per_line ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.lines GROUP BY 1"}$$;
+
+statement ok
+DECLARE ASPECT amount_per_line_year WITH $${"title": "Amount per line, by year"}$$ AS VIEW;
+
+statement ok
+GLOSS amount_per_line_year ON fin AS $${"sql": "SELECT date_trunc('year', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_line GROUP BY 1"}$$;
+
+statement ok
+GLOSS role ON amount_per_line.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON amount_per_line.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON amount_per_line.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS role ON amount_per_line_year.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON amount_per_line_year.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON amount_per_line_year.value AS $${"value": "additive"}$$;
+
+statement ok
+SELECT additivity_check() FROM fin.amount_per_line;
+
+statement ok
+SELECT additivity_check() FROM fin.amount_per_line_year;
+
+query TTT
+SELECT metric, state, json_extract_string(evidence, '$.shape') FROM metric_tests()
+WHERE metric LIKE 'amount_per_line%' AND test = 'measure_additivity_test' ORDER BY 1;
+----
+amount_per_line	red	ratio
+amount_per_line_year	red	ratio
+
+statement ok
+GLOSS amount_per_line ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.lines GROUP BY 1"}$$;
+
+statement ok
+GLOSS additivity ON amount_per_line.value AS $${"value": "ratio", "numerator": "num", "denominator": "den"}$$;
+
+statement ok
+SELECT additivity_check() FROM fin.amount_per_line;
+
+query T
+SELECT state FROM metric_tests() WHERE metric = 'amount_per_line' AND test = 'measure_additivity_test';
+----
+green
