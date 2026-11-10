@@ -49,7 +49,7 @@ carries one form per open question. Each form offers:
 **In the console.** The Review tab shows the same rows, with the same
 choices ([the console](console.md)).
 
-The answer is stored as the decision alone, in the person's slot.
+The answer is stored as the decision alone, as the person's own annotation.
 `Unclear` defers; it is not a decision. A person's value outranks the
 agent's at every read, so the answer takes effect at once.
 

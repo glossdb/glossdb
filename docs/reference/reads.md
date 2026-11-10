@@ -114,8 +114,8 @@ while it serves). The numbers are in `metric_summary()` and
 A metric's view is a table of its dataset. Its columns carry roles:
 `timestamp` is the period, `measure` the value (the one named `value`
 where several are), `dimension` the slices. The `additivity` on the value
-column says how a number adds up over periods and members: a flow
-sums, a stock keeps its last level, a ratio divides its summed halves,
+column says how a number adds up over periods and members: an additive metric
+sums, a semi-additive metric keeps its last level, a ratio divides its summed halves,
 named `numerator` and `denominator`. The `time_grains` on the period column
 sets the time grains: `floor`, the finest grain the series is served
 at, by default the measured cadence; `windows`, how many whole periods
@@ -169,9 +169,9 @@ each metric at or below it at that grain; a metric coarser than the
 grain asked serves no rows. The floor's window of `n` periods is
 served, the period at the data's edge last.
 
-A flow sums, and fills its total's empty periods with zero up to the
-data's edge (the last instant any served metric reaches), so a flow
-whose rows stopped early shows zeros, not an older window. A stock
+An additive metric sums, and fills its total's empty periods with zero up to the
+data's edge (the last instant any served metric reaches), so an additive metric
+whose rows stopped early shows zeros, not an older window. A semi-additive metric
 keeps the period's last level, summed over what exists at that
 instant. A ratio divides its summed halves. A dimension with more than
 24 members serves its top 23 by weight and `other`.
@@ -288,27 +288,27 @@ answered by the model service the deployment names
 name and everything else serves. Each result is stored as a
 measurement and read back as SQL, so `next` reads the catalog and never
 computes over the data. The service owns its subject: the bands, the
-PIT and when it is withheld, the walk's verdict, the forecast's
+PIT and when it is withheld, the backtest's verdict, the forecast's
 quantiles, the estimate's sign. The kit owns the calendar and sends
 complete periods only.
 
 ### band_verdict()
 
-The newest walk's verdict, one row, none before a walk: `served_by`
+The newest backtest's verdict, one row, none before a backtest: `served_by`
 (the service and its version), `grain`, `score`, `band`, `threshold`
-(the red line the walk was asked with), `computed_at`.
+(the red line the backtest was asked with), `computed_at`.
 
 ### band_points()
 
-The newest walk, one row per metric and month walked. Columns:
+The newest backtest, one row per metric and month backtested. Columns:
 `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80` and
-`held_90` (the share of walked points inside the 10–90 and the 5–95
+`held_90` (the share of backtested points inside the 10–90 and the 5–95
 band), `period`, `actual`, `p05` … `p95`, `pit`, `withheld`,
 `displacement` (|2·pit − 1|, what the detector scores), `newest` (the
-latest point walked, the one the verdict scores), `point_seq`,
-`computed_at`. A metric not walked returns one row with its reason and
+latest point backtested, the one the verdict scores), `point_seq`,
+`computed_at`. A metric not backtested returns one row with its reason and
 no numbers. This reads the catalog and never runs again: `metric_bands`
-walks again and calls the service.
+backtests again and calls the service.
 
 ```sql
 SELECT metric, period, displacement FROM band_points()
@@ -335,7 +335,7 @@ points have arrived at that grain, step and span, else the dataset's
 where it reaches 30, else the service's). A metric the forecast found
 not applicable is one row with its reason. The horizon is 31 days, 13
 weeks, 12 months or 4 quarters; hours and minutes are finer than the
-grains the service measured, a year has too few periods. A flow also
+grains the service measured, a year has too few periods. An additive metric also
 asks for the totals to the end of the month (a day), the quarter (a
 week), the quarter and the year (a month), the year (a quarter) that
 the first period ahead falls in, where the horizon reaches the span's
@@ -392,8 +392,8 @@ year ([plans](../preview/plans.md)). Columns: `plan`, `metric`,
 `actual` (the actual cell once the period has begun; for the current
 period, to date), `variance` (actual minus plan, on a complete period),
 `low`, `expected`, `high` (the newest forecast's 80% band and median:
-the step's at the metric's own grain; at a coarser grain, for a flow
-the actual to date plus the total to the period's end, for a stock the
+the step's at the metric's own grain; at a coarser grain, for an additive metric
+the actual to date plus the total to the period's end, for a semi-additive metric the
 band of the last period inside it), `planned` (`complete`: the period is complete;
 `inside`, `below`, `above`: where the plan lies against the band;
 `partial`: begun, and the rows cover part of the period, so no band;

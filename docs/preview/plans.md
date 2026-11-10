@@ -66,8 +66,8 @@ The plan is read through the metric it plans:
 Nothing is annotated on a plan's own columns.
 `metric_series(world := 'plan', plan := 'revised_budget')` returns the
 cells with `metric` set to the metric the plan names and `world` set to
-`plan`, at the plan's own grain or any coarser grain asked. A flow
-sums; a stock keeps the last level. A finer grain returns no rows. The
+`plan`, at the plan's own grain or any coarser grain asked. An additive metric
+sums; a semi-additive metric keeps the last level. A finer grain returns no rows. The
 actual world never carries a plan's cells, and expected ranges and
 forecasts do not read it.
 
@@ -117,52 +117,50 @@ period with a range lies below or above the forecast's range, scored as
 the share of such periods. The measurement is stale once the data or
 the catalog rows it read change; a newer forecast asks for it again.
 
-## The planning goal
+## Next steps for a plan
 
-The `next` read carries the plan as its own goal, `plan`, beside the
-seven others ([views and table functions](../reference/reads.md),
-`next`). Every step reads the catalog, never the data. The goal's steps
-are the plan's preconditions, in order. Until a plan is declared the
-goal is done: the data cannot say a plan is wanted, so a person asks
-for one or the agent declares one over a loaded budget table.
+`next` carries a plan's steps on the metric it plans, and the runs
+under the `outlook` goal ([next steps](../extending/next-steps.md)).
+Every step reads the catalog, never the data. The data cannot say a
+plan is wanted: a person asks for one, or the agent declares one over
+a loaded budget table. In order:
 
-1. an applicable metric, else the goal is blocked;
-2. a declared plan to define, or to stop;
-3. a plan the read refuses, to record again;
-4. the forecast to run, if never run or stale;
-5. the plan to judge, if never judged or judged against an older
-   forecast.
+1. a declared plan to define, or to stop;
+2. a plan that is defined and cannot be served, to record again;
+3. the forecast to run, if never run or out of date (`outlook`);
+4. the plan to compare with the actual and the forecast
+   (`metric_plan`), if never compared or compared with an older
+   forecast (`outlook`).
 
-Then every plan year whose range does not contain the plan is a gap.
+Then every plan year that lies outside the forecast's range is a gap,
+and `plan_test` is red on the metric.
 
-- For a gap with nothing recorded on it, the action is a scenario on a
-  lever (the lever annotated and the scenario declared with its
-  factors, see [scenarios](scenarios.md)), or the gap recorded at once.
-- With a scenario in place, the action is the estimate
-  (`metric_scenario`), if never run or stale; then the comparison
-  (`plan_points()` for the plan's row beside `scenario_points()` for
-  the estimate and the service's view on the lever); then the decision.
+- With no scenario, the step offers a scenario on a lever (the lever
+  annotated and the scenario declared with its factors, see
+  [scenarios](scenarios.md)), or the gap recorded at once.
+- With a scenario, the step is its estimate (`metric_scenario`), if
+  never run or out of date; then the comparison (`plan_points()` for
+  the plan's row beside `scenario_points()` for the estimate).
 
-Either way the next statement is the same: the decision as an
-assumption under the key `plan-<year>` in the plan's own definition, at
-confidence 0.7. The console asks a person. While the question is open
-the goal is blocked; a review decision under that key closes it. With
-no gap, the goal is done.
+Either way the gap is recorded as an assumption with the key
+`plan-<year>` in the plan's own definition. The console asks a person.
+The step is gone once the question is open or a review decision under
+that key exists.
 
-The goal judges the year. A budget booked by the month (the adoption
+The comparison is made at the year. A budget booked by the month (the adoption
 in January, an amendment in May) means nothing month by month and
 something at the year, and the year to go is the total the forecast
 asks for a month or quarter metric. A plan on a week or day metric has
-no year to go: its year rows stay open, and the goal has no gap to
-judge. A plan whose rows cover part of a year is `partial` at the year,
-and the goal has no gap there either: its own months are held to their
+no year to go: its year rows stay open, and there is no gap to
+compare. A plan whose rows cover part of a year is `partial` at the year,
+and has no gap there either: its own months are held to their
 ranges.
 
 ## Grain
 
 A budget often comes at a coarser grain than the actual: a year's
 number beside monthly spend. The plan's definition returns the date
-column as it is, and the read buckets it as it buckets any flow. Where
+column as it is, and the read buckets it as it buckets any additive metric. Where
 a budget is booked in the month it was authorized (the adoption in
 January, an amendment in May), the plan's month cells are what the
 ledger booked that month, and the year is where the plan means
@@ -175,38 +173,38 @@ spreads nothing.
 
 A metric's additivity is how its number combines over time:
 
-- a **flow** adds up: spend, revenue;
-- a **stock** is a level at a moment: headcount, inventory. At a
+- an **additive** metric adds up: spend, revenue;
+- a **semi-additive** metric is a level at a moment: headcount, inventory. At a
   coarser grain the read keeps the last level;
 - a **ratio** is a quotient: margin, win rate. At a coarser grain the
   read divides the summed halves again.
 
 The forecast runs at the metric's own grain and gives a range for every
 period ahead, whatever the additivity. It asks for a total to go, the
-quarter or the year, only on a flow: a total of a stock or a ratio is
+quarter or the year, only on an additive metric: a total of a semi-additive metric or a ratio is
 not a number ([forecasts](forecasts.md)). That decides what a plan is
 compared with.
 
 | Metric's grain | Additivity | Plan at the metric's grain | Plan at a coarser grain, or the year row |
 |---|---|---|---|
-| day | flow | a range per day, 31 ahead | the month to go only |
-| day | stock | a range per day | the period's last day's range, within 31 days |
+| day | additive | a range per day, 31 ahead | the month to go only |
+| day | semi-additive | a range per day | the period's last day's range, within 31 days |
 | day | ratio | a range per day | no range |
-| week | flow | a range per week, 13 ahead | the quarter to go only |
-| week | stock | a range per week | the period's last week's range, within 13 weeks |
+| week | additive | a range per week, 13 ahead | the quarter to go only |
+| week | semi-additive | a range per week | the period's last week's range, within 13 weeks |
 | week | ratio | a range per week | no range |
-| month | flow | a range per month, 12 ahead | the quarter and the year to go |
-| month | stock | a range per month | the period's last month's range, within 12 months |
+| month | additive | a range per month, 12 ahead | the quarter and the year to go |
+| month | semi-additive | a range per month | the period's last month's range, within 12 months |
 | month | ratio | a range per month | no range |
-| quarter | flow | a range per quarter, 4 ahead | the year to go |
-| quarter | stock | a range per quarter | the year's last quarter's range, within 4 quarters |
+| quarter | additive | a range per quarter, 4 ahead | the year to go |
+| quarter | semi-additive | a range per quarter | the year's last quarter's range, within 4 quarters |
 | quarter | ratio | a range per quarter | no range |
 | year, hour, minute | any | no forecast | no range |
 
 - A plan at the metric's own grain is compared with the range for that
   period, for every additivity.
-- A plan at a coarser grain is compared, on a flow, with the actual to
-  date plus the total to go. On a stock it is compared with the range
+- A plan at a coarser grain is compared, on an additive metric, with the actual to
+  date plus the total to go. On a semi-additive metric it is compared with the range
   for the last period of the metric's own grain inside it: a year-end
   headcount against December's forecast, with nothing added, where the
   horizon reaches it.
@@ -219,8 +217,8 @@ compared with.
   with the actual and the variance, and `planned` says `open` or
   `ahead`.
 
-The planning goal reads the year rows. So it finds a gap on a flow at
-month or quarter grain, and on a stock whose year end the forecast
+The steps read the year rows. So they find a gap on an additive metric at
+month or quarter grain, and on a semi-additive metric whose year end the forecast
 reaches. A margin target is loaded as one row for the month it is due,
 and the read compares it with that month's range.
 
@@ -232,11 +230,11 @@ department, each its own aspect with a filter in its definition.
 - One plan aspect returns one metric's numbers. A budget file of many
   lines is read by one plan aspect per line and edition, each
   definition filtering on its line.
-- The plan's additivity is its metric's: a budget for a stock keeps its
-  last level at a coarser grain, like the stock.
+- The plan's additivity is its metric's: a budget for a semi-additive metric keeps its
+  last level at a coarser grain, like the metric.
 - A metric whose definition is stopped leaves its plans in place. The
   stop is in the metric's own `metric_summary()` row.
-- A plan's table does not extend the actuals. A flow's empty periods
+- A plan's table does not extend the actuals. An additive metric's empty periods
   are zeros up to the data's edge, the latest period the metrics'
   definitions return. A budget loaded through the year's end extends no
   metric, and the forecast's origin stays the last period with an

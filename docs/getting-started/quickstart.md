@@ -127,7 +127,7 @@ More: [relationships](../usage/relationships.md).
 ## 8. Describe the columns
 
 Start with each column's role; what else a column must carry follows
-from it. A measure's additivity (`additivity`: stock or flow) says how
+from it. A measure's additivity (`additivity`: additive, or semi-additive for a level) says how
 the number combines over periods; read it off the rows, not the name.
 Where a declared join reaches an event table, `SELECT
 additivity_evidence() FROM <table>.<column>` measures it first: the level

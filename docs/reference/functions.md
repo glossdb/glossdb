@@ -151,10 +151,10 @@ These call the model service the deployment names
 
 `SELECT metric_bands() FROM <dataset>` → `metric_bands`
 
-For every applicable metric, walks the six most recent complete months
+For every applicable metric, backtests the six most recent complete months
 and asks the model service what range each month should have landed in
 given everything before it. Each point records the band quantiles
-(p05–p95) and its PIT, the quantile the actual landed at; the walk
+(p05–p95) and its PIT, the quantile the actual landed at; the backtest
 records the service's verdict, score, band and threshold. A metric with
 fewer than seven complete months is not applicable
 ([expected ranges](../preview/expected-ranges.md)).
@@ -165,7 +165,7 @@ fewer than seven complete months is not applicable
 
 For every applicable metric, the periods ahead from the last period
 with a value: the band quantiles (p05–p95) per step over a horizon per
-grain (day 31, week 13, month 12, quarter 4), and for a flow the
+grain (day 31, week 13, month 12, quarter 4), and for an additive metric the
 totals of the month, quarter or year to go. The run is stored with its
 origin and `served_by`, and each point with the service's held-out
 share inside the 80% and 90% band at that grain, step and span.
@@ -212,9 +212,9 @@ also catch over-cleaning declares its own detector
 ### band_breach
 
 Used by the outlook kit's test `bands_test` on `metric_bands` (threshold
-0.98). Repeats the service's verdict over the walk: the worst
+0.98). Repeats the service's verdict over the backtest: the worst
 displacement, |2·PIT − 1|, across the newest point of every metric
-walked, raised to the number of metrics scored. `TESTS()` carries it
+backtested, raised to the number of metrics scored. `TESTS()` carries it
 and the metric's goal in `next` acts on it where a model service is named. Which metric and month is in the
 measurement's own output; `band_points()` returns them as rows.
 

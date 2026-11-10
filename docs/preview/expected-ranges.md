@@ -4,15 +4,15 @@ Preview: expected ranges need a model service, named by
 `GLOSSDB_SERVICE_URL` ([configuration](../operations/configuration.md)),
 and may change.
 
-`metric_bands` walks each metric's recent months. For every month it
-walks, it computes the range that month should have landed in, given
+`metric_bands` backtests each metric's recent months. For every month it
+backtests, it computes the range that month should have landed in, given
 everything before it. It runs on a dataset
 (`SELECT metric_bands() FROM fin`) and reports, per point:
 
 - the range's quantiles, p05 to p95;
 - the PIT: the quantile at which the actual value landed in the
   model's own distribution, from 0 to 1;
-- the service's result over the walk.
+- the service's result over the backtest.
 
 The test `bands_test` carries the result; the measurement reports.
 
@@ -35,22 +35,22 @@ The kit owns the calendar and sends complete months only.
   rows are dated finer than monthly, the month the data ends inside is
   left out: a short sum against a range fitted on whole months reads
   as a breach that is only the calendar.
-- `band_request()` says per metric whether it can be walked: at least
+- `band_request()` says per metric whether it can be backtested: at least
   seven complete months, so that one origin has the six known values
   the service needs.
 - `band_body()` builds the request in the service's format: every
   metric's monthly series as one table (the metric as `member`, the
   month as `period`, one `value` column), with the specification
   `{"targets": ["value"], "origins": 6, "horizon": 1, "levels": [0.05,
-  0.1, 0.5, 0.9, 0.95]}` and the test's threshold as the walk's red
+  0.1, 0.5, 0.9, 0.95]}` and the test's threshold as the backtest's red
   line.
 
 The service takes each of the last six months as an origin, forecasts
 the month after it from the history up to that origin, and answers one
-row per metric, walked month and level, with the actual and the PIT.
+row per metric, backtested month and level, with the actual and the PIT.
 The ranges are the model's own; the service reads nothing from the
-catalog. A metric with fewer months than a full walk walks the origins
-it has. One the service cannot walk is returned as not applicable, in
+catalog. A metric with fewer months than a full backtest backtests the origins
+it has. One the service cannot backtest is returned as not applicable, in
 the service's own words.
 
 ## The result
@@ -60,7 +60,7 @@ The result is the service's:
 - **Displacement** is `|2·pit − 1|`: 0.0 at the median, 0.8 at the
   edge of an 80% range.
 - **The score** is the worst displacement across the latest point of
-  every metric walked, raised to the number of metrics scored, so the
+  every metric backtested, raised to the number of metrics scored, so the
   edges' base rate holds at any number of metrics.
 - **The band** reads the score against the threshold.
 
@@ -69,16 +69,16 @@ value, so `TESTS()` carries it and the checks goal acts on it.
 
 ## History
 
-Every walk's PITs are stored with the measurement, one per metric and
-month, with the share of walked points inside the 80% and the 90%
+Every backtest's PITs are stored with the measurement, one per metric and
+month, with the share of backtested points inside the 80% and the 90%
 range. `band_points()` returns them as rows, and `band_verdict()` the
 newest result. How good past forecasts were is read from the catalog,
 never from the service.
 
 ## The model service
 
-The server carries no model. The walk calls the model service's bands
-route, as JSON both ways. Without `GLOSSDB_SERVICE_URL` the walk
+The server carries no model. The backtest calls the model service's bands
+route, as JSON both ways. Without `GLOSSDB_SERVICE_URL` the backtest
 refuses, saying so. Every answer names the service and its version, and
 the measurement stores it as `served_by`.
 
@@ -96,10 +96,10 @@ the measurement stores it as `served_by`.
   than a step keeps its PIT: that move is real whatever the range's
   width. A series that never repeats has no grid, and a tight range on
   it is valid.
-- The walk covers the six most recent months, and each walked point
+- The backtest covers the six most recent months, and each backtested point
   needs at least six known values before it. A metric with too short a
   history is returned as not applicable with the reason; one shorter
-  than a full walk walks the origins it has.
+  than a full backtest backtests the origins it has.
 - The history is the dataset's: every metric's PITs together. History
   from before a metric's definition changed still counts; the drift it
   carries is what the detector reads.

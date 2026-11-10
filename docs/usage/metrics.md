@@ -39,9 +39,9 @@ GLOSS throughput ON ops AS $${
 - **Preview first.** Run the SQL with `LIMIT 0` before you record it.
 - **`definitions` is one annotation for the whole dataset,** so a write
   replaces the whole map. Read the current entries before you add one.
-- **A level is a stock.** Payables outstanding, inventory, headcount:
+- **A level is semi-additive.** Payables outstanding, inventory, headcount:
   anything you could state as of any date. Collapse the events to one
-  row per entity per period, and annotate `additivity` stock on the value.
+  row per entity per period, and annotate `additivity` semi-additive on the value.
 
 A metric is a view of the dataset: `SELECT … FROM <name>` reads,
 filters and joins it like any view. A person's definition outranks the
@@ -79,7 +79,7 @@ Annotate the view's columns:
 - `role` timestamp on the period column, `role` measure on the value
   column (the one named `value` where several are measures), `role`
   dimension on each column to slice by;
-- `additivity` on the value column: `additive` (a flow) sums, `semi-additive` (a stock) keeps each
+- `additivity` on the value column: `additive` sums (revenue, orders), `semi-additive` (a level: headcount, a balance) keeps each
   bucket's last level, `ratio` divides its summed halves, named by
   `numerator` and `denominator`;
 - `dimension` on a slice column to rank it: `primary` first, `none`
@@ -115,7 +115,7 @@ the metric's total.
 
 - Without a grain, each metric is served at its own floor. A metric
   coarser than the asked grain serves no rows.
-- A flow's empty period is a zero up to the data's newest point. A
+- An additive metric's empty period is a zero up to the data's newest point. A
   stock's or a ratio's empty period has no row.
 - Where rows have to be combined and the value column has no
   `additivity`, the read refuses and names the missing annotation; it
@@ -132,8 +132,8 @@ formula.
 ## Formulas
 
 A derived metric's `formula` in `definitions` defines it over sibling
-metrics, for any window `w`: `[w]` reads a flow over the window,
-`[end of w]` a stock at its end, `[w-1]` the previous window. The
+metrics, for any window `w`: `[w]` reads an additive metric over the window,
+`[end of w]` a semi-additive metric at its end, `[w-1]` the previous window. The
 formula documents the metric; the stored SQL is what runs. Formulas
 are not checked, so read the operand names back against
 `SELECT name FROM aspects WHERE kind = 'VIEW'`.
