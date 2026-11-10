@@ -413,6 +413,31 @@ SELECT state, current, json_extract_string(evidence, '$.pairs') FROM metric_test
 ----
 red	true	["lines.line_id ~ notes.line_id"]
 
+# the same join with one side reduced to one row per line inside the definition cannot multiply rows: green, whatever the table holds, by GROUP BY and by the latest row per key alike
+statement ok
+DECLARE ASPECT noted_spend_grouped WITH $${"title": "Noted spend, one note per line"}$$ AS VIEW;
+
+statement ok
+GLOSS noted_spend_grouped ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM (SELECT line_id, sum(amount) AS amount, min(booked) AS booked FROM fin.lines GROUP BY line_id) l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
+
+statement ok
+DECLARE ASPECT noted_spend_latest WITH $${"title": "Noted spend, the latest booking per line"}$$ AS VIEW;
+
+statement ok
+GLOSS noted_spend_latest ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.notes n JOIN (SELECT * FROM fin.lines QUALIFY row_number() OVER (PARTITION BY line_id ORDER BY booked DESC) = 1) l ON n.line_id = l.line_id GROUP BY ALL"}$$;
+
+statement ok
+SELECT fan_out_check() FROM fin.noted_spend_grouped;
+
+statement ok
+SELECT fan_out_check() FROM fin.noted_spend_latest;
+
+query TT
+SELECT metric, state FROM metric_tests() WHERE metric LIKE 'noted_spend_%' AND test = 'fan_out_test' ORDER BY metric;
+----
+noted_spend_grouped	green
+noted_spend_latest	green
+
 # the test report: one goal per metric, the worst test first, with the statement that settles it
 query I
 SELECT count(*) FROM routes_metrics() WHERE arms LIKE '%fan_out_test%' AND arms LIKE '%every test on%';

@@ -69,7 +69,7 @@ An export to Ossie and an import from it are planned.
 
 | Term | Industry word | What it is |
 |---|---|---|
-| `fan_out_test` | join fan-out, many-to-many join | Two tables a metric scans share a key that repeats on both sides; the join multiplies rows unless the definition narrows it |
+| `fan_out_test` | join fan-out, many-to-many join | Two tables a metric scans share a key that repeats on both sides; the join multiplies rows unless the definition reduces one side to one row per key before the join |
 | `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
 | `measure_additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
 | `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |

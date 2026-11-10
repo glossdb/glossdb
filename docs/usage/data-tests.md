@@ -117,7 +117,8 @@ whose truth is known by construction ([functions](../reference/functions.md),
   the structure and the shape of each column.
 - **The metrics kit's tests on every metric**, over the tables its
   definition scans: `fan_out_test`, join fan-out (two tables sharing a
-  key that repeats on both sides, so the join multiplies rows);
+  key that repeats on both sides, so the join multiplies rows; a side
+  the definition reduces to one row per key before the join passes);
   `orphan_test`, referential integrity on its declared joins (the
   share of rows whose key finds no parent); `measure_additivity_test`, whether
   its value column says how it adds up over time and members, and
