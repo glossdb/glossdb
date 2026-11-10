@@ -456,7 +456,10 @@ WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 -- repeat on both sides, so the join multiplies rows. The join columns
 -- come from the definition's own plan (glossql_views_joins), and whether
 -- a column repeats from its stored column_profile, which the server runs
--- for a metric's join columns. A metric that joins nothing cannot fan out.
+-- for a metric's join columns. A side the definition reduces to one row
+-- per value before the join (grouped by the join columns, DISTINCT on
+-- them, or the latest row per value by row_number() = 1) does not repeat,
+-- whatever its table holds. A metric that joins nothing cannot fan out.
 DECLARE ASPECT fan_out_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -475,7 +478,7 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
     FROM glossql_glossary(split_part($subject, '.', 1), NULL, false) g
     WHERE g.aspect = 'validity' AND g.value IS NOT NULL),
   joins AS (
-    SELECT j.left_column, j.right_column
+    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced
     FROM glossql_views_joins(split_part($subject, '.', 1)) j
     WHERE j.view = split_part($subject, '.', 2)
       AND regexp_replace(j.left_column, '\.[^.]*$', '') <> regexp_replace(j.right_column, '\.[^.]*$', '')
@@ -488,8 +491,8 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
     WHERE dataset = split_part($subject, '.', 1) AND function = 'column_profile'
     QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
   judged AS (
-    SELECT j.left_column, j.right_column, l.subject IS NOT NULL AND r.subject IS NOT NULL AS profiled,
-           coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
+    SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
+           NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
     FROM joins j LEFT JOIN profiles l ON l.subject = j.left_column LEFT JOIN profiles r ON r.subject = j.right_column),
   unprofiled AS (
     SELECT string_agg(c, ', ' ORDER BY c) AS columns
@@ -733,7 +736,7 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape = 'distinct' THEN coalesce(a.value_column, 'the value') || ' of ' || r.metric || ' is a distinct count, and it is marked additive: distinct counts do not add up, so every total and every coarser grain is wrong. Mark it non-additive and serve one row per period; a count per member is its own metric'
          WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape IS NOT NULL THEN coalesce(a.value_column, 'the value') || ' of ' || r.metric || ' is computed as ' || CASE r.shape WHEN 'ratio' THEN 'a division by an aggregate' ELSE 'an average' END || ', and it is marked ' || r.marked || ': its rows are summed, so every total and every coarser grain is wrong. Serve the numerator and the denominator beside the value and mark it ratio; where it reads another metric''s ratio, read that metric''s numerator and denominator instead of its value'
          WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'no additivity is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — additive sums, semi-additive keeps the period''s last level, a ratio divides its summed numerator by its summed denominator'
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN r.metric || ' joins on ' || r.pairs || ', and the values repeat on both sides: every match multiplies rows. Join through the table where the key is unique, aggregate one side first, or narrow the join; where the join is meant as it is, a tolerance on the metric says so'
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN r.metric || ' joins on ' || r.pairs || ', and the values repeat on both sides: every match multiplies rows. Join through the table where the key is unique, or reduce one side to one row per key inside the definition before the join: the latest row per key where the source sends a key again to correct it, an aggregate only where every row of a key says the same; where the join is meant as it is, a tolerance on the metric says so'
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.undated || ' is effective-dated: a key repeats once per version, and a join or a filter that does not bound both validity columns counts a row once per version'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN 'rows on a declared join between tables ' || r.metric || ' scans find no parent: an inner join drops them, an outer join counts them under no member; fix the load, or record the rate as the tolerance'
          WHEN r.state = 'yellow' THEN coalesce(a.reason, r.reason, r.test || ' has no rate yet')
@@ -746,7 +749,7 @@ SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
          WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'GLOSS additivity ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<additive|semi-additive|ratio|non-additive>", "grounds": "<why, in the business''s words>"}$$;'
          WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
          WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- make one side of ' || r.pairs || ' unique (aggregate it first, or join through the table that holds the key once), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
+         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- make one side of ' || r.pairs || ' unique (join through the table that holds the key once, or keep one row per key in a subquery: QUALIFY row_number() OVER (PARTITION BY <key> ORDER BY <load or change time> DESC) = 1, or GROUP BY <key>), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN (SELECT string_agg('SELECT column_profile() FROM ' || trim(c) || ';', chr(10)) FROM unnest(string_split(regexp_replace(coalesce(r.reason, ''), '^.*over ', ''), ',')) u(c))
          WHEN r.test = 'validity_test' AND r.state = 'red' THEN '-- bound the validity columns of ' || r.undated || ' by the period (valid_from <= period AND valid_to > period), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
          WHEN r.test = 'orphan_test' AND r.state = 'red' THEN '-- fix the load that leaves rows without a parent, or accept the rate:' || chr(10) || 'GLOSS orphan_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": ' || coalesce(CAST(r.score AS VARCHAR), '<the rate>') || ', "grounds": "<why these rows have no parent>"}$$;'
