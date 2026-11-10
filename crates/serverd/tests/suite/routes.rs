@@ -210,7 +210,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     )
     .await;
     let row = goal(&app, "spend").await;
-    assert_eq!(text(&row, "say"), "say how spend combines", "{row}");
+    assert_eq!(text(&row, "say"), "say how spend adds up", "{row}");
     assert!(
         text(&row, "statement").contains("GLOSS additivity ON fin.spend.value"),
         "{row}"
@@ -308,4 +308,38 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     assert_eq!(text(&row, "state"), "done", "{row}");
     let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
+    let (app, _dir) = fin().await;
+    // What an earlier session left: a daily rate marked additive, and a
+    // monthly metric that sums the daily rates. Both are wrong numbers;
+    // the additivity test reads how each value is computed.
+    say(
+        &app,
+        r#"DECLARE ASPECT amount_per_booking WITH $${"title": "Amount per booking"}$$ AS VIEW;
+           GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;
+           DECLARE ASPECT amount_per_booking_month WITH $${"title": "Amount per booking, monthly"}$$ AS VIEW;
+           GLOSS amount_per_booking_month ON fin AS $${"sql": "SELECT date_trunc('month', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_booking GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;"#,
+    )
+    .await;
+    for metric in ["amount_per_booking", "amount_per_booking_month"] {
+        let row = goal(&app, metric).await;
+        assert_eq!(text(&row, "state"), "next", "{row}");
+        assert_eq!(text(&row, "act"), "measure_additivity_test", "{row}");
+        assert_eq!(
+            text(&row, "say"),
+            format!("{metric} is a ratio marked additive"),
+            "{row}"
+        );
+    }
+    // Marked a ratio with its two halves, the daily metric is done.
+    say(
+        &app,
+        r#"GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "ratio", "numerator": "num", "denominator": "den"}}$$;"#,
+    )
+    .await;
+    let row = goal(&app, "amount_per_booking").await;
+    assert_eq!(text(&row, "state"), "done", "{row}");
 }

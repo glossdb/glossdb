@@ -86,7 +86,7 @@ it, or load a table it reads:
 | `fan_out_test` | the join repeats rows: two tables share a key that repeats on both sides |
 | `validity_test` | an effective-dated table is read without bounding both of its dates |
 | `orphan_test` | rows on a declared relationship find no parent |
-| `measure_additivity_test` | the measure does not say how it adds up |
+| `measure_additivity_test` | the measure does not say how it adds up, or says additive where the value is a ratio, an average or a distinct count |
 
 The `next:` line after every call names the worst one per metric:
 

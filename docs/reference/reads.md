@@ -179,7 +179,9 @@ instant. A ratio divides its summed halves. A dimension with more than
 No default: where rows must be combined and the value column has no
 `additivity`, the function refuses and names the annotation it needs. A
 list over every metric passes `unclaimed := 'skip'`: such a metric
-serves no cell, and its `metric_summary()` row says what it needs.
+serves no cell, and its `metric_summary()` row says what it needs. A
+metric marked `non-additive` never refuses: it is served where it has
+one row per period and left out where rows would have to be combined.
 
 `world := 'actual'` is the default: what the definitions compute from
 the data. `world := 'forecast'` serves the newest forecast's medians at
@@ -238,7 +240,9 @@ stands and the test runs again at the next touch), `score`, `evidence`
 empty where none does). The metrics kit's own tests appear on every
 metric, run or not: `fan_out_test` (join fan-out), `orphan_test`
 (referential integrity on the declared joins) and `measure_additivity_test`
-(whether the value column says how it combines). Each reads the
+(whether the value column says how it adds up, and whether that agrees
+with how the value is computed: a ratio, an average or a distinct count
+marked additive is red, and so is a metric that sums one). Each reads the
 evidence the quality kit stored, never the data again; a check whose
 evidence is not stored yet reads `yellow` and says what to run. A test
 on a table or column the metric reads lists under the metric. A single

@@ -120,7 +120,9 @@ whose truth is known by construction ([functions](../reference/functions.md),
   key that repeats on both sides, so the join multiplies rows);
   `orphan_test`, referential integrity on its declared joins (the
   share of rows whose key finds no parent); `measure_additivity_test`, whether
-  its value column says how it combines over time and members.
+  its value column says how it adds up over time and members, and
+  whether that agrees with how the value is computed (a ratio, an
+  average or a distinct count marked additive is red).
   `metric_tests()` lists every test on each metric and on what it
   reads, worst first, with the statement that runs it; a person
   accepts a result by recording a tolerance at or above it.

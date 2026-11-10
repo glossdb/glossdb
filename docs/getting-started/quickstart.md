@@ -266,7 +266,7 @@ the data over. More: [the console](../usage/console.md).
 Every tool result ends with two lines; the last one reads:
 
 ```text
-next: work_orders_open → say how work_orders_open combines (next://ops/work_orders_open) · done: hours_logged, review
+next: work_orders_open → say how work_orders_open adds up (next://ops/work_orders_open) · done: hours_logged, review
 ```
 
 The test report: per served metric its worst test, with the statement
