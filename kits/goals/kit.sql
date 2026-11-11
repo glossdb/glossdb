@@ -125,3 +125,81 @@ UNION ALL
 SELECT 'review', 4, 'done', '', '', 'nothing open', '', ''
 FROM ds
 $arms$ AS arms;
+
+-- next_steps: what is open on the bound dataset, by step of the data
+-- intelligence layer (connect, describe, test, decide, serve), read
+-- from the states the catalog holds and narrowed to what the metrics
+-- read. One row per asset and state, with the statement that opens
+-- the work. It serves building the layer (missing, not run) and
+-- running it (outdated after a load, red, conflict) alike. Built
+-- beside `next` until it replaces it (.claude/plans/next.md).
+CREATE OR REPLACE VIEW main.next_steps AS
+  WITH ds AS (SELECT current_schema() AS d),
+  scans AS (SELECT view AS metric, table_name AS tbl, unnest(columns) AS col
+            FROM glossql_views_scans(current_schema())),
+  reach AS (
+    SELECT tbl AS asset, string_agg(DISTINCT metric, ', ' ORDER BY metric) AS metrics FROM scans GROUP BY 1
+    UNION ALL
+    SELECT tbl || '.' || col, string_agg(DISTINCT metric, ', ' ORDER BY metric) FROM scans GROUP BY 1
+    UNION ALL
+    SELECT r.left_side || ' -> ' || r.right_side, string_agg(DISTINCT s.metric, ', ' ORDER BY s.metric)
+    FROM main.relationships r JOIN scans s ON r.left_side = s.tbl || '.' || s.col, ds
+    WHERE r.dataset = ds.d GROUP BY 1
+    UNION ALL
+    SELECT ds.d || '.' || m.metric, m.metric FROM (SELECT DISTINCT metric FROM scans) m, ds),
+  -- what an agent or a person states: not a measurement, not a check the server runs
+  stated AS (
+    SELECT name FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
+    WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
+  g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
+  homed AS (
+    SELECT g.subject, g.aspect, g.state, x.metrics,
+           CASE WHEN g.subject LIKE '% -> %' THEN g.subject
+                ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home
+    FROM g JOIN stated s ON s.name = g.aspect JOIN reach x ON x.asset = g.subject),
+  -- the newest load of each table against the one before it
+  loads AS (
+    SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
+           lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.seq) AS rows_before,
+           row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) AS rn
+    FROM main.imports i, ds WHERE i.dataset = ds.d),
+  s_connect AS (
+    SELECT 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'no table is loaded' AS open,
+           '' AS for_metric, '' AS cause,
+           'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' AS statement
+    FROM ds WHERE NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.d)),
+  s_describe AS (
+    SELECT 2, 'describe', h.home, h.state,
+           count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' ELSE h.state END || ': '
+             || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
+           max(h.metrics),
+           CASE WHEN h.state = 'stale' AND max(l.rows) IS NOT NULL
+                THEN 'loaded again: ' || max(l.rows) || ' rows'
+                     || coalesce(', ' || max(l.rows_before) || ' before', '')
+                ELSE '' END,
+           'SELECT subject, aspect, state FROM GLOSSARY(' || h.home || ') WHERE state = ''' || h.state || ''';'
+    FROM homed h LEFT JOIN loads l ON l.tbl = h.home AND l.rn = 1
+    WHERE h.state IN ('missing', 'stale', 'conflict')
+    GROUP BY h.home, h.state),
+  s_test AS (
+    SELECT 3, 'test', t.subject, t.state, t.test, t.metric, '', t.run
+    FROM main.metric_tests() t WHERE t.state <> 'green'),
+  s_decide AS (
+    SELECT 4, 'decide', ds.d || '.' || r.aspect, 'decided',
+           'a review decision (' || r.stance || ') is not applied to the definition', r.aspect, '',
+           'SELECT * FROM review_decisions WHERE aspect = ''' || r.aspect || ''' AND NOT folded_in;'
+    FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
+    UNION ALL
+    SELECT 4, 'decide', ds.d || '.' || q.aspect, 'waiting',
+           count(*) || ' waiting for a person', q.aspect, '',
+           'SELECT key, assumption, basis FROM open_questions WHERE aspect = ''' || q.aspect || ''';'
+    FROM main.open_questions q, ds WHERE q.dataset = ds.d GROUP BY ds.d, q.aspect),
+  s_serve AS (
+    SELECT 5, 'serve', ds.d, 'missing', 'no metric is defined', '', '',
+           'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;'
+    FROM ds WHERE NOT EXISTS (SELECT 1 FROM scans)
+    UNION ALL
+    SELECT 5, 'serve', ds.d || '.' || m.metric, 'blocked', coalesce(m.reason, 'not served'), m.metric, '', ''
+    FROM main.metric_summary() m, ds WHERE NOT m.applicable)
+  SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
+  UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve;
