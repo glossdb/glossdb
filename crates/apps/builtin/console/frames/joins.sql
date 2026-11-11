@@ -24,7 +24,7 @@ rels AS (
   FROM relationships r JOIN d ON d.dataset = r.dataset)
 SELECT r.left_path || ' → ' || r.right_path AS rel,
        coalesce(m.meaning, '') AS meaning,
-       CASE WHEN m.actor_kind = 'human' THEN 'ruled' ELSE '' END AS mark,
+       CASE WHEN m.actor_kind = 'human' THEN 'decided' ELSE '' END AS mark,
        CASE WHEN c.rel IS NULL THEN 'not yet measured'
             WHEN c.orphans = 0 THEN 'every row resolves'
             ELSE CAST(c.orphans AS VARCHAR) || ' of ' || CAST(c.filled AS VARCHAR)

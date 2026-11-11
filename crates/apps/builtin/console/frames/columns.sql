@@ -12,7 +12,7 @@ g AS (
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'entity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
 cur AS (SELECT subject, aspect, body, json_extract_string(body, '$.value') AS value FROM g WHERE rn = 1),
-landed AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
+loaded AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 cols AS (
   SELECT c.table_name, c.column_name, c.ordinal_position,
          CASE
@@ -25,7 +25,7 @@ cols AS (
          r.value AS role, x.value AS axis, m.value AS meaning, u.value AS unit, b.value AS additivity
   FROM information_schema.columns c
   JOIN d ON d.dataset = c.table_schema
-  JOIN landed l ON l.table_name = c.table_name
+  JOIN loaded l ON l.table_name = c.table_name
   LEFT JOIN cur r ON r.aspect = 'role' AND r.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
   LEFT JOIN cur x ON x.aspect = 'dimension' AND x.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
   LEFT JOIN cur m ON m.aspect = 'meaning' AND m.subject = d.dataset || '.' || c.table_name || '.' || c.column_name

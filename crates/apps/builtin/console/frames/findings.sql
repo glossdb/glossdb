@@ -1,7 +1,7 @@
 -- The findings: every result that is not green from a test, and
 -- every defect a function measured — a join that leaves rows
 -- unresolved, an identity that breaks. Each is a sentence from the
--- record's fields, the numbers behind it, the metrics that read the
+-- catalog's fields, the numbers behind it, the views that read the
 -- subject, and a link. Worst first. A measurement proposes and never
 -- judges: a measured defect carries no hue, only a result does.
 WITH d AS (SELECT dataset FROM current_dataset),
@@ -9,7 +9,7 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 reads AS (
-  SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS metrics
+  SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.source IS NOT NULL
   GROUP BY ms.source),
@@ -19,42 +19,42 @@ meanings AS (
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'meaning' AND g.actor_kind IN ('human', 'agent')),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
-verdicts AS (
-  SELECT v.subject, v.aspect, v.test, v.state AS band, v.score, v.error, v.computed_at, w.detector, w.threshold,
+results AS (
+  SELECT v.subject, v.aspect, v.test, v.state, v.score, v.error, v.computed_at, w.detector, w.threshold,
          CASE v.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 ELSE 1 END AS sev
   FROM TESTS() v JOIN w ON w.name = v.test
   WHERE w.detector IS NOT NULL AND v.state <> 'green'),
-voices AS (
+annotations AS (
   SELECT g.subject, g.aspect,
          string_agg(g.actor_kind || ': ' || coalesce(json_extract_string(g.body, '$.value'), g.body::VARCHAR), ' · '
            ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.seq DESC) AS said
   FROM glossary g JOIN d ON d.dataset = g.dataset
-  JOIN (SELECT DISTINCT subject, aspect FROM verdicts) v ON v.subject = g.subject AND v.aspect = g.aspect
+  JOIN (SELECT DISTINCT subject, aspect FROM results) v ON v.subject = g.subject AND v.aspect = g.aspect
   GROUP BY g.subject, g.aspect),
 judged AS (
-  SELECT v.band AS chip, 'warn' AS bcls,
+  SELECT v.state AS chip, 'warn' AS scls,
          CASE v.detector
            WHEN 'value_entropy' THEN 'The annotations on ' || v.aspect || ' differ on ' || substr(v.subject, len(d.dataset) + 2) || '.'
-           ELSE CASE WHEN v.band = 'error' THEN v.test || ' could not score ' || substr(v.subject, len(d.dataset) + 2) || '.'
-                     ELSE v.test || ' reads ' || v.band || ' on ' || substr(v.subject, len(d.dataset) + 2) || '.' END END AS headline,
+           ELSE CASE WHEN v.state = 'error' THEN v.test || ' could not score ' || substr(v.subject, len(d.dataset) + 2) || '.'
+                     ELSE v.test || ' reads ' || v.state || ' on ' || substr(v.subject, len(d.dataset) + 2) || '.' END END AS headline,
          CASE v.detector
            WHEN 'value_entropy' THEN coalesce('The annotations say ' || vo.said || '. ', '')
              || 'The score is the share of extra distinct values across the annotations, '
              || fmt_number(v.score) || ' against the threshold ' || coalesce(CAST(v.threshold AS VARCHAR), 'none')
              || '. A person''s word settles it.'
-           ELSE CASE WHEN v.band = 'error' THEN coalesce(v.error, 'the detector failed without a word')
+           ELSE CASE WHEN v.state = 'error' THEN coalesce(v.error, 'the detector failed without a word')
                      ELSE 'The detector ' || v.detector || ' scored ' || fmt_number(v.score)
                        || coalesce(' against the threshold ' || CAST(v.threshold AS VARCHAR), '') || '.' END END AS why,
-         coalesce(rd.metrics, '') AS reads,
+         coalesce(rd.views, '') AS reads,
          v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on ' || v.aspect
            || ' · measured ' || strftime(v.computed_at, '%d %b %Y %H:%M') AS meta,
-         '?check=' || v.test || '&kind=' || CASE v.detector WHEN 'value_entropy' THEN 'voices' ELSE 'verdicts' END AS link,
-         'the check' AS link_text,
+         '?test=' || v.test || '&kind=' || CASE v.detector WHEN 'value_entropy' THEN 'values' ELSE 'results' END AS link,
+         'the test' AS link_text,
          CAST(v.sev AS DOUBLE) AS sev,
          CAST(v.score AS DOUBLE) AS size
-  FROM verdicts v
+  FROM results v
   CROSS JOIN d
-  LEFT JOIN voices vo ON vo.subject = v.subject AND vo.aspect = v.aspect
+  LEFT JOIN annotations vo ON vo.subject = v.subject AND vo.aspect = v.aspect
   LEFT JOIN reads rd ON d.dataset || '.' || rd.source = v.subject),
 measured AS (
   SELECT g.subject, g.aspect, g.body, g.written_at
@@ -69,12 +69,12 @@ orphaned AS (
         FROM measured m WHERE m.aspect = 'relationship_coherence')
   WHERE json_extract(rel, '$.orphans')::BIGINT > 0),
 orphans AS (
-  SELECT 'measured' AS chip, '' AS bcls,
+  SELECT 'measured' AS chip, '' AS scls,
          CAST(o.orphans AS VARCHAR) || ' of ' || CAST(o.filled AS VARCHAR) || ' ' || split_part(substr(o.rel, len(d.dataset) + 2), '.', 1)
            || ' rows find no ' || split_part(substr(split_part(o.rel, ' -> ', 2), len(d.dataset) + 2), '.', 1) || '.' AS headline,
          'The join ' || o.rel || ' leaves them unresolved.'
            || coalesce(' The catalog says of the join: ' || m.meaning || '.', '') AS why,
-         coalesce(rd.metrics, '') AS reads,
+         coalesce(rd.views, '') AS reads,
          'relationship_coherence · measured ' || strftime(o.written_at, '%d %b %Y %H:%M') AS meta,
          '/' || d.dataset || '/app/console/p/glossary?table=' || split_part(substr(o.rel, len(d.dataset) + 2), '.', 1) AS link,
          split_part(substr(o.rel, len(d.dataset) + 2), '.', 1) AS link_text,
@@ -97,12 +97,12 @@ broken AS (
         FROM measured m WHERE m.aspect = 'derivation_candidates')
   WHERE json_extract(cand, '$.violations')::BIGINT > 0),
 breaks AS (
-  SELECT 'measured' AS chip, '' AS bcls,
+  SELECT 'measured' AS chip, '' AS scls,
          CAST(b.violations AS VARCHAR) || ' ' || substr(b.subject, len(d.dataset) + 2) || ' rows break ' || b.target || ' = ' || b.op1
            || CASE b.form WHEN 'product' THEN ' × ' ELSE ' + ' END || b.op2 || '.' AS headline,
          'The identity holds on ' || CAST(b.support AS VARCHAR) || ' of ' || CAST(b.support + b.violations AS VARCHAR)
            || ' rows and breaks on ' || CAST(b.violations AS VARCHAR) || '.' AS why,
-         coalesce(rd.metrics, '') AS reads,
+         coalesce(rd.views, '') AS reads,
          'derivation_candidates · measured ' || strftime(b.written_at, '%d %b %Y %H:%M') AS meta,
          '/' || d.dataset || '/app/console/p/glossary?table=' || substr(b.subject, len(d.dataset) + 2) AS link,
          substr(b.subject, len(d.dataset) + 2) AS link_text,
@@ -115,7 +115,7 @@ every AS (
   SELECT * FROM judged
   UNION ALL SELECT * FROM orphans
   UNION ALL SELECT * FROM breaks)
-SELECT chip, bcls, headline, why,
+SELECT chip, scls, headline, why,
        CASE WHEN reads = '' THEN '' ELSE 'Read by ' || reads || '.' END AS reads,
        meta, link, link_text, sev, size
 FROM every

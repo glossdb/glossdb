@@ -7,8 +7,8 @@ SELECT o.what,
        '/' || d.dataset || CASE o.kind
          WHEN 'recipe-change' THEN '/app/console/p/quality'
          WHEN 'conflict' THEN '/app/console/p/quality'
-         WHEN 're-measure' THEN '/app/console/p/metrics'
-         ELSE '/app/console/p/metrics?metric=' || o.subject
+         WHEN 're-measure' THEN '/app/console/p/views'
+         ELSE '/app/console/p/views?view=' || o.subject
        END AS link
 FROM open_items o CROSS JOIN current_dataset d
 ORDER BY since DESC, what

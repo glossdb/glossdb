@@ -1,7 +1,7 @@
 -- A metric's corridor as a picture: every walked point with its
 -- actual and the 10th-to-90th corridor the walk predicted for the
 -- month, and whether the point loaded outside it (displacement 0.95
--- and over). The spec draws the corridor as a band, the actuals as a
+-- and over). The spec draws the corridor as an area, the actuals as a
 -- line, an outside point in the breach hue. `range_points()` is the
 -- recorded walk, no re-run; the metric is a page param the finding's
 -- frame fills in.
@@ -15,6 +15,6 @@ SELECT * FROM (
   FROM range_points() p
   LEFT JOIN (SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
              QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = p.metric
-  WHERE p.metric = CAST($metric AS VARCHAR) AND p.applicable AND p.period IS NOT NULL
+  WHERE p.metric = CAST($view AS VARCHAR) AND p.applicable AND p.period IS NOT NULL
 )
 ORDER BY period

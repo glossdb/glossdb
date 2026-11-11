@@ -8,14 +8,14 @@
 WITH walked AS (
   SELECT period, row_number() OVER (ORDER BY point_seq DESC) AS recency
   FROM range_points()
-  WHERE metric = CAST($metric AS VARCHAR) AND applicable AND period IS NOT NULL
+  WHERE metric = CAST($view AS VARCHAR) AND applicable AND period IS NOT NULL
 ),
 newest AS (SELECT max(period) AS period FROM walked WHERE recency = 1),
 previous AS (SELECT max(period) AS period FROM walked WHERE recency = 2),
 cells AS (
   SELECT s.dimension AS axis, s.member, strftime(s.period, '%Y-%m') AS ym, s.value
   FROM metric_series(grain := 'month', unclaimed := 'skip') s
-  WHERE s.metric = CAST($metric AS VARCHAR) AND s.world = 'actual' AND s.dimension <> ''
+  WHERE s.metric = CAST($view AS VARCHAR) AND s.world = 'actual' AND s.dimension <> ''
 ),
 moves AS (
   SELECT c.axis, c.member,

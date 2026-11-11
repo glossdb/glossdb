@@ -1,10 +1,10 @@
 {# The console's way around an object: the breadcrumb above it, its
    title, and the same five sub-tabs on every object's page. `q` is
-   the object's own query string (`table=orders`, `metric=hires`), so
+   the object's own query string (`table=orders`, `view=hires`), so
    a sub-tab is the object's link with `tab=` added. #}
 
 {% macro crumbs(dataset, top="", section="", section_link="", object="", object_link="", child="") %}
-{% if top == "Catalog" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Metrics" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/metrics" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Review" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
+{% if top == "Catalog" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Views" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/views" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Review" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
 <p class="crumbs">
   <a href="/{{ dataset }}/app/console">{{ dataset }}</a>
   {% if top %}<span class="crumb-sep">›</span>{% if section or object %}<a href="{{ top_link }}">{{ top }}</a>{% else %}{{ top }}{% endif %}{% endif %}
@@ -40,7 +40,7 @@
           <span class="r-meta">{aspect}</span>
           <span class="r-meta">{test}</span>
           <span class="r-num">{score}</span>
-          <code class="chip {bcls}">{band}</code>
+          <code class="chip {scls}">{state}</code>
         </a>
       </template>
     </gl-rows>

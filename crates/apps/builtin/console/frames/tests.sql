@@ -1,21 +1,21 @@
--- The standing checks: the adjudication plane, read whole and folded
+-- The tests: the adjudication plane, read whole and folded
 -- per test. Each test with a detector is one row — what it asks,
--- in words; its detector and threshold; its results counted by band;
--- its worst band as the chip — linked to the check's own page, where
+-- in words; its detector and threshold; its results counted by state;
+-- its worst state as the chip — linked to the test's own page, where
 -- the evidence is listed by the detector's kind.
 WITH v AS (
-  SELECT a.test, a.state AS band,
+  SELECT a.test, a.state,
          CASE a.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
   FROM TESTS() a),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 folded AS (
   SELECT w.name AS test, w.aspect, w.detector, w.threshold,
-         count(v.band) AS n,
-         count(*) FILTER (WHERE v.band = 'green') AS green,
-         count(*) FILTER (WHERE v.band = 'yellow') AS yellow,
-         count(*) FILTER (WHERE v.band = 'orange') AS orange,
-         count(*) FILTER (WHERE v.band = 'red') AS red,
-         count(*) FILTER (WHERE v.band = 'error') AS errors,
+         count(v.state) AS n,
+         count(*) FILTER (WHERE v.state = 'green') AS green,
+         count(*) FILTER (WHERE v.state = 'yellow') AS yellow,
+         count(*) FILTER (WHERE v.state = 'orange') AS orange,
+         count(*) FILTER (WHERE v.state = 'red') AS red,
+         count(*) FILTER (WHERE v.state = 'error') AS errors,
          coalesce(max(v.severity), -1) AS worst
   FROM w LEFT JOIN v ON v.test = w.name
   WHERE w.detector IS NOT NULL
@@ -33,11 +33,11 @@ SELECT test,
            CASE WHEN yellow > 0 THEN CAST(yellow AS VARCHAR) || ' yellow' END,
            CASE WHEN errors > 0 THEN CAST(errors AS VARCHAR) || ' error' END,
            CASE WHEN green > 0 THEN CAST(green AS VARCHAR) || ' green' END) END AS measured,
-       CASE worst WHEN 4 THEN 'red' WHEN 3 THEN 'orange' WHEN 2 THEN 'yellow' WHEN 1 THEN 'error' WHEN 0 THEN 'green' ELSE 'none' END AS band,
-       CASE WHEN worst = 0 THEN 'ok' WHEN worst < 0 THEN '' ELSE 'warn' END AS bcls,
-       '?check=' || test || '&kind=' || CASE detector
-         WHEN 'value_entropy' THEN 'voices'
+       CASE worst WHEN 4 THEN 'red' WHEN 3 THEN 'orange' WHEN 2 THEN 'yellow' WHEN 1 THEN 'error' WHEN 0 THEN 'green' ELSE 'none' END AS state,
+       CASE WHEN worst = 0 THEN 'ok' WHEN worst < 0 THEN '' ELSE 'warn' END AS scls,
+       '?test=' || test || '&kind=' || CASE detector
+         WHEN 'value_entropy' THEN 'values'
          WHEN 'rate_tolerance' THEN 'rate'
-         ELSE 'verdicts' END AS link
+         ELSE 'results' END AS link
 FROM folded
 ORDER BY worst DESC, test

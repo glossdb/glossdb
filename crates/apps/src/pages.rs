@@ -123,7 +123,7 @@ pub async fn datasets(State(interface): State<AppInterface>) -> Response {
         &mut datasets,
         &["tables", "rows", "served", "stopped", "open"],
     );
-    overview::minute(&mut datasets, "landed");
+    overview::minute(&mut datasets, "loaded");
     // An app names no dataset, so a directory or built-in app serves
     // every one; a glossed app serves the dataset it was glossed in.
     let apps: Vec<Value> = AppDef::list(&glossed)

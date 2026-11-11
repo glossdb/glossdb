@@ -1,9 +1,9 @@
 // <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges"
 //           empty="…"> — column lineage over two stored frames. The
-// nodes frame is one row per column: `node` (a table, or a metric by
-// its name), `kind` (`table` | `metric`), `col`, `ord`, `role`.
+// nodes frame is one row per column: `node` (a table, or a view by
+// its name), `kind` (`table` | `view`), `col`, `ord`, `role`.
 // The edges frame is one row per edge: `src`, `dst` (column paths,
-// `table.col` or `metric.field`, a composite endpoint as
+// `table.col` or `view.field`, a composite endpoint as
 // `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
 //
 // Optional, for the model page: a node row may carry `sub` (a line
@@ -13,7 +13,7 @@
 // boxes. A frame without them draws as lineage always has.
 //
 // dagre places the tables, reading left to right along the keys — a
-// parent holds left of the table that points at it. The metrics are
+// parent holds left of the table that points at it. The views are
 // not ranked with them: they are the right-hand column, one stack
 // ordered by where their sources sit, so the graph is as wide as its
 // longest key chain and no wider. The element draws the rest as SVG
@@ -147,8 +147,8 @@
       const g = new dagre.graphlib.Graph();
       g.setGraph({ rankdir: 'LR', nodesep: 22, ranksep: 70, marginx: 8, marginy: 8 });
       g.setDefaultEdgeLabel(() => ({}));
-      const tables = NODES.filter((n) => n.kind !== 'metric');
-      const metrics = NODES.filter((n) => n.kind === 'metric');
+      const tables = NODES.filter((n) => n.kind !== 'view');
+      const views = NODES.filter((n) => n.kind === 'view');
       for (const n of tables) g.setNode(n.name, { width: W, height: height(n) });
       const seen = new Set();
       for (const e of edges) {
@@ -165,7 +165,7 @@
       const pos = new Map();
       for (const n of tables) pos.set(n.name, g.node(n.name));
 
-      // The metric column: past the widest rank, stacked in the order
+      // The view column: past the widest rank, stacked in the order
       // of their sources' mean y so the dashed edges cross least.
       const tablesWidth = tables.length ? g.graph().width : 0;
       const colX = tablesWidth + (tables.length ? 70 : 8) + W / 2;
@@ -178,12 +178,12 @@
         return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
       };
       let stackY = 8;
-      for (const m of metrics.slice().sort((a, b) => meanY(a) - meanY(b))) {
+      for (const m of views.slice().sort((a, b) => meanY(a) - meanY(b))) {
         const h = height(m);
         pos.set(m.name, { x: colX, y: stackY + h / 2, width: W, height: h });
         stackY += h + 22;
       }
-      const totalW = (metrics.length ? colX + W / 2 : tablesWidth) + 8;
+      const totalW = (views.length ? colX + W / 2 : tablesWidth) + 8;
       const totalH = Math.max(tables.length ? g.graph().height : 0, stackY);
 
       const svg = el('svg', {
@@ -193,9 +193,9 @@
         role: 'img',
         'aria-label': this.getAttribute('label') || 'column lineage',
       });
-      // A graph a little wider than the band scales down to fit —
+      // A graph a little wider than the section scales down to fit —
       // the whole picture beats a scrollbar as long as the type stays
-      // readable; past that floor the band scrolls, as wide rows do.
+      // readable; past that floor the section scrolls, as wide rows do.
       const FIT_FLOOR = 0.78;
       const room = this.clientWidth || this.parentElement?.clientWidth || 0;
       if (room && totalW > room && totalW * FIT_FLOOR <= room) {
@@ -280,7 +280,7 @@
       const line = document.createElement('p');
       line.className = 'focus-line';
       this.replaceChildren(svg, line);
-      // Past the fit floor the band scrolls: say so, since the metrics
+      // Past the fit floor the section scrolls: say so, since the views
       // are the right-hand end and would otherwise sit out of sight.
       const wrap = this.closest('.graph-wrap');
       if (wrap) wrap.classList.toggle('overflows', wrap.scrollWidth > wrap.clientWidth + 1);

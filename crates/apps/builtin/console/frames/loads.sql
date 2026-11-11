@@ -9,7 +9,7 @@ newest AS (
 rec AS (SELECT r.table_name, max(r.source) AS source FROM recipes r JOIN d ON d.dataset = r.dataset GROUP BY r.table_name)
 SELECT n.table_name AS name,
        coalesce('the source ' || r.source, '') AS read,
-       coalesce(CAST(n.rows AS BIGINT), 0) AS landed,
+       coalesce(CAST(n.rows AS BIGINT), 0) AS loaded,
        strftime(n.imported_at, '%d %b %Y %H:%M') AS "at",
        CASE WHEN coalesce(n.dropped_rows_count, 0) > 0
             THEN CAST(n.dropped_rows_count AS VARCHAR) || ' rows dropped by the load query'
@@ -21,4 +21,4 @@ FROM newest n
 CROSS JOIN d
 LEFT JOIN rec r ON r.table_name = n.table_name
 WHERE n.rn = 1
-ORDER BY landed DESC, name
+ORDER BY loaded DESC, name

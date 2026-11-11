@@ -3,9 +3,9 @@
 -- dim rides the URL beside the viewer's window.
 SELECT dimension,
   count(DISTINCT member) AS members,
-  '?metric=' || CAST($metric AS VARCHAR) || '&dim=' || dimension
+  '?view=' || CAST($view AS VARCHAR) || '&dim=' || dimension
     || '&grain=' || CAST($grain AS VARCHAR) || '&span=' || CAST($span AS VARCHAR) AS link
 FROM metric_series(unclaimed := 'skip')
-WHERE metric = CAST($metric AS VARCHAR) AND dimension <> ''
+WHERE metric = CAST($view AS VARCHAR) AND dimension <> ''
 GROUP BY dimension
 ORDER BY dimension

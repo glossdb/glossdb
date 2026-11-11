@@ -1,7 +1,7 @@
 -- One table's head: what one row is, its grain and time axis from the
 -- entity entry (a person's over the agent's), whether it is a fact or a
 -- dimension table, how many rows and columns it holds, when it last
--- loaded and from which source, and the metrics that read it. One row,
+-- loaded and from which source, and the views that read it. One row,
 -- or none for a name no loaded table carries.
 WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
@@ -21,7 +21,7 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 reads AS (
-  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS metrics
+  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.table_name = CAST($table AS VARCHAR)),
 src AS (
@@ -38,8 +38,8 @@ SELECT l.table_name AS name,
        coalesce('the source ' || src.source, '') AS read,
        strftime(l.imported_at, '%d %b %Y %H:%M') AS "at",
        coalesce(src.source, '') AS source,
-       coalesce('read by ' || r.metrics, '') AS read_by,
-       CASE WHEN e.actor_kind = 'human' THEN 'ruled' ELSE '' END AS mark,
+       coalesce('read by ' || r.views, '') AS read_by,
+       CASE WHEN e.actor_kind = 'human' THEN 'decided' ELSE '' END AS mark,
        CASE WHEN e.actor_kind = 'human' THEN 'a person''s word, ' || strftime(e.written_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title
 FROM latest l
 CROSS JOIN cols c

@@ -17,12 +17,12 @@
    answers is the one thing a root page is for — then each dataset at
    a glance and the way into it, the apps, and how an agent connects.
    Every number is the catalog's: the same relations the console and
-   the agent's brief read. #}
+   the agent's summary read. #}
 <div class="tiles">
 
   <section class="tile">
     <header><span class="eyebrow">Interfaces</span></header>
-    <ul class="doors">
+    <ul class="interfaces">
       <li>
         <span class="path"><i>/&lt;dataset&gt;/</i>mcp</span>
         <span class="who">MCP, one dataset</span>
@@ -58,7 +58,7 @@
     <div class="rrow" style="grid-template-columns:8rem minmax(0,1fr) 16rem 9rem">
       <a class="r-subj" href="/{{ d.name }}/app">{{ d.name }}</a>
       <span class="r-what">{{ d.purpose }}{% if d.error %}<br><span class="r-meta">{{ d.error }}</span>{% else %}<br>
-        <span class="r-meta">{{ d.tables_txt }} table{% if d.tables != 1 %}s{% endif %} · {{ d.rows_txt }} row{% if d.rows != 1 %}s{% endif %}{% if d.landed_txt %} · last loaded {{ d.landed_txt }}{% endif %}</span>{% endif %}</span>
+        <span class="r-meta">{{ d.tables_txt }} table{% if d.tables != 1 %}s{% endif %} · {{ d.rows_txt }} row{% if d.rows != 1 %}s{% endif %}{% if d.loaded_txt %} · last loaded {{ d.loaded_txt }}{% endif %}</span>{% endif %}</span>
       <span class="r-meta">{% if not d.error %}{{ d.served_txt }} metric{% if d.served != 1 %}s{% endif %} served{% if d.stopped %} · {{ d.stopped_txt }} stopped{% endif %}<br>
         {% if d.open %}<span class="r-gap">{{ d.open_txt }} question{% if d.open != 1 %}s{% endif %} wait{% if d.open == 1 %}s{% endif %} for you</span>{% else %}nothing open{% endif %}{% endif %}</span>
       <span class="wgroup"><a class="wbtn{% if d.open %} on{% endif %}" href="/{{ d.name }}/app/console">console</a><a class="wbtn" href="/{{ d.name }}/app/console/p/export">export</a></span>

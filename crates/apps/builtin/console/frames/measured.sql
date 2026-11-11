@@ -69,18 +69,18 @@ others AS (
 every AS (SELECT * FROM worded UNION ALL SELECT * FROM others),
 a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 backlog AS (
-  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unspoken
+  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unannotated
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect
   WHERE a.kind = 'measurement'
   GROUP BY g.aspect),
-landed AS (SELECT aspect, max(written_at) AS newest FROM m GROUP BY aspect)
+loaded AS (SELECT aspect, max(written_at) AS newest FROM m GROUP BY aspect)
 SELECT e.aspect,
-       e.subjects || CASE WHEN coalesce(o.unspoken, 0) > 0 THEN ', ' || CAST(o.unspoken AS VARCHAR) || ' not yet' ELSE '' END AS subjects,
+       e.subjects || CASE WHEN coalesce(o.unannotated, 0) > 0 THEN ', ' || CAST(o.unannotated AS VARCHAR) || ' not yet' ELSE '' END AS subjects,
        e.found,
        coalesce(strftime(t.newest, '%d %b %Y %H:%M'), '') AS "at"
 FROM every e
 LEFT JOIN backlog o ON o.aspect = e.aspect
-LEFT JOIN landed t ON t.aspect = e.aspect
+LEFT JOIN loaded t ON t.aspect = e.aspect
 ORDER BY CASE e.aspect WHEN 'relationship_coherence' THEN 0 WHEN 'temporal_profile' THEN 1
                        WHEN 'derivation_candidates' THEN 2 WHEN 'definition_collisions' THEN 4
                        WHEN 'relationship_candidates' THEN 5 ELSE 8 END, e.aspect

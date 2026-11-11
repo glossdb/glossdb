@@ -1,4 +1,4 @@
--- One metric surface: the recorded metric definition that serves — the winning
+-- One view: the stored definition that serves — the winning
 -- value, a human writing over the agent's — with the definitions entry's
 -- unit, meaning and formula, the kind, the SQL or the stop, who wrote it
 -- and when, and the statement that re-records it.
@@ -8,7 +8,7 @@ WITH a AS (
 q AS (
   SELECT g.aspect, g.body, g.actor_kind, g.actor_id, g.written_at
   FROM glossary g JOIN current_dataset d ON d.dataset = g.dataset
-  WHERE g.subject = d.dataset AND g.aspect = $metric AND g.actor_kind IN ('human', 'agent')
+  WHERE g.subject = d.dataset AND g.aspect = $view AND g.actor_kind IN ('human', 'agent')
   QUALIFY row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) = 1),
 w AS (
   SELECT * FROM q
@@ -22,7 +22,7 @@ SELECT w.aspect,
   coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.unit'), '') AS unit,
   coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.meaning'),
            'no meaning written — the definitions registry has no entry for this metric') AS meaning,
-  coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS mkind,
+  coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS view_kind,
   json_extract_string(w.body, '$.sql') AS sql,
   coalesce(json_extract_string(w.body, '$.stopped'), '') AS stopped,
   concat_ws(' · ',

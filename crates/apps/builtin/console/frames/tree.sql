@@ -20,7 +20,7 @@ cols AS (
   JOIN d ON d.dataset = c.table_schema
   JOIN loaded l ON l.table_name = c.table_name
   WHERE c.table_catalog = current_database()),
-surfaces AS (
+views AS (
   SELECT name, kind FROM view_definitions WHERE kind <> 'plan'),
 test AS (
   SELECT name, aspect, detector
@@ -32,7 +32,7 @@ pages(top, label, link, o) AS (
   UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 3
   UNION ALL SELECT 'Overview', 'Lineage', (SELECT * FROM base) || 'lineage', 4
   UNION ALL SELECT 'Catalog', 'Properties', (SELECT * FROM base) || 'glossary', 1
-  UNION ALL SELECT 'Metrics', 'All metrics', (SELECT * FROM base) || 'metrics', 1
+  UNION ALL SELECT 'Views', 'All views', (SELECT * FROM base) || 'views', 1
   UNION ALL SELECT 'Quality', 'All results', (SELECT * FROM base) || 'quality', 1
   UNION ALL SELECT 'Review', 'The queue', (SELECT * FROM base) || 'review', 1
   UNION ALL SELECT 'Review', 'Decisions', (SELECT * FROM base) || 'review#decisions', 2
@@ -56,25 +56,25 @@ FROM (
   FROM cols
   UNION ALL
   SELECT 'Catalog', 3, 'Views', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name || '&kind=' || kind, 0
-  FROM surfaces WHERE kind IN ('scalar', 'relation')
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=' || kind, 0
+  FROM views WHERE kind IN ('scalar', 'relation')
   UNION ALL
-  SELECT 'Metrics', 1, 'Metrics', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name, 0
-  FROM surfaces WHERE kind NOT IN ('scalar', 'relation')
+  SELECT 'Views', 1, 'Metrics', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name, 0
+  FROM views WHERE kind NOT IN ('scalar', 'relation')
   UNION ALL
-  SELECT 'Metrics', 2, 'Single values', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name || '&kind=scalar', 0
-  FROM surfaces WHERE kind = 'scalar'
+  SELECT 'Views', 2, 'Single values', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=scalar', 0
+  FROM views WHERE kind = 'scalar'
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
-         (SELECT * FROM base) || 'quality?check=' || name || '&kind=' || CASE detector
+         (SELECT * FROM base) || 'quality?test=' || name || '&kind=' || CASE detector
            WHEN 'range_breach' THEN 'corridor'
-           WHEN 'value_entropy' THEN 'voices'
+           WHEN 'value_entropy' THEN 'values'
            WHEN 'rate_tolerance' THEN 'rate'
-           ELSE 'verdicts' END, 0
+           ELSE 'results' END, 0
   FROM test)
-ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Catalog' THEN 1 WHEN 'Metrics' THEN 2
+ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Catalog' THEN 1 WHEN 'Views' THEN 2
                   WHEN 'Quality' THEN 3 WHEN 'Review' THEN 4 ELSE 5 END,
          s, CASE WHEN s = 0 THEN o END,
          CASE WHEN parent = '' THEN name ELSE parent END, parent <> '', o, name

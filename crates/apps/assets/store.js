@@ -46,7 +46,7 @@
       } catch (_) { /* not json — keep the status line */ }
       throw new Error(message);
     }
-    // Absent header reads as record — evict-on-write is the safe side.
+    // Absent header reads as catalog — evict-on-write is the safe side.
     classes.set(url, res.headers.get('glossql-frame-class') || 'catalog');
     return Arrow.tableFromIPC(new Uint8Array(await res.arrayBuffer()));
   }
@@ -114,7 +114,7 @@
   // A write evicts what it can change, nothing else. The server
   // announces every write with `HX-Trigger: glossql:written` (the
   // review decision's 204, and the stale-tab 409 whose cause is someone else's
-  // write), and it classifies every frame it serves: `record` frames
+  // write), and it classifies every frame it serves: `catalog` frames
   // read the glossary somewhere in their expansion, `data` frames
   // provably do not — so the cube's cells, the trend and the slices
   // survive a review decision untouched, in cache and on screen. Capture phase, so the

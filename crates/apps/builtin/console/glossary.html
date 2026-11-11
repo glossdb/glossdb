@@ -13,7 +13,7 @@
 {# ---- one table: the same five tabs as every object --------------- #}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=table) }}
 {{ object::title(name=table, kind="table") }}
-<gl-rows frame="frames/table_head?table={{ table }}" empty="no landed table is named {{ table }}">
+<gl-rows frame="frames/table_head?table={{ table }}" empty="no loaded table is named {{ table }}">
   <template>
     <p class="page-h"><span class="r-what">{entity}</span> <span class="v {mcls}" title="{mark_title}">{mark}</span></p>
     <p class="f-meta">{shape} · {rows} rows · {columns} columns · loaded {at} from {source} · {read_by}</p>
@@ -79,7 +79,7 @@
     <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no metric reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
-          <span class="r-subj">{metric}</span>
+          <span class="r-subj">{view}</span>
           <span class="r-meta">{field}</span>
           <span class="r-meta">{source}</span>
         </a>
@@ -104,7 +104,7 @@
   <section class="tile">
     <header><span class="eyebrow" title="The table&#x27;s newest load: what the load query read, what was loaded and when, the rows it dropped where it can count them, the cells its casts could not read, the source&#x27;s conventions, and the load query&#x27;s SQL.">The load</span>
       <code class="chip">imports · recipes · conventions</code></header>
-    <gl-rows frame="frames/table_landing?table={{ table }}" empty="nothing is loaded under this name">
+    <gl-rows frame="frames/table_loads?table={{ table }}" empty="nothing is loaded under this name">
       <template>
         <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)">
           <span class="r-meta">{label}</span>
@@ -123,7 +123,7 @@
 {% set cname = column | split(pat=".") | last %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=ctable, object_link="/" ~ dataset ~ "/app/console/p/glossary?table=" ~ ctable, child=cname) }}
 {{ object::title(name=column, kind="column") }}
-<gl-rows frame="frames/column_head?column={{ column }}" empty="no landed column is named {{ column }}">
+<gl-rows frame="frames/column_head?column={{ column }}" empty="no loaded column is named {{ column }}">
   <template>
     <p class="page-h"><span class="r-what">{meaning}</span></p>
     <p class="f-meta">{role} · {typed} · {read_by} · {refused}</p>
@@ -138,12 +138,12 @@
     <div class="rrow rhead" style="grid-template-columns:11rem minmax(0,1fr) 9rem 7rem 9rem">
       <span>property</span><span>value</span><span>written by</span><span>state</span><span>when</span>
     </div>
-    <gl-rows frame="frames/column_slots?column={{ column }}" empty="nothing is known about this column, and nothing is required">
+    <gl-rows frame="frames/column_values?column={{ column }}" empty="nothing is known about this column, and nothing is required">
       <template>
         <div class="rrow" style="grid-template-columns:11rem minmax(0,1fr) 9rem 7rem 9rem">
           <span class="r-subj">{aspect}<br><span class="r-meta">{kind}</span></span>
           <span class="r-what">{value} <span class="v {mcls}" title="{mark_title}">{mark}</span></span>
-          <span class="r-meta">{voice}</span>
+          <span class="r-meta">{written_by}</span>
           <span class="r-meta">{state}</span>
           <span class="r-meta">{at}</span>
         </div>
@@ -175,7 +175,7 @@
     <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no metric reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
-          <span class="r-subj">{metric}</span>
+          <span class="r-subj">{view}</span>
           <span class="r-meta">{field}</span>
           <span class="r-meta">{source}</span>
         </a>
@@ -263,7 +263,7 @@
 <gl-rows frame="frames/aspect_head?aspect={{ aspect }}" empty="no aspect is named {{ aspect }}">
   <template>
     <p class="page-h"><code>{name}</code> — <span class="r-what">{kind}</span></p>
-    <p class="f-meta">holds {holds} · {owed_on} · {guard} · {spoken}</p>
+    <p class="f-meta">holds {holds} · {required_on} · {guard} · {annotated}</p>
     <p class="hint">{description}</p>
     <details class="fold"><summary>the schema</summary><p class="dict">{schema}</p></details>
   </template>
@@ -280,7 +280,7 @@
         <a class="rrow" href="{link}" style="grid-template-columns:14rem minmax(0,1fr) 9rem 7rem 9rem">
           <span class="r-subj">{subject}</span>
           <span class="r-what">{value} <span class="v {mcls}" title="{mark_title}">{mark}</span></span>
-          <span class="r-meta">{voice}</span>
+          <span class="r-meta">{written_by}</span>
           <span class="r-meta">{state}</span>
           <span class="r-meta">{at}</span>
         </a>
@@ -294,7 +294,7 @@
 {# ---- the Glossary: the vocabulary, then the words ----------------- #}
 {# The dataset's words as the language holds them. First the
    vocabulary: every declared aspect with what it holds, where it is
-   required, how many required subjects carry a value and who may speak it —
+   required, how many required subjects carry a value and who may annotate it —
    in three groups by kind, the workspace's own six folded. Then the
    terms, every table with its columns, the joins and the sources.
    All of it the catalog read collapsed — a person's entry outranks
@@ -311,8 +311,8 @@
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -323,8 +323,8 @@
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -335,8 +335,8 @@
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -348,8 +348,8 @@
           <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
             <span class="r-subj">{aspect}</span>
             <span class="r-what">{holds}</span>
-            <span class="r-meta">{owed_on}</span>
-            <span class="r-meta">{spoken}</span>
+            <span class="r-meta">{required_on}</span>
+            <span class="r-meta">{annotated}</span>
             <span class="r-meta">{actors}</span>
           </a>
         </template>

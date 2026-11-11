@@ -1,9 +1,9 @@
--- What the vocabulary still owes, by name: every value a tested fact
+-- What the vocabulary still misses, by name: every value a tested fact
 -- aspect is required on that no value has filled, grouped by aspect and,
 -- under it, by table. The row opens the aspect on the Glossary tab.
 WITH d AS (SELECT dataset FROM current_dataset),
 a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
-unspoken AS (
+unannotated AS (
   SELECT g.aspect, CASE WHEN starts_with(g.subject, d.dataset || '.') THEN substr(g.subject, len(d.dataset) + 2) ELSE g.subject END AS subject
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect CROSS JOIN d
   WHERE a.kind = 'fact' AND g.state = 'missing'),
@@ -14,7 +14,7 @@ named AS (
               ELSE 'whole tables' END AS grp,
          CASE WHEN strpos(subject, ' -> ') > 0 OR strpos(subject, '.') = 0 THEN subject
               ELSE split_part(subject, '.', 2) END AS name
-  FROM unspoken),
+  FROM unannotated),
 grouped AS (
   SELECT aspect, grp, count(*) AS n, string_agg(name, ', ' ORDER BY name) AS names
   FROM named GROUP BY aspect, grp)

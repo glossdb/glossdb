@@ -3,10 +3,10 @@
 -- declared it and whether the result still holds. A metric whose tests
 -- are all green is one row saying so.
 WITH d AS (SELECT dataset FROM current_dataset),
-t AS (SELECT * RENAME (view AS metric) FROM view_tests()),
+t AS (SELECT * FROM view_tests()),
 open AS (
-  SELECT t.metric, t.test, t.state,
-         CASE WHEN t.state IN ('red', 'orange', 'yellow') THEN 'warn' ELSE '' END AS bcls,
+  SELECT t.view, t.test, t.state,
+         CASE WHEN t.state IN ('red', 'orange', 'yellow') THEN 'warn' ELSE '' END AS scls,
          coalesce(
            CASE WHEN json_extract(t.evidence, '$.pairs') IS NOT NULL AND t.state = 'red'
                 THEN 'the join repeats rows on ' || list_aggregate(from_json(json_extract(t.evidence, '$.pairs'), '["VARCHAR"]'), 'string_agg', ', ') END,
@@ -18,13 +18,13 @@ open AS (
            t.test || ' on ' || substr(t.subject, len(d.dataset) + 2)) AS what,
          coalesce(t.declared_by, '') AS declared_by,
          CASE WHEN t.state <> 'not_run' AND NOT t.current THEN 'from before the last change' ELSE '' END AS stale,
-         '/' || d.dataset || '/app/console/p/metrics?metric=' || t.metric AS link,
+         '/' || d.dataset || '/app/console/p/views?view=' || t.view AS link,
          CASE t.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 END AS rank
   FROM t, d WHERE t.state <> 'green'),
 clean AS (
-  SELECT m.metric, count(*)::VARCHAR || ' tests' AS test, 'green' AS state, 'ok' AS bcls,
-         'every test is green or accepted' AS what, '' AS declared_by, '' AS stale, (SELECT '/' || dataset || '/app/console/p/metrics?metric=' FROM d) || m.metric AS link, 9 AS rank
-  FROM t m WHERE m.metric NOT IN (SELECT metric FROM open) GROUP BY m.metric)
-SELECT metric, test, state, bcls, what, declared_by, stale, link
+  SELECT m.view, count(*)::VARCHAR || ' tests' AS test, 'green' AS state, 'ok' AS scls,
+         'every test is green or accepted' AS what, '' AS declared_by, '' AS stale, (SELECT '/' || dataset || '/app/console/p/views?view=' FROM d) || m.view AS link, 9 AS rank
+  FROM t m WHERE m.view NOT IN (SELECT view FROM open) GROUP BY m.view)
+SELECT view, test, state, scls, what, declared_by, stale, link
 FROM (SELECT * FROM open UNION ALL SELECT * FROM clean)
-ORDER BY rank, metric, test
+ORDER BY rank, view, test

@@ -75,7 +75,7 @@ GROUP BY t.threshold;
 
 --===------------------------------------------------------------------===--
 -- metric_ranges: the walk as a measurement on the dataset. served_by names
--- the service and its version; score, range and threshold are the
+-- the service and its version; score, state and threshold are the
 -- service's result over every metric walked; metrics holds one row per
 -- metric — applicable and reason, additivity, walked, held_80 and held_90
 -- (the share of walked points inside the 10-90 and the 5-95 range), newest
@@ -90,7 +90,7 @@ DECLARE ASPECT metric_ranges WITH $${
     "served_by": {"type": ["string", "null"]},
     "grain": {"type": "string"},
     "score": {"type": ["number", "null"]},
-    "range": {"type": ["string", "null"]},
+    "state": {"type": ["string", "null"]},
     "threshold": {"type": ["number", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
   }
@@ -141,7 +141,7 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
   SELECT (SELECT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version') FROM a) AS served_by,
          'month' AS grain,
          (SELECT json_extract(a, '$.answer.walk.score')::DOUBLE FROM a) AS score,
-         (SELECT json_extract_string(a, '$.answer.walk.band') FROM a) AS "range",
+         (SELECT json_extract_string(a, '$.answer.walk.band') FROM a) AS state,
          (SELECT threshold FROM b) AS threshold,
          (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity,
                                 'walked': walked, 'held_80': held_80, 'held_90': held_90, 'newest': newest,
@@ -154,8 +154,8 @@ $$ RETURNS metric_ranges;
 -- checks goal's next steps use it; the threshold is the red line the walk is
 -- asked with.
 DECLARE FUNCTION range_breach FOR GLOBAL AS $$
-  SELECT subject, body->>'range' AS state, (body->>'score')::DOUBLE AS score
-  FROM annotations WHERE actor_kind = 'function' AND body->>'range' IS NOT NULL
+  SELECT subject, body->>'state' AS state, (body->>'score')::DOUBLE AS score
+  FROM annotations WHERE actor_kind = 'function' AND body->>'state' IS NOT NULL
 $$;
 
 DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.98;
@@ -172,7 +172,7 @@ DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.98;
 
 CREATE OR REPLACE MACRO main.range_result() AS TABLE
 SELECT json_extract_string(value, '$.served_by') AS served_by, json_extract_string(value, '$.grain') AS grain,
-       json_extract(value, '$.score')::DOUBLE AS score, json_extract_string(value, '$.range') AS state,
+       json_extract(value, '$.score')::DOUBLE AS score, json_extract_string(value, '$.state') AS state,
        json_extract(value, '$.threshold')::DOUBLE AS threshold, computed_at
 FROM main.measurements
 WHERE dataset = current_schema() AND function = 'metric_ranges'

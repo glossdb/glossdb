@@ -10,7 +10,7 @@ base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 said AS (
   SELECT subject, aspect, value FROM GLOSSARY()
   WHERE aspect IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
-landed AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
+loaded AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 ent AS (
   SELECT substr(s.subject, len(d.dataset) + 2) AS tbl,
          json_extract_string(s.value, '$.value') AS what,
@@ -42,29 +42,29 @@ cols AS (
          (SELECT b FROM base) || 'glossary?table=' || c.table_name AS link
   FROM information_schema.columns c
   JOIN d ON d.dataset = c.table_schema
-  JOIN landed l ON l.table_name = c.table_name
+  JOIN loaded l ON l.table_name = c.table_name
   LEFT JOIN colsaid cs ON cs.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
   LEFT JOIN ent e ON e.tbl = c.table_name
   WHERE c.table_catalog = current_database()),
 axes AS (
-  SELECT view AS metric, "floor" AS grain, additivity FROM view_summary()),
+  SELECT view, "floor" AS grain, additivity FROM view_summary()),
 -- a served field's role: the view's own column's where one holds, else
 -- the column's it descends from
 fields AS (
-  SELECT s.metric AS node, 'metric' AS kind, s.field AS col,
+  SELECT s.view AS node, 'view' AS kind, s.field AS col,
          min(CAST(s.ord AS BIGINT)) AS ord,
          coalesce(max(own.role), max(r.role), '') AS role
-  FROM (SELECT view AS metric, field, source, row_number() OVER (PARTITION BY view ORDER BY field) AS ord
+  FROM (SELECT view, field, source, row_number() OVER (PARTITION BY view ORDER BY field) AS ord
         FROM view_sources() WHERE field IS NOT NULL) s
   CROSS JOIN d
-  LEFT JOIN colsaid own ON own.subject = d.dataset || '.' || s.metric || '.' || s.field
+  LEFT JOIN colsaid own ON own.subject = d.dataset || '.' || s.view || '.' || s.field
   LEFT JOIN colsaid r ON r.subject = d.dataset || '.' || s.source
-  GROUP BY s.metric, s.field)
+  GROUP BY s.view, s.field)
 SELECT node, kind, col, ord, role, detail, sub, link FROM cols
 UNION ALL
 SELECT f.node, f.kind, f.col, f.ord, f.role, f.role AS detail,
        concat_ws(' · ', 'by ' || a.grain, nullif(a.additivity, 'none')) AS sub,
-       (SELECT b FROM base) || 'metrics?metric=' || f.node AS link
+       (SELECT b FROM base) || 'views?view=' || f.node AS link
 FROM fields f
-LEFT JOIN axes a ON a.metric = f.node
+LEFT JOIN axes a ON a.view = f.node
 ORDER BY kind, node, ord

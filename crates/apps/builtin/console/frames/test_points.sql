@@ -1,17 +1,17 @@
--- A corridor check's evidence: every walked metric's newest point —
+-- A corridor test's evidence: every walked metric's newest point —
 -- the one the walk's result scores — with its actual, its corridor,
 -- how far out it sits and on which side, the farthest out first. The
--- band beside each point is the result's own rule on that one
+-- state beside each point is the result's own rule on that one
 -- displacement (green to 0.8, yellow to 0.9, orange to the threshold,
 -- red past it); the result's score is the worst of them raised to
 -- their number. A point whose PIT is withheld carries the service's
 -- reason; a metric the walk found inapplicable carries its reason and
 -- no numbers. `range_points()` is the recorded walk, no re-run. Rows
--- only for a test whose detector is range_breach, so another check's
+-- only for a test whose detector is range_breach, so another test's
 -- page draws nothing here.
 WITH w AS (
   SELECT name, coalesce(threshold, 0.98) AS threshold
-  FROM tests WHERE name = $check AND detector = 'range_breach'
+  FROM tests WHERE name = $test AND detector = 'range_breach'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
 ),
 newest AS (
@@ -48,7 +48,7 @@ titles AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
 )
 SELECT coalesce(a.title, n.metric) AS title,
-       n.metric AS metric,
+       n.metric AS view,
        coalesce(n.period, '') AS period,
        CASE WHEN n.actual IS NULL THEN ''
             ELSE fmt_number(n.actual) END AS actual,
@@ -66,17 +66,17 @@ SELECT coalesce(a.title, n.metric) AS title,
          WHEN n.far <= 0.8 THEN 'green'
          WHEN n.far <= 0.9 THEN 'yellow'
          WHEN n.far <= w.threshold THEN 'orange'
-         ELSE 'red' END AS band,
+         ELSE 'red' END AS state,
        CASE
          WHEN NOT n.applicable OR n.far IS NULL THEN ''
          WHEN n.far <= 0.8 THEN 'ok'
-         ELSE 'warn' END AS bcls,
+         ELSE 'warn' END AS scls,
        coalesce(CASE WHEN NOT n.applicable THEN n.reason ELSE n.withheld END, '') AS note,
-       '/' || d.dataset || '/app/console/p/metrics?metric=' || n.metric || coalesce('&dim=' || t.axis, '') AS link
+       '/' || d.dataset || '/app/console/p/views?view=' || n.metric || coalesce('&dim=' || t.axis, '') AS link
 FROM newest n
 CROSS JOIN w
 CROSS JOIN current_dataset d
 LEFT JOIN titles a ON a.name = n.metric
 LEFT JOIN top t ON t.name = n.metric AND t.rn = 1
 WHERE n.recency = 1
-ORDER BY n.far DESC NULLS LAST, metric
+ORDER BY n.far DESC NULLS LAST, view

@@ -19,7 +19,7 @@ use crate::builtin::{self, BuiltinApp};
 /// `section` it belongs to, say whether it is a tab of the bar itself
 /// (`bar`, true unless the manifest says false), and move to another
 /// section by its `kind` parameter (`kind_sections`: a view's page
-/// belongs to the catalog, a metric's to the metrics).
+/// belongs to the catalog, a metric's to the views).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tab {
     pub name: String,

@@ -1,8 +1,8 @@
 -- One column's values, every one: each authored aspect with every value
 -- on it — a person's first, then the agent's — its value in words, who
--- spoke, when, and the value's standing from the collapsed read; each
+-- wrote it, when, and the value's state from the collapsed read; each
 -- measurement a function loaded, summarised from its body; and each
--- value the catalog owes and nobody filled, said so.
+-- value the catalog requires and nobody filled, said so.
 WITH d AS (SELECT dataset FROM current_dataset),
 subj AS (SELECT d.dataset || '.' || CAST($column AS VARCHAR) AS subject FROM d),
 states AS (SELECT aspect, state FROM GLOSSARY() WHERE subject = (SELECT subject FROM subj)),
@@ -20,10 +20,10 @@ authored AS (
            WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.basis'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            ELSE coalesce(json_extract_string(s.body, '$.value'), substr(s.body::VARCHAR, 1, 200)) END AS value,
-         CASE s.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE s.actor_kind END AS voice,
+         CASE s.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE s.actor_kind END AS written_by,
          coalesce(s.actor_id, '') AS actor,
          CASE WHEN s.rn = 1 THEN coalesce(st.state, 'current') ELSE 'outranked' END AS state,
-         s.written_at AS spoken_at,
+         s.written_at AS annotated_at,
          s.rn
   FROM said s LEFT JOIN states st ON st.aspect = s.aspect),
 measured AS (
@@ -40,10 +40,10 @@ measured AS (
                || coalesce(', ' || json_extract_string(g.body, '$.distinct') || ' distinct', '')
              WHEN 'outlier_profile' THEN 'outliers profiled'
              ELSE substr(g.body::VARCHAR, 1, 200) END END AS value,
-         g.actor AS voice,
+         g.actor AS written_by,
          g.actor AS actor,
          CASE WHEN g.current THEN 'current' ELSE 'stale' END AS state,
-         g.written_at AS spoken_at,
+         g.written_at AS annotated_at,
          1 AS rn
   FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.subject = (SELECT subject FROM subj)),
@@ -53,22 +53,22 @@ a AS (
 unfilled AS (
   SELECT st.aspect, CASE WHEN a.kind = 'measurement' THEN 'measured' ELSE 'said' END AS kind,
          CASE WHEN a.kind = 'measurement' THEN 'not yet measured' ELSE 'not yet annotated' END AS value,
-         '' AS voice, '' AS actor, 'missing' AS state, CAST(NULL AS TIMESTAMP) AS spoken_at, 1 AS rn
+         '' AS written_by, '' AS actor, 'missing' AS state, CAST(NULL AS TIMESTAMP) AS annotated_at, 1 AS rn
   FROM states st JOIN a ON a.name = st.aspect
   WHERE st.state = 'missing'),
 every AS (SELECT * FROM authored UNION ALL SELECT * FROM measured UNION ALL SELECT * FROM unfilled)
-SELECT aspect, kind, value, voice, state,
-       coalesce(strftime(spoken_at, '%d %b %Y %H:%M'), '') AS "at",
+SELECT aspect, kind, value, written_by, state,
+       coalesce(strftime(annotated_at, '%d %b %Y %H:%M'), '') AS "at",
        CASE WHEN state = 'conflict' THEN 'conflict' WHEN state = 'stale' THEN 'stale'
             WHEN state = 'outranked' THEN 'outranked'
-            WHEN voice = 'a person' THEN 'ruled' ELSE '' END AS mark,
+            WHEN written_by = 'a person' THEN 'decided' ELSE '' END AS mark,
        CASE WHEN state = 'conflict' THEN 'v-open' WHEN state = 'stale' THEN 'v-stale'
             WHEN state = 'outranked' THEN 'v-stale'
-            WHEN voice = 'a person' THEN 'v-ruled' ELSE 'v-none' END AS mcls,
+            WHEN written_by = 'a person' THEN 'v-decided' ELSE 'v-none' END AS mcls,
        CASE WHEN state = 'conflict' THEN 'the annotations differ; the test withholds the value'
             WHEN state = 'stale' THEN 'written before the column last changed'
             WHEN state = 'outranked' THEN 'a later or higher-ranked annotation wins'
-            WHEN voice = 'a person' THEN 'written by ' || actor
+            WHEN written_by = 'a person' THEN 'written by ' || actor
             ELSE '' END AS mark_title
 FROM every
 ORDER BY CASE kind WHEN 'said' THEN 0 ELSE 1 END,

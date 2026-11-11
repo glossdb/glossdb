@@ -1,7 +1,7 @@
 -- One row while any measurement in the dataset holds from before the
--- last change — a function's value loaded at an earlier pin, served and
+-- last change — a function's value loaded at an earlier data version, served and
 -- marked — or while one a metric's row or a test reads was never
--- made (`open_items`'s `never measured` rows). Record-class: the banner
+-- made (`open_items`'s `never measured` rows). Catalog-class: the banner
 -- appears with the write that caused it and clears when re-measure
 -- lands.
 WITH stale AS (

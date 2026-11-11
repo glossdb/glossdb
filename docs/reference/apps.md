@@ -180,7 +180,7 @@ fetches again in place.
 
 `crates/apps/builtin/console/` is the reference app and each dataset's
 own page (`/<dataset>/app` opens it): pages `index.html` (the review
-queue), `metrics.html`, `quality.html`, `glossary.html`,
+queue), `views.html`, `quality.html`, `glossary.html`,
 `lineage.html`, `export.html` and `query.html`; frames over the views
 and table functions, `metric_series()`, `view_summary()`,
 `forecast_points()`, `plan_points()`, `view_sources()` and `imports`;

@@ -1,8 +1,8 @@
--- The numbers beside each metric surface: the newest period of the
+-- The numbers beside each metric: the newest period of the
 -- total series at the metric's own floor, the move into it, and the
--- slices. Data-class, joined to `frames/pulse` in the browser by
+-- slices. Data-class, joined to `frames/measures` in the browser by
 -- `name`. A metric whose value column carries no additivity and serves
--- several rows a period has no row here; its pulse row says so.
+-- several rows a period has no row here; its row in `frames/measures` says so.
 WITH totals AS (
   SELECT metric, period, value,
          value - lag(value) OVER (PARTITION BY metric ORDER BY period) AS delta

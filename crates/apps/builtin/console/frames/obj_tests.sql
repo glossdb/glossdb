@@ -5,14 +5,14 @@ t AS (SELECT name, detector FROM tests QUALIFY row_number() OVER (PARTITION BY n
 SELECT substr(a.subject, len(d.dataset) + 2) AS subject,
        a.aspect,
        a.test,
-       a.state AS band,
+       a.state,
        coalesce(fmt_number(a.score), '') AS score,
-       CASE a.state WHEN 'green' THEN 'ok' WHEN 'error' THEN '' ELSE 'warn' END AS bcls,
-       '/' || d.dataset || '/app/console/p/quality?check=' || a.test || '&kind=' || CASE t.detector
+       CASE a.state WHEN 'green' THEN 'ok' WHEN 'error' THEN '' ELSE 'warn' END AS scls,
+       '/' || d.dataset || '/app/console/p/quality?test=' || a.test || '&kind=' || CASE t.detector
          WHEN 'range_breach' THEN 'corridor'
-         WHEN 'value_entropy' THEN 'voices'
+         WHEN 'value_entropy' THEN 'values'
          WHEN 'rate_tolerance' THEN 'rate'
-         ELSE 'verdicts' END AS link
+         ELSE 'results' END AS link
 FROM TESTS() a
 CROSS JOIN d
 LEFT JOIN t ON t.name = a.test

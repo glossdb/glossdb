@@ -1,16 +1,16 @@
 -- One column's head: its table, its engine type, its judged role and
--- meaning (a person's over the agent's), and the metrics that read it.
+-- meaning (a person's over the agent's), and the views that read it.
 -- One row, or none for a name no loaded column carries. `$column` is
 -- `table.column`, spelled without the dataset.
 WITH d AS (SELECT dataset FROM current_dataset),
-slots AS (
+annotations AS (
   SELECT g.aspect, g.actor_kind, g.body,
          row_number() OVER (PARTITION BY g.aspect
            ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject = d.dataset || '.' || CAST($column AS VARCHAR) AND g.aspect IN ('role', 'meaning')
     AND g.actor_kind IN ('human', 'agent')),
-cur AS (SELECT aspect, json_extract_string(body, '$.value') AS value FROM slots WHERE rn = 1),
+cur AS (SELECT aspect, json_extract_string(body, '$.value') AS value FROM annotations WHERE rn = 1),
 col AS (
   SELECT c.table_name, c.column_name, c.data_type
   FROM information_schema.columns c JOIN d ON d.dataset = c.table_schema
@@ -19,7 +19,7 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 reads AS (
-  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS metrics
+  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.source = CAST($column AS VARCHAR))
 SELECT col.table_name,
@@ -27,7 +27,7 @@ SELECT col.table_name,
        lower(col.data_type) AS typed,
        coalesce(r.value, 'no role set') AS role,
        coalesce(m.value, 'not yet annotated') AS meaning,
-       coalesce('read by ' || rd.metrics, '') AS read_by,
+       coalesce('read by ' || rd.views, '') AS read_by,
        '' AS refused,
        '?table=' || col.table_name AS link_table
 FROM col
