@@ -26,21 +26,18 @@ GLOSSDB_WAREHOUSE_SECRET (GLOSSDB_WAREHOUSE_REGION for S3), or, a gs:// \
 bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
 GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT, GLOSSDB_ROOT.\n\
-{service}\
+the model service — the walk, the forecast, the what-if — is \
+named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
+minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
+refuse by name and everything else serves.\n\
 the authorization arrangement is read from .env or the environment: \
 GLOSSDB_ISSUER, GLOSSDB_CLIENT_ID, GLOSSDB_CLIENT_SECRET, [GLOSSDB_AUDIENCE] \
 — or GLOSSDB_INSECURE_OPEN=true serves the interfaces without authentication, \
 every caller recorded as insecure_dev_mode (the name is the warning) \
 (see .env.example)";
 
-const SERVICE_USAGE: &str = "the model service — the walk, the forecast, the what-if — is \
-named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
-minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
-refuse by name and everything else serves.\n";
-
-/// The usage, with the service's line as this build names it.
-pub fn usage() -> String {
-    USAGE_TEXT.replace("{service}", SERVICE_USAGE)
+pub fn usage() -> &'static str {
+    USAGE_TEXT
 }
 
 /// The command line as typed. `workspace` decides whether `.env` is
@@ -564,12 +561,7 @@ mod tests {
     /// audience the platform mints a token for; unnamed, it is not there.
     #[test]
     fn the_service_is_named_once() {
-        let none =
-            read(&[], &[("GLOSSDB_FORECAST_URL", "http://127.0.0.1:8100")]).expect("readable");
-        assert!(
-            none.service.is_none(),
-            "a point's variable names no service"
-        );
+        assert!(read(&[], &[]).expect("readable").service.is_none());
         let key = read(
             &[],
             &[

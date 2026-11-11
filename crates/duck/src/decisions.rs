@@ -40,10 +40,11 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
         note,
     } = decision;
     if !ident_path(subject, 3) {
-        return Err(SessionError::shape(
-            subject,
-            format!("`{subject}` is not a path subject (identifier segments, dots between)"),
-        ));
+        return Err(SessionError::BadShape {
+            detail: format!(
+                "`{subject}` is not a path subject (identifier segments, dots between)"
+            ),
+        });
     }
     if !ident_path(aspect, 1) {
         return Err(SessionError::BadAspectName(aspect.to_string()));

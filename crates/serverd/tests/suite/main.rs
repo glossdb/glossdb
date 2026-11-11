@@ -6,6 +6,7 @@
 
 mod common;
 mod docs;
+mod examples;
 mod interfaces;
 mod lock;
 mod next;

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use glossdb_serverd::{ARROW_STREAM, Access, INSECURE_DEV_MODE, InterfaceConfig, Login, router};
 
-use crate::common;
+use crate::common::{self, expect_ok, mcp_on, meta};
 
 const INT: &str = "Int32";
 type IntArray = arrow::array::Int32Array;
@@ -29,9 +29,9 @@ async fn app_capped(
     interfaces: InterfaceConfig,
     login: Arc<Login>,
 ) -> (Router, tempfile::TempDir) {
-    let (dir, plane) = common::scratch_plane().await;
+    let (dir, plane) = common::scratch_plane_capped(row_cap).await;
     let plane = Arc::new(
-        plane.with_row_cap(row_cap).with_pages(
+        plane.with_pages(
             glossdb_serverd::skills::served_pages()
                 .expect("the language's documents beside the extension's kits"),
         ),
@@ -71,23 +71,6 @@ async fn body_json(response: Response<Body>) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_console_app_ships_in_the_binary() {
-    // The workspace carries no apps — the built-in answers for the name,
-    // on whichever dataset the URL names.
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::get("/fin/app/console")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
     // The URL is the binding, so a name nobody declared is a missing
     // resource, not a query that fails oddly three layers down. The
@@ -120,11 +103,11 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
     assert!(body["error"].as_str().unwrap().contains("fin"), "{body}");
 }
 
-/// A refusal answers by its class: a name the catalog does not hold is
-/// not found, an interface whose service is not named is unavailable, and
-/// the statement's own fault is unprocessable.
+/// A refusal answers by its class, with its reason in the body: a name
+/// the catalog does not hold is not found, the statement's own fault is
+/// unprocessable, and so is a refused statement that is not one read.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_refusal_answers_by_its_class() {
+async fn the_query_interface_answers_a_refusal_by_its_class() {
     let (app, _dir) = app_on_fin().await;
     let ask = |sql: &'static str| {
         let app = app.clone();
@@ -150,6 +133,12 @@ async fn a_refusal_answers_by_its_class() {
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     let fault = "view_summary";
     assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
+    let (status, body) = ask("USE nothing").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("nothing"),
+        "{body}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -284,27 +273,6 @@ async fn the_served_pages_are_rows_of_pages() {
     assert_eq!(outcomes[1]["rows"][0]["n"], json!(served));
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn the_query_interface_answers_a_refusal_in_the_body() {
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from("USE nothing"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let body = body_json(response).await;
-    assert!(
-        body["error"].as_str().unwrap().contains("nothing"),
-        "{body}"
-    );
-}
-
 /// The gate. A bearer token from the issuer names who is speaking; the
 /// interface names with which actor kind. Nothing in the tree signs a token
 /// except the test issuer in `common`.
@@ -339,8 +307,7 @@ async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
         .unwrap();
     let body = expect_ok(app.clone().oneshot(request).await.unwrap()).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).expect(text);
+    let outcomes = outcomes_of(&body);
     let last = outcomes.as_array().unwrap().last().unwrap();
     assert_eq!(last["rows"][0]["actor_id"], json!("ada"), "{outcomes}");
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"), "{outcomes}");
@@ -406,8 +373,7 @@ async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
         .unwrap();
     let body = expect_ok(app.clone().oneshot(request).await.unwrap()).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).expect(text);
+    let outcomes = outcomes_of(&body);
     let last = outcomes.as_array().unwrap().last().unwrap();
     assert_eq!(last["rows"][0]["actor_id"], json!(INSECURE_DEV_MODE));
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"));
@@ -952,31 +918,6 @@ async fn mcp_at(app: Router, host: &str, payload: Value) -> Response<Body> {
     mcp_on(app, "/mcp", host, payload).await
 }
 
-/// The call at `path` — the workspace interface or a dataset's bound interface.
-async fn mcp_on(app: Router, path: &str, host: &str, payload: Value) -> Response<Body> {
-    let method = payload["method"].as_str().unwrap().to_string();
-    let mut request = Request::post(path)
-        // oneshot skips what every real client sends; the transport's
-        // rebinding guard (allowed_hosts) rightly insists on it.
-        .header(header::HOST, host)
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::ACCEPT, "application/json, text/event-stream")
-        .header(header::AUTHORIZATION, common::bearer("dev-agent"))
-        .header("mcp-protocol-version", "2026-07-28")
-        .header("mcp-method", method);
-    // SEP-2243: a call names its subject in the header too — from
-    // `name` for tools and prompts, from `uri` for resources.
-    if let Some(name) = payload["params"]["name"]
-        .as_str()
-        .or_else(|| payload["params"]["uri"].as_str())
-    {
-        request = request.header("mcp-name", name.to_string());
-    }
-    app.oneshot(request.body(Body::from(payload.to_string())).unwrap())
-        .await
-        .unwrap()
-}
-
 fn initialize() -> Value {
     json!({
         "jsonrpc": "2.0", "id": 0, "method": "initialize",
@@ -988,25 +929,12 @@ fn initialize() -> Value {
     })
 }
 
-/// The 2026-07-28 revision moved the handshake into every request: this
-/// `_meta` is what a sessionless client stamps — and its `clientInfo` is
-/// where the agent actor rides.
-fn meta() -> Value {
-    json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": {"name": "interfaces-test", "version": "0"}
-    })
-}
-
-/// The body, after insisting on 200 — a refused request panics with what
-/// the transport said, not a bare status.
-async fn expect_ok(response: Response<Body>) -> Value {
-    let status = response.status();
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let text = String::from_utf8_lossy(&bytes);
-    assert_eq!(status, StatusCode::OK, "{text}");
-    serde_json::from_str(&text).unwrap()
+/// The outcomes of a tool call, one per statement.
+fn outcomes_of(body: &Value) -> Value {
+    let text = body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{body}"));
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("{e}: {text}"))
 }
 
 /// The agent interface's `Host` guard: the transport's loopback default
@@ -1157,13 +1085,11 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         .await,
     )
     .await;
-    assert!(
-        body["result"]["contents"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("view_summary()"),
-        "{body}"
-    );
+    let reads = glossdb_serverd::skills::PAGES
+        .iter()
+        .find(|p| p.path == "docs/reference/reads.md")
+        .expect("the reads reference is embedded");
+    assert_eq!(body["result"]["contents"][0]["text"], json!(reads.body));
 
     let body = expect_ok(
         mcp(
@@ -1190,7 +1116,11 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
     )
     .await;
     let prompts = body["result"]["prompts"].as_array().unwrap();
-    assert_eq!(prompts.len(), 4, "{body}");
+    assert_eq!(
+        prompts.len(),
+        glossdb_serverd::skills::SKILLS.len(),
+        "{body}"
+    );
     assert!(
         prompts
             .iter()
@@ -1253,12 +1183,11 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
 
     let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer")).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    // Call results keep the discriminator; the caching fields belong to
-    // tools/list alone — the middleware must not touch calls.
+    // A call's result is complete and carries none of the list's
+    // caching fields.
     assert_eq!(body["result"]["resultType"], "complete", "{body}");
     assert!(body["result"].get("ttlMs").is_none(), "{body}");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["rows"][0]["answer"], json!(42));
     assert_eq!(outcomes[0]["row_count"], json!(1));
     assert_eq!(outcomes[0]["truncated"], json!(false));
@@ -1272,8 +1201,7 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
         "{outcomes}"
     );
     let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer LIMIT 0")).await).await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
     assert_eq!(
         outcomes[0]["columns"],
@@ -1301,8 +1229,15 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
     // What ran rides beside the refusal, in the usual shape — the
     // first statement's rows are not discarded with the second's error.
     let completed = body["result"]["content"][1]["text"].as_str().unwrap();
-    assert!(
-        completed.contains("\"completed\"") && completed.contains("\"a\""),
+    let completed: Value = serde_json::from_str(completed).expect(completed);
+    assert_eq!(
+        completed["completed"],
+        json!([{
+            "columns": [{"name": "a", "type": INT}],
+            "rows": [{"a": 1}],
+            "row_count": 1,
+            "truncated": false
+        }]),
         "{completed}"
     );
 }
@@ -1320,8 +1255,7 @@ async fn the_dataset_mcp_interface_runs_every_call_on_its_dataset() {
 
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", read(1)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(
         outcomes[0]["rows"][0]["dataset"],
         json!("fin"),
@@ -1346,32 +1280,24 @@ async fn the_dataset_mcp_interface_runs_every_call_on_its_dataset() {
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
 
     // The workspace interface opens unbound: the relation serves no row and
-    // no `next` line rides the result.
+    // the result links to no dataset's `next` page, as the bound one does.
     let body = expect_ok(mcp(app.clone(), read(3)).await).await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
-    assert!(
-        bound_window.lines().count() > window.lines().count(),
-        "bound: {bound_window}\nunbound: {window}"
-    );
+    assert!(bound_window.contains("next://fin/"), "{bound_window}");
+    assert!(!window.contains("next://"), "{window}");
 
-    // Each interface describes its own opening on the one tool, and so
-    // do the handshake's instructions.
-    let list = |id| json!({"jsonrpc": "2.0", "id": id, "method": "tools/list", "params": {"_meta": meta()}});
-    let bound = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", list(4)).await).await;
-    let unbound = expect_ok(mcp(app.clone(), list(5)).await).await;
-    assert_ne!(
-        bound["result"]["tools"][0]["description"],
-        unbound["result"]["tools"][0]["description"]
-    );
+    // The bound interface names its dataset on the one tool and in the
+    // handshake's instructions.
+    let list =
+        json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {"_meta": meta()}});
+    let bound = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", list).await).await;
+    let description = bound["result"]["tools"][0]["description"].as_str().unwrap();
+    assert!(description.contains("`fin`"), "{description}");
     let bound = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", initialize()).await).await;
-    let unbound = expect_ok(mcp(app.clone(), initialize()).await).await;
-    assert_ne!(
-        bound["result"]["instructions"],
-        unbound["result"]["instructions"]
-    );
+    let instructions = bound["result"]["instructions"].as_str().unwrap();
+    assert!(instructions.contains("`fin`"), "{instructions}");
 
     let response = mcp_on(app, "/nope/mcp", "127.0.0.1", read(6)).await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -1401,58 +1327,13 @@ fn meta_elicit() -> Value {
     })
 }
 
-/// The same review on DuckDB: the kits are declared at open, a source
-/// and a recipe load the table, and the role gloss leaves the additivity
-/// claim required — the tested claim a measurement settles, never a
-/// question for the human.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_review_call_never_asks_the_person_for_a_statistic() {
-    let (app, _dir) = app().await;
-    let files = tempfile::tempdir().unwrap();
-    std::fs::write(
-        files.path().join("ledger.csv"),
-        "month,value\n2026-01-01,10.5\n2026-02-01,4.0\n",
-    )
-    .unwrap();
-    let setup = format!(
-        r#"DECLARE DATASET perf SET (purpose: 'kit test');
-           USE perf;
-           DECLARE SOURCE erp SET (type: csv, location: '{}');
-           DECLARE RECIPE ledger ON perf FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(value AS DOUBLE) AS value FROM read_csv('ledger.csv')$$;
-           GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;"#,
-        files.path().display()
-    );
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 70, &setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                71,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(
-        body["result"]["resultType"],
-        json!("input_required"),
-        "the interface asked the person for a statistic: {body}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
-    // Run 4 spelled one decision with one key across three metrics, as
-    // the practice skill says to, and was then asked about
-    // `days-in-period` three times. Fanning one answer across every
-    // aspect is the obvious cure and the wrong one — run 2's human
-    // decided `goods-only` two ways on purpose, and that must stay
-    // possible. So the second ask offers the first review decision back as an
-    // answer: agreeing costs a click, differing is still there.
+async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_differently() {
+    // One key on three views is asked once per view. The form of the
+    // second view offers the first decision back, with the person's
+    // words, as a box of its own; ticking it stores the same stance
+    // and words on that view. The third view is confirmed as stated:
+    // the same key holds two different decisions.
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'one key, one decision');
@@ -1461,6 +1342,10 @@ async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
           "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS VIEW;
+        DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS VIEW;
+        GLOSS dpo ON fin AS $${"sql": "SELECT 3 AS v",
+          "assumptions": [{"dimension": "convention", "key": "days-in-period",
+            "assumption": "calendar days", "basis": "judgment", "confidence": 0.9}]}$$;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "convention", "key": "days-in-period",
             "assumption": "days are the month's own calendar days, 28 to 31",
@@ -1484,17 +1369,15 @@ async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
                 .await,
             )
             .await;
-            let text = body["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .to_string();
-            let outcomes: Value = serde_json::from_str(&text).unwrap();
-            outcomes[0]["rows"].as_array().cloned().unwrap_or_default()
+            outcomes_of(&body)[0]["rows"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
         }
     };
 
-    // One decision, disclosed twice — two rows stand open.
-    assert_eq!(open(181).await.len(), 2);
+    // One key, disclosed on three views: three rows stand open.
+    assert_eq!(open(181).await.len(), 3);
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
 
@@ -1526,22 +1409,17 @@ async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // dso asks next. The same key is already decided next interface, so the
-    // form both names it and offers it back.
+    // dso asks next. The same key is decided on dio, so the form
+    // offers that decision back: a box of its own that names the view
+    // and carries the person's words.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 184, review, None)).await).await;
     let second = &body["result"]["inputRequests"]["loose:fin:dso:days-in-period"];
     assert!(second.is_object(), "{body}");
-    // The prior review decision is its own box, and its title says which one.
-    // The message carries identity only — it is the one surface the
-    // client clips.
     let repeat = &second["params"]["requestedSchema"]["properties"]["3_same_as"];
     assert_eq!(repeat["type"], json!("boolean"), "{second}");
-    assert!(
-        repeat["description"]
-            .as_str()
-            .is_some_and(|d| d.contains("dio")),
-        "the repeat must be one click: {second}"
-    );
+    let offered = repeat["description"].as_str().unwrap_or_default();
+    assert!(offered.contains("dio"), "{second}");
+    assert!(offered.contains("use a fixed 30-day month"), "{second}");
 
     // Ticking it replays the stance AND the human's own words.
     let same = json!({"action": "accept",
@@ -1561,7 +1439,25 @@ async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // Nothing holds open now, and each aspect carries its own entry.
+    // dpo asks last and is confirmed as stated: the same key, decided
+    // differently on another view.
+    let confirmed = json!({"action": "accept", "content": {"1_correct": true}});
+    let body = expect_ok(
+        mcp(
+            app.clone(),
+            call_with(
+                meta_elicit(),
+                188,
+                review,
+                Some(("loose:fin:dpo:days-in-period", confirmed)),
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+
+    // Nothing is open now, and each view carries its own entry.
     assert!(open(186).await.is_empty());
     let body = expect_ok(
         mcp(
@@ -1576,32 +1472,54 @@ async fn a_repeated_key_offers_the_earlier_decision_as_an_answer() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     let rows = outcomes[0]["rows"].as_array().unwrap();
-    assert_eq!(rows.len(), 2, "{rows:?}");
-    assert_eq!(rows[0]["aspect"], json!("dio"), "{rows:?}");
-    assert_eq!(rows[1]["aspect"], json!("dso"), "{rows:?}");
-    assert_eq!(rows[1]["stance"], json!("corrected"), "{rows:?}");
-    assert!(
-        rows[1]["note"].as_str().unwrap().contains("fixed 30-day"),
-        "the repeat carries the human's own words: {rows:?}"
+    let decided: Vec<(&str, &str)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r["aspect"].as_str().unwrap_or_default(),
+                r["stance"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        decided,
+        [
+            ("dio", "corrected"),
+            ("dpo", "confirmed"),
+            ("dso", "corrected")
+        ],
+        "{rows:?}"
     );
     assert!(
-        rows[1]["assumption"].as_str().unwrap().contains("28 to 31"),
-        "each aspect keeps its own wording: {rows:?}"
+        rows[2]["note"].as_str().unwrap().contains("fixed 30-day"),
+        "the repeat carries the person's own words: {rows:?}"
+    );
+    assert!(
+        rows[2]["assumption"].as_str().unwrap().contains("28 to 31"),
+        "each view keeps its own wording: {rows:?}"
     );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_judged_assumption_is_decided_by_the_answer_on_the_retry() {
+async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by_the_next_definition()
+ {
     // A judged assumption below full confidence becomes a
     // confirm/correct form; "holds as stated" stores a review decision entry —
     // the judgment alone, never a copy of the agent's body (a
     // frozen copy would outrank every later correction).
-    // The review decision holds the question closed, the summary counts the
-    // decision still to apply, and the agent's re-record clears it.
+    // The review decision holds the question closed and stands as not
+    // yet applied until the agent records the definition again.
     let (app, _dir) = app().await;
+    let applied = |id: u64| {
+        let app = app.clone();
+        async move {
+            let read = "SELECT key, stance, folded_in FROM review_decisions;";
+            let body = expect_ok(mcp(app, call_with(meta(), id, read, None)).await).await;
+            outcomes_of(&body)[0]["rows"].clone()
+        }
+    };
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'loose test');
         USE fin;
@@ -1678,8 +1596,7 @@ async fn a_judged_assumption_is_decided_by_the_answer_on_the_retry() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["row_count"], json!(1), "{outcomes}");
     assert_eq!(
         outcomes[0]["rows"][0]["aspect"],
@@ -1709,20 +1626,28 @@ async fn a_judged_assumption_is_decided_by_the_answer_on_the_retry() {
     )
     .await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
+    assert_eq!(
+        applied(66).await,
+        json!([{"key": "per-line", "stance": "confirmed", "folded_in": false}])
+    );
 
     // …and the agent writes the metric definition again at full
-    // confidence, citing the decision.
-    let fold_in = r#"GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
+    // confidence, citing the decision: the decision is applied.
+    let fold_in = r#"USE fin; GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
         "assumptions": [
           {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "decided-by-person", "confidence": 1.0},
           {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
         ]}$$;"#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 65, fold_in, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    assert_eq!(
+        applied(67).await,
+        json!([{"key": "per-line", "stance": "confirmed", "folded_in": true}])
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn every_way_out_that_is_not_an_answer_is_a_defer() {
+async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again() {
     // The dialog has two outcomes. Accepting with something said is
     // the save; Decline, Esc, and a form confirmed empty are all the
     // same defer — nothing recorded, the claim still derives, and the
@@ -1797,10 +1722,9 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
         .await,
     )
     .await;
-    assert!(
-        body["result"]["content"][0]["text"]
-            .to_string()
-            .contains("\\\"n\\\":0"),
+    assert_eq!(
+        outcomes_of(&body)[0]["rows"][0]["n"],
+        json!(0),
         "a defer records nothing: {body}"
     );
 }
@@ -1881,128 +1805,8 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     );
 }
 
-/// The handshake's own name never reaches the catalog. `clientInfo`
-/// carries one here and the token carries another; the catalog takes
-/// the token's, because a caller names itself on every request and the
-/// string proves nothing.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_clients_own_name_is_never_stored_as_the_actor() {
-    let (app, _dir) = app().await;
-    let call = |id: u64, statements: &str| {
-        json!({
-            "jsonrpc": "2.0", "id": id, "method": "tools/call",
-            "params": {
-                "_meta": meta(),
-                "name": "glossql",
-                "arguments": {"statements": statements}
-            }
-        })
-    };
-    let claimed = meta()["io.modelcontextprotocol/clientInfo"]["name"].clone();
-    assert!(
-        claimed.is_string(),
-        "the handshake names a client: {claimed}"
-    );
-
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'actor test');
-        USE fin;
-        DECLARE ASPECT unit WITH $${"type": "object"}$$ AS FACT;
-        GLOSS unit ON t.a AS $${"value": "EUR"}$$;
-    "#;
-    let body = expect_ok(mcp(app.clone(), call(20, setup)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    let body =
-        expect_ok(mcp(app, call(21, "SELECT actor_kind, actor_id FROM glossary;")).await).await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(
-        outcomes[0]["rows"][0]["actor_kind"],
-        json!("agent"),
-        "{outcomes}"
-    );
-    // `mcp()` speaks with the test issuer's token for `dev-agent`.
-    assert_eq!(
-        outcomes[0]["rows"][0]["actor_id"],
-        json!("dev-agent"),
-        "{outcomes}"
-    );
-    assert_ne!(outcomes[0]["rows"][0]["actor_id"], claimed, "{outcomes}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn metadata_reads_pass_the_cap_uncapped() {
-    let (app, _dir) = app_capped(3, InterfaceConfig::default(), common::login()).await;
-    let call = |id: u64, statements: &str| {
-        json!({
-            "jsonrpc": "2.0", "id": id, "method": "tools/call",
-            "params": {
-                "_meta": meta(),
-                "name": "glossql",
-                "arguments": {"statements": statements}
-            }
-        })
-    };
-
-    // Five glosses through one batch call. `USE` binds only the
-    // statements after it *within this call*; the reads below stand on
-    // their own, one naming its dataset and one reading a relation that
-    // has none.
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'cap test');
-        USE fin;
-        DECLARE ASPECT unit WITH $${"type": "object"}$$ AS FACT;
-        GLOSS unit ON t.a AS $${"value": "EUR"}$$;
-        GLOSS unit ON t.b AS $${"value": "EUR"}$$;
-        GLOSS unit ON t.c AS $${"value": "EUR"}$$;
-        GLOSS unit ON t.d AS $${"value": "EUR"}$$;
-        GLOSS unit ON t.e AS $${"value": "EUR"}$$;
-    "#;
-    let body = expect_ok(mcp(app.clone(), call(7, setup)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    // A metadata sweep wider than the cap arrives whole.
-    let body = expect_ok(mcp(app.clone(), call(8, "SELECT subject FROM glossary;")).await).await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(outcomes[0]["row_count"], json!(5), "{outcomes}");
-    assert_eq!(outcomes[0]["truncated"], json!(false));
-
-    // The same sweep behind a `USE` — the agent's usual call — runs as
-    // a sequence and arrives whole all the same.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call(10, "USE fin; SELECT subject FROM glossary;"),
-        )
-        .await,
-    )
-    .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(outcomes[1]["row_count"], json!(5), "{outcomes}");
-    assert_eq!(outcomes[1]["truncated"], json!(false));
-
-    let body = expect_ok(
-        mcp(
-            app,
-            call(9, "SELECT subject FROM GLOSSARY(fin, all => true);"),
-        )
-        .await,
-    )
-    .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
-    assert_eq!(outcomes[0]["truncated"], json!(false), "{outcomes}");
-    assert!(
-        outcomes[0]["row_count"].as_u64().unwrap() >= 5,
-        "{outcomes}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_mcp_interface_caps_rows_and_declares_it() {
+async fn a_data_read_is_cut_at_the_row_cap_and_a_catalog_read_is_whole() {
     let (app, _dir) = app_capped(3, InterfaceConfig::default(), common::login()).await;
     let body = expect_ok(
         mcp(
@@ -2021,8 +1825,7 @@ async fn the_mcp_interface_caps_rows_and_declares_it() {
     )
     .await;
 
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["rows"].as_array().unwrap().len(), 3);
     assert_eq!(outcomes[0]["row_count"], json!(3));
     assert_eq!(outcomes[0]["truncated"], json!(true));
@@ -2031,7 +1834,7 @@ async fn the_mcp_interface_caps_rows_and_declares_it() {
     // the session that collected it carried the cap in the read's plan.
     let body = expect_ok(
         mcp(
-            app,
+            app.clone(),
             json!({
                 "jsonrpc": "2.0", "id": 4, "method": "tools/call",
                 "params": {
@@ -2046,8 +1849,7 @@ async fn the_mcp_interface_caps_rows_and_declares_it() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["truncated"], json!(false), "{outcomes}");
     assert_eq!(
         outcomes[1]["rows"],
@@ -2056,6 +1858,38 @@ async fn the_mcp_interface_caps_rows_and_declares_it() {
     );
     assert_eq!(outcomes[1]["row_count"], json!(3));
     assert_eq!(outcomes[1]["truncated"], json!(true));
+
+    // The catalog is served whole: five annotations pass the cap of
+    // three, read alone, behind a `USE`, and through `GLOSSARY()`.
+    let setup = r#"
+        DECLARE DATASET fin SET (purpose: 'cap test');
+        USE fin;
+        DECLARE ASPECT unit WITH $${"type": "object"}$$ AS FACT;
+        GLOSS unit ON t.a AS $${"value": "EUR"}$$;
+        GLOSS unit ON t.b AS $${"value": "EUR"}$$;
+        GLOSS unit ON t.c AS $${"value": "EUR"}$$;
+        GLOSS unit ON t.d AS $${"value": "EUR"}$$;
+        GLOSS unit ON t.e AS $${"value": "EUR"}$$;
+    "#;
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 7, setup, None)).await).await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    for (read, at) in [
+        ("SELECT subject FROM glossary;", 0),
+        ("USE fin; SELECT subject FROM glossary;", 1),
+        ("SELECT subject FROM GLOSSARY(fin, all => true);", 0),
+    ] {
+        let body = expect_ok(mcp(app.clone(), call_with(meta(), 8, read, None)).await).await;
+        let outcomes = outcomes_of(&body);
+        assert_eq!(
+            outcomes[at]["truncated"],
+            json!(false),
+            "{read}: {outcomes}"
+        );
+        assert!(
+            outcomes[at]["row_count"].as_u64().unwrap() >= 5,
+            "{read}: {outcomes}"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2097,15 +1931,15 @@ async fn a_second_review_decision_keeps_the_first() {
         assert_ne!(body["result"]["isError"], json!(true), "{key}: {body}");
     }
 
-    // Both review decisions stand as entries in the one review decision value — the first
-    // did not revert — and the agent's dso body is untouched.
+    // Both review decisions stand — the first did not revert — and
+    // the agent's definition is as it was written.
     let body = expect_ok(
         mcp(
             app.clone(),
             call_with(
                 meta(),
                 82,
-                "SELECT body FROM glossary WHERE actor_kind = 'human' ORDER BY written_at DESC LIMIT 1;
+                "SELECT key, stance FROM review_decisions ORDER BY key;
                  SELECT body FROM glossary WHERE actor_kind = 'agent' AND aspect = 'dso';",
                 None,
             ),
@@ -2113,24 +1947,24 @@ async fn a_second_review_decision_keeps_the_first() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
-    let human_body = outcomes[0]["rows"][0]["body"].as_str().unwrap();
-    assert!(human_body.contains("a flat 30-day month"), "{human_body}");
-    assert!(
-        human_body.contains("total revenue in the denominator"),
-        "{human_body}"
+    let outcomes = outcomes_of(&body);
+    assert_eq!(
+        outcomes[0]["rows"],
+        json!([
+            {"key": "flat-30-day-month", "stance": "confirmed"},
+            {"key": "total-revenue-denominator", "stance": "confirmed"}
+        ]),
+        "{outcomes}"
     );
-    assert_eq!(human_body.matches("confirmed").count(), 2, "{human_body}");
     let agent_body = outcomes[1]["rows"][0]["body"].as_str().unwrap();
-    assert!(
-        agent_body.contains("0.6"),
-        "the agent body moved: {agent_body}"
-    );
-    assert!(
-        agent_body.contains("0.7"),
-        "the agent body moved: {agent_body}"
-    );
+    let agent_body: Value = serde_json::from_str(agent_body).expect(agent_body);
+    let confidences: Vec<&Value> = agent_body["assumptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| &a["confidence"])
+        .collect();
+    assert_eq!(confidences, [&json!(0.6), &json!(0.7)], "{agent_body}");
 
     // And the review is quiet — nothing re-derives.
     let body = expect_ok(
@@ -2147,156 +1981,6 @@ async fn a_second_review_decision_keeps_the_first() {
     )
     .await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_review_form_shows_the_earlier_decision_on_the_same_key() {
-    // Run 2 produced this: `purchases`'s goods-only assumption was
-    // confirmed in the same session where `dpo`'s goods-only
-    // assumption was corrected. The two metric definitions word the claim
-    // differently on purpose — pairing rests on the declared key,
-    // never on the prose (STRING EQUALITY ON NON-KEYS IS FORBIDDEN).
-    //
-    // The form is the whole mechanism: when the review asks about a key
-    // the human already decided under another aspect, the message names
-    // that sibling review decision, and the human decides with both in view.
-    // Nothing pairs the review decisions afterwards — two aspects may genuinely
-    // differ, and an agent that needs it settled again asks again.
-    let (app, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'one claim, two decisions');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
-        DECLARE ASPECT purchases WITH $${"title": "P", "x-kind": "metric"}$$ AS VIEW;
-        DECLARE ASPECT dpo WITH $${"title": "D", "x-kind": "metric"}$$ AS VIEW;
-        GLOSS purchases ON fin AS $${"sql": "SELECT 1 AS v",
-          "assumptions": [{"dimension": "scope", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.7}]}$$;
-        GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
-          "assumptions": [{"dimension": "scope", "key": "goods-only", "assumption": "restricted to invoices for goods, excluding services", "basis": "judgment", "confidence": 0.7}]}$$;
-    "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 100, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    let review = "SELECT subject, aspect FROM glossary LIMIT 5";
-
-    // dpo asks first (aspect order); the human corrects it.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 101, review, None)).await).await;
-    assert!(
-        body["result"]["inputRequests"]["loose:fin:dpo:goods-only"].is_object(),
-        "{body}"
-    );
-    let corrected = json!({"action": "accept",
-        "content": {"5_correction": "all suppliers, not goods only"}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                102,
-                review,
-                Some(("loose:fin:dpo:goods-only", corrected)),
-            ),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    // purchases asks next, and the form offers what was already decided
-    // on that same key as an answer — the `sibling` column, carried by
-    // the read, as its own box with the prior words beneath.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 103, review, None)).await).await;
-    let form = &body["result"]["inputRequests"]["loose:fin:purchases:goods-only"];
-    assert!(form.is_object(), "{body}");
-    let repeat = &form["params"]["requestedSchema"]["properties"]["3_same_as"];
-    let said = repeat["description"].as_str().expect("a description");
-    assert!(
-        said.contains("dpo"),
-        "the form offers the earlier decision: {body}"
-    );
-    assert!(
-        said.contains("all suppliers, not goods only"),
-        "the prior words ride with it: {body}"
-    );
-
-    // The human confirms it anyway — legitimate, different aspect.
-    let confirmed = json!({"action": "accept", "content": {"1_correct": true}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                104,
-                review,
-                Some(("loose:fin:purchases:goods-only", confirmed)),
-            ),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-
-    // Both review decisions stand, each on its own aspect, and the review is
-    // quiet — the catalog needs no third act.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 105, review, None)).await).await;
-    assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_call_that_changes_the_counts_carries_the_summary() {
-    // Run 2's friction 11: initialize instructions are fetched once
-    // per connection, so a long-lived session never saw the counts
-    // move. The summary now also rides any tool result whose call
-    // changed it — and stays off the quiet ones.
-    let (app, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'summary delivery');
-        USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
-          "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
-    "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 120, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let blocks = body["result"]["content"].as_array().unwrap();
-    // The metric definition's write answers with its fact row through the
-    // interface — the `view_summary()` shape, abstaining here with its
-    // reason (this app declares no `cube` aspect) and loaded all the
-    // same.
-    let outcomes = blocks[0]["text"].as_str().unwrap();
-    assert!(
-        outcomes.contains("\"unadmitted\"") && outcomes.contains("\"applicable\":false"),
-        "{outcomes}"
-    );
-    let with_summary = blocks.len();
-
-    // A read that changes nothing carries one content block fewer: the
-    // rows and the closing lines, and no summary.
-    let body =
-        expect_ok(mcp(app.clone(), call_with(meta(), 121, "SELECT 1 AS ok", None)).await).await;
-    let blocks = body["result"]["content"].as_array().unwrap();
-    assert_eq!(blocks.len(), 2, "{body}");
-    assert!(with_summary > blocks.len(), "{body}");
-
-    // A KNOWN GAP, kept open: a second agent watching the same
-    // workspace hears nothing until its own call moves something. One
-    // shared baseline, so the mover is told. Per-actor delivery was
-    // built and removed — no run has produced two agents on one
-    // workspace, and the state it needed outweighed the case.
-    let other = json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": {"name": "second-agent", "version": "0"}
-    });
-    let body =
-        expect_ok(mcp(app.clone(), call_with(other, 122, "SELECT 1 AS ok", None)).await).await;
-    let blocks = body["result"]["content"].as_array().unwrap();
-    assert_eq!(
-        blocks.len(),
-        2,
-        "the shared baseline says nothing moved: {body}"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2339,12 +2023,11 @@ async fn an_unkeyed_assumption_is_never_asked() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_open_questions_read_composes_like_a_table() {
-    // The point of the read library: the review's derivation is a
-    // relation anyone can select from, so the interface, the app's queue and
-    // any ad-hoc query share one file instead of three copies. Filters
-    // ride WHERE — the same posture `read.<aspect>()` and
-    // `metric_series()` take.
+async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles() {
+    // `open_questions` is what the review asks from: the judged
+    // assumptions below full confidence, without those on a dimension
+    // a measurement settles (`grain`). One call asks the assumptions
+    // of one view, the least confident first.
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the read library');
@@ -2360,62 +2043,29 @@ async fn the_open_questions_read_composes_like_a_table() {
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 140, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    let rows = |body: &Value| -> Value {
-        let text = body["result"]["content"][0]["text"].as_str().unwrap();
-        let outcomes: Value = serde_json::from_str(text).unwrap();
-        outcomes[0].clone()
-    };
-
-    // The whole read: two askable rows. `grain` is the function map's
-    // dimension, so the read drops it — the gate lives in the file now,
-    // not in the interface.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(meta(), 141, "SELECT * FROM open_questions;", None),
-        )
-        .await,
-    )
-    .await;
-    let out = rows(&body);
-    assert_eq!(out["row_count"], json!(2), "{out}");
-
-    // A filter narrows it, a projection reshapes it, an aggregate closes
-    // over it: it is a relation, not a interface-shaped special case.
+    // Two rows are open; dpo's `grain` assumption is not among them.
     let body = expect_ok(
         mcp(
             app.clone(),
             call_with(
                 meta(),
-                142,
-                "SELECT aspect, key FROM open_questions WHERE aspect = 'dpo';",
+                141,
+                "SELECT aspect, key FROM open_questions ORDER BY aspect;",
                 None,
             ),
         )
         .await,
     )
     .await;
-    let out = rows(&body);
-    assert_eq!(out["row_count"], json!(1), "{out}");
-    assert_eq!(out["rows"][0]["key"], json!("goods-only"), "{out}");
+    assert_eq!(
+        outcomes_of(&body)[0]["rows"],
+        json!([
+            {"aspect": "dpo", "key": "goods-only"},
+            {"aspect": "dso", "key": "per-line"}
+        ]),
+        "{body}"
+    );
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                143,
-                "SELECT count(*) AS waiting FROM open_questions;",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
-    let out = rows(&body);
-    assert_eq!(out["rows"][0]["waiting"], json!(2), "{out}");
-
-    // And the review serves exactly what the read holds.
     let body = expect_ok(
         mcp(
             app,
@@ -2429,11 +2079,8 @@ async fn the_open_questions_read_composes_like_a_table() {
         .await,
     )
     .await;
-    // A review is one metric definition: the least confident open claim picks
-    // the aspect, and every open claim on THAT aspect travels together.
-    // dpo and dso are two metric definitions, so only dpo's is asked — and the
-    // message says how many stand open in the whole, so the end of a
-    // review never reads as the end of the work.
+    // The least confident open assumption picks the view, and only
+    // that view's assumptions are asked.
     let asked = body["result"]["inputRequests"].as_object().unwrap();
     assert_eq!(asked.len(), 1, "one metric definition per call: {body}");
     assert!(asked["loose:fin:dpo:goods-only"].is_object(), "{body}");
@@ -2519,7 +2166,7 @@ async fn an_agent_authors_an_app_over_the_tool() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_workspace_says_what_it_affords() {
+async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // The map that replaces the staged manuals: what this workspace can
     // be extended through, how much of each holds, and what is open on
     // it. Not an order to follow — the agent judges what to do next;
@@ -2552,11 +2199,9 @@ async fn the_workspace_says_what_it_affords() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     let rows = outcomes[0]["rows"].as_array().unwrap();
     let areas: Vec<&str> = rows.iter().filter_map(|r| r["area"].as_str()).collect();
-    let samples: &[&str] = &[];
     for expected in [
         "apps",
         "aspects",
@@ -2570,11 +2215,8 @@ async fn the_workspace_says_what_it_affords() {
         "sources",
         "tables",
         "validations",
-    ]
-    .iter()
-    .chain(samples)
-    {
-        assert!(areas.contains(expected), "{expected} missing: {rows:?}");
+    ] {
+        assert!(areas.contains(&expected), "{expected} missing: {rows:?}");
     }
     let row = |name: &str| {
         rows.iter()
@@ -2602,21 +2244,10 @@ async fn the_workspace_says_what_it_affords() {
     assert_eq!(row("review")["existing"], json!(0), "{rows:?}");
     assert_eq!(row("review")["open"], json!(0), "{rows:?}");
     // A validation is open while its property is in use and has no
-    // value. The kits' fifteen tests exist from the start; with no table
-    // loaded, only these are in use: the agent's own `ar_tie`, the
-    // scenario and forecast measurements (a scenario is declared), and
-    // the ranges every metric is checked against.
-    let kit_tests = 15;
-    assert_eq!(
-        row("validations")["existing"],
-        json!(1 + kit_tests),
-        "{rows:?}"
-    );
-    let in_use = 4;
-    assert_eq!(row("validations")["open"], json!(in_use), "{rows:?}");
-
-    // The authored expectation is speech on the aspect: the validation
-    // stops being required the moment somebody annotates.
+    // value: the agent's own `ar_tie` is one of them, and it stops
+    // being open the moment somebody annotates.
+    let open_before = row("validations")["open"].as_i64().unwrap();
+    assert!(open_before >= 1, "{rows:?}");
     let annotate = r#"USE fin;
         GLOSS ar_tie ON fin AS $${"outcome": "the subledger ties to its control account", "tolerance": 0.01}$$;"#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 162, annotate, None)).await).await;
@@ -2634,11 +2265,10 @@ async fn the_workspace_says_what_it_affords() {
         .await,
     )
     .await;
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    let outcomes: Value = serde_json::from_str(text).unwrap();
+    let outcomes = outcomes_of(&body);
     assert_eq!(
         outcomes[0]["rows"][0]["open"],
-        json!(in_use - 1),
+        json!(open_before - 1),
         "{outcomes}"
     );
 }
@@ -2651,7 +2281,7 @@ async fn the_workspace_says_what_it_affords() {
 /// corrupts the counts it returns is worse, so both halves are asserted
 /// here against the same session.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
+async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');

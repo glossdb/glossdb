@@ -43,7 +43,6 @@
 )]
 
 mod auth;
-mod bootstrap;
 pub mod functions;
 mod login;
 mod mcp;
@@ -59,7 +58,6 @@ pub use glossdb_duck as engine;
 
 pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};
-pub use bootstrap::bootstrap;
 pub use glossdb_apps::ipc::ARROW_STREAM;
 pub use login::Login;
 pub use mcp::GlossqlMcp;

@@ -84,13 +84,13 @@ pub enum SessionError {
     #[error("no dataset in use — USE one first")]
     NoDataset,
     #[error("not a subject: {detail}")]
-    UnknownName { name: String, detail: String },
+    UnknownName { detail: String },
     #[error("not a subject: {detail}")]
     NotServed { interface: String, detail: String },
     #[error("function runtime: {0}")]
     Service(String),
     #[error("not a subject: {detail}")]
-    BadShape { subject: String, detail: String },
+    BadShape { detail: String },
     #[error("not an aspect name: `{0}`")]
     BadAspectName(String),
     #[error("the current review_decision annotation has no decisions list")]
@@ -117,23 +117,13 @@ pub enum SessionError {
 }
 
 impl SessionError {
-    pub(crate) fn shape(subject: impl Into<String>, detail: impl Into<String>) -> Self {
-        SessionError::BadShape {
-            subject: subject.into(),
-            detail: detail.into(),
-        }
-    }
-
     /// The engine's refusal, classed where its text says what it is: a
     /// name the catalog does not hold reads as an unknown name.
     fn engine(e: impl std::fmt::Display) -> Self {
         let text = e.to_string();
         let lower = text.to_lowercase();
         if lower.contains("does not exist") || lower.contains("not found") {
-            return SessionError::UnknownName {
-                name: String::new(),
-                detail: text,
-            };
+            return SessionError::UnknownName { detail: text };
         }
         SessionError::Engine(text)
     }
@@ -238,11 +228,6 @@ pub struct Registered {
     pub name: String,
     pub syntax: Option<String>,
 }
-
-/// The server's own table functions by name: on this engine each is a kit's
-/// table macro, so the list is read from the catalog ([`Session::registered_functions`])
-/// and this constant stays empty for the callers that still name it.
-pub const INTERFACES: &[(&str, &str)] = &[];
 
 /// The request's actor as the gate stamps it: the actor the interface
 /// verified, carried into the handlers.
@@ -1093,11 +1078,6 @@ impl Plane {
         Arc::clone(&self.pages)
     }
 
-    pub fn with_row_cap(mut self, cap: usize) -> Self {
-        self.config.row_cap = cap;
-        self
-    }
-
     pub fn row_cap(&self) -> usize {
         self.config.row_cap
     }
@@ -1137,7 +1117,6 @@ impl Plane {
                 if let Some(dataset) = &dataset {
                     run(&conn, &format!("USE {LAKE}.{}", quote_name(dataset))).map_err(|_| {
                         SessionError::UnknownName {
-                            name: dataset.clone(),
                             detail: format!("no dataset `{dataset}` in the workspace"),
                         }
                     })?;

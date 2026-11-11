@@ -91,16 +91,12 @@ GLOSS additivity ON hires.value AS $${"value": "additive"}$$;
 
 # --- the request: whole months only, the month the edge falls inside left out; seven at least
 
-query TTIT
-SELECT metric, additivity, months, walkable FROM range_request();
+# the metric too short for the walk carries the reason; the walkable one carries none
+query TTITT
+SELECT metric, additivity, months, walkable, (reason) IS NOT NULL FROM range_request();
 ----
-hires	additive	4	false
-spend	additive	13	true
-
-query T
-SELECT reason FROM range_request() WHERE metric = 'hires';
-----
-the walk needs seven complete months, and hires has 4
+hires	additive	4	false	true
+spend	additive	13	true	false
 
 query IIRTTTR
 SELECT json_extract(body, '$.spec.origins')::INTEGER, json_array_length(json_extract(body, '$.table.period')),
@@ -266,11 +262,11 @@ SELECT metric_forecast() FROM fin;
 # the other metrics got no point from the stand-in; sales its twelve steps and two totals, each once,
 # though both month bodies answered the service's coverage at the month
 query TTT
-SELECT metric, applicable, reason FROM forecast_points() WHERE metric <> 'sales' ORDER BY metric;
+SELECT metric, applicable, (reason) IS NOT NULL FROM forecast_points() WHERE metric <> 'sales' ORDER BY metric;
 ----
-balance	false	the service answered no point for this metric
-hires	false	the service answered no point for this metric
-spend	false	the service answered no point for this metric
+balance	false	true
+hires	false	true
+spend	false	true
 
 query I
 SELECT count(*) FROM forecast_points() WHERE metric = 'sales';

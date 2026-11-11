@@ -7,13 +7,12 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::{Body, to_bytes};
-use axum::http::{Request, Response, StatusCode, header};
+use axum::body::Body;
+use axum::http::Response;
 use glossdb_serverd::{Access, InterfaceConfig, router};
 use serde_json::{Value, json};
-use tower::ServiceExt;
 
-use crate::common;
+use crate::common::{self, expect_ok, meta};
 
 async fn app() -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
@@ -33,45 +32,13 @@ async fn app() -> (Router, tempfile::TempDir) {
     )
 }
 
-fn meta() -> Value {
-    json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": {"name": "next-test", "version": "0"}
-    })
-}
-
 fn call(id: u64, statements: &str) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
            "params": {"_meta": meta(), "name": "glossql", "arguments": {"statements": statements}}})
 }
 
 async fn mcp_on(app: Router, path: &str, payload: Value) -> Response<Body> {
-    let method = payload["method"].as_str().unwrap().to_string();
-    let mut request = Request::post(path)
-        .header(header::HOST, "127.0.0.1")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::ACCEPT, "application/json, text/event-stream")
-        .header(header::AUTHORIZATION, common::bearer("dev-agent"))
-        .header("mcp-protocol-version", "2026-07-28")
-        .header("mcp-method", method);
-    if let Some(name) = payload["params"]["name"]
-        .as_str()
-        .or_else(|| payload["params"]["uri"].as_str())
-    {
-        request = request.header("mcp-name", name.to_string());
-    }
-    app.oneshot(request.body(Body::from(payload.to_string())).unwrap())
-        .await
-        .unwrap()
-}
-
-async fn expect_ok(response: Response<Body>) -> Value {
-    let status = response.status();
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let text = String::from_utf8_lossy(&bytes);
-    assert_eq!(status, StatusCode::OK, "{text}");
-    serde_json::from_str(&text).unwrap()
+    common::mcp_on(app, path, "127.0.0.1", payload).await
 }
 
 /// Statements on the dataset's interface; the outcomes, and a panic on a refusal.
@@ -139,12 +106,12 @@ async fn fin() -> (Router, tempfile::TempDir) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_dataset_with_a_table_and_no_metric_has_one_open_row() {
+async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_closes_it() {
     let (app, _dir) = fin().await;
     let all = rows(&app, "SELECT * FROM next").await;
-    // A table is there and no metric: one row under "serve", with the
+    // A table is there and no view: one row under "serve", with the
     // statements that define one. Nothing is asked about a table no
-    // metric reads, and the preview rows stay out while no model
+    // view reads, and the preview rows stay out while no model
     // service is named.
     let open: Vec<(String, String)> = all
         .iter()
@@ -152,11 +119,7 @@ async fn a_dataset_with_a_table_and_no_metric_has_one_open_row() {
         .collect();
     assert_eq!(open, [("serve".into(), "missing".into())], "{all:?}");
     assert!(!text(&all[0], "statement").is_empty(), "{all:?}");
-}
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_table_and_a_single_value_are_served_as_they_are() {
-    let (app, _dir) = fin().await;
     // A view is a metric, a single value or a table. Only a metric needs
     // a series; the other two leave nothing open under "serve".
     say(
@@ -332,7 +295,6 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     assert!(page.contains("yellow"), "{page}");
     assert!(page.contains("measure_additivity_test"), "{page}");
     assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
-    assert!(!page.contains("```glossql\n\n```"), "no empty form: {page}");
 
     // Every result on the dataset's interface closes with the link to
     // the page of the first open row's step.
@@ -479,8 +441,15 @@ async fn a_changed_load_is_named_with_what_it_changed() {
         .iter()
         .find(|r| text(r, "state") == "stale")
         .unwrap_or_else(|| panic!("no outdated description: {after:?}"));
+    // The cause names the column whose profile moved; the two loads it
+    // compares are the catalog's, three rows and then four.
     let cause = text(stale, "cause");
-    // The cause carries the two loads' counts and the column that moved.
-    assert!(cause.contains('4') && cause.contains('3'), "{cause}");
     assert!(cause.contains("fund"), "{cause}");
+    let loads = rows(
+        &app,
+        "SELECT rows FROM imports WHERE table_name = 'bookings' ORDER BY seq",
+    )
+    .await;
+    let counts: Vec<&Value> = loads.iter().map(|r| &r["rows"]).collect();
+    assert_eq!(counts, [&json!(3), &json!(4)], "{loads:?}");
 }

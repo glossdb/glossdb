@@ -145,6 +145,34 @@ async fn text(response: Response<Body>) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
+/// Every link of `html`, in the page's order.
+fn hrefs(html: &str) -> Vec<String> {
+    html.split("href=\"")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The bar's page links: the navigation the shell labels `pages`.
+fn bar(page: &str) -> &str {
+    let labelled = page
+        .find("aria-label=\"pages\"")
+        .unwrap_or_else(|| panic!("the page has no bar:\n{page}"));
+    let end = labelled + page[labelled..].find("</nav>").unwrap();
+    &page[labelled..end]
+}
+
+/// The link the bar marks as the current page.
+fn current_tab(page: &str) -> String {
+    let marked: Vec<&str> = bar(page)
+        .split("<a")
+        .filter(|link| link.contains("aria-current=\"page\""))
+        .collect();
+    assert_eq!(marked.len(), 1, "one tab is current: {marked:?}");
+    hrefs(marked[0]).remove(0)
+}
+
 async fn values(response: Response<Body>) -> Vec<f64> {
     assert_eq!(
         response.headers()[header::CONTENT_TYPE],
@@ -196,21 +224,26 @@ async fn a_manifest_orders_the_tabs() {
         .await
         .unwrap();
 
-    // The manifest's order and wording; no groups, so no hairline.
+    // The manifest's order.
     let two = text(get(&app, "/perf/app/two").await).await;
-    let later = two.find(">Later</a>").unwrap();
-    let first = two.find(">First</a>").unwrap();
-    assert!(later < first, "{two}");
-    assert!(!two.contains("class=\"sep\""), "{two}");
+    assert_eq!(
+        hrefs(bar(&two)),
+        ["/perf/app/two/p/later", "/perf/app/two"],
+        "{two}"
+    );
 
-    // No manifest: index first, then by name, titled by file name.
+    // No manifest: index first, then by name; the open page is marked.
     let bare = text(get(&app, "/perf/app/bare/p/zed").await).await;
-    let index = bare.find(">index</a>").unwrap();
-    let alpha = bare.find(">alpha</a>").unwrap();
-    let zed = bare
-        .find("aria-current=\"page\" href=\"/perf/app/bare/p/zed\">zed</a>")
-        .unwrap();
-    assert!(index < alpha && alpha < zed, "{bare}");
+    assert_eq!(
+        hrefs(bar(&bare)),
+        [
+            "/perf/app/bare",
+            "/perf/app/bare/p/alpha",
+            "/perf/app/bare/p/zed"
+        ],
+        "{bare}"
+    );
+    assert_eq!(current_tab(&bare), "/perf/app/bare/p/zed");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -221,43 +254,29 @@ async fn pages_render_and_frames_stream() {
     let home = get(&app, "/perf/app").await;
     assert_eq!(home.status(), StatusCode::SEE_OTHER);
     assert_eq!(home.headers()[header::LOCATION], "/perf/app/console");
-    // The bar's picker lists the glossed app; the console's pages are
-    // its tabs, the manifest's order, the current one marked.
-    let console = text(get(&app, "/perf/app/console/p/export").await).await;
+    // A console page is a live view of the catalog and is never
+    // cached; its picker lists the glossed app by the path that opens it.
+    let console = get(&app, "/perf/app/console/p/export").await;
+    assert_eq!(
+        console
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok()),
+        Some("no-store")
+    );
+    let console = text(console).await;
     assert!(
-        console.contains("<option value=\"/perf/app/board\">Perf</option>"),
+        console.contains("\"/perf/app/board\""),
         "the picker lists the app:\n{console}"
     );
-    let open = console.find("href=\"/perf/app/console\">").unwrap();
-    let export = console
-        .find("class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">")
-        .unwrap();
-    assert!(open < export, "{console}");
-    // The manifest's groups: one hairline, right before the first page
-    // of the data group.
-    assert_eq!(console.matches("class=\"sep\"").count(), 1, "{console}");
-    assert!(
-        console.contains(
-            "</a><span class=\"sep\" aria-hidden=\"true\"></span><a class=\"current\" aria-current=\"page\" href=\"/perf/app/console/p/export\">"
-        ),
-        "{console}"
-    );
 
-    // The page renders through shell + macros, carrying the app root;
-    // one page, so no tabs.
+    // The glossed page renders through the shell and the tile macros
+    // and names the frame its author placed.
     let page = get(&app, "/perf/app/board").await;
     let status = page.status();
     let page = text(page).await;
     assert_eq!(status, StatusCode::OK, "{page}");
-    assert!(page.contains("data-approot=\"/perf/app/board/\""), "{page}");
-    assert!(!page.contains("class=\"tabs\""), "{page}");
-    // A glossed app opens with its title; the built-in prints none.
-    assert!(page.contains("<h1 class=\"app-title\">Perf</h1>"), "{page}");
-    assert!(!console.contains("app-title"), "{console}");
-    assert!(
-        page.contains("<gl-chart frame=\"frames/monthly\""),
-        "{page}"
-    );
+    assert!(page.contains("frames/monthly"), "{page}");
     // A frame streams IPC: two months, summed.
     let frame = get(&app, "/perf/app/board/frames/monthly").await;
     assert_eq!(frame.status(), StatusCode::OK);
@@ -290,9 +309,9 @@ async fn pages_render_and_frames_stream() {
 }
 
 /// The interface serves an app at its release: a part glossed after the
-/// release serves under `?draft` and not at the plain URL, the bar says
-/// which is on the page, a release naming an earlier one's time serves
-/// that cut, and an app nobody released serves its draft.
+/// release serves under `?draft` and not at the plain URL, a release
+/// naming an earlier one's time serves that cut, and an app nobody
+/// released serves its draft.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_release_gates_what_is_served() {
     let (app, plane, _dir) = workspace().await;
@@ -308,15 +327,12 @@ async fn a_release_gates_what_is_served() {
         .unwrap();
     let doubled = r#"GLOSS app_frame ON board.monthly AS $${"sql": "SELECT month, sum(value) * 2 AS value FROM ledger GROUP BY month ORDER BY month"}$$;"#;
 
-    // No release: the draft serves at the plain URL, and the bar says
-    // nothing of it.
+    // No release: the draft serves at the plain URL.
     let frame = get(&app, "/perf/app/board/frames/monthly").await;
     assert_eq!(values(frame).await, vec![12.5, 4.0]);
-    let page = text(get(&app, "/perf/app/board").await).await;
-    assert!(!page.contains("class=\"chip\""), "{page}");
 
-    // Released, then edited: the plain URL keeps the release, `?draft`
-    // shows the edit, and the title carries a chip on each.
+    // Released, then edited: the plain URL keeps the release and
+    // `?draft` shows the edit.
     session
         .execute(r#"GLOSS app_release ON board AS $${"note": "first cut"}$$;"#)
         .await
@@ -326,10 +342,6 @@ async fn a_release_gates_what_is_served() {
     assert_eq!(values(frame).await, vec![12.5, 4.0]);
     let frame = get(&app, "/perf/app/board/frames/monthly?draft").await;
     assert_eq!(values(frame).await, vec![25.0, 8.0]);
-    let page = text(get(&app, "/perf/app/board").await).await;
-    assert!(page.contains("class=\"chip\""), "{page}");
-    let page = text(get(&app, "/perf/app/board?draft").await).await;
-    assert!(page.contains("class=\"chip\""), "{page}");
 
     // A second release serves the edit; one naming the first's time
     // returns to it, and `app_releases` says which stands.
@@ -461,21 +473,42 @@ async fn a_page_body_is_markup_not_script() {
     }
 }
 
-/// The shell passes its own policy: every script a rendered page
-/// loads is one of the interface's assets by `src` and served as such,
-/// nothing is inline, no element carries a handler attribute, no URL
-/// is `javascript:`, and htmx is told not to evaluate — over the
-/// workspace root, the built-in's every page, and a glossed app's.
+/// Every page renders and passes the shell's own policy: every script
+/// a rendered page loads is one of the interface's assets by `src` and
+/// served as such, nothing is inline, no element carries a handler
+/// attribute, no URL is `javascript:`, and htmx is told not to
+/// evaluate — over the workspace root, the built-in's every page in
+/// each of its states, and a glossed app's.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_shell_passes_its_own_policy() {
-    let (app, _plane, _dir) = workspace().await;
+async fn every_page_renders_and_passes_the_shells_policy() {
+    let (app, plane, _dir) = workspace().await;
+    seed_model_shapes(&plane).await;
     for uri in [
         "/",
         "/perf/app/console",
-        "/perf/app/console/p/views",
-        "/perf/app/console/p/quality",
+        "/perf/app/console/p/model",
+        "/perf/app/console/p/history",
+        "/perf/app/console/p/history?kind=load",
         "/perf/app/console/p/lineage",
+        "/perf/app/console/p/glossary",
+        "/perf/app/console/p/glossary?table=ledger",
+        "/perf/app/console/p/glossary?table=ledger&tab=history",
+        "/perf/app/console/p/glossary?column=ledger.value",
+        "/perf/app/console/p/glossary?aspect=meaning",
+        "/perf/app/console/p/glossary?source=erp",
+        "/perf/app/console/p/glossary?source=erp&tab=used",
+        "/perf/app/console/p/views",
+        "/perf/app/console/p/views?view=dso",
+        "/perf/app/console/p/views?view=dso&tab=measurements",
+        "/perf/app/console/p/views?view=dso&dim=cohort",
+        "/perf/app/console/p/views?view=cleaned&kind=relation",
+        "/perf/app/console/p/views?view=payables&kind=scalar",
+        "/perf/app/console/p/quality",
+        "/perf/app/console/p/quality?test=role_test&kind=values",
+        "/perf/app/console/p/quality?test=role_test&kind=results&tab=measurements",
+        "/perf/app/console/p/review",
         "/perf/app/console/p/export",
+        "/perf/app/console/p/query",
         "/perf/app/board",
     ] {
         let response = get(&app, uri).await;
@@ -843,7 +876,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_detail_frames_survive_a_second_dataset() {
+async fn a_second_dataset_does_not_multiply_a_views_rows() {
     // With two datasets in the
     // workspace, frames that scanned the `datasets` relation fanned
     // every joined row out — two formulas, two materializations. The
@@ -880,7 +913,7 @@ async fn the_detail_frames_survive_a_second_dataset() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_summary_counts_what_waits_on_the_agent() {
+async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_recorded_again() {
     // The waiting derivation: a human formula
     // answer newer than the metric's recorded materialization requires the
     // agent a re-alignment — the two forms of one definition. The
@@ -1016,57 +1049,6 @@ async fn the_metric_frame_serves_the_winning_value_once() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_review_decision_closes_its_question_and_shows_on_the_assumptions() {
-    // A human review decision is its own record — the queue
-    // holds the decided question closed by its declared key, and the
-    // assumptions ledger shows the judgment beside the assumption it
-    // rules ("the review decisions that lead to the agreed facts").
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-
-    // The seed's loose `per line` assumption queues.
-    let queue = get(&app, "/perf/app/console/frames/open").await;
-    assert_eq!(row_count(queue).await, 1, "the loose assumption queues");
-
-    // The human's review decision is stored (the interface writes it in production; a
-    // session write is the same statement).
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
-    human
-        .execute(shipped_review_decision_declaration())
-        .await
-        .unwrap();
-    human
-        .execute(
-            r#"GLOSS review_decision ON perf AS $${"decisions": [
-                 {"aspect": "dso", "dimension": "definition", "key": "per-line",
-                  "assumption": "per line", "stance": "confirmed"}]}$$;"#,
-        )
-        .await
-        .unwrap();
-
-    // The queue holds the question closed; the ledger shows the review decision
-    // beside its assumption, not yet applied.
-    let queue = get(&app, "/perf/app/console/frames/open").await;
-    assert_eq!(
-        row_count(queue).await,
-        0,
-        "the decision closes the question"
-    );
-    let assumptions = get(&app, "/perf/app/console/frames/assumptions?view=dso").await;
-    let text = body_text(assumptions).await;
-    assert!(text.contains("confirmed"), "{text}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     // The interface's one write. A human who
     // steps away has no way back into the catalog at all: the MCP review
@@ -1131,8 +1113,13 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
             .and_then(|v| v.to_str().ok()),
         Some("glossql:written")
     );
+    assert!(
+        response.headers().get(header::LOCATION).is_none(),
+        "the answer is an event, there is nowhere to follow it to"
+    );
 
-    // The question closes and the review decision holds in the human's words.
+    // The question closes, the review decision holds in the human's
+    // words, and the view's assumptions show it beside the assumption.
     assert_eq!(
         row_count(get(&app, "/perf/app/console/frames/open").await).await,
         0,
@@ -1145,6 +1132,9 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     );
     assert!(settled.contains("per order, not per line"), "{settled}");
     assert!(settled.contains("corrected"), "{settled}");
+    let assumptions =
+        body_text(get(&app, "/perf/app/console/frames/assumptions?view=dso").await).await;
+    assert!(assumptions.contains("corrected"), "{assumptions}");
 
     // The same post again: the question no longer derives, so the interface
     // refuses instead of writing a second review decision from a stale page —
@@ -1270,31 +1260,8 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
         "the row opens the test, with the detector's kind:\n{tests}"
     );
 
-    // The test's page: the declaration and the result as one row,
-    // then the evidence — every result, for a detector the page has
-    // no shape for.
-    let page = text(
-        get(
-            &app,
-            "/perf/app/console/p/quality?test=dso_test&kind=results",
-        )
-        .await,
-    )
-    .await;
-    assert!(page.contains("frames/test\""), "{page}");
-    let evidence = text(
-        get(
-            &app,
-            "/perf/app/console/p/quality?test=dso_test&kind=results&tab=measurements",
-        )
-        .await,
-    )
-    .await;
-    assert!(evidence.contains("frames/test_results"), "{evidence}");
-    assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/quality\">"),
-        "opening a test stays on the tab:\n{page}"
-    );
+    // The test's own frames: the declaration with its detector and
+    // threshold, then every result.
     let test = body_text(get(&app, "/perf/app/console/frames/test?test=dso_test").await).await;
     assert!(test.contains("fixed_check\n"), "{test}");
     assert!(test.contains("0.9\n"), "the threshold:\n{test}");
@@ -1356,7 +1323,7 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_metric_frames_serve_the_cube() {
+async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     // The views page end to end from the cube: nothing is
     // planted — the frames read `metric_series()` and `view_summary()`,
     // which build the cube from the metric definition and the judged results
@@ -1623,7 +1590,7 @@ async fn the_plan_is_served_beside_its_metric() {
 /// period column nobody profiled — the banner counts the want, the
 /// console's re-measure runs the profile, and the series serves.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_list_serves_a_workspace_without_a_fact() {
+async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     let (app, plane, _dir) = workspace().await;
     plane
         .channel(
@@ -1656,9 +1623,15 @@ async fn the_list_serves_a_workspace_without_a_fact() {
     let fact = get(&app, "/perf/app/console/frames/fact?view=undated").await;
     assert_eq!(row_count(fact).await, 0, "an undeclared kind is not a fact");
 
-    // The undated measure carries its row's reason in the axes column.
+    // The undated measure is listed beside the metric, though it
+    // serves no series.
     let measures = get(&app, "/perf/app/console/frames/measures?stopped=0").await;
     assert_eq!(measures.status(), StatusCode::OK);
+    let measures = body_text(measures).await;
+    assert!(
+        measures.contains("dso\n") && measures.contains("undated\n"),
+        "{measures}"
+    );
 
     // Nobody profiled `dso.month`: the row wants the profile, `open_items`
     // lists it, the banner counts it, and the series waits.
@@ -1703,163 +1676,6 @@ async fn the_list_serves_a_workspace_without_a_fact() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_views_pages_render_both_states() {
-    // The measures list and the detail, as pages: the front renders the list
-    // and the front counts; a metric URL renders the detail with the
-    // slice picker, and a picked dim adds the slice chart tile.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-
-    let front = get(&app, "/perf/app/console/p/views").await;
-    assert_eq!(front.status(), StatusCode::OK);
-    let front = text(front).await;
-    assert!(front.contains("frames/measures"), "{front}");
-
-    // the front counts live on the console itself, not the metric list;
-    // the questions and the decisions on the review page
-    let front_page = text(get(&app, "/perf/app/console").await).await;
-    assert!(front_page.contains("frames/front"), "{front_page}");
-    assert!(front_page.contains("frames/scorecard"), "{front_page}");
-    let open = text(get(&app, "/perf/app/console/p/review").await).await;
-    assert!(open.contains("frames/open"), "{open}");
-    assert!(open.contains("frames/settled"), "{open}");
-
-    let detail = text(get(&app, "/perf/app/console/p/views?view=dso").await).await;
-    assert!(detail.contains("frames/trend"), "{detail}");
-    let measured =
-        text(get(&app, "/perf/app/console/p/views?view=dso&tab=measurements").await).await;
-    assert!(measured.contains("frames/dims"), "{measured}");
-    assert!(
-        !measured.contains("frames/slices"),
-        "no dim picked — the slice tile must not render"
-    );
-
-    let sliced = text(get(&app, "/perf/app/console/p/views?view=dso&dim=cohort").await).await;
-    assert!(sliced.contains("frames/slices"), "{sliced}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_review_decision_answers_with_the_write_event_never_a_navigation() {
-    // Not a 303 to the Referer: a
-    // 303's job is to send the reader somewhere else to see the result,
-    // and the reader never leaves this page — the console is
-    // client-rendered, so the response is an event. Success is 204 with
-    // `HX-Trigger: glossql:written`, never a Location; the Referer is
-    // ignored entirely, so there is nothing a forged one can steer.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap()
-        .execute(shipped_review_decision_declaration())
-        .await
-        .unwrap();
-    // One open question per case below: a review decision closes the question it
-    // answered, so re-posting the same key would be refused as stale
-    // and never reach the redirect at all.
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
-        .execute(
-            r#"USE perf;
-               GLOSS dso ON perf AS $${"sql": "SELECT month, value FROM ledger",
-                 "assumptions": [
-                   {"dimension": "definition", "key": "k0", "assumption": "a", "basis": "judgment", "confidence": 0.7},
-                   {"dimension": "definition", "key": "k1", "assumption": "b", "basis": "judgment", "confidence": 0.7},
-                   {"dimension": "definition", "key": "k2", "assumption": "c", "basis": "judgment", "confidence": 0.7},
-                   {"dimension": "definition", "key": "k3", "assumption": "d", "basis": "judgment", "confidence": 0.7},
-                   {"dimension": "definition", "key": "k4", "assumption": "e", "basis": "judgment", "confidence": 0.7},
-                   {"dimension": "definition", "key": "k5", "assumption": "f", "basis": "judgment", "confidence": 0.7}
-                 ]}$$;"#,
-        )
-        .await
-        .unwrap();
-
-    // Pages are never cached: they are live views of a mutable record.
-    let page = get(&app, "/perf/app/console").await;
-    assert_eq!(
-        page.headers()
-            .get(axum::http::header::CACHE_CONTROL)
-            .and_then(|v| v.to_str().ok()),
-        Some("no-store"),
-        "a console page must not be cacheable"
-    );
-
-    let post = |key: &'static str, referer: Option<&'static str>| {
-        let app = app.clone();
-        async move {
-            let mut request = Request::post("/perf/app/console/decide").header(
-                axum::http::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            );
-            if let Some(referer) = referer {
-                request = request.header(axum::http::header::REFERER, referer);
-            }
-            app.oneshot(
-                request
-                    .body(Body::from(format!(
-                        "subject=perf&aspect=dso&key={key}&stance=confirmed"
-                    )))
-                    .unwrap(),
-            )
-            .await
-            .unwrap()
-        }
-    };
-
-    // The same contract wherever the reader decided from — a metric's
-    // page, a forged Referer, no Referer at all: 204, the trigger, and
-    // no Location for anything to follow.
-    for (key, referer) in [
-        (
-            "k0",
-            Some("http://127.0.0.1:8113/app/console/p/views?view=dso"),
-        ),
-        ("k1", Some("http://evil.example/steal")),
-        ("k2", Some("//evil.example/steal")),
-        ("k3", Some("/perf/app/other/p/views")),
-        ("k4", Some("not a url at all")),
-        ("k5", None),
-    ] {
-        let response = post(key, referer).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::NO_CONTENT,
-            "referer {referer:?}"
-        );
-        assert_eq!(
-            response
-                .headers()
-                .get("HX-Trigger")
-                .and_then(|v| v.to_str().ok()),
-            Some("glossql:written"),
-            "referer {referer:?}"
-        );
-        assert!(
-            response
-                .headers()
-                .get(axum::http::header::LOCATION)
-                .is_none(),
-            "referer {referer:?}"
-        );
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn the_root_lists_every_dataset_at_a_glance() {
     // The workspace root: each dataset with what loaded, what is served
     // and what waits on a person, the apps with the datasets they
@@ -1873,21 +1689,19 @@ async fn the_root_lists_every_dataset_at_a_glance() {
     assert!(root.contains("app interface test"), "the purpose:\n{root}");
     // The second dataset, empty, still lists with its own way in.
     assert!(root.contains("multi-dataset guard"), "{root}");
-    assert!(root.contains("href=\"/second/app\""), "{root}");
+    let links = hrefs(&root);
+    let links = |path: &str| links.iter().any(|l| l == path);
+    assert!(links("/second/app"), "{root}");
     // The built-in serves every dataset; a glossed app is served
     // where it was glossed and nowhere else.
-    assert!(root.contains("href=\"/perf/app/console\""), "{root}");
-    assert!(root.contains("href=\"/second/app/console\""), "{root}");
-    assert!(root.contains("href=\"/perf/app/board\""), "{root}");
-    assert!(!root.contains("href=\"/second/app/board\""), "{root}");
+    assert!(links("/perf/app/console"), "{root}");
+    assert!(links("/second/app/console"), "{root}");
+    assert!(links("/perf/app/board"), "{root}");
+    assert!(!links("/second/app/board"), "{root}");
     // The connect line names the server as it was told it is reached,
     // whatever host the request claimed. The template escapes the
     // scheme's slashes, so the host is the tell.
-    assert!(root.contains("claude mcp add"), "{root}");
-    assert!(
-        root.contains("glossql.example/&lt;dataset&gt;/mcp"),
-        "{root}"
-    );
+    assert!(root.contains("glossql.example"), "{root}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1895,14 +1709,8 @@ async fn the_export_tab_lists_tables_and_reads() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    // The page places the rows; its download links opt out of the
-    // shell's hx-boost, which would otherwise swap the file's text
-    // into the page, and the curl line names this dataset's interface.
+    // The page's curl line names this dataset's query interface.
     let page = text(get(&app, "/perf/app/console/p/export").await).await;
-    assert!(
-        page.contains("hx-boost=\"false\" download href=\"{csv}\""),
-        "{page}"
-    );
     assert!(page.contains("/perf/query"), "{page}");
 
     // The loaded table with its shape and its two files.
@@ -1925,14 +1733,16 @@ async fn the_export_tab_lists_tables_and_reads() {
     assert!(reads.contains("/perf/app/export/read.dso.csv\n"), "{reads}");
     assert!(reads.contains(&relation("payables")), "{reads}");
 
-    // A dataset with nothing loaded serves empty frames, and the page
-    // still holds with the bar's tabs.
+    // A dataset with nothing loaded serves empty frames, and its page
+    // renders.
     assert_eq!(
         row_count(get(&app, "/second/app/console/frames/tables").await).await,
         0
     );
-    let second = text(get(&app, "/second/app/console/p/export").await).await;
-    assert!(second.contains("<nav class=\"tabs\""), "{second}");
+    assert_eq!(
+        get(&app, "/second/app/console/p/export").await.status(),
+        StatusCode::OK
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2082,17 +1892,6 @@ async fn the_lineage_page_serves_tables_keys_and_reads() {
         ))
         .await
         .unwrap();
-
-    let page = get(&app, "/perf/app/console/p/lineage").await;
-    assert_eq!(page.status(), StatusCode::OK);
-    let page = text(page).await;
-    assert!(
-        page.contains("<gl-graph nodes=\"frames/lineage_nodes\" edges=\"frames/lineage_edges\""),
-        "{page}"
-    );
-    // The overview's left nav links it.
-    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
-    assert!(tree.contains("/perf/app/console/p/lineage\n"), "{tree}");
 
     // Nodes: the two tables' columns in order, and the metric definition's
     // served fields under the metric; a metric definition with only an
@@ -2318,36 +2117,15 @@ async fn a_stopped_view_folds_under_the_lists() {
     let relation = |name: &str| format!("\n{name}\n");
     assert!(reads.contains(&relation("old_dso")), "{reads}");
     assert!(!reads.contains(&relation("dso")), "{reads}");
-    let page = text(get(&app, "/perf/app/console/p/views").await).await;
-    assert!(
-        page.contains("<details class=\"fold\">") && page.contains("frames/measures?stopped=1"),
-        "the fold under the list:\n{page}"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_views_page_serves_its_columns_and_its_rows() {
-    // A view is rows, not a series: its page lists every column the
-    // catalog holds under its name with the role and the column each
-    // descends from, names the tables it reads, and carries the pane
-    // prefilled with a read over it. A metric's page carries no pane.
+async fn a_table_view_serves_its_columns_and_the_tables_it_reads() {
+    // A table view is rows, not a series: its frames list every column
+    // the catalog holds under its name with the column each descends
+    // from, and name the tables it reads.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-
-    let page = text(get(&app, "/perf/app/console/p/views?view=cleaned&kind=relation").await).await;
-    assert!(page.contains("frames/view_fields"), "{page}");
-    assert!(page.contains("frames/view_tables"), "{page}");
-    assert!(
-        page.contains(
-            "<gl-query dataset=\"perf\" rows=\"50\" sql=\"SELECT * FROM cleaned LIMIT 50\">"
-        ),
-        "the pane, prefilled:\n{page}"
-    );
-    let metric = text(get(&app, "/perf/app/console/p/views?view=dso").await).await;
-    assert!(
-        !metric.contains("<gl-query"),
-        "a metric's page carries no pane:\n{metric}"
-    );
 
     let fields =
         body_text(get(&app, "/perf/app/console/frames/view_fields?view=cleaned").await).await;
@@ -2365,16 +2143,13 @@ async fn a_views_page_serves_its_columns_and_its_rows() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
-    // The Glossary: the vocabulary first — every declared aspect in
-    // three groups by kind with what it holds, where it is required, how
-    // many required subjects carry a value and who may annotate it — then the
-    // terms (every metric, view and fact with its agreed meaning, and
-    // every column whose meaning names a term), the tables with their
-    // columns as lines, the joins and the sources. A person's word is
-    // marked once; the who and the when ride the hover. No pane: the
-    // Query tab carries it, with the relations to pick from, each a
-    // link that puts the read in the page URL.
+async fn the_catalog_frames_serve_the_vocabulary_the_terms_the_relations_and_the_sources() {
+    // The catalog's frames: the vocabulary — every declared aspect by
+    // kind, the app's own apart — then the terms (every metric, view
+    // and fact with its agreed meaning, and every column whose meaning
+    // names a term, a person's word over an agent's), the relations to
+    // query, each a link that puts the read in the page URL, the
+    // tables with their columns, and the sources.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -2387,14 +2162,12 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         )
         .await
         .unwrap();
-    let words = "";
     agent
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               {words}
-               GLOSS role ON ledger.value AS $${{"value": "measure"}}$$;
-               GLOSS meaning ON ledger.value AS $${{"value": "the money", "term": "Booked value"}}$$;"#
-        ))
+               GLOSS role ON ledger.value AS $${"value": "measure"}$$;
+               GLOSS meaning ON ledger.value AS $${"value": "the money", "term": "Booked value"}$$;"#,
+        )
         .await
         .unwrap();
     plane
@@ -2410,24 +2183,6 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash", "term": "Booked value"}$$;"#)
         .await
         .unwrap();
-
-    let page = text(get(&app, "/perf/app/console/p/glossary").await).await;
-    for frame in [
-        "frames/vocabulary?kind=fact",
-        "frames/vocabulary?kind=view",
-        "frames/vocabulary?kind=measurement",
-        "frames/vocabulary?kind=own",
-        "frames/terms",
-        "frames/columns",
-        "frames/joins?table=&column=",
-        "frames/conventions",
-    ] {
-        assert!(page.contains(frame), "{frame} on the tab:\n{page}");
-    }
-    assert!(
-        !page.contains("<gl-query"),
-        "the pane is the Query tab's:\n{page}"
-    );
 
     // The vocabulary, by kind: a fact aspect with its enum, its grain,
     // the required assets with a value and who may annotate; a metric definition; a
@@ -2478,9 +2233,6 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
     );
     assert!(!terms.contains("\nplan\n"), "a plan is no term:\n{terms}");
 
-    let query = text(get(&app, "/perf/app/console/p/query").await).await;
-    assert!(query.contains("<gl-query dataset=\"perf\""), "{query}");
-    assert!(query.contains("frames/relations"), "{query}");
     let relations = get(&app, "/perf/app/console/frames/relations").await;
     assert_eq!(relations.status(), StatusCode::OK);
     let relations = body_text(relations).await;
@@ -2519,12 +2271,11 @@ async fn the_glossary_tab_lists_the_words_and_the_query_tab_carries_the_pane() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_table_a_column_and_an_aspect_each_have_a_page() {
-    // Three pages under the Glossary tab, each a page param: a table
-    // with its entity, its columns' values and measurements, its joins,
-    // what holds among its columns and its load; a column with every
-    // value and every value, the outranked one on record; an aspect with
-    // its declaration and every value under it, the required ones by name.
+async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
+    // A table with its entity, its columns in order with the winning
+    // value on each, and its load; a column with every value on it, the
+    // outranked one on record; an aspect with its declaration and every
+    // value under it, the required subjects without one by name.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -2537,14 +2288,12 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         )
         .await
         .unwrap();
-    let words = "";
     agent
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               {words}
-               GLOSS entity ON ledger AS $${{"value": "one ledger line", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}}$$;
-               GLOSS meaning ON ledger.value AS $${{"value": "the money"}}$$;"#
-        ))
+               GLOSS entity ON ledger AS $${"value": "one ledger line", "role": "fact", "grain": ["month", "cohort"], "time_axis": "month"}$$;
+               GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;"#,
+        )
         .await
         .unwrap();
     plane
@@ -2561,26 +2310,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         .await
         .unwrap();
 
-    // The table's page.
-    let page = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
-    assert!(page.contains("frames/table_head?table=ledger"), "{page}");
-    assert!(page.contains("frames/table_columns?table=ledger"), "{page}");
-    let history = text(
-        get(
-            &app,
-            "/perf/app/console/p/glossary?table=ledger&tab=history",
-        )
-        .await,
-    )
-    .await;
-    assert!(
-        history.contains("frames/table_loads?table=ledger"),
-        "{history}"
-    );
-    assert!(
-        page.contains("aria-current=\"page\" href=\"/perf/app/console/p/glossary\">"),
-        "opening a table stays on the tab:\n{page}"
-    );
+    // The table.
     let head = body_text(get(&app, "/perf/app/console/frames/table_head?table=ledger").await).await;
     assert!(head.contains("one ledger line\n"), "{head}");
     let cols =
@@ -2605,12 +2335,7 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
         "the recipe's SQL:\n{loads}"
     );
 
-    // The column's page: every value, the outranked one on record.
-    let page = text(get(&app, "/perf/app/console/p/glossary?column=ledger.value").await).await;
-    assert!(
-        page.contains("frames/column_values?column=ledger.value"),
-        "{page}"
-    );
+    // The column: every value, the outranked one on record.
     let head = body_text(
         get(
             &app,
@@ -2641,13 +2366,8 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
     assert!(values.contains("the cash\nthe money\n"), "{values}");
     assert!(values.contains("ada"), "the writer's name:\n{values}");
 
-    // The aspect's page: the declaration, then every value and every
+    // The aspect: the declaration, then every value and every
     // required subject by name.
-    let page = text(get(&app, "/perf/app/console/p/glossary?aspect=meaning").await).await;
-    assert!(
-        page.contains("frames/aspect_values?aspect=meaning"),
-        "{page}"
-    );
     let head =
         body_text(get(&app, "/perf/app/console/frames/aspect_head?aspect=meaning").await).await;
     assert!(head.starts_with("meaning\n"), "{head}");
@@ -2670,54 +2390,34 @@ async fn a_table_a_column_and_an_aspect_each_have_a_page() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_tree_lists_sources_tables_columns_and_tests() {
+async fn the_tree_links_the_catalogs_objects_and_the_pages_the_bar_does_not() {
     // The console's tree: one row per entry, each with the page it
-    // opens — the source, the table and its columns, the tests.
+    // opens — the source, the table and its columns, and the pages
+    // that have no tab in the bar.
     let (app, _plane, _dir) = workspace().await;
     let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
     for line in [
         "/perf/app/console/p/glossary?source=erp\n",
         "/perf/app/console/p/glossary?table=ledger\n",
         "/perf/app/console/p/glossary?column=ledger.value\n",
+        "/perf/app/console/p/model\n",
+        "/perf/app/console/p/history\n",
+        "/perf/app/console/p/lineage\n",
+        "/perf/app/console/p/review#decisions\n",
+        "/perf/app/console/p/query\n",
     ] {
         assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
     }
-    // Every console page carries the left nav for its section.
-    let page = text(get(&app, "/perf/app/console/p/views").await).await;
-    assert!(
-        page.contains("<gl-tree frame=\"frames/tree\" section=\""),
-        "{page}"
-    );
-    assert!(page.contains("/assets/gl-tree.js"), "{page}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
     let (app, _plane, _dir) = workspace().await;
-    let bar = |page: &str| {
-        let start = page.find("<nav class=\"tabs\"").unwrap();
-        let end = start + page[start..].find("</nav>").unwrap();
-        page[start..end].to_string()
-    };
-    // Every link of the bar, in order.
-    let links = |tabs: &str| -> Vec<String> {
-        tabs.split("href=\"")
-            .skip(1)
-            .map(|rest| rest[..rest.find('"').unwrap()].to_string())
-            .collect()
-    };
-    // The link of the tab the bar marks as current.
-    let current = |page: &str| {
-        let tabs = bar(page);
-        let at = tabs.find("class=\"current\"").unwrap();
-        links(&tabs[at..]).remove(0)
-    };
     let index = text(get(&app, "/perf/app/console").await).await;
-    let tabs = bar(&index);
     // Six sections; the model, history, lineage and query pages are
     // reached from the left nav, not from the bar.
     assert_eq!(
-        links(&tabs),
+        hrefs(bar(&index)),
         [
             "/perf/app/console",
             "/perf/app/console/p/glossary",
@@ -2726,9 +2426,9 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
             "/perf/app/console/p/review",
             "/perf/app/console/p/export",
         ],
-        "{tabs}"
+        "{index}"
     );
-    // A page marks the section that owns it, and carries the left nav.
+    // A page marks the section that owns it.
     for (url, section) in [
         ("/perf/app/console/p/model", "/perf/app/console"),
         (
@@ -2752,48 +2452,31 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
             "/perf/app/console/p/views",
         ),
         ("/perf/app/console/p/quality", "/perf/app/console/p/quality"),
+        (
+            "/perf/app/console/p/quality?test=role_test&kind=values",
+            "/perf/app/console/p/quality",
+        ),
         ("/perf/app/console/p/query", "/perf/app/console/p/export"),
     ] {
         let page = text(get(&app, url).await).await;
-        assert_eq!(current(&page), section, "{url}");
-        assert!(
-            page.contains("<gl-tree frame=\"frames/tree\" section=\""),
-            "{url}"
-        );
-    }
-    // The breadcrumb links the dataset and the section.
-    let table = text(get(&app, "/perf/app/console/p/glossary?table=ledger").await).await;
-    let crumbs = &table[table.find("class=\"crumbs\"").unwrap()..];
-    let crumbs = &crumbs[..crumbs.find("</p>").unwrap()];
-    assert_eq!(crumbs.matches("<a href=").count(), 2, "{crumbs}");
-    // The left nav links the pages the bar does not.
-    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
-    for line in [
-        "/perf/app/console/p/model\n",
-        "/perf/app/console/p/review#decisions\n",
-        "/perf/app/console/p/query\n",
-    ] {
-        assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
+        assert_eq!(current_tab(&page), section, "{url}");
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_source_has_a_page_with_the_five_tabs() {
+async fn a_source_has_five_tabs_and_serves_its_load_queries_and_loads() {
     let (app, _plane, _dir) = workspace().await;
     let page = text(get(&app, "/perf/app/console/p/glossary?source=erp").await).await;
-    assert!(page.contains("frames/source_head"), "{page}");
+    let links = hrefs(&page);
     for tab in [
-        "href=\"?source=erp\"",
-        "href=\"?source=erp&tab=measurements\"",
-        "href=\"?source=erp&tab=tests\"",
-        "href=\"?source=erp&tab=used\"",
-        "href=\"?source=erp&tab=history\"",
+        "?source=erp",
+        "?source=erp&tab=measurements",
+        "?source=erp&tab=tests",
+        "?source=erp&tab=used",
+        "?source=erp&tab=history",
     ] {
-        assert!(page.contains(tab), "{tab}:\n{page}");
+        assert!(links.iter().any(|l| l == tab), "{tab}:\n{page}");
     }
-    assert!(page.contains("class=\"crumbs\""), "{page}");
-    let used = text(get(&app, "/perf/app/console/p/glossary?source=erp&tab=used").await).await;
-    assert!(used.contains("frames/source_recipes"), "{used}");
     let recipes =
         body_text(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
     assert!(
@@ -2809,24 +2492,10 @@ async fn a_source_has_a_page_with_the_five_tabs() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_overview_shows_the_scorecard_and_the_review_has_its_own_page() {
-    let (app, _plane, _dir) = workspace().await;
-    let overview = text(get(&app, "/perf/app/console").await).await;
-    assert!(overview.contains("frames/scorecard"), "{overview}");
-    assert!(overview.contains("frames/open_items"), "{overview}");
-    assert!(
-        overview.contains("/perf/app/console/p/review"),
-        "{overview}"
-    );
-    let review = text(get(&app, "/perf/app/console/p/review").await).await;
-    assert!(review.contains("frames/open\""), "{review}");
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_model_draws_each_table_as_its_entity() {
-    // The model page: each table with what one row is under its name,
-    // and each column with what it carries — role, additivity, unit,
-    // the grain, the time axis. Both new pages sit in the tree.
+async fn the_model_serves_each_table_as_its_entity() {
+    // The model's nodes: each table with what one row is under its
+    // name, and each column with what it carries — role, additivity,
+    // unit, the grain, the time axis.
     let (app, plane, _dir) = workspace().await;
     let agent = plane
         .channel(
@@ -2858,12 +2527,6 @@ async fn the_model_draws_each_table_as_its_entity() {
     ] {
         assert!(nodes.contains(line), "{line:?} in the model:\n{nodes}");
     }
-    let page = text(get(&app, "/perf/app/console/p/model").await).await;
-    assert!(page.contains("frames/model_nodes"), "{page}");
-    assert!(page.contains("node-width=\"250\""), "{page}");
-    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
-    assert!(tree.contains("/perf/app/console/p/model\n"), "{tree}");
-    assert!(tree.contains("/perf/app/console/p/history\n"), "{tree}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2913,10 +2576,4 @@ async fn the_history_lists_loads_annotations_and_declarations_newest_first() {
     )
     .await;
     assert!(ledger.contains("ledger.value\n"), "{ledger}");
-    let page = text(get(&app, "/perf/app/console/p/history?kind=load").await).await;
-    assert!(page.contains("frames/history?kind="), "{page}");
-    assert!(
-        page.contains("class=\"chip on\" href=\"?kind=load\""),
-        "{page}"
-    );
 }

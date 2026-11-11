@@ -4,13 +4,12 @@
 //! functions, and nothing on the interface said which — an agent learned
 //! the surface by refusal. Each page lists what its context registers,
 //! read from that context's own registry at boot (after the shipped
-//! system loaded), so a page cannot drift from the registration; the
-//! suite compares them (`tests/suite/next.rs`).
+//! system loaded), so a page cannot drift from the registration.
 
 use std::fmt::Write as _;
 
 use crate::engine::{Actor, ActorKind};
-use crate::engine::{INTERFACES, Plane, Registered, ServedPage, SessionError};
+use crate::engine::{Plane, Registered, ServedPage, SessionError};
 
 use crate::wire;
 
@@ -22,11 +21,6 @@ pub async fn pages(plane: &Plane) -> Result<Vec<ServedPage>, SessionError> {
     };
     let session = plane.channel(actor, None).await?;
     let mut served = session.registered_functions().await?;
-    served.extend(INTERFACES.iter().map(|(name, syntax)| Registered {
-        kind: "interface",
-        name: (*name).to_string(),
-        syntax: Some((*syntax).to_string()),
-    }));
     // The functions declared when the interface opened — the kit's, and any
     // a workspace declared before this boot. `functions` says what
     // holds now.

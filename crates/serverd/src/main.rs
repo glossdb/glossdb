@@ -20,8 +20,8 @@ use std::future::IntoFuture;
 use std::sync::Arc;
 
 use config::{Config, usage};
-use glossdb_serverd::engine::{Actor, ActorKind, WarehouseCredential, store_kind};
-use glossdb_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, router};
+use glossdb_serverd::engine::{WarehouseCredential, store_kind};
+use glossdb_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, router};
 
 fn main() {
     // Before parse: --version and --help answer and exit — a packaging
@@ -89,7 +89,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
 /// Everything between the runtime's start and the server's stop.
 async fn interfaces(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plane = opened(&config).await?;
-    let plane = bootstrapped(plane).await?;
+    let plane = with_listings(plane).await?;
     let access = access_of(config.auth, &config.audience).await?;
     let app = router(plane, config.interfaces, access);
     serve_until_stopped(app, &config.addr).await
@@ -170,20 +170,12 @@ async fn warehouse_credential(
     }
 }
 
-/// A fresh workspace receives the shipped system before any interface
-/// opens; the function listings read the registries the shipped
-/// system declared into, so they follow the bootstrap.
-async fn bootstrapped(
+/// The pages the interfaces serve, with the function listings: these
+/// read the registries the kits declared into when the workspace
+/// opened.
+async fn with_listings(
     plane: Plane,
 ) -> Result<Arc<Plane>, Box<dyn std::error::Error + Send + Sync>> {
-    bootstrap(
-        &plane,
-        Actor {
-            kind: ActorKind::Human,
-            id: glossdb_serverd::BOOTSTRAP.into(),
-        },
-    )
-    .await?;
     let listings = glossdb_serverd::functions::pages(&plane).await?;
     Ok(Arc::new(plane.with_pages(
         glossdb_serverd::skills::served_pages_with(listings)?,

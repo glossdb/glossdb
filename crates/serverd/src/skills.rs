@@ -1,5 +1,4 @@
-//! The teaching resources, embedded at compile time — the same
-//! lockstep as the shipped system ([`crate::bootstrap`]): what this
+//! The teaching resources, embedded at compile time: what this
 //! build serves is what this build's suite tested. A skill is a
 //! directory under the repo's `skills/`: its `SKILL.md`, served on the
 //! MCP interface as a resource and as a prompt, and its references, served

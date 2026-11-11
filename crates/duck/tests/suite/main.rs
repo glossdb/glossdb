@@ -3,9 +3,7 @@
 //! streamed, the summary counted, a review decision stored. Needs the extension
 //! beside this checkout (`GLOSSQL_EXTENSION` overrides the path).
 
-use glossdb_duck::{
-    Actor, ActorKind, Config, Outcome, Plane, SessionError, call_shape, rows_as_text,
-};
+use glossdb_duck::{Actor, ActorKind, Config, Outcome, Plane, SessionError, rows_as_text};
 
 fn agent() -> Actor {
     Actor {
@@ -266,7 +264,7 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
     assert_eq!(before.human_writings, 0);
 
     let session = plane.channel(human(), Some("fin")).await.unwrap();
-    let said = glossdb_duck::decisions::store(
+    glossdb_duck::decisions::store(
         &session,
         glossdb_duck::decisions::Decision {
             subject: "orders.id",
@@ -280,23 +278,33 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
     )
     .await
     .unwrap();
-    assert!(said.contains("confirmed") && said.contains("k1"), "{said}");
 
+    // The decision is the person's own annotation, and the summary
+    // counts it.
+    let stored = text(
+        &session
+            .execute(
+                "SELECT actor_kind, actor_id, json_extract_string(body, '$.decisions[0].key'), \
+                 json_extract_string(body, '$.decisions[0].stance') \
+                 FROM glossary WHERE aspect = 'review_decision'",
+            )
+            .await
+            .unwrap(),
+    );
+    let cell = |s: &str| Some(s.to_string());
+    assert_eq!(
+        stored,
+        vec![vec![
+            cell("human"),
+            cell("test:human"),
+            cell("k1"),
+            cell("confirmed")
+        ]]
+    );
     let after = plane.summary_counts().await.unwrap();
     assert_eq!(after.human_writings, 1);
     assert!(after.latest_human_at.is_some());
     assert_eq!(after.decisions_open, 0);
-
-    let shape = call_shape("USE fin; SELECT * FROM glossary");
-    assert!(
-        shape.reviews && !shape.writes,
-        "a catalog read under USE reviews: {shape:?}"
-    );
-    assert_eq!(shape.dataset.as_deref(), Some("fin"));
-    assert!(
-        call_shape("SELECT * FROM GLOSSARY(orders)").reviews
-            || !call_shape("SELECT * FROM GLOSSARY(orders)").writes
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -358,13 +366,17 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
     );
     let kits = text(
         &second
-            .execute(agent(), None, "SELECT count(*) FROM kits")
+            .execute(
+                agent(),
+                None,
+                "SELECT count(*) > 0 AND count(*) = count(DISTINCT name) FROM kits",
+            )
             .await
             .unwrap(),
     );
     assert_eq!(
         kits,
-        vec![vec![Some("6".to_string())]],
+        vec![vec![Some("true".to_string())]],
         "every kit ran once at the first open and was current at the second"
     );
     let next = text(

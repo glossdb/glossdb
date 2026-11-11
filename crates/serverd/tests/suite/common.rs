@@ -7,6 +7,9 @@
 
 use std::sync::Arc;
 
+use axum::Router;
+use axum::body::{Body, to_bytes};
+use axum::http::{Request, Response, StatusCode, header};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
@@ -15,6 +18,7 @@ use glossdb_serverd::{Endpoints, Gate, Login};
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde_json::{Value, json};
+use tower::ServiceExt;
 
 pub const ISSUER: &str = "https://issuer.test";
 pub const RESOURCE: &str = "http://127.0.0.1:8080";
@@ -143,8 +147,6 @@ pub fn far_future() -> u64 {
     9_999_999_999
 }
 
-/// The same workspace on DuckDB: the extension and its kits from beside
-/// this checkout, the lake in the directory.
 /// The person the harness speaks as: the bootstrap actor.
 pub fn human() -> glossdb_serverd::engine::Actor {
     glossdb_serverd::engine::Actor {
@@ -153,12 +155,67 @@ pub fn human() -> glossdb_serverd::engine::Actor {
     }
 }
 
+/// A scratch workspace: the extension and its kits from beside this
+/// checkout, the lake in a directory of its own.
 pub async fn scratch_plane() -> (tempfile::TempDir, glossdb_serverd::Plane) {
+    scratch_plane_capped(glossdb_serverd::DEFAULT_ROW_CAP).await
+}
+
+/// The same workspace, a data read cut at `row_cap` rows.
+pub async fn scratch_plane_capped(row_cap: usize) -> (tempfile::TempDir, glossdb_serverd::Plane) {
     let dir = tempfile::tempdir().unwrap();
     let mut config = glossdb_serverd::engine::testing::golden(dir.path())
         .await
         .unwrap();
     config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
+    config.row_cap = row_cap;
     let plane = glossdb_serverd::Plane::open(config).await.unwrap();
     (dir, plane)
+}
+
+/// The 2026-07-28 revision moved the handshake into every request: this
+/// `_meta` is what a sessionless client stamps.
+pub fn meta() -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "suite", "version": "0"}
+    })
+}
+
+/// One stateless JSON-RPC POST to the agent interface at `path` — the
+/// workspace's (`/mcp`) or a dataset's (`/<dataset>/mcp`) — under the
+/// `Host` a client would send, as the agent `dev-agent`.
+pub async fn mcp_on(app: Router, path: &str, host: &str, payload: Value) -> Response<Body> {
+    let method = payload["method"].as_str().unwrap().to_string();
+    let mut request = Request::post(path)
+        // oneshot skips what every real client sends; the transport's
+        // rebinding guard (allowed_hosts) rightly insists on it.
+        .header(header::HOST, host)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCEPT, "application/json, text/event-stream")
+        .header(header::AUTHORIZATION, bearer("dev-agent"))
+        .header("mcp-protocol-version", "2026-07-28")
+        .header("mcp-method", method);
+    // SEP-2243: a call names its subject in the header too — from
+    // `name` for tools and prompts, from `uri` for resources.
+    if let Some(name) = payload["params"]["name"]
+        .as_str()
+        .or_else(|| payload["params"]["uri"].as_str())
+    {
+        request = request.header("mcp-name", name.to_string());
+    }
+    app.oneshot(request.body(Body::from(payload.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+/// The body, after insisting on 200 — a refused request panics with what
+/// the transport said, not a bare status.
+pub async fn expect_ok(response: Response<Body>) -> Value {
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    assert_eq!(status, StatusCode::OK, "{text}");
+    serde_json::from_str(&text).unwrap()
 }

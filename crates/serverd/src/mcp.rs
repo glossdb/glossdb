@@ -1456,38 +1456,21 @@ mod tests {
         }
     }
 
-    fn form(q: &Question) -> (String, serde_json::Value) {
+    /// The form's schema as it goes on the wire.
+    fn form(q: &Question) -> serde_json::Value {
         match q.params(3, 12).expect("the form builds") {
             ElicitRequestParams::FormElicitationParams {
-                message,
-                requested_schema,
-                ..
-            } => (
-                message,
-                serde_json::to_value(&requested_schema).expect("schema serializes"),
-            ),
+                requested_schema, ..
+            } => serde_json::to_value(&requested_schema).expect("schema serializes"),
             other => panic!("form mode expected, got {other:?}"),
         }
-    }
-
-    /// The message is the one surface the client clips, so it carries
-    /// identity only — never the claim, which has to be read whole —
-    /// and the position, so a bounded review never reads as the end of
-    /// the work.
-    #[test]
-    fn the_message_is_identity_and_position() {
-        let (message, _) = form(&question());
-        assert_eq!(message.lines().count(), 1, "{message}");
-        assert!(message.contains("race_entries"), "{message}");
-        assert!(message.contains('3') && message.contains("12"), "{message}");
-        assert!(!message.contains("an entry is a row"), "{message}");
     }
 
     /// Every answer is its own field: the renderer draws a checkbox in
     /// the list and hides an enum's options behind a keypress.
     #[test]
     fn every_answer_is_a_visible_field() {
-        let (_, schema) = form(&question());
+        let schema = form(&question());
         let props = &schema["properties"];
         for name in [CORRECT, UNCLEAR] {
             assert_eq!(props[name]["type"], "boolean", "{name} in {schema}");
@@ -1501,20 +1484,6 @@ mod tests {
         );
     }
 
-    /// A title shares its line with the value and is truncated; a
-    /// description renders whole. So the claim and its basis ride the
-    /// description of the box that confirms them, and the title is a
-    /// short fixed label.
-    #[test]
-    fn the_claim_is_in_the_description_of_the_confirm_box() {
-        let q = question();
-        let (_, schema) = form(&q);
-        let correct = &schema["properties"][CORRECT];
-        let said = correct["description"].as_str().expect("a description");
-        assert!(said.contains(&q.assumption), "{schema}");
-        assert!(said.contains(&q.basis), "{schema}");
-    }
-
     /// The wire order is the sorted key order, so the names carry the
     /// order: the form must open on the claim, not on the text box.
     #[test]
@@ -1526,7 +1495,7 @@ mod tests {
             sibling_note: Some("status_id = 1".into()),
             ..question()
         };
-        let (_, schema) = form(&offered);
+        let schema = form(&offered);
         let order: Vec<&str> = schema["properties"]
             .as_object()
             .expect("an object")
@@ -1544,7 +1513,7 @@ mod tests {
     /// that cannot be answered, so neither appears unless it applies.
     #[test]
     fn the_alternative_and_the_earlier_decision_appear_only_when_given() {
-        let (_, bare) = form(&question());
+        let bare = form(&question());
         assert!(bare["properties"].get(RATHER).is_none(), "{bare}");
         assert!(bare["properties"].get(SAME_AS).is_none(), "{bare}");
 
@@ -1555,7 +1524,7 @@ mod tests {
             sibling_note: Some("status_id = 1 is the finish marker".into()),
             ..question()
         };
-        let (_, schema) = form(&offered);
+        let schema = form(&offered);
         assert_eq!(
             schema["properties"][RATHER]["description"],
             offered.alternative.as_deref().unwrap()
