@@ -1461,8 +1461,11 @@ async fn the_round_never_asks_the_human_for_statistics() {
         "the door asked the human for a statistic: {body}"
     );
     let body = expect_ok(mcp(app, initialize()).await).await;
+    // With nothing waiting on a person, the live state at connect
+    // reports an empty review queue.
     let instructions = body["result"]["instructions"].as_str().unwrap();
-    assert!(!instructions.contains("question"), "{instructions}");
+    let live = instructions.rsplit("Live now:").next().unwrap();
+    assert!(live.contains("the review queue is empty"), "{live}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

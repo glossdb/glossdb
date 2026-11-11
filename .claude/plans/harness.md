@@ -1,26 +1,46 @@
 # The plan
 
-One table. Work happens on the branch `harness-work` in both
-repositories until the table's open rows are done. Other roads, parked:
-`gate.md` (access per actor), `sources.md` (workbooks, documents,
-databases), `clients.md` and `chat.md` (the trial).
+glossdb builds a company's data intelligence layer: connect, describe,
+test, decide, serve. This file is the frame. It lists what is open,
+first the data intelligence direction, then the backlog by step. The
+plans beside it: `platform.md` (dbt, semantic models, lakes, the
+workspace as code), `sources.md` (spreadsheets, documents, search),
+`gate.md` (access per user), `clients.md` and `chat.md` (the hosted
+trial).
+
+## First: the data intelligence direction
+
+Finished before anything new is picked.
 
 | # | What | State |
 |---|---|---|
-| 1 | `next` is the test report: per metric its worst test and the statement that fixes it, then review | done |
-| 2 | The server runs the built-in tests after a definition, an annotation, a load or a measurement | done |
-| 3 | The tests read stored evidence, not the data | done |
-| 4 | Forecast goals as steps on the metric (outside its expected range, plan outside the forecast) plus one `outlook` goal for runs due | done |
-| 5 | Glossary states `conflict` and `missing`; a test not yet run is `not_run`; `status:` line; "annotate" in served text | done |
-| 6 | Effective-dated tables: `validity` on a table, `validity_test` on every metric that reads one | done |
-| 7 | A metric definition carries its time column, measure with additivity and dimensions inline; the server writes the column annotations | done |
-| 8 | Console: Quality opens on the tests per metric | done |
-| 9 | Skills: the metrics skill and its pages on definitions, time grains, loading, querying and review rewritten in plain words | done |
-| 10 | glossval: finish line updated (uncommitted in glossval); still to do: rerun the eight seats against the stored bare runs, then the Monday test | open |
-| 11 | Renamed: `additivity` (was behavior) with additive, semi-additive, ratio, non-additive; `time_grains` (was ladder); `metric_summary()`, `workspace_status`. Left as they are: `entity`, `band`, kit, actor | done |
-| 12 | Keywords stay; the statement reference says each in ordinary words under its name | done |
-| 13 | `semantic_model()` (Apache Ossie) and `lineage_events()` (OpenLineage), both valid against the standards' JSON schemas and readable over the query endpoint. Open: an import of an Ossie document | done |
-| 14 | Results page and websites | open, after 10 |
+| 1 | Text: `CLAUDE.md`, the prose skill, `README.md`, the docs overview, the extension's README | on the branch `data-intelligence` in both repositories |
+| 2 | The extension's pages tell how a data harness works and why it is needed; glossdb's pages tell data intelligence | open |
+| 3 | What an agent reads on connecting (`INSTRUCTIONS` in `crates/serverd/src/mcp.rs`) and the opening of each skill name the job: building the layer | open; walked through the MCP interface before and after |
+| 4 | `next` as a true driver of the agent: a research pass first, open on the implementation. Today's line is built by static and semi-static queries per kit, after the idea of links that carry the next action (HATEOAS). One candidate is a decision model that picks the step (https://huggingface.co/blog/decision); whether another model service is worth it is part of the question | research, then decide |
+| 5 | The console: a second pass against the five questions (which sources map, what does this mean, can we trust it, who decides, where does it come from) | after 4 |
+| 6 | glossval with a brief on evaluating data intelligence: the layer an agent builds, not one answer; then the eight seats rerun and the Monday test | after 4 |
+| 7 | Results page and websites | after 6 |
+
+## The backlog, by step
+
+| Step | Element | Risk | What it touches | When | Issue |
+|---|---|---|---|---|---|
+| Connect | Harmonisation kit: the mapping of several systems of record onto one target model, and the reconciliation per load | Medium: the demo's statements are written for one case; the kit must hold for a second | `kits/`, a skill, a suite; the statements in `../glossdemo/statements/` (structure, harmonise, watch) and its Mapping and Reconciliation pages | The first use case | |
+| Connect | Works with your platform: dbt, semantic models, lakes read in place, attached databases | See `platform.md` | | | #221 |
+| Connect | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
+| Describe | The workspace as code: declarations as `.glossql` files, tested in CI | See `platform.md` | | | #219 |
+| Describe | Citations to documents on tables, columns, relationships and metrics | Low | an optional kit | With documents | #220 |
+| Test | A certification level per metric: the level sets which tests and which review a metric needs before it is served as certified | Low: a property and a read over `metric_tests()` | the metrics kit, `next`, the console's metric page | After the harmonisation kit | |
+| Test | A recompute rule: a measure that does not sum from its members is recomputed, not summed | Medium | the metrics kit | | #41 |
+| Decide | Access per user | See `gate.md` | | When a workspace has a second user | |
+| Decide | A recommendations read: findings with their options, chosen in the console (preview) | Low | the outlook kit, a console tile | | #174 |
+| Decide | A review decision made inside the chat | See `chat.md` | | With the trial | #20 |
+| Serve | The hosted trial | See `clients.md` | | | |
+
+Housekeeping, outside the steps: #214 (the image hangs on opening a
+seeded workspace), #60 (an infrastructure error's text reaches the
+client), #56 (Tera 2 for the app pages).
 
 ## Measured
 
@@ -34,7 +54,7 @@ extension's build of the pinned commit before building it itself.
 
 ## Rules learned
 
-- A red test alone is a failed test, never a conflict.
+- A red test alone is a failed test, not a conflict.
 - A check that reads other functions' results re-runs when those change.
-- A test with nothing to check is green with the reason, never a chore.
+- A test with nothing to check is green with the reason, not a chore.
 - A workspace made before a catalog column was added is rebuilt.

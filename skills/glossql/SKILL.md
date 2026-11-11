@@ -6,7 +6,10 @@ description: Use glossql through the server's MCP interface — the statements, 
 # Speaking glossql
 
 glossql is one SQL-shaped language for a workspace's data and what is
-known about it. Data is loaded into tables. What is known is JSON
+known about it. With it you build the workspace's data intelligence
+layer: what the data means, how its sources map, whether it can be
+trusted, and who decides. What you state is stored in the glossary
+beside the data and tested against it. Data is loaded into tables. What is known is JSON
 attached to assets (`table` or `table.column`) under declared aspects:
 the properties the harness asks for. The language is `doc://SPEC.md`
 and `doc://grammar.ebnf` — read them, don't reconstruct them. Every

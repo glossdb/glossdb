@@ -1,14 +1,16 @@
 # Documentation
 
-glossdb is a harness framework for data agents, written in the
+glossdb is the data harness for people and agents. Agents build a
+company's data intelligence layer in the lake, and glossdb tests what
+they state against the data. It is written in the
 [glossql](https://github.com/glossdb/glossql) language. Every page here
 is also served to agents over MCP as a `doc://docs/…` resource.
 
 ## Overview
 
 - [Introduction](overview/introduction.md): what glossdb is and why.
-- [How it works](overview/how-it-works.md): the data harness beside the
-  coding harness, part by part.
+- [How it works](overview/how-it-works.md): the five steps, and the
+  data harness beside the coding harness, part by part.
 - [Terms](overview/terms.md): every word, beside the industry's.
 
 ## Getting started

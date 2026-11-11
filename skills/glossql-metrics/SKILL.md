@@ -6,7 +6,11 @@ description: Take a glossql workspace from loaded tables to metrics someone can 
 # From tables to metrics someone trusts
 
 The `glossql` skill teaches the statements. This page is the work, in
-order. Do what the person asked; this is how each part is done well.
+order: connect the sources, describe the tables and metrics, test
+what you stated against the data, and leave open questions to a
+person. The result is the workspace's data intelligence layer, which
+people, agents and BI tools answer from. Do what the person asked;
+this is how each part is done well.
 
 **You are done when the `next:` line shows every metric under `done:`
 and nothing under `review` waits on you.** Questions waiting for a

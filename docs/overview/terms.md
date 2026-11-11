@@ -63,7 +63,8 @@ ours:
 | `ai_context`: `instructions`, `synonyms`, `examples` | `meaning`, `definitions`, `conventions` | |
 | `custom_extensions` | `unit`, tests, review decisions | what Ossie does not carry rides here on export |
 
-An export to Ossie and an import from it are planned.
+`semantic_model()` returns the bound dataset as one Ossie document.
+An import from Ossie is planned.
 
 ## Tests
 
@@ -94,6 +95,14 @@ An export to Ossie and an import from it are planned.
 
 ## Wider words
 
+- **Data intelligence** names what a company knows about its data:
+  what it means, how its sources map, whether it can be trusted, and
+  who decides. It is the layer under BI and AI, and what glossdb
+  builds.
+- **The glossary** is the business glossary and the data catalog in
+  one store: every table, column, relationship and metric with what
+  is known about it, by whom, for which version of the data, and
+  whether that is current. It is stored in the lake beside the data.
 - **Ontology** names what agents establish: entities, relationships,
   terms. The declared level is the harness schema.
 - **Semantic layer** names the metrics, dimensions and time grains,

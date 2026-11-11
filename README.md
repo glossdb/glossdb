@@ -1,13 +1,32 @@
 # glossdb
 
-**A harness framework for data agents.** Declare what must be known
-about your data. Agents establish it — the semantic layer, the
-ontology, the quality record — and answer from it.
+**The data harness for people and agents.** Agents build a company's
+data intelligence layer in the lake, beside the data. glossdb tests
+what they state against the data at each load, and a person can review
+and decide.
+
+## Data intelligence
+
+Data intelligence is what a company knows about its data: what it
+means, how its sources map, whether it can be trusted, and who
+decides. It is the layer under BI and AI. People, agents and BI tools
+answer from it.
+
+glossdb builds that layer with two properties:
+
+- **The glossary is stored in the lake.** Business terms,
+  relationships, metric definitions, tests and review decisions are
+  tables beside the data and its versions. A description belongs to
+  the version of the data it describes and is marked outdated when
+  that data changes.
+- **Statements about the data are tested.** A unit, a key, a
+  measure's additivity, a mapping between two systems: each is
+  checked against the data.
 
 Coding agents work inside a harness: types, a compiler, tests, CI and
-review tell them when they are wrong. Data agents have none of this.
-glossdb gives them one, built inside the database, on the live data and
-its versions.
+review tell them when they are wrong. glossdb gives agents that work
+on data the same, built inside the database, on the live data and its
+versions.
 
 ## Why data agents need a harness
 
@@ -19,30 +38,33 @@ decides again, differently. A join that fans out or a key without its
 parent breaks a total, and no query fails. The data under a definition
 changes and nothing says so. Code has compilers, tests, CI and review
 for this. glossdb gives data the same: definitions, tests and decisions
-kept in the database, checked again on every load, decided by a person
-once.
+kept in the database, checked again at each load, with a person's
+decision stored beside them.
 
 ## How it works
 
-1. **You declare the harness.** The harness schema lists what must be
-   known about each dataset, table, column, relationship and metric,
-   each property with a JSON Schema. Kits package it per domain.
-2. **Agents annotate the data.** Before a table serves a metric, the
+1. **Connect.** A source is a directory, a URL prefix or an attached
+   database. A load query reads it into the lake. Every load is a
+   snapshot with its row count and column lineage.
+2. **Describe.** The harness schema lists what must be known about
+   each dataset, table, column, relationship and metric, each
+   property with a JSON Schema. Kits package it per use case. The
    agent states what one row is, each column's role, each measure's
    unit and additivity, the joins, and the metric definitions. Every
-   annotation is validated on write and stored with its author and the
-   data version it describes.
-3. **Measurements and tests check what is said.** Functions profile
-   the data, find keys, joins and hierarchies, and test derivations and
-   stock-or-flow additivity. Tests score where measurements, agents and
-   people disagree. Results are tied to the data version they read and
-   go stale when it changes.
-4. **What is known is served back.** What is known about any table is
-   one query away. Every tool call ends with the next steps. Nothing
-   depends on the chat history.
-5. **People decide what the data cannot.** An assumption below full
-   confidence goes to a review queue. A person's answer is stored and
-   outranks every agent's.
+   annotation is validated on write and stored in the glossary with
+   its author and the data version it describes.
+3. **Test.** Functions profile the data, find keys, joins and
+   hierarchies, and test derivations and stock-or-flow additivity.
+   Tests score where measurements, agents and people disagree.
+   Results are tied to the data version they read and go stale when
+   it changes. The built-in tests run again after each load.
+4. **Decide.** An assumption below full confidence goes to a review
+   queue. A person's answer is stored and outranks every agent's.
+5. **Serve.** What is known about any table is one query away. Every
+   tool call ends with the next steps, so nothing depends on the chat
+   history. Tools read the metrics over SQL and Arrow. The semantic
+   model is served as an Apache Ossie document and the lineage as
+   OpenLineage events.
 
 How each part maps onto a coding harness: [how it
 works](docs/overview/how-it-works.md). Every word: [terms](docs/overview/terms.md).
@@ -105,12 +127,14 @@ Release 0.3.0.
 | Forecasts, expected ranges, plans, scenarios (through a model service) | preview |
 | Grants per actor on statements and datasets | planned |
 
-## Other harnesses
+## Use cases and kits
 
-The same framework declares harnesses for other jobs: harmonising
-several sources into one target model, a data contract per source, a
-documented feature set for modelling. The `spatial` kit is a small
-working example: it requires a shape and a coordinate system on every
+A kit packages the vocabulary, the tests and the agent skill for one
+use case. The `kpi` and `quality` kits build the semantic model and
+its tests. The same framework serves other use cases: harmonising
+several systems of record into one target model, a data contract per
+source, a documented feature set for modelling. The `spatial` kit is
+a small working example: it requires a shape and a coordinate system on every
 geometry column, and measures the geometries.
 
 ## Actors and grants

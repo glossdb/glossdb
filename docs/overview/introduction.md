@@ -1,8 +1,27 @@
 # Introduction
 
-glossdb is a harness framework for data agents. You declare what must
-be known about your data. Agents establish it — the semantic layer,
-the ontology, the quality record — and answer from it.
+glossdb is the data harness for people and agents. Agents build a
+company's data intelligence layer in the lake, beside the data.
+glossdb tests what they state against the data at each load, and a
+person can review and decide.
+
+## Data intelligence
+
+Data intelligence is what a company knows about its data: what it
+means, how its sources map, whether it can be trusted, and who
+decides. It is the layer under BI and AI. People, agents and BI tools
+answer from it.
+
+glossdb builds that layer with two properties:
+
+- **The glossary is stored in the lake.** Business terms,
+  relationships, metric definitions, tests and review decisions are
+  tables beside the data and its versions. A description belongs to
+  the version of the data it describes and is marked outdated when
+  that data changes.
+- **Statements about the data are tested.** A unit, a key, a
+  measure's additivity, a mapping between two systems: each is
+  checked against the data.
 
 ## Why
 
@@ -37,7 +56,8 @@ the language for writing data harnesses, a DuckDB extension.
 
 ## Where next
 
-- [How it works](how-it-works.md): the harness, part by part.
+- [How it works](how-it-works.md): the five steps, and the harness,
+  part by part.
 - [Installation](../getting-started/installation.md) and
   [quickstart](../getting-started/quickstart.md).
 - [Terms](terms.md): every word, beside the industry's.

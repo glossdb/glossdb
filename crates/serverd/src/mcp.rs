@@ -35,7 +35,11 @@ async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
     plane.brief_counts().await.map_err(|e| e.to_string())
 }
 
-const INSTRUCTIONS: &str = "glossdb — a harness for data agents. One tool, `glossql`, \
+const INSTRUCTIONS: &str = "glossdb — the data harness for people and agents. Your work \
+here builds this workspace's data intelligence layer: what the data means, how its \
+sources map, whether it can be trusted, and who decides. The steps: connect the sources, \
+describe each table, column and metric, test what you stated against the data, leave open \
+questions to a person, and serve metrics others can rely on. One tool, `glossql`, \
 runs glossql statements and plain SQL over the workspace's data and its catalog; its \
 description is the contract for every call. Start here, in this order. \
 1. Read the two skills through the tool: `SELECT body FROM pages() WHERE uri IN \

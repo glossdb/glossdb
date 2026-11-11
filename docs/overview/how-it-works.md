@@ -1,5 +1,26 @@
 # How glossdb works
 
+glossdb builds a company's data intelligence layer in five steps.
+
+1. **Connect.** A load query reads a source into the lake. Every load
+   is a snapshot with its row count and column lineage.
+2. **Describe.** The agent states what each table, column,
+   relationship and metric means. Each annotation is validated and
+   stored in the glossary with the data version it describes.
+3. **Test.** Measurements and tests check those statements against
+   the data, again after each load.
+4. **Decide.** An assumption below full confidence goes to the review
+   queue, where a person can confirm or correct it.
+5. **Serve.** Agents and tools query the layer; every figure traces
+   to its source.
+
+The harness is what holds an agent's work on that layer to the data.
+
+## The data harness
+
+Why data needs a harness, in the language's own pages: [the data
+harness](https://github.com/glossdb/glossql/blob/main/docs/harness.md).
+
 Coding agents work inside a harness. Types say what a value is. The
 compiler rejects what does not fit. Linters and tests find what is
 wrong. CI runs them again on every change. A reviewer decides what the
