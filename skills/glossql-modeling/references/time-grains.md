@@ -18,7 +18,9 @@ is stored. The annotations on the view's columns say how:
   the series is served at. By default it is the grain `temporal()`
   measured on that column. Where the dates follow no regular grain,
   set it. `windows` is how many whole periods a read returns per
-  grain, counted back from the newest data.
+  grain, counted back from the newest data. `metric_series()` serves
+  that window and not the periods before it; `window_periods` in
+  `view_summary()` is the count at the metric's floor.
 - `dimension` ranks a dimension column: `primary` first, then
   `supporting`; `none` leaves it out.
 
@@ -61,12 +63,14 @@ One row per metric, dimension, member and period: `metric`, `world`,
 What each metric is served from, and what it still needs:
 
 ```sql
-SELECT view, applicable, reason, period_column, value_column, additivity, cadence, floor, rung, dims
+SELECT view, applicable, reason, period_column, value_column, additivity, grain_detected, floor, window_periods, dims
 FROM view_summary() ORDER BY view
 ```
 
 `applicable` says whether a series can be served, and `reason` what
-to change when it cannot.
+to change when it cannot. `grain_detected` is the grain `temporal()`
+measured on the period column, `floor` the grain the series is served
+at, `window_periods` how many periods of it a read returns.
 
 ## Querying a metric yourself
 

@@ -50,7 +50,7 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 # --- the fact row: what the view's columns owe before anything is said
 
 query TTTT
-SELECT view, applicable, (reason) IS NOT NULL, unadmitted FROM view_summary();
+SELECT view, applicable, (reason) IS NOT NULL, columns_without_role FROM view_summary();
 ----
 spend	false	true	[period, value, fund, object]
 
@@ -74,9 +74,9 @@ GLOSS dimension ON spend.fund AS $${"value": "primary"}$$;
 statement ok
 GLOSS role ON spend.object AS $${"value": "dimension"}$$;
 
-# the roles stand and no cadence does: the row wants the profile
+# the roles are annotated and no grain is measured: the row lists the profile to run
 query TTTT
-SELECT applicable, (reason) IS NOT NULL, dims, wanted FROM view_summary();
+SELECT applicable, (reason) IS NOT NULL, dims, measurements_to_run FROM view_summary();
 ----
 false	true	[fund, object]	[temporal over fin.spend.period]
 
@@ -84,7 +84,7 @@ statement ok
 SELECT temporal() FROM spend.period;
 
 query TTTTTTTTTT
-SELECT applicable, period_column, value_column, cadence, floor, rung, additivity, additivity_state, dims, judged_current FROM view_summary();
+SELECT applicable, period_column, value_column, grain_detected, floor, window_periods, additivity, additivity_state, dims, profile_current FROM view_summary();
 ----
 true	period	value	month	month	48	NULL	none	[fund, object]	true
 
@@ -269,13 +269,13 @@ SELECT member, period::DATE, value, num, den FROM metric_series(grain := 'quarte
 ops	2024-01-01	0.5	4.0	8.0
 sales	2024-01-01	0.5	2.0	4.0
 
-# --- the time_grains: a floor coarser than the cadence, and a rung of one bucket
+# --- the time_grains: a floor coarser than the measured grain, and a window of one period
 
 statement ok
 GLOSS time_grains ON headcount.period AS $${"floor": "quarter", "windows": {"quarter": 1}}$$;
 
 query TTI
-SELECT cadence, floor, rung FROM view_summary() WHERE view = 'headcount';
+SELECT grain_detected, floor, window_periods FROM view_summary() WHERE view = 'headcount';
 ----
 month	quarter	1
 
@@ -290,7 +290,7 @@ statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n * 1 AS value, dept FROM fin.levels"}$$;
 
 query TTTT
-SELECT applicable, judged_current, additivity, additivity_state FROM view_summary() WHERE view = 'headcount';
+SELECT applicable, profile_current, additivity, additivity_state FROM view_summary() WHERE view = 'headcount';
 ----
 true	false	semi-additive	stale
 
@@ -590,3 +590,10 @@ query T
 SELECT state FROM view_tests() WHERE view = 'amount_per_line' AND test = 'measure_additivity_test';
 ----
 green
+
+# --- a single value asks for no role on its column
+
+query II
+SELECT len(columns_without_role), len(missing) FROM view_summary() WHERE view = 'fte_cap';
+----
+0	0

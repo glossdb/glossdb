@@ -402,9 +402,9 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 ----
 13
 
-# --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the reads use it
+# --- the comparison is stored on the plan: listed in measurements_to_run on its row until one exists, measured over it, tested; the reads use it
 query T
-SELECT wanted FROM view_summary() WHERE view = 'sales_budget';
+SELECT measurements_to_run FROM view_summary() WHERE view = 'sales_budget';
 ----
 [metric_plan over fin.sales_budget]
 
@@ -412,7 +412,7 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query T
-SELECT wanted FROM view_summary() WHERE view = 'sales_budget';
+SELECT measurements_to_run FROM view_summary() WHERE view = 'sales_budget';
 ----
 []
 
@@ -853,3 +853,44 @@ query TTTT
 SELECT step, asset, state, test FROM outlook_findings();
 ----
 test	thin.visits	not_run	scenario_test
+
+# --- a table view is no metric: the backtest does not list it. A metric served by year has no monthly series:
+# its row says so and the backtest leaves it out
+
+statement ok
+USE fin;
+
+statement ok
+DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS ledger_rows ON fin AS $${"sql": "SELECT booked, amount FROM fin.ledger"}$$;
+
+statement ok
+DECLARE ASPECT spend_by_year WITH $${"title": "Spend by year"}$$ AS VIEW;
+
+statement ok
+GLOSS spend_by_year ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger"}$$;
+
+statement ok
+GLOSS role ON spend_by_year.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON spend_by_year.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON spend_by_year.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS time_grains ON spend_by_year.period AS $${"floor": "year"}$$;
+
+query I
+SELECT count(*) FROM range_request() WHERE metric = 'ledger_rows';
+----
+0
+
+query TTIT
+SELECT floor, r.applicable, r.months, contains(r.reason, 'served by year')
+FROM range_request() r JOIN view_summary() s ON s.view = r.metric WHERE r.metric = 'spend_by_year';
+----
+year	false	0	true

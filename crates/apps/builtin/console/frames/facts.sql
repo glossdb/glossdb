@@ -35,7 +35,7 @@ SELECT s.name,
          ELSE 'ok' END AS scls,
        '?view=' || s.name || '&kind=scalar' AS link
 FROM view_definitions s
-LEFT JOIN fact_values() f ON f.metric = s.name
+LEFT JOIN fact_values() f ON f.view = s.name
 LEFT JOIN as_of a ON a.view = s.name
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN decided r ON r.aspect = s.name

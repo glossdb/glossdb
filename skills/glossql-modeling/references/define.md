@@ -29,11 +29,11 @@ can read another view by name, so a decision on one reaches every
 view built on it. Put the mechanics in SQL comments inside `sql`.
 Spell the `GROUP BY` out.
 
-The business glossary entry of a view is in `definitions` on the
-dataset, `{"definitions": {"<view>": {"meaning", "unit", "owner",
-"source", "formula"}}}`. It is one annotation for the dataset: read
-it, add your entry, write the whole map back. `view_definitions`
-reads it.
+A view's meaning is its `meaning` annotation (`GLOSS meaning ON
+<dataset>.<view>`), which `next` asks for. A metric's unit is the
+`unit` of its `measure`. `view_definitions` shows both. Its `formula`
+is a formula a person recorded for the view; when it is newer than
+your definition, `next` lists it under `decide`.
 
 ## A table to a data contract
 

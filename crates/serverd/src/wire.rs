@@ -67,7 +67,7 @@ fn render(
     shipped: usize,
     truncated: bool,
 ) -> Result<Value, String> {
-    let rows = if kept.is_empty() {
+    let rows = if shipped == 0 {
         json!([])
     } else {
         let mut writer = arrow_json::ArrayWriter::new(Vec::new());

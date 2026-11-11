@@ -100,6 +100,7 @@ Two more things a person decides:
 
 - **A test result.** Accept a measured rate as a tolerance with a
   reason ([test](test.md#accept-a-result)).
-- **A view's meaning or formula.** Write the entry in `definitions`
+- **A view's meaning or formula.** Annotate `meaning` on the view;
+  write a formula into `definitions`
   ([define views](views.md)). A person's formula newer than the
   view's definition shows in `next` under `decide`.

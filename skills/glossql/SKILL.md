@@ -27,7 +27,8 @@ workspace endpoint (`/mcp`), begin a call that names a dataset's
 tables or views with `USE <dataset>;`. On `/<dataset>/mcp` every call
 opens on that dataset.
 
-Every result ends with two lines:
+Every result ends with `status:`, the outcome of the last statement.
+A call on a dataset adds `next:` and `first:`:
 
 ```text
 status: done
@@ -35,9 +36,13 @@ next: describe 2 · test 1 · waiting for a person 1
 first: test logistics.parcels_delivered (red): orphan_test: 10.0% of rows … find no parent (next://logistics/test)
 ```
 
-`status:` is the last statement. `next:` counts what is open on the
-dataset per step, and `first:` is the first open row. Read the list
-after each step, in a call of its own:
+`next:` counts what is open on the dataset per step, and the
+assumptions that wait for a person apart. `first:` is the first open
+row. A call on the workspace endpoint without `USE` has neither. Two
+more lines appear when they apply: `summary:` after a call that
+changed what waits in the workspace (assumptions for a person,
+decisions to apply), and `window:` after a read of `metric_series()`.
+Read the list after each step, in a call of its own:
 
 ```sql
 SELECT step, asset, state, open, cause, statement FROM next
@@ -96,7 +101,7 @@ column (`table.column`), a relationship or the dataset.
 |---|---|---|
 | `entity` | a table | `{"value": "<what one row is>", "role": "fact"` or `"dimension", "grain": ["<key column>"], "time_axis": "<date column>"}` |
 | `meaning` | a table, a column, a relationship | `{"value": "<one sentence>"}` |
-| `role` | a column | `key`, `measure`, `dimension`, `timestamp` or `attribute` |
+| `role` | a column | `key` (an identifier or a foreign key), `measure`, `dimension`, `timestamp` or `attribute` |
 | `additivity`, `unit` | a column with role `measure` | `additive`, `semi-additive`, `ratio` or `non-additive`; the unit as text |
 | `dimension` | a column with role `dimension` | `primary`, `supporting` or `none` |
 | `time_grains` | a column with role `timestamp` | `{"floor": "day"}`, the finest grain it is read at |
@@ -111,7 +116,8 @@ GLOSS unit ON deliveries.parcels AS $${"value": "parcels"}$$;
 ```
 
 Annotate `role` first: it decides which other properties a column
-needs. Look before you write: `SELECT column_profile() FROM
+needs. A foreign key column is `key`, and `key` needs nothing more.
+Look before you write: `SELECT column_profile() FROM
 deliveries.parcels`. A join between two tables is a relationship;
 check a proposed one against the data before you declare it:
 
@@ -170,8 +176,9 @@ grain, `next` gives the statement:
 GLOSS time_grains ON logistics.parcels_delivered.delivered_on AS $${"floor": "month"}$$;
 ```
 
-`next` then asks for `entity` and `meaning` on each view, and for
-`meaning` and `role` on the columns of a table view. A table in a
+`next` then asks for `meaning` on each view. On a table view it also
+asks for `entity`, and for `meaning` and `role` on its columns. A
+view's `meaning` is what `view_definitions` shows. A table in a
 given target format (a data contract), metric shapes, stopping a
 view: `skill://glossql-modeling/references/define.md`.
 
@@ -205,8 +212,26 @@ DECLARE TEST delivery_key_test ON delivery_key_unique DETECTOR rate_tolerance TH
 SELECT delivery_key_check() FROM clean_deliveries;
 ```
 
-Run the function once. After a later load the server runs it again,
-and a red result is a row of `next`. More:
+Run the function once. After a later load the server runs it again.
+A test on one column is declared `ON COLUMN` and run on the column:
+
+```glossql
+DECLARE ASPECT weight_filled WITH $${"type": "object",
+  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+DECLARE FUNCTION weight_filled_check FOR logistics AS $$
+  SELECT count(*) FILTER (WHERE weight_kg IS NULL) / greatest(count(*), 1)::DOUBLE AS breach_rate,
+         CASE WHEN count(*) FILTER (WHERE weight_kg IS NULL) > 0
+              THEN count(*) FILTER (WHERE weight_kg IS NULL) || ' deliveries have no weight' END AS finding
+  FROM deliveries
+$$ RETURNS weight_filled;
+DECLARE TEST weight_filled_test ON weight_filled DETECTOR rate_tolerance THRESHOLD 0.0;
+SELECT weight_filled_check() FROM deliveries.weight_kg;
+```
+
+A test states the rule. Where the data breaks it, the test is red and
+a row of `next`, with the finding and two statements: the check to
+run again after you fixed the load query or the definition, and the
+one that records a rate a person accepts. More:
 `skill://glossql-modeling/references/tests.md`.
 
 ## 5. Decide: leave judgment to a person
@@ -248,12 +273,12 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 | Read | Gives |
 |---|---|
 | `next` | what is open on the dataset, by step |
-| `view_summary()` | one row per view: `kind`, `stopped`, `applicable` and `reason`, period and value columns, `additivity`, `floor`, `dims` |
-| `view_definitions` | every view: `name`, `title`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
+| `view_summary()` | one row per view: `kind`, `stopped`, `applicable` and `reason`, period and value columns, `additivity`, `floor`, `window_periods`, `dims`, `missing` |
+| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `formula`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `view_sources()` | lineage: per view and field the source `table.column` |
-| `fact_values()` | each single value |
-| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total |
+| `fact_values()` | each single value: `view`, `value`, `reason` |
+| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
 | `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
 | `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
 | `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |

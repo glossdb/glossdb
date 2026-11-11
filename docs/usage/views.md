@@ -84,7 +84,7 @@ write. It sets no default.
 ### Time grains
 
 The series is served at the metric's finest grain, its floor: the
-cadence `temporal()` measured on the time column. Where the dates
+grain `temporal()` measured on the time column. Where the dates
 follow no regular grain, or you want another, state it:
 
 ```glossql
@@ -94,6 +94,8 @@ GLOSS time_grains ON booked_nights.check_in AS $${"floor": "week"}$$;
 Each grain serves a window of whole periods counted back from the
 newest data: 1440 minutes, 720 hours, 548 days, 156 weeks, 48 months,
 40 quarters or 20 years. `"windows": {"month": 120}` changes one.
+`metric_series()` serves that window and not the periods before it;
+`window_periods` in `view_summary()` is the count for each metric.
 
 ## Assumptions
 
@@ -118,10 +120,14 @@ GLOSS revenue_per_room ON stays AS $${
 
 ## The business glossary of the views
 
-A view's declaration stays thin. Its meaning, unit, owner, source and
-a derived metric's formula go into `definitions` on the dataset, keyed
-by the view's name. It is one annotation: read it, add your entry,
-write it back.
+A view's meaning is its `meaning` annotation, `GLOSS meaning ON
+<dataset>.<view>`, and a metric's unit is its measure's.
+`view_definitions` serves both. What else the business glossary keeps
+per view, such as an owner, a source or a derived metric's formula,
+goes into `definitions` on the dataset, keyed by the view's name. It
+is one annotation: read it, add your entry, write it back. Where a
+view carries no `meaning` or unit, `view_definitions` serves the
+entry's.
 
 ```glossql
 GLOSS definitions ON stays AS $${"definitions": {
@@ -139,13 +145,13 @@ SELECT name, title, kind, unit, defined, stopped FROM view_definitions;
 ```
 
 ```sql
-SELECT view, kind, applicable, reason, floor, additivity, dims, missing, wanted
+SELECT view, kind, applicable, reason, floor, additivity, dims, missing, measurements_to_run
 FROM view_summary();
 ```
 
 `applicable` says whether a series is served. For a table and a
 single value it is false, and `reason` says how to read them. `missing` lists the annotations the columns still need,
-`wanted` the measurements to run. Reading the views:
+`measurements_to_run` the measurements to run. Reading the views:
 [serve and read](serve.md). Each column: [reads](../reference/reads.md).
 
 Plans, forecasts and scenarios on a metric are preview features:

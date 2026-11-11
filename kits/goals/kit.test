@@ -289,3 +289,66 @@ query TTT
 SELECT step, asset, state FROM next WHERE contains(statement, 'GLOSS price_cut ON ops');
 ----
 test	ops.orders	not_run
+
+# --- a test of one's own on a column a view reads: its row in `next` carries the check's finding, the check to
+# run again and the statement that records a rate a person accepts; view_tests() names the check as `run`
+
+statement ok
+DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+
+statement ok
+DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <= 11) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) FILTER (WHERE price <= 11) || ' rows are priced at 11 or under' AS finding FROM ops.orders_raw$$ RETURNS price_rule;
+
+statement ok
+DECLARE TEST price_test ON price_rule DETECTOR rate_tolerance THRESHOLD 0.0;
+
+statement ok
+SELECT price_check() FROM ops.orders_raw.price;
+
+query TT
+SELECT state, run FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
+----
+red	SELECT price_check() FROM ops.orders_raw.price
+
+query TTTT
+SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are priced'),
+       contains(statement, 'SELECT price_check() FROM ops.orders_raw.price;'),
+       contains(statement, 'DECLARE TEST price_test ON price_rule DETECTOR rate_tolerance THRESHOLD ')
+FROM next WHERE step = 'test' AND asset = 'ops.orders_raw.price' AND for_view = 'orders';
+----
+red	true	true	true
+
+# --- each assumption that waits for a person is a row of `next`, as open_questions counts them; `entity` is
+# asked on a table view, with its grain, and not on a metric
+
+statement ok
+DECLARE ASPECT order_list WITH $${"title": "Orders, listed", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS order_list ON ops AS $${"sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
+
+query II
+SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list'),
+       (SELECT count(*) FROM open_questions WHERE aspect = 'order_list');
+----
+2	2
+
+query II
+SELECT count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.order_list AS') AND contains(statement, '"grain"')),
+       count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.orders AS'))
+FROM next WHERE step = 'describe';
+----
+1	0
+
+# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view; a view
+# with no formula has none
+
+query TTT
+SELECT kind, meaning, formula IS NULL FROM view_definitions WHERE name = 'orders';
+----
+measure	orders taken per month	true
+
+query T
+SELECT kind FROM view_definitions WHERE name = 'order_list';
+----
+relation

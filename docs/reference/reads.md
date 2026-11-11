@@ -64,17 +64,21 @@ narrows either to one property.
   decision.
 - `view_definitions`: one row per view defined here, served or
   stopped. `kind` is the declaration's `x-kind`: `relation`, `scalar`,
-  `plan`, or empty for a metric.
+  `plan`, or `measure` for a metric. `meaning` is the `meaning`
+  annotation on the view, `unit` the `unit` of a metric's or a single
+  value's value column. `formula` is the view's formula in the
+  dataset's `definitions` annotation, NULL where there is none.
 - `open_items`: `kind` is `recipe-change`, `formula`, `conflict`,
   `re-measure`, `never measured` or `apply-decision`.
 - `workspace_status`: `area` is `sources`, `tables`, `relationships`,
-  `aspects`, `claims`, `functions`, `views`, `validations`,
+  `properties`, `annotations`, `functions`, `views`, `tests`,
   `scenarios`, `plans`, `review` or `apps`.
 
 ### next
 
 The open work of the dataset in use, one row per asset and state,
-ordered by `priority`, then `ord`.
+ordered by `priority`, then `ord`. A test has one row per asset it is
+red on, and each assumption that waits for a person has a row.
 
 | Column | Holds |
 |---|---|
@@ -108,12 +112,12 @@ One row per view of the dataset in use.
 | `stopped` | the stop reason |
 | `applicable`, `reason` | whether a series is served; else what to change |
 | `period_column`, `value_column`, `numerator`, `denominator` | the columns the series reads |
-| `cadence`, `floor`, `rung` | the measured grain of the period column; the finest grain served; how many periods that grain serves |
+| `grain_detected`, `floor`, `window_periods` | the grain `temporal()` measured on the period column; the finest grain served; how many periods a read serves at that grain |
 | `additivity`, `additivity_state` | the value column's additivity; `none` where nobody stated it, `conflict` where it is withheld |
-| `dims`, `unranked` | the slicing columns, primary first; dimension columns without a `dimension` annotation |
-| `unadmitted`, `missing` | served columns without a `role`; the annotation each needs |
-| `wanted` | measurements the row reads that nobody ran |
-| `judged_current` | the period column's profile is current |
+| `dims`, `dimensions_without_rank` | the slicing columns, primary first; dimension columns without a `dimension` annotation |
+| `columns_without_role`, `missing` | served columns without a `role`; the annotation each needs. Both are empty for a single value |
+| `measurements_to_run` | measurements the row reads that nobody ran |
+| `profile_current` | the period column's temporal profile is current |
 
 ```sql
 SELECT view, kind, applicable, reason, floor, additivity, dims FROM view_summary();
@@ -143,7 +147,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 
 | Read | Columns |
 |---|---|
-| `fact_values()` | `metric`, `value`, `reason`: each single value |
+| `fact_values()` | `view`, `value`, `reason`: each single value |
 | `view_sources(for_view := NULL)` | `view`, `field`, `source` (`table.column`), `table_name`, `reason`: column lineage; one more row per table read |
 | `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (spec 0.3.0.dev0) |
@@ -154,7 +158,10 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 
 `view_tests()`: `declared_by` is `kit:<name>` for a shipped test.
 `current` is false once what the result read has changed; the state
-is kept until the test runs again. The preview tests are rows under
+is kept until the test runs again. `run` is the function that returns
+the test's property, over the subject; it is empty where no function
+measures the property, as for a test that compares annotations
+(`role_test`). The preview tests are rows under
 the metric, a plan's test under the metric it plans; their `state`
 can be `not_applicable`, their `evidence` holds `applicable`,
 `reason`, `finding` and `fix`, and their `run` is empty.

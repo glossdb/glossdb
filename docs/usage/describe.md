@@ -36,7 +36,7 @@ asset it applies to. The `kpi` kit declares these:
 | `unit` | a measure column | `value`; `source_column` |
 | `dimension` | a dimension column | `primary`, `supporting` or `none` |
 | `conventions` | source | free JSON: what each export of that system carries |
-| `definitions` | dataset | the business glossary of the views: per view name `meaning`, `unit`, `owner`, `source`, `formula` |
+| `definitions` | dataset | what the business glossary keeps per view beside its `meaning` annotation: per view name `owner`, `source`, `formula` |
 
 `additivity`, `unit` and `dimension` are required only where the
 column's `role` says so. The views kit adds `time_grains` on a
@@ -73,7 +73,7 @@ SELECT relationship_coherence() FROM hr;
 |---|---|---|
 | `column_profile()` | a column | `total`, `null_ratio`, `distinct`, `min`, `max` |
 | `outlier_profile()` | a column | outliers by interquartile range and modified z-score |
-| `temporal()` | a timestamp column | cadence, completeness and gaps |
+| `temporal()` | a timestamp column | grain, completeness and gaps |
 | `additivity_evidence()` | a measure column | evidence for additive or semi-additive |
 | `detect_hierarchies()` | a table | columns that determine other columns |
 | `detect_derivations()` | a table | numeric columns computed from two others |

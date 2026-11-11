@@ -14,12 +14,19 @@ SELECT view, test, subject, state, score, current, run FROM view_tests()
 ```
 
 `view_tests()` lists, per view, the tests on the view and on the
-tables and columns it reads, worst first. `not_run` means no result
-exists yet; `current` is false when the data changed after the result
-was stored; `run` is the statement that measures it. `TESTS(asset)`
-gives the same states for any asset. A test that is not green is a
-row of `next` under `test`, with the test's finding in `open` and a
-fix in `statement`.
+tables and columns it reads, worst first. A table view and a single
+value have rows too: the tests on what they read and the tests you
+declared on them. `not_run` means no result exists yet; `current` is
+false when the data changed after the result was stored. `run` is the
+statement that measures the test's property again. It is empty where
+no function measures it: `role_test`, `unit_test` and
+`additivity_test` compare an agent's and a person's annotation, and a
+preview test calls the model service. `TESTS(asset)` gives the same
+states for any asset. A test that is not green is a row of `next`
+under `test`, on a view, a table or a column alike: `open` is the
+test's name and its finding, `statement` its fix. Where the check
+returns no `fix`, the statement is the check to run again and, for a
+red test of your own, the statement that records an accepted rate.
 
 ## The built-in tests
 
@@ -57,29 +64,40 @@ wrong, or accept what is right and say why.
 ## A test of your own
 
 Three statements and one run: a property for the result (`AS
-MEASUREMENT ON TABLE`), a function that measures it, the test, and a
-first run of the function. `skill://glossql/SKILL.md` step 4 and
-`define.md` show it whole. With a rate you accept:
+MEASUREMENT ON TABLE`, or `ON COLUMN` for one column), a function
+that measures it, the test, and a first run of the function on the
+table (`FROM <table>`) or the column (`FROM <table>.<column>`).
+`skill://glossql/SKILL.md` step 4 shows both whole, `define.md` one
+check for a data contract.
+
+- **`breach_rate` is the share of rows that break the rule.** 0.0
+  passes. A pass rate under that name reads red.
+- **A test states the rule.** Declare it with `THRESHOLD 0.0` where
+  the rule allows no exception. `rate_tolerance` is green at or under
+  the threshold, red above it, and `yellow` while the function has
+  not run. Where the data breaks the rule the test is red, and it
+  stays red until the data is right. Do not set the threshold at what
+  you measured to make the test green: that hides the defect.
+- **A red test closes in one of two ways.** Fix the load query or the
+  view's definition and run the check again. Or a person accepts the
+  measured rate, and you record it with their reason. `next` gives
+  both statements. For a property declared `AS MEASUREMENT` the
+  accepted rate is the test's threshold, declared again; say in the
+  asset's `meaning` who accepted it and why:
 
 ```glossql
 DECLARE TEST weight_filled_test ON weight_filled DETECTOR rate_tolerance THRESHOLD 0.2;
 ```
 
-- **`breach_rate` is the share of rows that break the rule.** 0.0
-  passes. A pass rate under that name reads red.
-- **`THRESHOLD` is the rate you accept.** `rate_tolerance` is green
-  at or under it, red above it, and `yellow` while the function has
-  not run. Measure the defect first and set the threshold at what you
-  measured, so the test is green today and red when the source gets
-  worse. A threshold of 0.0 where the data is known to be dirty is red
-  from the start.
+- Until a person has accepted a rate, report the red test as a
+  finding with its size.
 - **Return `finding` beside `breach_rate`.** A result with one
   column is stored as a bare value and does not fit the property's
   object schema. `finding` is one sentence on what is wrong; `next`
   shows it. A field `fix`, a statement as text, is shown as the row's
   statement.
-- **The subject is the asset the function is run on**, here the view
-  `clean_deliveries`. Run the function once. After a load of a table
+- **The subject is the asset the function is run on**: a view, a
+  table, or a column. Run the function once. After a load of a table
   the view reads, the server runs it again.
 - A test on a view, or on a column of a view, shows in `next` for
   that view. So does a test on a table or column a view reads.
@@ -98,7 +116,10 @@ right today; as a test it is run again at each load.
 Declare the property `AS FACT` with a `tolerance` in its schema. You
 or a person annotate the expectation; the function measures the same
 property; `rate_tolerance` compares the two. The person's tolerance
-is used before yours, and both before the `THRESHOLD`.
+is used before yours, and both before the `THRESHOLD`. An accepted
+rate is then an annotation on the one asset, with its reason, and
+`next` gives that statement for a red test:
+`{"tolerance": <rate>, "basis": "<who accepted the rate and why>"}`.
 
 ```glossql
 DECLARE ASPECT hours_match WITH $${"type": "object",

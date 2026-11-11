@@ -130,7 +130,7 @@ loads AS (
   GROUP BY s.view)
 SELECT m.view, m.kind, m.plan_of, m.stopped, m.applicable,
        md5(concat_ws('|', m.view, coalesce(d.definition, ''), m.applicable::VARCHAR, coalesce(m.period_column, ''), coalesce(m.value_column, ''),
-                     coalesce(m.numerator, ''), coalesce(m.denominator, ''), coalesce(m.floor, ''), coalesce(m.rung::VARCHAR, ''),
+                     coalesce(m.numerator, ''), coalesce(m.denominator, ''), coalesce(m.floor, ''), coalesce(m.window_periods::VARCHAR, ''),
                      coalesce(m.additivity, ''), coalesce(l.loads, ''))) AS inputs,
        coalesce(l.tracked, true) AS tracked
 FROM main.view_summary() m LEFT JOIN defs d USING (view) LEFT JOIN loads l USING (view);
@@ -151,7 +151,7 @@ scen AS (
 -- what the dataset needs, where a model service is named and a metric is served
 live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
 has AS (
-  SELECT live.named AND EXISTS (SELECT 1 FROM metrics WHERE stopped IS NULL) AS metric,
+  SELECT live.named AND EXISTS (SELECT 1 FROM metrics WHERE stopped IS NULL AND applicable) AS metric,
          EXISTS (SELECT 1 FROM v WHERE kind = 'plan' AND applicable) AS plan,
          EXISTS (SELECT 1 FROM sc WHERE applicable) AS scenario
   FROM live)
@@ -183,6 +183,18 @@ FROM now_ n LEFT JOIN stored s USING (name) LEFT JOIN held h USING (name);
 -- table and a specification, with the test's threshold as the red line.
 --===------------------------------------------------------------------===--
 
+-- no_series_reason(metric, value_column, additivity, additivity_state,
+-- grain): why complete_series() holds no period of a served metric at a
+-- grain: its rows must be combined and no additivity is in force (the
+-- series leaves such a metric out), or no period is complete yet.
+CREATE OR REPLACE MACRO main.no_series_reason(m, value_column, additivity, additivity_state, g) AS
+  CASE WHEN additivity IS NULL
+       THEN CASE WHEN additivity_state = 'conflict' THEN 'the additivity on ' ELSE 'no additivity is annotated on ' END
+            || current_schema() || '.' || m || '.' || value_column || ', so its rows cannot be combined by ' || g || ': '
+            || main.gloss_statement('additivity', current_schema() || '.' || m || '.' || value_column, '{"value": "<additive|semi-additive|ratio|non-additive>"}')
+       WHEN additivity = 'non-additive' THEN m || ' is non-additive and has several rows per ' || g || ', which cannot be combined'
+       ELSE m || ' has no complete ' || g || ' yet' END;
+
 CREATE OR REPLACE MACRO main.range_series() AS TABLE
 SELECT metric, period, value, additivity FROM main.complete_series('month') ORDER BY metric, period;
 
@@ -191,11 +203,12 @@ WITH counted AS (SELECT metric, count(*) AS months FROM main.range_series() GROU
 SELECT a.metric, a.additivity, coalesce(c.months, 0) AS months,
        a.applicable AND coalesce(c.months, 0) >= 7 AS applicable,
        CASE WHEN NOT a.applicable THEN a.reason
-            WHEN c.metric IS NULL THEN 'the month read serves no cell: ' || coalesce(a.reason,
-              'no additivity is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
+            WHEN c.metric IS NULL AND main.grain_rank(a.floor) > main.grain_rank('month')
+              THEN a.metric || ' is served by ' || a.floor || ', and expected ranges are computed by month'
+            WHEN c.metric IS NULL THEN main.no_series_reason(a.metric, a.value_column, a.additivity, a.additivity_state, 'month')
             WHEN c.months < 7 THEN 'a backtest needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
 FROM (SELECT * RENAME (view AS metric) FROM main.view_summary()) a LEFT JOIN counted c USING (metric)
-WHERE coalesce(a.kind, '') NOT IN ('scalar', 'plan', 'scenario')
+WHERE coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample', 'scenario')
 ORDER BY a.metric;
 
 CREATE OR REPLACE MACRO main.range_body() AS TABLE
@@ -383,8 +396,7 @@ judged AS (
          CASE WHEN NOT a.applicable THEN a.reason
               WHEN a.floor IN ('minute', 'hour') THEN 'a ' || a.floor || ' grain is finer than the grains the service measured its coverage at'
               WHEN a.floor = 'year' THEN 'a year grain has too few periods to forecast'
-              WHEN h.metric IS NULL THEN 'the series read serves no cell: ' || coalesce(a.reason,
-                'no additivity is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ' — gloss it')
+              WHEN h.metric IS NULL THEN main.no_series_reason(a.metric, a.value_column, a.additivity, a.additivity_state, a.floor)
               WHEN h.n < 6 THEN h.n || ' ' || a.floor || 's of history: a forecast needs 6' END AS reason
   FROM axes a LEFT JOIN hist h USING (metric)),
 ahead AS (
@@ -700,7 +712,7 @@ reach AS (
   GROUP BY n.scenario, n.metric, a.floor, a.additivity, o.origin, o.history),
 judged AS (
   SELECT r.*,
-         CASE WHEN r.origin IS NULL THEN 'the series read serves no cell for ' || r.metric
+         CASE WHEN r.origin IS NULL THEN r.metric || ' has no complete ' || r.grain || ' in its series yet'
               WHEN r.until <= r.origin + main.grain_step(r.grain)
                 THEN 'the scenario names no period after ' || strftime(r.origin, '%Y-%m-%d') || ', the last actual of ' || r.metric
               WHEN r.history < 26 THEN r.history || ' ' || r.grain || 's of history: the estimate needs 26' END AS reason
@@ -1027,7 +1039,7 @@ ORDER BY l.scenario, metric, lever;
 -- The plan. plan_rows(): every applicable plan's rows through the metric
 -- it plans — plan, metric, additivity, covers, instant, value, and grain,
 -- the plan's own: the grain its rows are booked against where the
--- declaration says so, else the rows' cadence. plan_grains(): one row per
+-- declaration says so, else the rows' measured grain. plan_grains(): one row per
 -- plan with it. plan_cells(at_grain): the
 -- plan world's cells per plan at a grain, or at its own where NULL — a
 -- flow sums, a stock keeps the last level, anything else averages; a plan
@@ -1365,7 +1377,8 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
 --===------------------------------------------------------------------===--
 -- outlook_measurements(): the preview measurements the bound dataset
--- needs, where a model service is named and a metric is served — name,
+-- needs, where a model service is named and a metric serves a series
+-- (a metric still blocked, with no grain yet, needs none) — name,
 -- stored, due (outlook_due()): the expected ranges; the forecast once a
 -- plan is served or a scenario can be estimated, since the plan is held
 -- against its ranges and the scenario reads how often they held; the

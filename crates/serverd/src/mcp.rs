@@ -48,8 +48,10 @@ One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill
 body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It walks the five steps with one \
 working example each and names the references for depth. Every page this server serves is a \
 row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
-Every result ends with two lines. `status:` says whether the last statement ran or was \
-refused. `next:` counts what is open on the dataset per step and names the first open row. \
+Every result ends with `status:`: whether the last statement ran or was refused. A call on \
+a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
+is open on the dataset per step, and `first:`, the first open row. A call that changed what \
+waits in the workspace adds `summary:`. \
 `SELECT step, asset, state, open, statement FROM next` lists every open row with the \
 statement that closes it; `<...>` marks what you fill in. Work on a dataset is complete when \
 `next` shows nothing open for you. Rows that wait for a person are counted apart and do not \
@@ -628,8 +630,9 @@ impl GlossqlMcp {
                  definition (`GLOSS <view> ON <dataset>`) answers with the view's row of \
                  `view_summary()`. A refused statement is an error that names what was wrong \
                  and its place in the call; the statements before it stay stored \
-                 (`{{completed}}`). Every result ends with `status:` (the last statement) and \
-                 `next:` (what is open on the dataset per step, and the first open row); \
+                 (`{{completed}}`). Every result ends with `status:` (the last statement); a call \
+                 on a dataset adds `next:` (what is open on it per step) and `first:` (the \
+                 first open row); \
                  `SELECT step, asset, state, open, statement FROM next` gives each row's \
                  statement. Start with `SELECT body FROM pages() WHERE uri = \
                  'skill://glossql/SKILL.md'`. While assumptions wait for a person, a call that \
@@ -1131,6 +1134,7 @@ impl ServerHandler for GlossqlMcp {
                 &actor,
                 shape.dataset.as_deref().or(bound.as_deref()),
                 &rendered,
+                statements,
             )
             .await;
         Ok(call_result(&id, rendered, reviewed, completed, window, summary_moved).into())
@@ -1391,14 +1395,16 @@ fn call_result(
 }
 
 impl GlossqlMcp {
-    /// The two lines every result carries: where the call left the
-    /// agent, and one act per goal from there (`window`) on the
-    /// dataset the call's last `USE` named, else the interface's own.
+    /// The lines every result carries: where the call left the agent
+    /// (`status:`), and what is open (`next:`, `first:`) on the dataset
+    /// the call's last `USE` named, else the interface's own; none of
+    /// the two where the call is on no dataset.
     async fn situation_block(
         &self,
         actor: &Actor,
         dataset: Option<&str>,
         rendered: &Result<serde_json::Value, Refusal>,
+        statements: &str,
     ) -> String {
         // The last statement's one row, where it served one — a
         // metric definition's fact row. The wire renders an outcome as
@@ -1421,6 +1427,11 @@ impl GlossqlMcp {
                 Ok(rows) => lines.push(window::next_line(dataset, &rows)),
                 Err(e) => tracing::debug!(error = %e, "next: not served"),
             }
+        }
+        if rendered.is_ok()
+            && let Some(line) = window::series_window(statements)
+        {
+            lines.push(line.to_string());
         }
         lines.join("\n")
     }

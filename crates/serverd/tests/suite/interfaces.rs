@@ -1208,6 +1208,22 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
         json!([{"name": "answer", "type": INT}]),
         "{outcomes}"
     );
+    // … also as one statement of several, the path a PREVIEW takes.
+    let body = expect_ok(
+        mcp(
+            app.clone(),
+            call("SELECT 1 AS a; SELECT 41 + 1 AS answer LIMIT 0"),
+        )
+        .await,
+    )
+    .await;
+    let outcomes = outcomes_of(&body);
+    assert_eq!(outcomes[1]["row_count"], json!(0), "{outcomes}");
+    assert_eq!(
+        outcomes[1]["columns"],
+        json!([{"name": "answer", "type": INT}]),
+        "{outcomes}"
+    );
 
     // A failed statement comes back as a tool error the agent can read,
     // never a protocol error.
@@ -2308,8 +2324,8 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     let areas: Vec<&str> = rows.iter().filter_map(|r| r["area"].as_str()).collect();
     for expected in [
         "apps",
-        "aspects",
-        "claims",
+        "properties",
+        "annotations",
         "functions",
         "views",
         "plans",
@@ -2318,7 +2334,7 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
         "scenarios",
         "sources",
         "tables",
-        "validations",
+        "tests",
     ] {
         assert!(areas.contains(&expected), "{expected} missing: {rows:?}");
     }
@@ -2335,7 +2351,7 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // too and must not inflate the metrics.
     assert_eq!(row("views")["existing"], json!(1), "{rows:?}");
     assert_eq!(row("views")["open"], json!(0), "{rows:?}");
-    assert_eq!(row("claims")["open"], json!(0), "{rows:?}");
+    assert_eq!(row("annotations")["open"], json!(0), "{rows:?}");
     assert_eq!(row("review")["waiting"], json!(1), "{rows:?}");
     assert_eq!(row("views")["waiting"], json!(0), "{rows:?}");
     // The scenarios and the sample frames. The sample interface is a planner interface, not a row
@@ -2350,7 +2366,7 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // A validation is open while its property is in use and has no
     // value: the agent's own `ar_tie` is one of them, and it stops
     // being open the moment somebody annotates.
-    let open_before = row("validations")["open"].as_i64().unwrap();
+    let open_before = row("tests")["open"].as_i64().unwrap();
     assert!(open_before >= 1, "{rows:?}");
     let annotate = r#"USE fin;
         GLOSS ar_tie ON fin AS $${"outcome": "the subledger ties to its control account", "tolerance": 0.01}$$;"#;
@@ -2362,7 +2378,7 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
             call_with(
                 meta(),
                 163,
-                "SELECT open FROM workspace_status WHERE area = 'validations';",
+                "SELECT open FROM workspace_status WHERE area = 'tests';",
                 None,
             ),
         )
@@ -2419,12 +2435,15 @@ async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
             .and_then(|r| r["existing"].as_i64())
             .unwrap_or(-1)
     };
-    let aspects_whole = existing(&whole_rows, "aspects");
-    assert!(aspects_whole > 0, "aspects should stand: {whole_rows:?}");
+    let properties_whole = existing(&whole_rows, "properties");
+    assert!(
+        properties_whole > 0,
+        "the kits declare properties: {whole_rows:?}"
+    );
 
     // The same question, filtered.
     let one = read(
-        "SELECT area, existing FROM workspace_status WHERE area = 'aspects';",
+        "SELECT area, existing FROM workspace_status WHERE area = 'properties';",
         172,
     )
     .await;
@@ -2435,8 +2454,8 @@ async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
         "the filter must bind — got every area back: {one_rows:?}"
     );
     assert_eq!(
-        existing(&one_rows, "aspects"),
-        aspects_whole,
+        existing(&one_rows, "properties"),
+        properties_whole,
         "filtered and unfiltered disagree on the same count"
     );
 

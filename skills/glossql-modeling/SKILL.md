@@ -47,8 +47,11 @@ SELECT count(*) AS n, (SELECT count(*) FROM (SELECT DISTINCT delivery_id FROM de
 - **`meaning`**: one sentence on what the column holds, specific to
   this business. `term` is the name a report would print.
 - **`role`**: `key`, `measure`, `dimension`, `timestamp` or
-  `attribute`, judged from this table alone. A reference to another
-  table is a relationship, not a role.
+  `attribute`, judged from this table alone. A column that identifies
+  the row or refers to another table (a foreign key) is `key`; `key`
+  needs no further annotation. The join itself is declared as a
+  relationship. Mark a foreign key `dimension` only where the view
+  slices by the id itself; it then needs a `dimension` rank.
 - **`additivity`**, on a measure. `additive`: rows of one period add
   up (parcels, hours). `semi-additive`: a level at a point in time
   that must not be summed over periods (stock, headcount). `ratio`:
@@ -84,7 +87,14 @@ annotation shows in `next`; a wrong one does not.
 After `DECLARE RELATIONSHIP`, annotate its `meaning`, with what the
 orphans are. `relationship_coherence()` measures each declared
 relationship's orphan rate; the server runs it for the built-in
-tests. A table with one row per key and period of validity (prices,
+tests. Its `temporal` list compares the date columns of the two
+tables, up to three per side, over the joined rows: `precedes_rate`
+is the share of rows whose date in the referring table
+(`child_column`) lies before the date in the table referred to
+(`parent_column`). An order dated before its customer signed up is a
+defect or a wrong join; a booking dated before its event is as
+expected. Read the two column names before you judge the rate. A
+table with one row per key and period of validity (prices,
 assignments) is effective-dated: mark it with `validity`
 (`references/tests.md`).
 

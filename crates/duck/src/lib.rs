@@ -1614,7 +1614,7 @@ impl Session {
                      WHERE r.actor = 'function' AND NOT r.current \
                      UNION \
                      SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.view_summary()) \
+                     FROM (SELECT unnest(measurements_to_run) AS w FROM {LAKE}.main.view_summary()) \
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
                      FROM {LAKE}.main.open_items o \
@@ -1688,7 +1688,7 @@ fn execute_one(
     cap: usize,
 ) -> Result<(Outcome, Option<String>), SessionError> {
     let cap = if reads_catalog(sql) { usize::MAX } else { cap };
-    let (kind, _, batches) = arrow_batches(conn, sql, &[])?;
+    let (kind, schema, batches) = arrow_batches(conn, sql, &[])?;
     match kind {
         ResultType::ChangedRows => {
             let n = one_cell(&batches)
@@ -1712,7 +1712,12 @@ fn execute_one(
                 }
                 return Ok((Outcome::Done(text.clone()), Some(text)));
             }
-            let (batches, truncated) = cut(batches, cap);
+            let (mut batches, truncated) = cut(batches, cap);
+            // a read with no rows keeps its columns: one empty batch
+            // carries the schema to the interfaces
+            if batches.is_empty() {
+                batches.push(RecordBatch::new_empty(schema));
+            }
             Ok((Outcome::Rows { batches, truncated }, None))
         }
     }

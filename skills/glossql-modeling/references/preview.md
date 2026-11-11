@@ -49,6 +49,8 @@ test shows under the metric it plans.
 For each of a metric's latest six months: given the months before,
 what range would this month fall in? That is a backtest. A metric
 needs seven complete months; `backtested` counts the months tested.
+The ranges are monthly: a metric served by quarter or year has none,
+and its `reason` says so.
 
 ```glossql
 SELECT metric_ranges() FROM subway;
@@ -59,6 +61,8 @@ SELECT metric, period, actual, p05, p50, p95, pit, applicable, reason
 FROM range_points() WHERE newest
 ```
 
+A range is a statistical interval, so for a count or another value
+that cannot be negative its lower bound can still lie below zero.
 `pit` says where the actual fell in the range: 0.5 is the middle.
 August 2025 was 73,479 in a range of 69,225 to 78,245, `pit` 0.50.
 The test `range_test` is red where the newest month's `pit` is below
@@ -115,8 +119,8 @@ SELECT metric_plan() FROM subway.timetable;
 The plan's period and value columns carry the names of the metric's,
 or `period` and `value`. Its additivity is the metric's. A row covers
 its own period; where one row holds the whole year, add `"x-covers":
-"year"` to the declaration. `next` asks for `entity` and `meaning` on
-the plan, and for the annotations on the table it reads.
+"year"` to the declaration. `next` asks for `meaning` on the plan,
+and for the annotations on the table it reads.
 
 ```sql
 SELECT plan, grain, label, value, actual, variance, low, expected, high, planned, held_80

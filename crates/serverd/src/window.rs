@@ -1,8 +1,10 @@
 //! The lines on every result: where the call left the agent, on its
-//! last outcome (`status:`), and what is open on the dataset (`next:`),
-//! a count per step and the first open row with a link into `next://`
-//! and the `next` read. The lines are context: the skills say how, the
-//! catalog says what is open, and the agent decides.
+//! last outcome (`status:`), and, where the call is on a dataset, what
+//! is open on it (`next:`), a count per step, and the first open row
+//! (`first:`) with a link into `next://` and the `next` read. A call
+//! that reads `metric_series()` adds `window:`. The lines are context:
+//! the skills say how, the catalog says what is open, and the agent
+//! decides.
 
 use serde_json::Value;
 
@@ -76,13 +78,13 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             line.push_str(&format!(", sliced by {dims}"));
         }
         line.push_str(&word);
-        let unadmitted = list("unadmitted");
-        if !unadmitted.is_empty() {
-            line.push_str(&format!("; columns not described yet: {unadmitted}"));
+        let without_role = list("columns_without_role");
+        if !without_role.is_empty() {
+            line.push_str(&format!("; columns without a role: {without_role}"));
         }
-        let wanted = list("wanted");
-        if !wanted.is_empty() {
-            line.push_str(&format!("; still to run: {wanted}"));
+        let to_run = list("measurements_to_run");
+        if !to_run.is_empty() {
+            line.push_str(&format!("; still to run: {to_run}"));
         }
     } else {
         let reason = fact.get("reason").and_then(Value::as_str).unwrap_or("");
@@ -99,10 +101,10 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     line
 }
 
-/// The unadmitted columns of a fact row whose act is one of `tags`,
+/// The columns without a role of a summary row whose act is one of `tags`,
 /// in the row's order.
 fn tagged(fact: &Value, tags: &[&str]) -> Vec<String> {
-    let columns = fact.get("unadmitted").and_then(Value::as_array);
+    let columns = fact.get("columns_without_role").and_then(Value::as_array);
     let acts = fact.get("unadmitted_act").and_then(Value::as_array);
     let (Some(columns), Some(acts)) = (columns, acts) else {
         return Vec::new();
@@ -113,6 +115,20 @@ fn tagged(fact: &Value, tags: &[&str]) -> Vec<String> {
         .filter(|(_, act)| act.as_str().is_some_and(|t| tags.contains(&t)))
         .filter_map(|(column, _)| column.as_str().map(str::to_string))
         .collect()
+}
+
+/// The `window:` line, on a call that reads `metric_series()`: the
+/// read serves each metric's newest periods and not its history, which
+/// its rows alone do not show.
+pub fn series_window(statements: &str) -> Option<&'static str> {
+    statements
+        .to_ascii_lowercase()
+        .contains("metric_series(")
+        .then_some(
+            "window: metric_series() serves the newest periods of each metric, not its whole \
+             history. view_summary() has the count per metric as window_periods; time_grains \
+             \"windows\" on the period column sets it.",
+        )
 }
 
 fn field(row: &Value, name: &str) -> String {
@@ -197,4 +213,17 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::series_window;
+
+    /// The window line is on a call that reads the series, and on no other.
+    #[test]
+    fn the_window_line_is_on_a_read_of_the_series_only() {
+        let line = series_window("USE fin; SELECT * FROM metric_series(grain := 'month')");
+        assert!(line.is_some_and(|l| l.starts_with("window: ")));
+        assert!(series_window("USE fin; SELECT * FROM view_summary()").is_none());
+    }
 }

@@ -50,7 +50,9 @@ A data read returns at most `--row-cap` rows (default 200).
 
 ### The closing lines
 
-Each result ends with lines of context:
+Each result ends with lines of context. `status:` is on every
+result; `next:` and `first:` on a call on a dataset (`USE <dataset>;`
+or the dataset's endpoint):
 
 ```
 status: done — order_value: served, sliced by region
@@ -61,11 +63,14 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
 - `status:` says whether the last statement ran or was refused. For a
   view definition it adds whether the view is served and what its
   columns still need.
-- `next:` counts the open rows of `next` per step. Rows that wait for
-  a person are counted apart. `first:` is the first open row and the
+- `next:` counts the open rows of `next` per step. The assumptions
+  that wait for a person are counted apart. `first:` is the first open row and the
   resource that lists its step. A read of `next` in the same call
   lists the rows counted: the built-in tests of what the call wrote
   run before its next read.
+- `window:` appears on a call that reads `metric_series()`: the read
+  serves each metric's newest periods, `window_periods` in
+  `view_summary()`, and not its whole history.
 - `summary:` appears when a call changed the workspace's counts:
   decisions to apply, questions open for a person, the number of a
   person's annotations. The same call's result carries the counts as

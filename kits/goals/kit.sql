@@ -68,14 +68,14 @@ CREATE OR REPLACE VIEW main.open_items AS
             AND r.aspect NOT IN (SELECT name FROM main.aspects
                                  WHERE json_extract_string(schema, '$.x-subject') = 'view')) v
     WHERE NOT EXISTS (SELECT 1 FROM main.outlook_due() d WHERE d.name = v.actor AND NOT d.due)),
-  wanted AS (
+  to_run AS (
     SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
-    FROM (SELECT unnest(wanted) AS w FROM main.view_summary())),
+    FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary())),
   unmeasured AS (
     SELECT 'never measured' AS kind, w.function AS subject,
            'never measured: ' || w.function || '() over ' || string_agg(w.over, ', ' ORDER BY w.over) AS what,
            'the metric''s row reads it and no result exists — run the function over the column' AS why, '' AS since
-    FROM wanted w GROUP BY w.function),
+    FROM to_run w GROUP BY w.function),
   unwalked AS (
     SELECT 'never measured' AS kind, f.name AS subject,
            'never measured: ' || f.name || '() over ' || ds.dataset AS what,
@@ -111,8 +111,11 @@ CREATE OR REPLACE VIEW main.open_items AS
 -- work; <...> marks what only the author can fill). It serves
 -- building the layer (missing, not run) and running it (outdated
 -- after a load, red, conflict) alike. A test's finding and fix are
--- the test's own (`finding` and `fix` in its result); a kit adds rows
+-- the test's own (`finding` and `fix` in its result), on a view, a
+-- table or a column alike; a red test without a `fix` gets the check
+-- to run again and the statement that accepts its rate. A kit adds rows
 -- through its tests, and the outlook kit through outlook_findings().
+-- An assumption that waits for a person is one row each.
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
@@ -140,11 +143,15 @@ CREATE OR REPLACE VIEW main.next AS
       WHERE c.table_name IN (SELECT view FROM summary WHERE kind = 'relation' AND stopped IS NULL))
     GROUP BY asset),
   -- what an agent or a person states: not a measurement, not a check
-  -- the server runs; `shape` is the value to fill in where the
-  -- property's schema is a single `value`
+  -- the server runs; `shape` is the value to fill in: the fields the
+  -- skill asks for on a table's entity, else the property's single
+  -- `value`
   stated AS (
     SELECT name,
-           CASE WHEN json_extract(schema, '$.properties.value.enum') IS NOT NULL
+           CASE WHEN name = 'entity'
+                THEN '{"value": "<what one row is>", "role": "<fact|dimension>", "grain": ["<key column>"], "time_axis": "<date column, where the rows are events>"}'
+                WHEN name = 'meaning' THEN '{"value": "<one sentence>"}'
+                WHEN json_extract(schema, '$.properties.value.enum') IS NOT NULL
                 THEN '{"value": "<' || array_to_string(json_extract_string(schema, '$.properties.value.enum[*]'), '|') || '>"}'
                 WHEN json_extract(schema, '$.properties.value') IS NOT NULL
                 THEN '{"value": "<' || name || '>"}'
@@ -181,6 +188,10 @@ CREATE OR REPLACE VIEW main.next AS
     FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
     LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
     WHERE (x.asset IS NOT NULL OR g.state = 'conflict')
+      -- `entity` says what one row of a table is: asked on a loaded
+      -- table and on a table view, not on a metric, a single value or a plan
+      AND NOT (g.aspect = 'entity' AND g.state = 'missing' AND EXISTS (
+        SELECT 1 FROM summary m, ds WHERE g.subject = ds.d || '.' || m.view AND coalesce(m.kind, '') <> 'relation'))
       AND NOT (g.state = 'conflict' AND EXISTS (
         SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))
     UNION ALL
@@ -188,7 +199,7 @@ CREATE OR REPLACE VIEW main.next AS
     -- row names (`missing`), on the view's own column, so that the
     -- summary row and this list ask for the same annotation
     SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, false, false, u.statement
-    FROM (SELECT m.view, unnest(m.unadmitted) AS col, unnest(m.missing) AS statement FROM summary m
+    FROM (SELECT m.view, unnest(m.columns_without_role) AS col, unnest(m.missing) AS statement FROM summary m
           WHERE m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation', 'plan')) u, ds),
   -- the newest load of each table against the one before it
   loads AS (
@@ -277,6 +288,19 @@ CREATE OR REPLACE VIEW main.next AS
     FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state),
+  -- how a rate is accepted where the data is right as it is: a
+  -- tolerance annotated on the test's property where its schema has
+  -- one (a person's outranks the agent's), else the test declared
+  -- again with the rate as its threshold
+  accepts AS (
+    SELECT w.name AS test,
+           CASE WHEN a.kind = 'FACT' AND json_extract(a.schema, '$.properties.tolerance') IS NOT NULL THEN 'tolerance'
+                ELSE 'threshold' END AS by,
+           w.aspect
+    FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
+    JOIN (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+      ON a.name = w.aspect
+    WHERE w.detector = 'rate_tolerance'),
   s_test AS (
     SELECT CASE t.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 ELSE 3 END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
@@ -284,11 +308,20 @@ CREATE OR REPLACE VIEW main.next AS
                      FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.view = t.view)), ''),
            coalesce(t.evidence->>'fix',
                     CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
-                         THEN '-- fix the load or the view''s definition, then run the test''s check again:' || chr(10) END
-                      || nullif(t.run, ''),
+                         THEN '-- the data breaks the rule. Fix the load query or the view''s definition, then run the check again:' || chr(10)
+                              || nullif(t.run, '') || ';'
+                              || coalesce(chr(10) || '-- where a person accepts the rate as it is (measured: ' || round(t.score, 4) || '), '
+                                   || CASE k.by
+                                        WHEN 'tolerance' THEN 'record it with their reason:' || chr(10)
+                                               || '-- ' || main.gloss_statement(k.aspect, t.subject,
+                                               '{"tolerance": ' || ceil(t.score * 1000) / 1000 || ', "basis": "<who accepted the rate and why>"}')
+                                        WHEN 'threshold' THEN 'declare the test again with it, and say in the meaning of ' || t.subject || ' who accepted it and why:' || chr(10)
+                                               || '-- DECLARE TEST ' || t.test || ' ON ' || k.aspect
+                                               || ' DETECTOR rate_tolerance THRESHOLD ' || ceil(t.score * 1000) / 1000 || ';' END, '') END,
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
-    FROM vt t WHERE t.state <> 'green'),
+    FROM vt t LEFT JOIN accepts k ON k.test = t.test
+    WHERE t.state <> 'green'),
   s_decide AS (
     SELECT 2, 4, 'decide', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
@@ -304,9 +337,9 @@ CREATE OR REPLACE VIEW main.next AS
     FROM items o, ds WHERE o.kind = 'formula'
     UNION ALL
     SELECT 9, 4, 'decide', ds.d || '.' || q.aspect, 'waiting', 'person',
-           count(*) || ' ' || CASE WHEN count(*) = 1 THEN 'assumption waits' ELSE 'assumptions wait' END || ' for a person''s decision', q.aspect, '',
-           'SELECT key, assumption, basis FROM open_questions WHERE aspect = ''' || q.aspect || ''';'
-    FROM main.open_questions q, ds WHERE q.dataset = ds.d GROUP BY ds.d, q.aspect),
+           'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',
+           'SELECT key, assumption, basis, alternative FROM open_questions WHERE aspect = ''' || q.aspect || ''' AND key = ''' || q.key || ''';'
+    FROM main.open_questions q, ds WHERE q.dataset = ds.d),
   s_serve AS (
     SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
            '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
@@ -329,7 +362,7 @@ CREATE OR REPLACE VIEW main.next AS
                 THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<period column> AS $${"value": "timestamp"}$$;'
                 WHEN m.value_column IS NULL
                 THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<value column> AS $${"value": "measure"}$$;'
-                WHEN m.floor IS NULL AND len(m.wanted) > 0
+                WHEN m.floor IS NULL AND len(m.measurements_to_run) > 0
                 THEN 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
                 WHEN m.floor IS NULL
                 THEN 'GLOSS time_grains ON ' || ds.d || '.' || m.view || '.' || m.period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$;'
