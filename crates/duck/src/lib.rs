@@ -2104,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_read_reviews_and_a_gloss_writes() {
+    fn a_glossary_read_reviews_and_a_gloss_writes() {
         assert_eq!(
             call_shape("SELECT * FROM glossary"),
             CallShape {

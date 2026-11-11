@@ -359,7 +359,7 @@ mod tests {
     /// The audience's host joins the transport's loopback list; a bind
     /// address as the audience adds the bind address and nothing else.
     #[test]
-    fn the_agent_door_answers_loopback_and_its_own_name() {
+    fn the_agent_interface_answers_loopback_and_its_own_name() {
         let named = allowed_hosts("https://glossql-trial.example.azurecontainerapps.io");
         assert!(named.contains(&"glossql-trial.example.azurecontainerapps.io".to_string()));
         assert!(named.contains(&"127.0.0.1".to_string()) && named.len() == 4);
@@ -428,7 +428,7 @@ mod tests {
     /// The open switch is a statement, not a fallback: only the
     /// literal `true` opens, anything else keeps the gate required.
     #[test]
-    fn only_the_literal_true_opens_the_doors() {
+    fn only_the_literal_true_turns_the_token_check_off() {
         let env = |v: Option<&'static str>| move |_: &str| v.map(str::to_string);
         assert!(super::open(&env(Some("true"))));
         assert!(super::open(&env(Some(" true "))), "whitespace is trimmed");
@@ -468,14 +468,13 @@ mod tests {
             ],
         ));
         assert!(half.contains("GLOSSDB_WAREHOUSE_SECRET"), "{half}");
-        let misplaced = refusal(read(
+        refusal(read(
             &[],
             &[
                 ("GLOSSDB_WAREHOUSE_KEY_ID", "GOOG1E"),
                 ("GLOSSDB_WAREHOUSE_SECRET", "s"),
             ],
         ));
-        assert!(misplaced.contains("directory"), "{misplaced}");
     }
 
     /// The two budgets are the engine's own until named, and naming

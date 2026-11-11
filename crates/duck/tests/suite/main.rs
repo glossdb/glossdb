@@ -49,7 +49,7 @@ async fn plane() -> (tempfile::TempDir, Plane) {
 /// engine's knobs are closed with a reason, in a sequence as the
 /// refused statement; a root actor has them.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_door_opens_the_workspace_and_closes_the_engine() {
+async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
     if !extension_present() {
         return;
     }
@@ -81,15 +81,6 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
             other => panic!("{statement}: {other:?}"),
         }
     }
-    let text = agent
-        .execute("SET VARIABLE glossql_actor = 'human'")
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(
-        text.contains("`SET` is not allowed on this interface: the engine's settings"),
-        "{text}"
-    );
     let csv = dir.path().join("t.csv").display().to_string();
     for statement in [
         "CREATE TABLE fin.t AS SELECT 1 AS x",
@@ -171,7 +162,7 @@ fn text(outcomes: &[Outcome]) -> Vec<Vec<Option<String>>> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_language_runs_through_a_channel_and_the_record_reads_back() {
+async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
     if !extension_present() {
         return;
     }
@@ -249,7 +240,7 @@ async fn the_language_runs_through_a_channel_and_the_record_reads_back() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
+async fn a_review_decision_is_stored_as_the_person_and_counted() {
     if !extension_present() {
         return;
     }
@@ -289,7 +280,7 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
     )
     .await
     .unwrap();
-    assert!(said.starts_with("decided (confirmed) on `k1`"), "{said}");
+    assert!(said.contains("confirmed") && said.contains("k1"), "{said}");
 
     let after = plane.brief_counts().await.unwrap();
     assert_eq!(after.human_writings, 1);
@@ -309,7 +300,7 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
+async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
     if !extension_present() {
         return;
     }

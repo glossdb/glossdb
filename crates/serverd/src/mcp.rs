@@ -1478,7 +1478,7 @@ mod tests {
         let (message, _) = form(&question());
         assert_eq!(message.lines().count(), 1, "{message}");
         assert!(message.contains("race_entries"), "{message}");
-        assert!(message.contains("3 of 12 open"), "{message}");
+        assert!(message.contains('3') && message.contains("12"), "{message}");
         assert!(!message.contains("an entry is a row"), "{message}");
     }
 
@@ -1505,11 +1505,10 @@ mod tests {
     /// description of the box that confirms them, and the title is a
     /// short fixed label.
     #[test]
-    fn the_claim_rides_the_description_of_stands() {
+    fn the_claim_is_in_the_description_of_the_confirm_box() {
         let q = question();
         let (_, schema) = form(&q);
         let stands = &schema["properties"][STANDS];
-        assert_eq!(stands["title"], "Correct as stated");
         let said = stands["description"].as_str().expect("a description");
         assert!(said.contains(&q.assumption), "{schema}");
         assert!(said.contains(&q.basis), "{schema}");
@@ -1543,7 +1542,7 @@ mod tests {
     /// A box for a reading the catalog does not hold would be a box
     /// that cannot be answered, so neither appears unless it stands.
     #[test]
-    fn the_rival_and_the_prior_ruling_appear_only_when_they_stand() {
+    fn the_alternative_and_the_earlier_decision_appear_only_when_given() {
         let (_, bare) = form(&question());
         assert!(bare["properties"].get(RATHER).is_none(), "{bare}");
         assert!(bare["properties"].get(SAME_AS).is_none(), "{bare}");

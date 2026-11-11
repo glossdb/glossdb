@@ -397,7 +397,7 @@ fn schema_majors(text: &str) -> Vec<u32> {
 /// hint is the counter, and a bundle bump that forgets the prose
 /// fails here instead of teaching an outdated `$schema`.
 #[test]
-fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
+fn the_apps_skill_names_the_vega_lite_major_the_server_serves() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let bundle = std::fs::read_to_string(manifest.join("../apps/assets/vendor/vega-lite.min.js"))
         .expect("the vendored vega-lite bundle");
