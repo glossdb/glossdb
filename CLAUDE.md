@@ -41,7 +41,7 @@ workspace version.
   prose; `grammar.ebnf`, the source of truth for syntax; `corpus/`,
   transcriptions of real artifacts, the language's acceptance tests
   (` ```glossql ` must parse, ` ```glossql-gap ` must fail). Open
-  questions live in SPEC.md §9 and close by a corpus verdict. The MCP
+  questions live in SPEC.md §9 and close by a corpus test. The MCP
   interface serves both documents as `doc://SPEC.md` and
   `doc://grammar.ebnf`.
 - `crates/` — the server, a Cargo workspace: `duck` (the engine: the
@@ -76,7 +76,7 @@ workspace version.
 - **Use the product as the agent does.** Before and after a change to
   anything an agent reads (kits, skills, the MCP text, the `next`
   line), start a server on a scratch workspace, connect through the
-  MCP interface and walk the flow: load, describe, define a metric,
+  MCP interface and walk the flow: load, describe, define a view,
   read `next`. A stale demo workspace is rebuilt, not reported.
 - **Evaluate from the reader's side.** Say in their words what
   glossdb does for them, what breaks and what it costs. Numbers from

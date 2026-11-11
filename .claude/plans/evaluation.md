@@ -16,15 +16,15 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A test case on typed sources: FERC Form 1's steam plant schedule from the old filing system and the new one, into PUDL's one cleaned table | Medium: PUDL also sorts free text into categories; the per-column score will show what a contract can ask for | glossval: a builder like `gen_eia.py`, a scenario, a contract | Next | |
-| The harness runs a contract test case: sources mounted, nothing loaded, the contract in the task, the built table exported and scored; stops when `next` has no open row for the agent | Medium: `run.py` loads tables first and reads the old `next` columns | glossval `run.py`, `next_state.py` | After the first row | |
-| The EIA test case with the CSV configuration: does an agent that follows the load skill reach the reference | Low | glossval `scenarios/eia-generators/` | With the harness | |
+| glossval's tools follow the server's renamed reads and the new `next`; the notes and tools of the old measurement are cut to what the contract test cases use | Medium: about 16,000 lines of tools read the old names | glossval `tools/`, its notes | Next | |
+| The review step in the contract harness: a second agent answers the builder's assumptions from the reference's documentation (`tools/interact.py`) | Low | glossval `tools/contract_run.py` | With the first row | |
+| Both test cases run three times each; cost, turns and scores per run | Low | glossval scenarios `ferc-steam`, `eia-generators` | After the first row | |
+| The rows the builder misses on FERC (the new filing system: 3,909 of 5,221 found by hand) | Medium: PUDL's own mapping may not be reachable from the sources | glossval `ferc-steam` | With the runs | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
-| The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Low | both test cases, `next_state.py` | After the first runs | |
-| The other tools that read the old `next` columns are adapted or deleted: `plan_lane.py`, `ab_seats.py`, `chat_agent.py`, `joint_report.py`, `score.py`, `truth_stack.py`, `truth_trial.py`, `mining/next_table.py`, `graph/graph.py` | Low | glossval | Before the pull requests | |
-| The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Low | glossval `bare_run.py`, `bare/duck_mcp.py` | After the build stage | |
+| The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Low | both test cases | After the first runs | |
+| The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Low | glossval | After the build stage | |
 | Finance from `../glosstest`, labelled generated; one data set among others | Low | glossval | After the real data reports | |
-| The existing test cases rerun, the Monday test, then the results page | Low | glossval, the websites | Last | |
+| The results page | Low | glossval, the websites | Last | |
 
 Not planned: reading a CSV in place as a view; the same agent with
 DuckDB only as a comparison (a story for the docs later).
@@ -32,25 +32,27 @@ DuckDB only as a comparison (a story for the docs later).
 ## What is there
 
 - **The CSV configuration.** `null_markers()` in the core kit is the
-  list of strings an export writes for no value. The load skill and
-  the loading page give the reader's options: `all_varchar`,
-  `nullstr = null_markers()`, `store_rejects`. Walked over MCP on a
-  five-line file: markers became NULL, a leading zero and a padded id
-  were kept and trimmed, one broken line was dropped and counted.
-- **The EIA test case** in glossval (`eia-generators`): nine monthly
-  workbooks of EIA Form 860M as CSV, the table PUDL v2026.11.0
-  publishes from them as the reference (338,246 rows, 33 columns), the
-  contract from PUDL's descriptor. Built by `tools/gen_eia.py`.
+  list of strings an export writes for no value. The load skill gives
+  the reader's options: `all_varchar`, `nullstr = null_markers()`,
+  `store_rejects`, and casts over `trim()`.
+- **Two test cases** in glossval, built by `tools/gen_eia.py` and
+  `tools/gen_ferc.py` from PUDL v2026.11.0:
+  - `eia-generators` (CSV): nine monthly workbooks of EIA Form 860M,
+    the reference 338,246 rows and 33 columns.
+  - `ferc-steam` (typed): FERC Form 1's steam plant schedule from the
+    old filing system and the new one, the reference 34,984 rows and
+    39 columns.
 - **The scorer** `tools/contract_score.py`: keys found, values equal
   per column, cells right, rows right in every column. The reference
-  against itself scores 100%; a first pass by hand in plain SQL scores
-  95.7% of cells. No agent has run on it.
-- **FERC Form 1 in PUDL v2026.11.0**, checked on one schedule: the old
-  system's table `f1_steam` (51,770 rows, 79 columns, short names),
-  the new system's two tables (7,943 rows, long names), and PUDL's
-  cleaned `core_ferc1__yearly_steam_plants_sched402` (34,984 rows, 39
-  columns, 1994 to 2025). All three are Parquet. The cleaned table has
-  other names, other units (MW, MWh), one utility id and fewer rows.
+  against itself scores 100%.
+- **The harness** `tools/contract_run.py`: sources mounted, nothing
+  loaded, the contract in the task, the built table exported and
+  scored.
+- **Measured so far.** By hand in plain SQL: EIA 99.0% of keys and
+  95.7% of cells; FERC 96.8% of keys, 96.4% of cells, 86.4% of rows.
+  One agent run on `ferc-steam`: 32 turns, 1.35 USD, 94.0% of keys,
+  91.2% of cells, 0% of rows, because the reference writes plant
+  names in lower case and the contract did not say so.
 
 ## What the scores are
 
@@ -66,12 +68,11 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**A test case on typed sources: FERC Form 1 steam plants.** What it
-buys: the main case of data middleware on real data, two systems of
-record into one table, with a reference we did not write. What is
-there: the three Parquet files of PUDL v2026.11.0 named above;
-`tools/gen_eia.py` and `tools/contract_score.py` as the pattern. Done
-when: `fetch_corpora.py ferc` builds the sources, the reference and
-the contract; the scorer gives 100% for the reference against itself;
-a first pass by hand is scored and the columns it cannot reach from
-the sources are listed.
+**glossval follows the renamed reads.** What it buys: the contract
+test cases run against the current server, and the repository holds
+only what they use. What is there: `tools/contract_run.py`,
+`contract_score.py`, `gen_eia.py`, `gen_ferc.py`, `fetch_corpora.py`
+and the two scenarios; the rename map of the server's reads. Done
+when: a search for the old names in glossval finds nothing; both test
+cases run end to end; the tools and notes no test case uses are
+deleted.

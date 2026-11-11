@@ -6,23 +6,24 @@ first the data intelligence direction, then the backlog by step. The
 plans beside it: `platform.md` (dbt, semantic models, lakes, the
 workspace as code), `sources.md` (spreadsheets, documents, search),
 `gate.md` (access per user), `clients.md` and `chat.md` (the hosted
-trial), `evaluation.md` (what glossval measures), `next.md` (the
-`next` rework and what is left of it).
+trial), `evaluation.md` (what glossval measures).
 
 ## First: the data intelligence direction
 
-Finished before anything new is picked.
+Finished before anything new is picked. Everything built is on the
+branch `data-intelligence` in both repositories, not pushed.
 
 | # | What | State |
 |---|---|---|
-| 1 | Text: `CLAUDE.md`, the prose skill, `README.md`, the docs overview, the extension's README | on the branch `data-intelligence` in both repositories |
-| 2 | The extension's pages tell how a data harness works and why it is needed; glossdb's pages tell data intelligence | on the branch |
-| 3 | What an agent reads on connecting (`INSTRUCTIONS` in `crates/serverd/src/mcp.rs`) and the opening of each skill name the job: building the layer | on the branch |
-| 4 | `next` derived from the states the catalog already holds (missing, outdated, conflict, a red or not-run test, a decision waiting), walked along the lineage of what the person asked for: source, table, column, join, metric. An ordered list as context; the calling agent decides. One generic query and one text per state replace the hand-written blocks per kit. Tests on wording are changed or deleted on the way | built in the server (`next.md`); glossval reads it next |
-| 4b | A decision model that ranks the steps: of interest only for small models; frontier models decide well from an ordered list | parked |
-| 5 | The console: a second pass against the five questions (which sources map, what does this mean, can we trust it, who decides, where does it come from), with the issues the project lead found in the UI; its tests that pin labels are changed or deleted on the way | after 6 runs |
-| 6 | glossval measures the layer: an agent builds it, a second agent reads the lake with plain DuckDB; real data first (`evaluation.md`) | next |
-| 7 | Results page and websites | after 6 |
+| 1 | Names: every interface name that was a project word is renamed to the industry's word, in both repositories | built |
+| 2 | Text: README, docs, skills, the corpus, the text an agent reads on connecting, written new for every kind of view (a table, a single value, a metric) and checked against the code | built |
+| 3 | Tests: no test compares wording; tests that protected nothing and code written for tests are deleted; a refusal carries a code | built |
+| 4 | `next`: the work list by step, derived from the states the catalog holds, with a statement per row; the console's overview shows the same rows | built |
+| 5 | The console: overview along the five steps, model and lineage as two pages, a test's page with its results, every kind of view under Views | built; the wording inside the other pages is the next pass |
+| 6 | What an outside agent found when it built a workspace from the skill alone (20 items) | in work |
+| 7 | glossval: its tools follow the renamed reads; its old notes and tools are cut; the contract test cases run (`evaluation.md`) | next |
+| 8 | One pull request per repository; the extension's branch first, then the server's pin moves to it | when the project lead says the branches go up |
+| 9 | Results page and websites | after 7 |
 
 ## The backlog, by step
 
@@ -50,11 +51,11 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| The extension's description reads "the context language over DuckDB" | the extension | before the pull requests |
-| The console's tests pin about 110 labels | `crates/apps/tests/suite/console.rs` | with row 5 |
-| A workspace opened before the switch keeps a dead `next_steps` view and three `routes_*` macros | the demo workspace is rebuilt | with row 6 |
-| A test's result reads as not current after a load of a table the metric does not read | `view_tests()`, the data version the extension stores for a result | after row 6 |
-| One pull request per repository for the branch `data-intelligence` | both repositories, glossval on its own | when rows 1 to 6 are done |
+| A test result's `current` flag turns false on any write to a catalog table the result read. The outlook kit works around it with a digest. The fix is the extension's: a function declares what it reads; a grammar change, so a corpus test with the competing forms goes to the project lead | the extension, `SPEC.md`; `kits/outlook/kit.sql` | before the pull requests, as a proposal |
+| A kit cannot change a property that has values, not even to add a description, so an existing workspace cannot take a kit update | the extension | before a workspace lives longer than a release |
+| The spec says data-changing SQL is refused; the server allows it. It follows access control | `gate.md` | with `gate.md` |
+| The demo workspace is rebuilt on the new names | the demo server | before the pull requests |
+| `../glossthesi` uses the old words in its README | `../glossthesi` | before the pull requests |
 
 ## Measured
 
