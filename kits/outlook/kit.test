@@ -1,5 +1,5 @@
 # name: kits/outlook/kit.test
-# description: the outlook kit — the walk's request from the metric series, complete months only and seven at least; the walk loaded as a measurement carrying the service's result; the reads and the test over it
+# description: the outlook kit — the backtest's request from the metric series, complete months only and seven at least; the backtest stored as a measurement carrying the service's result; the forecast, the plan and the scenario; the reads and the tests over them
 # group: [sql]
 
 require glossql
@@ -67,7 +67,7 @@ SELECT temporal() FROM spend.period;
 statement ok
 GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
 
-# a second metric with four whole months: too short for the walk
+# a second metric with four whole months: too short for a backtest
 statement ok
 CREATE TABLE fin.recent AS SELECT DATE '2024-10-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(126) r(i);
 
@@ -91,9 +91,9 @@ GLOSS additivity ON hires.value AS $${"value": "additive"}$$;
 
 # --- the request: whole months only, the month the edge falls inside left out; seven at least
 
-# the metric too short for the walk carries the reason; the walkable one carries none
+# the metric too short for a backtest carries the reason; the other one carries none
 query TTITT
-SELECT metric, additivity, months, walkable, (reason) IS NOT NULL FROM range_request();
+SELECT metric, additivity, months, applicable, (reason) IS NOT NULL FROM range_request();
 ----
 hires	additive	4	false	true
 spend	additive	13	true	false
@@ -107,7 +107,7 @@ FROM range_body();
 ----
 6	13	0.98	2024-01	2025-01	spend	118.0
 
-# the test's threshold is the red line the walk is asked with
+# the test's threshold is the red line the backtest is asked with
 statement ok
 DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.9;
 
@@ -116,14 +116,14 @@ SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM range_body();
 ----
 0.9
 
-# --- no service named: the walk refuses by name, before any call
+# --- no service named: the backtest refuses by name, before any call
 
 statement error
 SELECT metric_ranges() FROM fin;
 ----
-no service is named for /forecast
+GLOSSDB_SERVICE_URL
 
-# --- the service stood in for: two walked months, the newest outside the corridor, the older one withheld
+# --- the service stood in for: two backtested months, the newest outside its range, the older one withheld
 
 statement ok
 CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "walk": {"score": 1.0, "band": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "walked": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
@@ -143,7 +143,7 @@ spend	2024-12	125.0	100.0	120.0	140.0	NULL	true
 spend	2025-01	300.0	200.0	220.0	240.0	1.0	false
 
 query TRTIRR
-SELECT period, displacement, newest, walked, held_80, held_90 FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
+SELECT period, displacement, newest, backtested, held_80, held_90 FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
 2024-12	NULL	false	2	0.0	0.0
 2025-01	1.0	true	2	0.0	0.0
@@ -164,7 +164,7 @@ SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
 fin	range_test	red	1.0
 
-# --- a repeat is served; a change to what the walk read owes a new one
+# --- a repeat is served; a change to what the backtest read owes a new one
 
 statement ok
 SELECT metric_ranges() FROM fin;
@@ -292,6 +292,26 @@ SELECT count(*) FROM forecast_coverage();
 ----
 0
 
+# --- run again from the same origin (an annotation elsewhere moved the catalog), the forecast is a second run
+# and still one point per metric, origin, step and span
+
+statement ok
+GLOSS meaning ON fin.ledger AS $${"value": "one booking"}$$;
+
+statement ok
+SELECT metric_forecast() FROM fin;
+
+query II
+SELECT count(*), count(DISTINCT origin) FROM measurements m, (SELECT DISTINCT origin FROM forecast_stored() WHERE metric = 'sales') o
+WHERE m.function = 'metric_forecast';
+----
+2	1
+
+query II
+SELECT (SELECT count(*) FROM forecast_runs() WHERE metric = 'sales'), (SELECT count(*) FROM forecast_scored() WHERE metric = 'sales');
+----
+28	14
+
 # the forecast world: the medians at the forecast's grain, under the metric
 query TTIR
 SELECT metric, world, count(*), any_value(value) FROM metric_series(world := 'forecast', grain := 'month') GROUP BY ALL;
@@ -317,7 +337,7 @@ SELECT view, plan_of, applicable, period_column, value_column, additivity FROM v
 ----
 sales_budget	sales	true	period	value	additive
 
-# a plan is no metric of the actual world, and neither the walk nor the forecast reads it
+# a plan is no metric of the actual world, and neither the backtest nor the forecast reads it
 query I
 SELECT count(*) FROM metric_series(grain := 'month') WHERE metric = 'sales_budget';
 ----
@@ -548,8 +568,9 @@ priced.price	day	23	425	23	forecast
 statement ok
 CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"table":{"member":["priced.price","priced.price","priced.price"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[]}}'::JSON;
 
+# each period ahead is answered twice: as planned (the baseline) and under the scenario
 statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08"],"column":["value","value","value","value","value","value","value","value","value"],"status":["scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[4.0,5.0,6.0,4.1,5.1,6.1,4.2,5.2,6.2],"history_value":[5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7],"history_low":[5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0],"history_high":[6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0],"sign":["+","+","+","+","+","+","+","+","+"],"confidence":["direction","direction","direction","direction","direction","direction","direction","direction","direction"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}]}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08","2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"status":["plan","plan","plan","plan","plan","plan","plan","plan","plan","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[3.6,4.5,5.4,3.7,4.6,5.5,3.8,4.7,5.6,4.0,5.0,6.0,4.1,5.1,6.1,4.2,5.2,6.2],"history_value":[null,null,null,null,null,null,null,null,null,5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7],"history_low":[null,null,null,null,null,null,null,null,null,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0],"history_high":[null,null,null,null,null,null,null,null,null,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0],"sign":["+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+"],"confidence":["direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction","direction"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}]}}'::JSON;
 
 statement ok
 SELECT metric_scenario() FROM fin;
@@ -560,6 +581,14 @@ SELECT scenario, metric, grain, step, period::DATE, low, value, high, sign, conf
 price_up	priced	day	1	2025-02-06	4.0	5.0	6.0	+	direction
 price_up	priced	day	2	2025-02-07	4.1	5.1	6.1	+	direction
 price_up	priced	day	3	2025-02-08	4.2	5.2	6.2	+	direction
+
+# the baseline is the same estimate with the lever as planned; the effect is what the scenario changes
+query TRRR
+SELECT period::DATE, value, baseline, round(effect, 2) FROM scenario_points('price_up');
+----
+2025-02-06	5.0	4.5	0.5
+2025-02-07	5.1	4.6	0.5
+2025-02-08	5.2	4.7	0.5
 
 query TTTRRR
 SELECT metric, lever, planned_from, history_shift, history_low, history_high FROM scenario_levers('price_up');
@@ -640,3 +669,187 @@ SELECT name FROM outlook_measurements() ORDER BY name;
 metric_forecast
 metric_ranges
 metric_scenario
+
+# --- the preview tests are rows of view_tests(), under the metric; a plan's test under the metric it plans
+
+query I
+SELECT count(*) FROM view_tests_without_preview() WHERE test IN ('range_test', 'forecast_test', 'scenario_test', 'plan_test');
+----
+0
+
+query TTT
+SELECT view, test, subject FROM view_tests() WHERE test IN ('range_test', 'forecast_test', 'scenario_test', 'plan_test') AND view IN ('sales', 'priced')
+ORDER BY view, test;
+----
+priced	forecast_test	fin.priced
+priced	range_test	fin.priced
+priced	scenario_test	fin.priced
+sales	forecast_test	fin.sales
+sales	plan_test	fin.sales_budget
+sales	range_test	fin.sales
+
+# the plan's test is red, with the finding and the fix outlook_findings() holds; the metric no backtest reached is not applicable
+query TTTT
+SELECT view, state, (evidence->>'finding') IS NOT NULL, (evidence->>'fix') IS NOT NULL FROM view_tests() WHERE test = 'plan_test';
+----
+sales	red	true	true
+
+query TT
+SELECT state, (evidence->>'reason') IS NOT NULL FROM view_tests() WHERE test = 'range_test' AND view = 'hires';
+----
+not_applicable	true
+
+# --- metric_plan() on a view that is not a plan is refused by name, and stores nothing
+
+statement error
+SELECT metric_plan() FROM fin.sales;
+----
+fin.sales
+
+query I
+SELECT count(*) FROM measurements WHERE function = 'metric_plan' AND subject = 'fin.sales';
+----
+0
+
+# --- a plan is compared with the actual only where the actuals cover the period: hires begins in October 2024,
+# a plan for the whole of 2024 has no actual for the year or for September, and one for October
+
+statement ok
+CREATE TABLE fin.hires_budget AS
+  SELECT (DATE '2024-01-01' + INTERVAL (m) MONTH)::DATE AS month, 30.0 AS planned FROM range(12) r(m);
+
+statement ok
+DECLARE ASPECT hires_plan WITH $${"title": "Hiring plan", "x-kind": "plan", "x-plan-of": "hires"}$$ AS VIEW;
+
+statement ok
+GLOSS hires_plan ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.hires_budget"}$$;
+
+query TTRRRT
+SELECT grain, label, value, actual, variance, planned FROM plan_points()
+WHERE plan = 'hires_plan' AND (grain = 'year' OR label IN ('2024-09', '2024-10'))
+ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
+----
+year	2024	360.0	NULL	NULL	not_covered
+month	2024-09	30.0	NULL	NULL	not_covered
+month	2024-10	30.0	31.0	1.0	complete
+
+# --- the actual of a forecast's period loads: one point per origin, step and span, though the forecast ran twice from it
+
+statement ok
+INSERT INTO fin.ledger VALUES (DATE '2025-03-15', 5.0, 'water');
+
+query TIIII
+SELECT metric, step, span, points, inside_80 FROM forecast_coverage() WHERE metric = 'sales' ORDER BY span NULLS FIRST;
+----
+sales	1	NULL	1	0
+sales	1	1	1	0
+
+# --- a series that ends inside its last period: the series read serves the period, and the backtest and the forecast
+# leave it out alike
+
+statement ok
+GLOSS time_grains ON spend.period AS $${"floor": "month"}$$;
+
+query T
+SELECT max(period)::DATE FROM metric_series() WHERE metric = 'spend' AND dimension = '';
+----
+2025-03-01
+
+query TT
+SELECT (SELECT max(period)::DATE FROM range_series() WHERE metric = 'spend'), (SELECT origin::DATE FROM forecast_request() WHERE metric = 'spend');
+----
+2025-02-01	2025-02-01
+
+# --- a dataset where nothing can be estimated: four months of history, and a scenario whose only period is loaded
+
+statement ok
+DECLARE DATASET thin SET (purpose: 'too short');
+
+statement ok
+USE thin;
+
+statement ok
+CREATE TABLE thin.visits_raw AS
+  SELECT (DATE '2025-01-01' + INTERVAL (m) MONTH)::DATE AS month, (100 + m)::DOUBLE AS n, 9.0 + m AS price FROM range(4) r(m);
+
+statement ok
+DECLARE ASPECT visits WITH $${"title": "Visits"}$$ AS VIEW;
+
+statement ok
+GLOSS visits ON thin AS $${"sql": "SELECT month AS period, n AS value, price FROM thin.visits_raw"}$$;
+
+statement ok
+GLOSS role ON visits.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON visits.value AS $${"value": "measure"}$$;
+
+statement ok
+SELECT temporal() FROM visits.period;
+
+statement ok
+GLOSS additivity ON visits.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS lever ON visits.price AS $${"value": true, "basis": "the ticket price"}$$;
+
+statement ok
+DECLARE ASPECT cheaper WITH $${"title": "Cheaper in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
+
+statement ok
+GLOSS cheaper ON thin AS $${"levers": [{"column": "visits.price", "factor": {"2025-02": 0.9}, "basis": "a price cut"}]}$$;
+
+# a scenario declared for another dataset is none of this one's
+query T
+SELECT scenario FROM scenarios() WHERE glossed;
+----
+cheaper
+
+# no plan is served; the scenario alone makes the forecast one of the measurements the dataset needs
+query TTT
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	false	true
+metric_ranges	false	true
+metric_scenario	false	true
+
+statement ok
+SELECT metric_ranges() FROM thin;
+
+statement ok
+SELECT metric_forecast() FROM thin;
+
+statement ok
+SELECT metric_scenario() FROM thin;
+
+query TTT
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	true	false
+metric_ranges	true	false
+metric_scenario	true	false
+
+query TT
+SELECT applicable, fixable FROM scenario_request();
+----
+false	true
+
+# a result that holds no point is no green: the tests have no result
+query I
+SELECT count(*) FROM TESTS() WHERE test IN ('range_test', 'forecast_test', 'scenario_test');
+----
+0
+
+# too little history is nobody's to settle: not applicable, with the reason; the scenario's period is its author's: not run, with the fix
+query TTTT
+SELECT test, state, (evidence->>'reason') IS NOT NULL, (evidence->>'fix') IS NOT NULL FROM view_tests()
+WHERE view = 'visits' AND test IN ('range_test', 'forecast_test', 'scenario_test') ORDER BY test;
+----
+forecast_test	not_applicable	true	false
+range_test	not_applicable	true	false
+scenario_test	not_run	true	true
+
+query TTTT
+SELECT step, asset, state, test FROM outlook_findings();
+----
+test	thin.visits	not_run	scenario_test

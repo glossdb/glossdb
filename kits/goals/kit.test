@@ -57,3 +57,235 @@ query I
 SELECT count(*) FROM kits;
 ----
 6
+
+# --- the preview measurements in `next`: listed where the dataset needs them, due again when what they read
+# changed and only then; the model service is stood in for
+
+statement ok
+COPY (SELECT (DATE '2023-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 + m AS orders, 10.0 + m % 3 AS price, 5 AS staff
+      FROM range(30) r(m)) TO '{TEST_DIR}/orders.csv' (HEADER);
+
+statement ok
+DECLARE DATASET ops SET (purpose: 'orders per month');
+
+statement ok
+USE ops;
+
+statement ok
+DECLARE SOURCE erp SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv')$$;
+
+statement ok
+DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS VIEW;
+
+statement ok
+GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw"}$$;
+
+statement ok
+GLOSS role ON orders.month AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON orders.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON orders.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS time_grains ON orders.month AS $${"floor": "month"}$$;
+
+statement ok
+GLOSS meaning ON ops.orders AS $${"value": "orders taken per month"}$$;
+
+query TT
+SELECT applicable, floor FROM view_summary() WHERE view = 'orders';
+----
+true	month
+
+# the view's column price has no role: the summary row and `next` ask for it with the same statement, on the
+# view's own column
+query TT
+SELECT contains(s.missing[1], 'ops.orders.price'), contains(n.statement, s.missing[1])
+FROM (SELECT missing FROM view_summary() WHERE view = 'orders') s,
+     (SELECT statement FROM next WHERE step = 'describe' AND asset = 'ops.orders' AND state = 'missing') n;
+----
+true	true
+
+# no model service is named: no preview measurement is asked for
+query I
+SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+0
+
+statement ok
+SET GLOBAL glossql_service_url = 'http://model.test';
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"walk":{"score":0.4,"band":"green","threshold":0.98,"members":[{"member":"orders","column":"value","walked":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.7,"displacement":0.4,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
+
+statement ok
+CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"error": "refused"}'::JSON;
+
+# a metric is served: the expected ranges are due; no plan and no scenario, so no forecast
+query TTT
+SELECT asset, state, statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+ops	not_run	SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+query I
+SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+0
+
+# a plan is declared and defined, and a column the metric does not read is annotated: the catalog moved, so the
+# stale rule marks the stored ranges, and nothing they read changed, so they are not due; the plan makes the forecast due
+statement ok
+DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
+
+statement ok
+GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw"}$$;
+
+statement ok
+GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
+
+query T
+SELECT current FROM TESTS() WHERE test = 'range_test';
+----
+false
+
+query TTT
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	false	true
+metric_ranges	true	false
+
+query T
+SELECT statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+SELECT metric_forecast() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_target;
+
+# an assumption added to the plan and one added to the metric leave the SQL as it is: nothing is due
+statement ok
+GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "target", "assumption": "the target is ten percent over the orders", "basis": "the sales plan", "confidence": 0.7}]}$$;
+
+statement ok
+GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "taken", "assumption": "an order counts in the month it is taken", "basis": "the order date", "confidence": 0.7}]}$$;
+
+query I
+SELECT count(*) FROM outlook_measurements() WHERE due;
+----
+0
+
+query I
+SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+0
+
+# the table is loaded again with a month more: the ranges and the forecast read it, and are due
+statement ok
+COPY (SELECT (DATE '2023-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 + m AS orders, 10.0 + m % 3 AS price, 5 AS staff
+      FROM range(31) r(m)) TO '{TEST_DIR}/orders.csv' (HEADER);
+
+statement ok
+DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv') WHERE orders > 0$$;
+
+query TT
+SELECT name, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	true
+metric_ranges	true
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
+
+query I
+SELECT count(*) FROM outlook_measurements() WHERE due;
+----
+0
+
+# the metric's SQL changes: due again
+statement ok
+GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw WHERE month >= DATE '2023-02-01'"}$$;
+
+query TT
+SELECT name, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	true
+metric_ranges	true
+
+# the annotation on the view is outdated, and its row says what changed: the definition, recorded again
+query TT
+SELECT state, cause <> '' FROM next WHERE step = 'describe' AND asset = 'ops.orders' AND state = 'stale';
+----
+stale	true
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
+
+# a scenario is annotated: its estimate is due, and the ranges and the forecast are not
+statement ok
+GLOSS lever ON orders.price AS $${"value": true, "basis": "the list price"}$$;
+
+statement ok
+DECLARE ASPECT price_cut WITH $${"title": "Price cut", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
+
+statement ok
+GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
+
+query TTT
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	true	false
+metric_ranges	true	false
+metric_scenario	false	true
+
+statement ok
+SELECT metric_scenario() FROM ops;
+
+query TT
+SELECT state, current FROM TESTS() WHERE test = 'scenario_test';
+----
+green	true
+
+# the scenario's factor changes: its own estimate is due, alone
+statement ok
+GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
+
+query T
+SELECT name FROM outlook_measurements() WHERE due;
+----
+metric_scenario
+
+# a scenario whose only period is loaded already is estimated for nothing: its test has no result, and `next` asks
+# its author for a period ahead, with the scenario's statement
+statement ok
+GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-01": 0.9}, "basis": "a cut in January"}]}$$;
+
+statement ok
+SELECT metric_scenario() FROM ops;
+
+query I
+SELECT count(*) FROM TESTS() WHERE test = 'scenario_test';
+----
+0
+
+query TTT
+SELECT step, asset, state FROM next WHERE contains(statement, 'GLOSS price_cut ON ops');
+----
+test	ops.orders	not_run

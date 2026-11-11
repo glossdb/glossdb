@@ -1,12 +1,12 @@
--- A corridor test's evidence: every walked metric's newest point —
--- the one the walk's result scores — with its actual, its corridor,
+-- A corridor test's evidence: every backtested metric's newest point —
+-- the one the backtest's result scores — with its actual, its corridor,
 -- how far out it sits and on which side, the farthest out first. The
 -- state beside each point is the result's own rule on that one
 -- displacement (green to 0.8, yellow to 0.9, orange to the threshold,
 -- red past it); the result's score is the worst of them raised to
 -- their number. A point whose PIT is withheld carries the service's
--- reason; a metric the walk found inapplicable carries its reason and
--- no numbers. `range_points()` is the recorded walk, no re-run. Rows
+-- reason; a metric the backtest could not take carries its reason and
+-- no numbers. `range_points()` is the stored backtest, no re-run. Rows
 -- only for a test whose detector is range_breach, so another test's
 -- page draws nothing here.
 WITH w AS (
@@ -20,7 +20,7 @@ newest AS (
   FROM range_points()
   WHERE NOT applicable OR period IS NOT NULL
 ),
--- The axis that moved most between the previous and the newest walked
+-- The axis that moved most between the previous and the newest backtested
 -- month, per metric, from the series' cells: a point's link opens the
 -- metric sliced by it, so the page beyond shows where the move is
 -- rather than the bare total.

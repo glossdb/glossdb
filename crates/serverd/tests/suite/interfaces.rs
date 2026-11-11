@@ -2370,3 +2370,151 @@ async fn the_instructions_of_an_empty_workspace_name_workspace_status() {
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("workspace_status"), "{instructions}");
 }
+
+/// A preview measurement calls the model service. Where none is named
+/// the query interface answers 503 and the agent interface a refusal,
+/// both with one reason: it names the setting an operator sets, the
+/// server's, and carries none of the engine's error-class prefixes.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interfaces() {
+    let (app, _dir) = app_on_fin().await;
+    // A metric with nine whole months: the expected ranges have a
+    // request to send, and the call is where the refusal comes from.
+    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
+                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
+                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
+    let body = expect_ok(
+        common::mcp_on(
+            app.clone(),
+            "/fin/mcp",
+            "127.0.0.1",
+            call_with(meta(), 1, setup, None),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+
+    let measure = "SELECT metric_ranges() FROM fin";
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/fin/query")
+                .header(header::AUTHORIZATION, common::bearer("dev-human"))
+                .body(Body::from(measure))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let answered = body_json(response).await;
+    let reason = answered["error"].as_str().unwrap().to_string();
+    assert!(
+        reason.contains(glossdb_serverd::engine::SERVICE_URL),
+        "{reason}"
+    );
+    assert!(!reason.contains("Error:"), "{reason}");
+
+    let body = expect_ok(
+        common::mcp_on(
+            app.clone(),
+            "/fin/mcp",
+            "127.0.0.1",
+            call_with(meta(), 2, measure, None),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(body["result"]["isError"], json!(true), "{body}");
+    assert_eq!(
+        body["result"]["content"][0]["text"],
+        json!(reason),
+        "{body}"
+    );
+}
+
+/// The functions page lists what SQL on the interface can call, each
+/// function once per kind; a page with nothing to list is not served.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_functions_page_lists_each_function_once() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let pages = glossdb_serverd::functions::pages(&plane).await.unwrap();
+    let uris: Vec<&str> = pages.iter().map(|p| p.uri.as_str()).collect();
+    assert_eq!(uris, ["doc://functions/interface.md"]);
+    let rows: Vec<&str> = pages[0]
+        .body
+        .lines()
+        .filter(|line| line.starts_with("| `"))
+        .collect();
+    let distinct: std::collections::BTreeSet<&str> = rows.iter().copied().collect();
+    assert!(rows.len() > 1, "{}", pages[0].body);
+    assert_eq!(rows.len(), distinct.len(), "a function is listed twice");
+    // a declared function is on it, as an extraction
+    assert!(
+        rows.iter()
+            .any(|row| row.starts_with("| `metric_ranges` | extract |")),
+        "{}",
+        pages[0].body
+    );
+}
+
+/// A call that moves the summary's counts carries them in the result's
+/// `_meta`, beside the closing `summary:` block with the same line; a
+/// call that moves nothing carries neither.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_call_that_moves_the_summary_carries_its_counts() {
+    let (app, _dir) = app().await;
+    // The first call composes the summary this interface compares with.
+    expect_ok(
+        mcp(
+            app.clone(),
+            call_with(meta(), 1, "SELECT * FROM datasets;", None),
+        )
+        .await,
+    )
+    .await;
+    let moved = expect_ok(
+        mcp(
+            app.clone(),
+            call_with(
+                meta(),
+                2,
+                "DECLARE DATASET fin SET (purpose: 'the summary');",
+                None,
+            ),
+        )
+        .await,
+    )
+    .await;
+    let summary = &moved["result"]["_meta"][glossdb_serverd::SUMMARY_META];
+    assert_eq!(summary["datasets"], json!(1), "{moved}");
+    assert_eq!(summary["assumptions_waiting"], json!(0), "{moved}");
+    let line = summary["line"].as_str().unwrap();
+    let blocks = moved["result"]["content"].as_array().unwrap();
+    assert_eq!(
+        blocks.last().unwrap()["text"],
+        json!(format!("summary: {line}")),
+        "{moved}"
+    );
+
+    let read = expect_ok(
+        mcp(
+            app.clone(),
+            call_with(meta(), 3, "SELECT * FROM datasets;", None),
+        )
+        .await,
+    )
+    .await;
+    assert!(
+        read["result"]["_meta"]
+            .get(glossdb_serverd::SUMMARY_META)
+            .is_none(),
+        "{read}"
+    );
+    assert_eq!(
+        read["result"]["content"].as_array().unwrap().len(),
+        blocks.len() - 1,
+        "{read}"
+    );
+}

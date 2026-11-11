@@ -63,10 +63,15 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
   columns still need.
 - `next:` counts the open rows of `next` per step. Rows that wait for
   a person are counted apart. `first:` is the first open row and the
-  resource that lists its step.
+  resource that lists its step. A read of `next` in the same call
+  lists the rows counted: the built-in tests of what the call wrote
+  run before its next read.
 - `summary:` appears when a call changed the workspace's counts:
   decisions to apply, questions open for a person, the number of a
-  person's annotations.
+  person's annotations. The same call's result carries the counts as
+  fields under `_meta`, key `glossdb/summary`: `line`, `datasets`,
+  `assumptions_waiting`, `decisions_to_apply`,
+  `load_changes_to_declare`, `annotations_by_a_person`.
 
 ### Resources and prompts
 
@@ -77,7 +82,7 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
 | `doc://docs/<path>.md` | these docs, titled by their first heading |
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
-| `doc://functions/interface.md`, `recipe.md`, `detector.md` | the functions available to a statement, a load query and a detector |
+| `doc://functions/interface.md` | the functions a statement can call, each once: the kits' reads and the declared functions |
 | `next://<dataset>/<step>` | the open rows of one step with cause and statement; `next://<dataset>` serves each step |
 
 The same pages are rows of `pages()` (`uri`, `title`, `body`), for a
@@ -107,8 +112,11 @@ leaves the question open ([review and decide](../usage/review.md)).
 - **Several statements, a declaration or a write** answer in the JSON
   shape of the MCP outcomes. A refused statement is a 422; a refused
   sequence carries `completed`.
-- A name the catalog does not hold is a 404. A preview read without
-  its model service is a 503.
+- A name the catalog does not hold is a 404. A preview measurement
+  whose model service is not named, refuses or does not answer is a
+  503 with the reason; where none is named the reason names
+  `GLOSSDB_SERVICE_URL`. The MCP tool reports the same reason as a
+  refusal.
 
 ## The app paths
 

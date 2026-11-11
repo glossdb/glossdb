@@ -43,7 +43,7 @@ pub async fn query(
         // stream. Nothing is on the wire yet, so the status is still
         // ours to set.
         Ok(mut query) => match query.stream.next().await {
-            Some(Err(e)) => fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
+            Some(Err(e)) => fail(status_of_ran(&e), e.to_string()),
             first => (
                 [(header::CONTENT_TYPE, glossdb_apps::ipc::ARROW_STREAM)],
                 glossdb_apps::ipc::body(query.schema, query.stream, first),
@@ -72,7 +72,7 @@ pub async fn query(
                     if let Some(completed) = completed {
                         body["completed"] = completed;
                     }
-                    (StatusCode::UNPROCESSABLE_ENTITY, Json(body)).into_response()
+                    (status_of_ran(&e), Json(body)).into_response()
                 }
             }
         }
@@ -80,10 +80,23 @@ pub async fn query(
     }
 }
 
+/// The status of a statement the engine refused while it ran, as the
+/// first poll of a stream or inside a sequence: unavailable where the
+/// model service it needs refused, did not answer or is not named,
+/// else the statement's own fault.
+fn status_of_ran(e: &SessionError) -> StatusCode {
+    match e.cause() {
+        SessionError::NotServed { .. } | SessionError::Service(_) => {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    }
+}
+
 /// The status a refusal answers with, by its class: a name the catalog
-/// does not hold is not found; an interface whose service refused, did not
-/// answer or is not named is unavailable; everything else is the
-/// statement's own fault.
+/// does not hold is not found; a read or a measurement whose model
+/// service refused, did not answer or is not named is unavailable;
+/// everything else is the statement's own fault.
 fn status_of(e: &SessionError) -> StatusCode {
     match e {
         SessionError::UnknownName { .. } => StatusCode::NOT_FOUND,

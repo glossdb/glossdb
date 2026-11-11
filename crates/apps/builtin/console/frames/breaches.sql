@@ -1,13 +1,13 @@
--- The findings' first rows: every walked metric whose newest point
+-- The findings' first rows: every backtested metric whose newest point
 -- loaded outside the corridor its own history predicted — the point
--- the walk's result scores — as one finding: a sentence from the
+-- the backtest's result scores — as one finding: a sentence from the
 -- catalog's fields, the numbers behind it, the range test's result
 -- as the chip, and the axis that moved most for the link to the metric
 -- sliced by it. The corridor picture and the movers under the finding
 -- are the metric's own frames, keyed by its name. `range_points()` is
--- the recorded walk, no re-run; a point is outside at displacement
+-- the stored backtest, no re-run; a point is outside at displacement
 -- 0.95 and over. A green corridor serves no row. The axis that moved
--- most is the series' own cells at month grain, the newest walked
+-- most is the series' own cells at month grain, the newest backtested
 -- month against the one before it.
 WITH result AS (
   SELECT a.test, a.state, a.computed_at, a.current, w.detector, w.threshold,
@@ -17,14 +17,14 @@ WITH result AS (
     ON w.name = a.test
   WHERE w.detector = 'range_breach'
 ),
-walked AS (
+points AS (
   SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
   FROM range_points()
   WHERE applicable AND period IS NOT NULL
 ),
-newest AS (SELECT * FROM walked WHERE recency = 1),
-previous AS (SELECT name, period FROM walked WHERE recency = 2),
+newest AS (SELECT * FROM points WHERE recency = 1),
+previous AS (SELECT name, period FROM points WHERE recency = 2),
 cells AS (
   SELECT s.metric AS name, s.dimension AS axis, s.member, strftime(s.period, '%Y-%m') AS ym, s.value
   FROM metric_series(grain := 'month', unclaimed := 'skip') s

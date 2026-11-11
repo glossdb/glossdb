@@ -19,7 +19,9 @@ stored as a measurement and read back as SQL.
 
 The columns of each read:
 [reads](../reference/reads.md#the-outlook-kit-preview). The four tests
-are rows of `TESTS(<dataset>)` and `TESTS(<dataset>.<plan>)`.
+are rows of `TESTS(<dataset>)` and `TESTS(<dataset>.<plan>)`, and of
+`view_tests()` under the metric: a plan's test shows under the metric
+it plans.
 
 The examples are from one run against a model service: New York
 subway service per month. The metric `trains_run` is the trains that
@@ -33,28 +35,44 @@ Where a service is named, `next` lists what is due, each row with
 the statement to run:
 
 - `metric_ranges` once a metric is served.
-- `metric_forecast` once a plan has a definition. It runs without a
-  plan too; `next` does not list it then.
-- `metric_scenario` once a scenario is annotated.
-- `metric_plan` once per plan, and again after each new forecast.
+- `metric_forecast` once a plan has a definition or a scenario can be
+  estimated: the plan is held against the forecast's ranges, and the
+  scenario reads how often they held. It runs without either too;
+  `next` does not list it then.
+- `metric_scenario` once a scenario is annotated and its levers hold.
+- `metric_plan` once per plan, and again after each new forecast or a
+  change to the plan.
 
-The server does not run them itself. After a load, and after a
-change to a definition, a plan or a scenario, the stored results read
-`current = false` and `next` lists the functions again. Run the
-expected ranges and the forecast first, then the scenarios, then each
-plan.
+The server does not run them itself. A stored result is due again
+when something it reads changed:
+
+| Result | Due again after |
+|---|---|
+| expected ranges, forecast | a load of a table a metric scans; a change to a metric's SQL, its time or value column, its grain or its additivity |
+| scenario estimate | the same for the metrics its levers are on; a change to a scenario's levers or factors |
+| plan comparison | a new forecast; a change to the plan's SQL or a load of its table |
+
+Other changes leave them as they are: another view, a new plan, an
+assumption added to a definition, an annotation the series does not
+read. `TESTS()` reads `current = false` after any change to the
+catalog; `next` and `outlook_measurements()` list a function only
+when it is due. Run the expected ranges and the forecast first, then
+the scenarios, then each plan.
 
 All of them read the metric's series: the newest periods inside the
 metric's window, 48 months by default ([views](views.md)). A longer
-history in the table is not sent.
+history in the table is not sent. Where a metric's rows are finer
+than its grain, the period the data ends inside is left out of all
+three requests: the last period sent is the last complete one.
 
 ## Expected ranges
 
 `metric_ranges()` tests each metric's monthly total against its own
 history. For each of the latest six months the service gets the
-months before it and returns the range that month was expected in. A
-metric needs seven complete months. Where the rows are finer than
-monthly, a month the data ends inside is left out.
+months before it and returns the range that month was expected in:
+a backtest. A metric needs seven complete months. Where the rows are
+finer than monthly, a month the data ends inside is left out.
+`backtested` in `range_points()` counts the months tested.
 
 ```glossql
 SELECT metric_ranges() FROM subway;
@@ -79,8 +97,8 @@ leaves `next`.
 
 ## Forecasts
 
-`metric_forecast()` asks for the periods after the last one with a
-value, at the metric's finest grain: 31 days, 13 weeks, 12 months or
+`metric_forecast()` asks for the periods after the last complete one
+with a value, at the metric's finest grain: 31 days, 13 weeks, 12 months or
 4 quarters. A metric needs six periods of history. Metrics at minute,
 hour or year grain are not forecast. An additive metric also gets
 totals: to the end of the month at day grain, of the quarter at week
@@ -107,6 +125,8 @@ the dataset have their actuals.
 `actual` fills in once the periods are loaded. September 2025 came in
 at 71,992; `actuals` read `inside`. `forecast_coverage()` counts how
 often the actuals fell inside the ranges, over every stored forecast.
+A forecast run twice from the same last period counts once: one point
+per metric, origin and step, from the newer run.
 `metric_series(world := 'forecast')` serves the medians as a series.
 
 ## Plans
@@ -149,7 +169,8 @@ FROM plan_points();
 
 | `planned` | Meaning |
 |---|---|
-| `complete` | the period is over; `variance` is actual minus plan |
+| `complete` | the period is over and the actuals cover all of it; `variance` is actual minus plan |
+| `not_covered` | the period has begun and the actuals served do not cover it: no `actual`, no `variance` |
 | `inside`, `below`, `above` | the plan against the forecast's 80% range, `low` to `high` |
 | `partial` | a year the plan's rows cover in part, begun |
 | `open` | begun, and no forecast covers the rest |
@@ -158,9 +179,13 @@ FROM plan_points();
 The 2025 timetable held 911,197 trains. With 578,805 run by August
 and the forecast for the rest, the year's range was 859,630 to
 879,368: `above`. A year is compared where the plan's rows cover all
-of it.
+of it and the actuals do too. The actuals are the metric's series,
+48 months here. With data through August 2025 it begins in September
+2021: the timetable's years 2015 to 2021 read `not_covered`, and 2022
+to 2024 read `complete`.
 
-`metric_plan()` stores the comparison with the forecast it used.
+`metric_plan()` stores the comparison with the forecast it used. On a
+view that is not a plan it is refused and stores nothing.
 `plan_test` is red where a period lies outside the range. For a year
 outside it, `next` names the gap; state it as an assumption with the
 key `plan-<year>` in the plan's definition.
@@ -191,9 +216,10 @@ A period is a month (`YYYY-MM`) or a day (`YYYY-MM-DD`); a period not
 named keeps a factor of 1. The conditions:
 
 - The metric has 26 periods of history.
-- The scenario names a period after the metric's last actual. Once
-  those periods are loaded, the scenario returns a reason and no
-  estimate.
+- The scenario names a period after the metric's last complete
+  period. Once those periods are loaded, the scenario returns a
+  reason and no estimate, and `next` asks for later periods with the
+  scenario's statement.
 - A factor differs from 1.
 
 The estimate covers the periods from the first after the last actual
@@ -202,7 +228,7 @@ forecast (`planned_from = 'forecast'`), or keeps its last value where
 it has fewer than six periods.
 
 ```sql
-SELECT metric, period, low, value, high, held_80, sign, confidence, reason
+SELECT metric, period, low, value, high, baseline, effect, held_80, sign, confidence, reason
 FROM scenario_points('timetable_cut');
 ```
 
@@ -213,24 +239,37 @@ FROM scenario_levers('timetable_cut');
 
 `scenario_points()` returns the metric under the scenario per period:
 70,966 trains in October 2025, between 69,269 and 72,470, with the
-service's `sign` (`-`), `confidence` and `basis`. `scenario_levers()`
-returns what each lever does alone: `history_shift` is the mean
-change per period, here 2,939 fewer trains run, between 3,329 and
-2,488. Read the effect there. The scenario's values and the forecast's
-medians come from two models and differ in a month with no change
-too. Interactions between levers are not estimated.
+service's `sign` (`-`), `confidence` and `basis`. `baseline` is the
+same estimate with every lever as planned, and `effect` is `value`
+minus `baseline`: 74,348 trains without the cut in October, so the
+cut takes 3,381. September, which the scenario does not change, has
+an effect of 0. Read the effect from these two columns. The
+forecast's medians come from another model and differ in a month
+with no change too (71,802 for September against 70,815 here).
+
+`scenario_levers()` returns what each lever does alone:
+`history_shift` is the mean change per period, here 2,939 fewer
+trains run, between 3,329 and 2,488. Interactions between levers are
+not estimated.
 
 `held_80` comes from the newest forecast; run the forecast first.
 
 ## Without the service, and when a call fails
 
-- No service named: `metric_ranges()` and `metric_forecast()` are
-  refused with `no service is named`, `next` lists no preview row,
-  and the rest of the server works. Plans read, and `metric_plan()`
-  stores actual and variance without a range.
-- Service not reachable: the call is refused with the connection
-  error, nothing is stored, and `next` keeps the function listed.
+- No service named: `metric_ranges()`, `metric_forecast()` and
+  `metric_scenario()` are refused, and the reason names
+  `GLOSSDB_SERVICE_URL`. The query endpoint answers 503. `next` lists
+  no preview row, and the rest of the server works. Plans read, and
+  `metric_plan()` stores actual and variance without a range.
+- Service not reachable, or it refuses the request: the call is
+  refused with the service's error (503 on the query endpoint),
+  nothing is stored, and `next` keeps the function listed.
 - Too little history: the function runs and stores a reason per
-  metric. Read `applicable` and `reason` in the feature's read.
-  `forecast_test` and `scenario_test` are green once a result is
-  stored, with or without numbers in it.
+  metric. Read `applicable` and `reason` in the feature's read. A
+  result with no number in it is not green: `range_test`,
+  `forecast_test` and `scenario_test` have no row in `TESTS()` then,
+  and `view_tests()` shows the test as `not_applicable` with the
+  reason. `next` lists nothing for it, since nobody can add history.
+- A scenario that cannot be estimated for a reason its author can
+  settle (no period ahead, every factor 1, a column that is no lever)
+  shows as `not_run`, and `next` lists it with the statement to change.

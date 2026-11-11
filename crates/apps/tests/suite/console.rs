@@ -925,13 +925,13 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
 
     // Seeded state: the agent's handbook entry with its formula, and the
     // agent's dso gloss — nothing waits
-    // but, on DuckDB, the outlook kit's walk, forecast and estimate:
+    // but, on DuckDB, the outlook kit's expected ranges, forecast and estimate:
     // tested measurements on the dataset nobody ran while a metric is
     // defined.
-    let walk = 3;
+    let preview = 3;
     let before = get(&app, "/perf/app/console/frames/open_items").await;
     assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(row_count(before).await, walk);
+    assert_eq!(row_count(before).await, preview);
 
     // The human's answer is stored on their channel: newer than the
     // recorded dso gloss.
@@ -953,7 +953,7 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
     let after = get(&app, "/perf/app/console/frames/open_items").await;
     assert_eq!(
         row_count(after).await,
-        1 + walk,
+        1 + preview,
         "the formula answer waits on the agent"
     );
 
@@ -1446,14 +1446,14 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     );
 
     // The axes banner is silent while the results stand at this data version.
-    // On DuckDB the outlook kit's walk and forecast are required from the
+    // On DuckDB the outlook kit's expected ranges and forecast are required from the
     // first metric definition: the banner counts them in one row, the re-measure
     // runs them, and with too short a history each stores its reasons
     // without a call.
-    let walk = 1;
+    let preview = 1;
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
-    assert_eq!(row_count(banner).await, walk, "nothing to re-measure");
+    assert_eq!(row_count(banner).await, preview, "nothing to re-measure");
 
     // A gloss moves the data version. The cube rebuilds at the next read with
     // the same numbers — and the results measured the data's columns,
@@ -1485,7 +1485,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
-        walk,
+        preview,
         "the results read the data, not this gloss"
     );
 
@@ -1509,7 +1509,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         response.headers()["HX-Trigger"],
         "glossql:remeasured, glossql:written"
     );
-    // The re-measure ran the walk too: with no metric of seven whole
+    // The re-measure ran the expected ranges too: with no metric of seven whole
     // months it called no service and loaded its reasons, so nothing
     // stays open.
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
@@ -1640,7 +1640,7 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The outlook kit's walk, forecast and estimate are required beside the profile.
+    // The outlook kit's expected ranges, forecast and estimate are required beside the profile.
     for function in [
         "metric_ranges",
         "metric_forecast",
@@ -1653,7 +1653,7 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     assert_eq!(
         row_count(open).await,
         4,
-        "the profile over dso.month, the walk, the forecast and the estimate"
+        "the profile over dso.month, the expected ranges, the forecast and the estimate"
     );
     let response = app
         .clone()
@@ -1669,7 +1669,7 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     assert_eq!(
         row_count(banner).await,
         0,
-        "the profile ran; the walk and the forecast stored their reasons"
+        "the profile ran; the expected ranges and the forecast stored their reasons"
     );
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");

@@ -453,3 +453,52 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     let counts: Vec<&Value> = loads.iter().map(|r| &r["rows"]).collect();
     assert_eq!(counts, [&json!(3), &json!(4)], "{loads:?}");
 }
+
+/// The `next:` line under a result counts the rows `next` lists. A call
+/// that defines a metric and reads `next` gets the same rows in the
+/// read and in the line: the server runs the metric's tests before the
+/// read, not after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_next_line_counts_the_rows_the_same_call_lists() {
+    let (app, _dir) = fin().await;
+    let body = expect_ok(
+        mcp_on(
+            app.clone(),
+            "/fin/mcp",
+            call(
+                1,
+                r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
+                   SELECT step, who FROM next"#,
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    let outcomes: Value =
+        serde_json::from_str(body["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let listed = outcomes[2]["rows"].as_array().unwrap();
+    let window = body["result"]["content"][1]["text"].as_str().unwrap();
+    let line = window
+        .lines()
+        .find_map(|l| l.strip_prefix("next:"))
+        .unwrap_or_else(|| panic!("{window}"));
+    for step in ["connect", "describe", "test", "decide", "serve"] {
+        let counted: usize = line
+            .split('\u{b7}')
+            .find_map(|part| part.trim().strip_prefix(step)?.trim().parse().ok())
+            .unwrap_or(0);
+        let rows = listed
+            .iter()
+            .filter(|r| text(r, "step") == step && text(r, "who") != "person")
+            .count();
+        assert_eq!(counted, rows, "{step}: {window} against {listed:?}");
+    }
+    // the metric's own tests ran before the read: none of them is listed
+    assert_eq!(
+        listed.iter().filter(|r| text(r, "step") == "test").count(),
+        0,
+        "{listed:?}"
+    );
+}

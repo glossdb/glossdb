@@ -1,4 +1,4 @@
--- The outlook kit: the worlds beside the actual — the walk's ranges and the
+-- The outlook kit: the worlds beside the actual — the backtest's ranges and the
 -- forecast, each what the model service answers; the plan, judged against
 -- them — each stored as a measurement with its provenance, and read
 -- back as SQL, so that the `next` read judges from the catalog and
@@ -7,7 +7,7 @@
 -- (glossql_service_url, glossql_service_token); every call goes through
 -- main.service, one macro over glossql_service, so a suite holds in for
 -- the service by re-declaring the macro. The service owns its topic: the
--- ranges, the PIT and why it is withheld, the walk's result; the kit owns
+-- ranges, the PIT and why it is withheld, the backtest's result; the kit owns
 -- the calendar, and sends complete periods only.
 --
 --   FROM glossql_kit('kits/kpi/kit.sql');
@@ -20,47 +20,186 @@ CREATE OR REPLACE MACRO main.service(path, body) AS glossql_service(path, body);
 CREATE OR REPLACE MACRO main.service_soft(path, body) AS glossql_service(path, body, true);
 
 --===------------------------------------------------------------------===--
--- The walk. range_series(): every applicable metric's total at month grain
--- as the walk sends it — a month the data's edge falls inside is left out
--- where rows land finer than monthly, since a short sum against a corridor
--- fitted on whole months reads as a breach that is only the calendar.
--- range_request(): one row per metric — additivity, the complete months, and
--- whether the walk can take it: seven complete months at least, so that
--- one origin has the six known values the service needs. range_body(): the
--- request as the service's contract spells it, one table and a
--- specification, with the test's threshold as the walk's red line.
+-- The series the service is sent. partial_periods(g): per metric, the
+-- period at grain g (its own floor where NULL) that its data ends
+-- inside, where its rows land finer than that grain: a short sum against
+-- a range fitted on whole periods reads as a breach that is only the
+-- calendar. complete_series(g): every applicable metric's total at
+-- grain g (its floor where NULL) without that last period — metric,
+-- period, value, additivity. The backtest, the forecast and the scenario
+-- all read it, so they drop the same period.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.partial_periods(g) AS TABLE
+WITH axes AS (
+  SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
+  FROM main.view_summary() WHERE applicable AND coalesce(kind, '') <> 'plan'),
+edges AS (
+  SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
+         count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
+           > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
+  FROM dataset_cells(current_schema(), 'views') c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
+  GROUP BY c."table")
+SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
+WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
+
+CREATE OR REPLACE MACRO main.complete_series(g) AS TABLE
+WITH s AS (
+  SELECT metric, period, value, additivity, max(period) OVER (PARTITION BY metric) AS last
+  FROM main.metric_series(grain := g, unclaimed := 'skip')
+  WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL)
+SELECT s.metric, s.period, s.value, s.additivity FROM s
+WHERE NOT (s.period = s.last
+           AND EXISTS (SELECT 1 FROM main.partial_periods(g) p WHERE p.metric = s.metric AND p.period = s.period));
+
+--===------------------------------------------------------------------===--
+-- What a stored result read. A lever is a FACT on a column of a metric's
+-- view; scenarios() lists every scenario declared, judged (both described
+-- with the scenario, below). view_inputs(): one row per view of the bound
+-- dataset — view, kind, plan_of, inputs (a digest of what a read of it
+-- depends on: its definition without the assumptions, the columns and
+-- grain its summary row names, the newest load of each table it scans)
+-- and tracked (false where a table it scans was never loaded through a
+-- load query, so its data has no version here). outlook_inputs(): the
+-- digest each preview measurement stores as `inputs` — the metrics' for
+-- the expected ranges (with the test's threshold) and the forecast, the
+-- scenarios with their levers and factors and the metrics they reach for
+-- the estimate — and needed, whether the dataset needs the measurement
+-- (outlook_measurements()). outlook_due(): per measurement, stored (a
+-- result exists), due (none exists, or the catalog's stale rule says its
+-- inputs moved and the digest differs) and needed. A change elsewhere in
+-- the catalog —
+-- another view, a plan, an assumption, an annotation the series does not
+-- read — leaves the digest and the result as they are.
+--===------------------------------------------------------------------===--
+
+DECLARE ASPECT lever WITH $${
+  "type": "object", "required": ["value"],
+  "properties": {"value": {"type": "boolean"}, "basis": {"type": "string"}}
+}$$ AS FACT ON COLUMN;
+
+CREATE OR REPLACE MACRO main.scenarios() AS TABLE
+WITH declared AS (
+  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
+  WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
+bodies AS (
+  SELECT d.name AS scenario, g.value AS body
+  FROM declared d LEFT JOIN glossql_glossary(current_schema(), NULL, false) g
+    ON g.aspect = d.name AND g.subject = current_schema() AND g.state = 'current'),
+levers AS (
+  SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, substr(u.l."column", length(split_part(u.l."column", '.', 1)) + 2) AS col,
+         u.l.factor AS factor, u.l.basis AS basis
+  FROM bodies b, unnest(from_json(json_extract(b.body, '$.levers'), '[{"column": "VARCHAR", "factor": "JSON", "basis": "VARCHAR"}]')) AS u(l)
+  WHERE b.body IS NOT NULL),
+judged AS (
+  SELECT l.*,
+         CASE WHEN l.lever IS NULL OR l.col = '' THEN 'a lever names a served metric''s column, <metric>.<column>'
+              WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
+                               WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
+                                 AND (g.value->>'value') = 'true')
+                THEN l.lever || ' is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric''s view'
+              WHEN NOT EXISTS (SELECT 1 FROM main.view_summary() a WHERE a.view = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
+                THEN l.metric || ' is no served metric of this dataset'
+              WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
+                THEN l.metric || ' serves no column named ' || l.col
+              WHEN json_type(l.factor) <> 'OBJECT' THEN 'the factor on ' || l.lever || ' is a factor per period, {"YYYY-MM": 1.15}'
+         END AS reason
+  FROM levers l),
+folded AS (
+  SELECT b.scenario, b.body IS NOT NULL AS glossed,
+         coalesce(list({'lever': j.lever, 'metric': j.metric, 'column': j.col, 'factor': j.factor, 'basis': j.basis, 'reason': j.reason}
+                       ORDER BY j.lever) FILTER (WHERE j.lever IS NOT NULL), []) AS levers,
+         CASE WHEN b.body IS NULL THEN 'declared and not annotated: a scenario is a factor per period on declared levers'
+              WHEN count(j.lever) = 0 THEN 'the scenario names no lever'
+              ELSE string_agg(j.reason, '; ' ORDER BY j.lever) END AS reason
+  FROM bodies b LEFT JOIN judged j USING (scenario)
+  GROUP BY b.scenario, b.body)
+SELECT scenario, glossed, reason IS NULL AS applicable, reason, levers FROM folded ORDER BY scenario;
+
+CREATE OR REPLACE MACRO main.view_inputs() AS TABLE
+WITH ds AS (SELECT current_schema() AS d),
+defs AS (
+  SELECT g.aspect AS view, md5(json_merge_patch(g.body::JSON, '{"assumptions": null}')::VARCHAR) AS definition
+  FROM main.glossary g, ds WHERE g.dataset = ds.d AND g.subject = ds.d
+  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
+loads AS (
+  SELECT s.view, string_agg(s.table_name || '@' || coalesce(i.seq::VARCHAR, '?'), ',' ORDER BY s.table_name) AS loads,
+         bool_and(i.seq IS NOT NULL) AS tracked
+  FROM (SELECT DISTINCT view, table_name FROM glossql_views_scans(current_schema())) s
+  LEFT JOIN (SELECT dataset || '.' || table_name AS tbl, max(seq) AS seq FROM main.imports GROUP BY ALL) i ON i.tbl = s.table_name
+  GROUP BY s.view)
+SELECT m.view, m.kind, m.plan_of, m.stopped, m.applicable,
+       md5(concat_ws('|', m.view, coalesce(d.definition, ''), m.applicable::VARCHAR, coalesce(m.period_column, ''), coalesce(m.value_column, ''),
+                     coalesce(m.numerator, ''), coalesce(m.denominator, ''), coalesce(m.floor, ''), coalesce(m.rung::VARCHAR, ''),
+                     coalesce(m.additivity, ''), coalesce(l.loads, ''))) AS inputs,
+       coalesce(l.tracked, true) AS tracked
+FROM main.view_summary() m LEFT JOIN defs d USING (view) LEFT JOIN loads l USING (view);
+
+CREATE OR REPLACE MACRO main.outlook_inputs() AS TABLE
+WITH v AS MATERIALIZED (SELECT * FROM main.view_inputs()),
+metrics AS (SELECT * FROM v WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan')),
+series AS (
+  SELECT coalesce(string_agg(inputs, ',' ORDER BY view), '') AS digest, coalesce(bool_and(tracked), true) AS tracked FROM metrics),
+threshold AS (
+  SELECT coalesce((SELECT threshold::VARCHAR FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY seq DESC LIMIT 1), '') AS t),
+sc AS MATERIALIZED (SELECT * FROM main.scenarios()),
+reached AS (SELECT DISTINCT u.l.metric AS view FROM sc, unnest(sc.levers) AS u(l)),
+scen AS (
+  SELECT coalesce((SELECT string_agg(scenario || ':' || glossed::VARCHAR || ':' || coalesce(reason, '') || ':' || levers::VARCHAR, ';' ORDER BY scenario) FROM sc), '')
+           || '/' || coalesce((SELECT string_agg(m.inputs, ',' ORDER BY m.view) FROM metrics m JOIN reached r USING (view)), '') AS digest,
+         coalesce((SELECT bool_and(m.tracked) FROM metrics m JOIN reached r USING (view)), true) AS tracked),
+-- what the dataset needs, where a model service is named and a metric is served
+live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
+has AS (
+  SELECT live.named AND EXISTS (SELECT 1 FROM metrics WHERE stopped IS NULL) AS metric,
+         EXISTS (SELECT 1 FROM v WHERE kind = 'plan' AND applicable) AS plan,
+         EXISTS (SELECT 1 FROM sc WHERE applicable) AS scenario
+  FROM live)
+SELECT 'metric_ranges' AS name, md5(series.digest || '/' || threshold.t) AS inputs, series.tracked, has.metric AS needed FROM series, threshold, has
+UNION ALL SELECT 'metric_forecast', md5(digest), tracked, has.metric AND (has.plan OR has.scenario) FROM series, has
+UNION ALL SELECT 'metric_scenario', md5(digest), tracked, has.metric AND has.scenario FROM scen, has;
+
+CREATE OR REPLACE MACRO main.outlook_due() AS TABLE
+WITH now_ AS (SELECT * FROM main.outlook_inputs()),
+stored AS (
+  SELECT function AS name, json_extract_string(value, '$.inputs') AS inputs FROM main.measurements
+  WHERE dataset = current_schema() AND function IN ('metric_ranges', 'metric_forecast', 'metric_scenario')
+  QUALIFY row_number() OVER (PARTITION BY function ORDER BY seq DESC) = 1),
+held AS (
+  SELECT aspect AS name, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
+  WHERE actor = 'function' AND aspect IN ('metric_ranges', 'metric_forecast', 'metric_scenario') GROUP BY aspect)
+SELECT n.name, s.name IS NOT NULL AS stored,
+       s.name IS NULL OR (NOT coalesce(h.current, true) AND (s.inputs IS NULL OR NOT n.tracked OR s.inputs <> n.inputs)) AS due,
+       n.needed
+FROM now_ n LEFT JOIN stored s USING (name) LEFT JOIN held h USING (name);
+
+--===------------------------------------------------------------------===--
+-- The backtest. range_series(): every applicable metric's total at month
+-- grain as the backtest sends it, complete months only. range_request():
+-- one row per metric — additivity, the complete months, and applicable,
+-- whether the backtest can take it: seven complete months at least, so
+-- that one origin has the six known values the service needs.
+-- range_body(): the request as the service's contract spells it, one
+-- table and a specification, with the test's threshold as the red line.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.range_series() AS TABLE
-WITH axes AS (SELECT * RENAME (view AS metric) FROM main.view_summary() WHERE applicable),
-edges AS (
-  SELECT c."table" AS metric, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
-         count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP))) > count(DISTINCT date_trunc('month', TRY_CAST(c.val AS TIMESTAMP))) AS finer
-  FROM dataset_cells(current_schema(), 'views') c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
-  GROUP BY c."table"),
-partials AS (
-  SELECT metric, date_trunc('month', edge) AS period FROM edges
-  WHERE finer AND edge::DATE < (date_trunc('month', edge) + INTERVAL 1 MONTH - INTERVAL 1 DAY)::DATE)
-SELECT s.metric, s.period, s.value, s.additivity
-FROM main.metric_series(grain := 'month', unclaimed := 'skip') s
-WHERE s.dimension = '' AND s.world = 'actual' AND s.value IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM partials p WHERE p.metric = s.metric AND p.period = s.period)
-ORDER BY s.metric, s.period;
+SELECT metric, period, value, additivity FROM main.complete_series('month') ORDER BY metric, period;
 
 CREATE OR REPLACE MACRO main.range_request() AS TABLE
 WITH counted AS (SELECT metric, count(*) AS months FROM main.range_series() GROUP BY metric)
 SELECT a.metric, a.additivity, coalesce(c.months, 0) AS months,
-       a.applicable AND coalesce(c.months, 0) >= 7 AS walkable,
+       a.applicable AND coalesce(c.months, 0) >= 7 AS applicable,
        CASE WHEN NOT a.applicable THEN a.reason
             WHEN c.metric IS NULL THEN 'the month read serves no cell: ' || coalesce(a.reason,
               'no additivity is annotated on ' || current_schema() || '.' || a.metric || '.' || a.value_column || ', and the month read combines its rows — gloss it')
-            WHEN c.months < 7 THEN 'the walk needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
+            WHEN c.months < 7 THEN 'a backtest needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
 FROM (SELECT * RENAME (view AS metric) FROM main.view_summary()) a LEFT JOIN counted c USING (metric)
 WHERE coalesce(a.kind, '') NOT IN ('scalar', 'plan', 'scenario')
 ORDER BY a.metric;
 
 CREATE OR REPLACE MACRO main.range_body() AS TABLE
-WITH s AS (SELECT * FROM main.range_series() WHERE metric IN (SELECT metric FROM main.range_request() WHERE walkable)),
+WITH s AS (SELECT * FROM main.range_series() WHERE metric IN (SELECT metric FROM main.range_request() WHERE applicable)),
 t AS (SELECT coalesce((SELECT threshold FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
 SELECT CASE WHEN count(s.metric) > 0 THEN json_object(
          'spec', json_object('targets', ['value'], 'origins', 6, 'horizon', 1,
@@ -74,14 +213,16 @@ FROM t LEFT JOIN s ON true
 GROUP BY t.threshold;
 
 --===------------------------------------------------------------------===--
--- metric_ranges: the walk as a measurement on the dataset. served_by names
--- the service and its version; score, state and threshold are the
--- service's result over every metric walked; metrics holds one row per
--- metric — applicable and reason, additivity, walked, held_80 and held_90
--- (the share of walked points inside the 10-90 and the 5-95 range), newest
--- (the latest walked point: period, pit, displacement, withheld), errors
--- (the origins the service could not walk, in its words) and points, one
--- per walked month: period, actual, p05 to p95, pit, withheld.
+-- metric_ranges: the backtest as a measurement on the dataset. served_by
+-- names the service and its version; score, state and threshold are the
+-- service's result over every metric backtested; inputs is the digest of
+-- what the request read (outlook_inputs()); metrics holds one row per
+-- metric — applicable and reason, additivity, backtested (how many months
+-- were predicted from the months before them), held_80 and held_90 (the
+-- share of those months inside the 10-90 and the 5-95 range), newest (the
+-- latest of them: period, pit, displacement, withheld), errors (the
+-- origins the service could not predict from, in its words) and points,
+-- one per backtested month: period, actual, p05 to p95, pit, withheld.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_ranges WITH $${
@@ -92,6 +233,7 @@ DECLARE ASPECT metric_ranges WITH $${
     "score": {"type": ["number", "null"]},
     "state": {"type": ["string", "null"]},
     "threshold": {"type": ["number", "null"]},
+    "inputs": {"type": ["string", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -118,7 +260,7 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
            any_value(pit) AS pit, any_value(withheld) AS withheld
     FROM rows_ WHERE period IS NOT NULL GROUP BY metric, period),
   results AS (
-    SELECT v.member AS metric, v.walked, v.held_80, v.held_90, v.newest
+    SELECT v.member AS metric, v.walked AS backtested, v.held_80, v.held_90, v.newest
     FROM (SELECT unnest(from_json(json_extract(a, '$.answer.walk.members'),
             '[{"member": "VARCHAR", "column": "VARCHAR", "walked": "BIGINT", "held_80": "DOUBLE", "held_90": "DOUBLE", "newest": {"origin": "VARCHAR", "period": "VARCHAR", "pit": "DOUBLE", "displacement": "DOUBLE", "withheld": "VARCHAR"}}]')) AS v
           FROM a WHERE a IS NOT NULL)),
@@ -130,10 +272,10 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
     GROUP BY e.member),
   per_metric AS (
     SELECT r.metric, r.additivity,
-           r.walkable AND EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) AS applicable,
-           CASE WHEN NOT r.walkable THEN r.reason
+           r.applicable AND EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) AS applicable,
+           CASE WHEN NOT r.applicable THEN r.reason
                 WHEN NOT EXISTS (SELECT 1 FROM points p WHERE p.metric = r.metric) THEN coalesce(f.errors[1], 'the service answered no point') END AS reason,
-           v.walked, v.held_80, v.held_90, v.newest, coalesce(f.errors, []) AS errors,
+           v.backtested, v.held_80, v.held_90, v.newest, coalesce(f.errors, []) AS errors,
            (SELECT coalesce(list({'period': p.period, 'actual': p.actual, 'p05': p.p05, 'p10': p.p10, 'p50': p.p50,
                                   'p90': p.p90, 'p95': p.p95, 'pit': p.pit, 'withheld': p.withheld} ORDER BY p.period), [])
             FROM points p WHERE p.metric = r.metric) AS points
@@ -143,16 +285,17 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
          (SELECT json_extract(a, '$.answer.walk.score')::DOUBLE FROM a) AS score,
          (SELECT json_extract_string(a, '$.answer.walk.band') FROM a) AS state,
          (SELECT threshold FROM b) AS threshold,
+         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_ranges') AS inputs,
          (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity,
-                                'walked': walked, 'held_80': held_80, 'held_90': held_90, 'newest': newest,
+                                'backtested': backtested, 'held_80': held_80, 'held_90': held_90, 'newest': newest,
                                 'errors': errors, 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
 $$ RETURNS metric_ranges;
 
 -- The breach is the service's result, repeated by the test's detector
 -- over the measurement's own result, so that TESTS() carries it and the
--- checks goal's next steps use it; the threshold is the red line the walk is
--- asked with.
+-- checks goal's next steps use it; the threshold is the red line the backtest
+-- is asked with. A backtest that predicted no month has no state and no row.
 DECLARE FUNCTION range_breach FOR GLOBAL AS $$
   SELECT subject, body->>'state' AS state, (body->>'score')::DOUBLE AS score
   FROM annotations WHERE actor_kind = 'function' AND body->>'state' IS NOT NULL
@@ -161,13 +304,14 @@ $$;
 DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.98;
 
 --===------------------------------------------------------------------===--
--- range_result(): the newest walk's result — served_by, grain, score,
--- state, threshold, computed_at — one row, none before a walk.
--- range_points(): the newest walk, one row per metric and walked month —
--- metric, applicable, reason, additivity, walked, held_80, held_90, period,
--- actual, p05 to p95, pit, withheld, displacement (|2·pit − 1|), newest
--- (the latest walked point, the one the result scores), point_seq; a
--- metric not walked serves one row with its reason and no numbers.
+-- range_result(): the newest backtest's result — served_by, grain, score,
+-- state, threshold, computed_at — one row, none before a backtest.
+-- range_points(): the newest backtest, one row per metric and backtested
+-- month — metric, applicable, reason, additivity, backtested, held_80,
+-- held_90, period, actual, p05 to p95, pit, withheld, displacement
+-- (|2·pit − 1|), newest (the latest backtested month, the one the result
+-- scores), point_seq; a metric not backtested serves one row with its
+-- reason and no numbers.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.range_result() AS TABLE
@@ -179,31 +323,31 @@ WHERE dataset = current_schema() AND function = 'metric_ranges'
 ORDER BY seq DESC LIMIT 1;
 
 CREATE OR REPLACE MACRO main.range_points() AS TABLE
-WITH newest_walk AS (
+WITH newest_result AS (
   SELECT value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_ranges' ORDER BY seq DESC LIMIT 1),
 metrics AS (
   SELECT unnest(from_json(json_extract(value, '$.metrics'),
-    '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "additivity": "VARCHAR", "walked": "BIGINT",
+    '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "additivity": "VARCHAR", "backtested": "BIGINT",
        "held_80": "DOUBLE", "held_90": "DOUBLE",
        "newest": {"origin": "VARCHAR", "period": "VARCHAR", "pit": "DOUBLE", "displacement": "DOUBLE", "withheld": "VARCHAR"},
        "errors": ["VARCHAR"],
        "points": [{"period": "VARCHAR", "actual": "DOUBLE", "p05": "DOUBLE", "p10": "DOUBLE", "p50": "DOUBLE",
                    "p90": "DOUBLE", "p95": "DOUBLE", "pit": "DOUBLE", "withheld": "VARCHAR"}]}]')) AS m,
          computed_at
-  FROM newest_walk),
-walked AS (
-  SELECT m.metric, m.applicable, m.reason, m.additivity, m.walked, m.held_80, m.held_90, m.newest.period AS newest_period,
+  FROM newest_result),
+backtested AS (
+  SELECT m.metric, m.applicable, m.reason, m.additivity, m.backtested, m.held_80, m.held_90, m.newest.period AS newest_period,
          unnest(m.points) AS p, computed_at
   FROM metrics WHERE cardinality(m.points) > 0)
-SELECT metric, applicable, reason, additivity, walked, held_80, held_90,
+SELECT metric, applicable, reason, additivity, backtested, held_80, held_90,
        p.period, p.actual, p.p05, p.p10, p.p50, p.p90, p.p95, p.pit, p.withheld,
        CASE WHEN p.pit IS NOT NULL THEN abs(2.0 * p.pit - 1.0) END AS displacement,
        p.period = newest_period AS newest,
        row_number() OVER (PARTITION BY metric ORDER BY p.period) AS point_seq, computed_at
-FROM walked
+FROM backtested
 UNION ALL
-SELECT m.metric, m.applicable, m.reason, m.additivity, m.walked, m.held_80, m.held_90,
+SELECT m.metric, m.applicable, m.reason, m.additivity, m.backtested, m.held_80, m.held_90,
        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, computed_at
 FROM metrics WHERE cardinality(m.points) = 0
 ORDER BY metric, point_seq NULLS FIRST;
@@ -212,7 +356,8 @@ ORDER BY metric, point_seq NULLS FIRST;
 -- The forecast. forecast_request(): one row per metric — grain (its
 -- floor), horizon (31 days, 13 weeks, 12 months, 4 quarters; an hour or a
 -- minute is finer than the grains the service measured its coverage at, a
--- year has too few periods), origin (the last period with a value),
+-- year has too few periods), origin (the last complete period with a
+-- value: complete_series() leaves out a period the data ends inside),
 -- history, the periods ahead, and for a flow the spans it asks totals
 -- for: the periods left in the month (a day), the quarter (a week), the
 -- quarter and the year (a month), the year (a quarter) that the first
@@ -226,9 +371,7 @@ ORDER BY metric, point_seq NULLS FIRST;
 CREATE OR REPLACE MACRO main.forecast_request() AS TABLE
 WITH axes AS (
   SELECT * RENAME (view AS metric) FROM main.view_summary() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
-series AS (
-  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
-  WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
+series AS (SELECT metric, period, value FROM main.complete_series(NULL)),
 hist AS (
   SELECT metric, count(*) AS n, max(period) AS origin, list({'period': period, 'value': value} ORDER BY period) AS history
   FROM series GROUP BY metric),
@@ -295,14 +438,16 @@ FROM rows_ GROUP BY grain, totals, horizon;
 -- the first so many steps, to_go naming the month, the quarter or the year
 -- it runs to) with its period, p05 to p95, and service_80 and service_90,
 -- the service's held-out share of actuals inside the 80% and the 90% range
--- at that grain, step and span. No actual and no PIT land here: neither
--- is known at the origin; forecast_points() joins the actual at read.
+-- at that grain, step and span; inputs is the digest of what the request
+-- read (outlook_inputs()). No actual and no PIT land here: neither is
+-- known at the origin; forecast_points() joins the actual at read.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_forecast WITH $${
   "type": "object", "x-used-by": ["plan", "scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
+    "inputs": {"type": ["string", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -353,15 +498,20 @@ DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
             WHERE n.metric = r.metric) AS points
     FROM req r LEFT JOIN failures f USING (metric))
   SELECT (SELECT string_agg(DISTINCT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version'), ', ') FROM b) AS served_by,
+         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_forecast') AS inputs,
          (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity, 'grain': grain,
                                 'origin': strftime(origin, '%Y-%m-%d'), 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
 $$ RETURNS metric_forecast;
 
--- The forecast's test says a forecast exists: green once one is stored,
--- so that the forecast is required while none is, and again once stale.
+-- The forecast's test says a forecast exists: green once a stored run
+-- holds a point for some metric. A run that forecast nothing — every
+-- metric refused with its reason — is no row, so the test reads as not
+-- run and never as green.
 DECLARE FUNCTION forecast_exists FOR GLOBAL AS $$
-  SELECT subject, 'green' AS state, 0.0 AS score FROM annotations WHERE actor_kind = 'function'
+  SELECT subject, 'green' AS state, 0.0 AS score FROM annotations
+  WHERE actor_kind = 'function'
+    AND list_contains(list_transform(from_json(json_extract(body, '$.metrics'), '[{"applicable": "BOOLEAN"}]'), lambda m: m.applicable), true)
 $$;
 
 DECLARE TEST forecast_test ON metric_forecast DETECTOR forecast_exists;
@@ -370,14 +520,17 @@ DECLARE TEST forecast_test ON metric_forecast DETECTOR forecast_exists;
 -- forecast_stored(): every forecast run's points as rows, from the
 -- measurements alone. forecast_runs(): the same with the actual joined
 -- from the actual world where it has been loaded (for a span, the sum over its
--- periods where every one has). forecast_coverage(): the catalog's tally —
--- per metric and for the dataset ('' the metric), per grain, step, span
--- and to_go (a span of one length under two names tallied under each)
--- where a point's actual is loaded: points loaded, inside_80, inside_90, held_80,
--- held_90.
+-- periods where every one has). forecast_scored(): the same, one point per
+-- metric, origin, step and span — the newest run's, so that a forecast
+-- run again from one origin counts once. forecast_coverage(): the
+-- catalog's tally over those points — per metric and for the dataset
+-- ('' the metric), per grain, step, span and to_go (a span of one length
+-- under two names tallied under each) where a point's actual is loaded:
+-- points loaded, inside_80, inside_90, held_80, held_90.
 -- forecast_points(): the newest run, flattened — one row per metric and
 -- point: seq, metric, applicable, reason, additivity, grain, origin,
--- served_by, computed_at, current, point_seq, step, span, to_go, period,
+-- served_by, computed_at, current (false once the forecast is due again,
+-- outlook_due()), point_seq, step, span, to_go, period,
 -- p05 to p95, service_80, service_90, actual, actuals (below, low, inside,
 -- high, above against p05, p10, p90 and p95), held_80 and held_90 (how
 -- often such a range held: the catalog's own share where it holds thirty
@@ -410,8 +563,7 @@ SELECT run, computed_at, served_by, m.metric, m.applicable, m.reason, m.additivi
 FROM metrics WHERE cardinality(m.points) = 0;
 
 CREATE OR REPLACE MACRO main.forecast_runs() AS TABLE
-WITH actuals AS (
-  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip') WHERE dimension = '' AND world = 'actual')
+WITH actuals AS (SELECT metric, period, value FROM main.complete_series(NULL))
 SELECT r.*,
        CASE WHEN r.step IS NULL THEN NULL
             WHEN r.span IS NULL THEN a.value
@@ -420,12 +572,16 @@ SELECT r.*,
 FROM main.forecast_stored() r
 LEFT JOIN actuals a ON a.metric = r.metric AND a.period = r.period AND r.span IS NULL;
 
+CREATE OR REPLACE MACRO main.forecast_scored() AS TABLE
+SELECT * FROM main.forecast_runs()
+QUALIFY row_number() OVER (PARTITION BY metric, grain, origin, step, span, to_go ORDER BY run DESC) = 1;
+
 CREATE OR REPLACE MACRO main.forecast_coverage() AS TABLE
 WITH tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points,
          count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80,
          count(*) FILTER (WHERE actual BETWEEN p05 AND p95) AS inside_90
-  FROM main.forecast_runs() WHERE applicable AND step IS NOT NULL
+  FROM main.forecast_scored() WHERE applicable AND step IS NOT NULL
   GROUP BY metric, grain, step, span, to_go
   HAVING count(actual) > 0),
 whole AS (
@@ -440,15 +596,16 @@ ORDER BY metric, grain, step, span NULLS FIRST, to_go NULLS FIRST;
 CREATE OR REPLACE MACRO main.forecast_points() AS TABLE
 WITH runs AS MATERIALIZED (SELECT * FROM main.forecast_runs()),
 newest AS (SELECT max(run) AS run FROM runs),
-current_ AS (
-  SELECT coalesce(bool_and(current), true) AS current
-  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' AND aspect = 'metric_forecast'),
--- the catalog's tally behind held, over every run: per metric, and for the dataset
+current_ AS (SELECT NOT coalesce(bool_or(due), false) AS current FROM main.outlook_due() WHERE name = 'metric_forecast'),
+-- the catalog's tally behind held: one point per metric, origin, step and span, per metric and for the dataset
+scored AS (
+  SELECT * FROM runs WHERE applicable AND step IS NOT NULL
+  QUALIFY row_number() OVER (PARTITION BY metric, grain, origin, step, span, to_go ORDER BY run DESC) = 1),
 tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points,
          count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80,
          count(*) FILTER (WHERE actual BETWEEN p05 AND p95) AS inside_90
-  FROM runs WHERE applicable AND step IS NOT NULL
+  FROM scored
   GROUP BY metric, grain, step, span, to_go),
 whole AS (
   SELECT grain, step, span, to_go, sum(points) AS points, sum(inside_80) AS inside_80, sum(inside_90) AS inside_90
@@ -484,13 +641,15 @@ ORDER BY r.seq, r.point_seq NULLS FIRST;
 -- each lever a glossed lever on a served metric's column, the factor a
 -- map. scenario_request(): the scenario's reach, one row per scenario
 -- and metric whose view carries one of its levers: grain (the metric's
--- floor), origin (the last actual), history, the periods ahead up to the
--- end of the last period the scenario names, and per lever its series
--- (the mean of the column per period) and the value held as planned
--- (the last at or before the origin); applicable needs 26 periods of
--- history, a period ahead, and an input the scenario moves — a lever
--- held at nothing, or factors of one, move nothing, and the service
--- refuses a request where no input differs. lever_bodies(): one
+-- floor), origin (the last complete actual, as the forecast's), history,
+-- the periods ahead up to the end of the last period the scenario names,
+-- and per lever its series (the mean of the column per period) and the
+-- value held as planned (the last at or before the origin); applicable
+-- needs 26 periods of history, a period ahead, and an input the scenario
+-- moves — a lever held at nothing, or factors of one, move nothing, and
+-- the service refuses a request where no input differs; fixable says the
+-- reason is one the scenario's author can settle (no period ahead, every
+-- factor one). lever_bodies(): one
 -- forecast request per scenario, metric and lever, the lever's own
 -- series as the member and the periods ahead as the horizon, at the
 -- forecast's reach per grain. scenario_bodies(paths := NULL): one
@@ -506,57 +665,12 @@ ORDER BY r.seq, r.point_seq NULLS FIRST;
 -- replayed over the data: the scenario world is the estimate ahead.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT lever WITH $${
-  "type": "object", "required": ["value"],
-  "properties": {"value": {"type": "boolean"}, "basis": {"type": "string"}}
-}$$ AS FACT ON COLUMN;
-
-CREATE OR REPLACE MACRO main.scenarios() AS TABLE
-WITH declared AS (
-  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
-  WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
-bodies AS (
-  SELECT d.name AS scenario, g.value AS body
-  FROM declared d LEFT JOIN glossql_glossary(current_schema(), NULL, false) g
-    ON g.aspect = d.name AND g.subject = current_schema() AND g.state = 'current'),
-levers AS (
-  SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, substr(u.l."column", length(split_part(u.l."column", '.', 1)) + 2) AS col,
-         u.l.factor AS factor, u.l.basis AS basis
-  FROM bodies b, unnest(from_json(json_extract(b.body, '$.levers'), '[{"column": "VARCHAR", "factor": "JSON", "basis": "VARCHAR"}]')) AS u(l)
-  WHERE b.body IS NOT NULL),
-judged AS (
-  SELECT l.*,
-         CASE WHEN l.lever IS NULL OR l.col = '' THEN 'a lever names a served metric''s column, <metric>.<column>'
-              WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
-                               WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
-                                 AND (g.value->>'value') = 'true')
-                THEN l.lever || ' is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric''s view'
-              WHEN NOT EXISTS (SELECT 1 FROM main.view_summary() a WHERE a.view = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
-                THEN l.metric || ' is no served metric of this dataset'
-              WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
-                THEN l.metric || ' serves no column named ' || l.col
-              WHEN json_type(l.factor) <> 'OBJECT' THEN 'the factor on ' || l.lever || ' is a factor per period, {"YYYY-MM": 1.15}'
-         END AS reason
-  FROM levers l),
-folded AS (
-  SELECT b.scenario, b.body IS NOT NULL AS glossed,
-         coalesce(list({'lever': j.lever, 'metric': j.metric, 'column': j.col, 'factor': j.factor, 'basis': j.basis, 'reason': j.reason}
-                       ORDER BY j.lever) FILTER (WHERE j.lever IS NOT NULL), []) AS levers,
-         CASE WHEN b.body IS NULL THEN 'declared and not annotated: a scenario is a factor per period on declared levers'
-              WHEN count(j.lever) = 0 THEN 'the scenario names no lever'
-              ELSE string_agg(j.reason, '; ' ORDER BY j.lever) END AS reason
-  FROM bodies b LEFT JOIN judged j USING (scenario)
-  GROUP BY b.scenario, b.body)
-SELECT scenario, glossed, reason IS NULL AS applicable, reason, levers FROM folded ORDER BY scenario;
-
 CREATE OR REPLACE MACRO main.scenario_request() AS TABLE
 WITH lv AS (
   SELECT s.scenario, u.l.lever AS lever, u.l.metric AS metric, u.l."column" AS col, u.l.factor AS factor
   FROM main.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
 axes AS (SELECT view AS metric, floor, period_column, additivity FROM main.view_summary() WHERE applicable),
-series AS (
-  SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
-  WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL),
+series AS (SELECT metric, period, value FROM main.complete_series(NULL)),
 origins AS (SELECT metric, max(period) AS origin, count(*) AS history FROM series GROUP BY metric),
 -- the lever's series: the mean of the column per period at the metric's floor
 lever_rows AS (
@@ -620,7 +734,9 @@ SELECT j.scenario, j.metric, j.grain, j.additivity, j.origin, j.history,
        coalesce(j.reason, CASE WHEN i.unmoved IS NOT NULL AND NOT EXISTS (SELECT 1 FROM moved m WHERE m.scenario = j.scenario AND m.metric = j.metric AND m.moves)
                                THEN 'the scenario moves no input of ' || j.metric || ': ' || i.unmoved END) AS reason,
        coalesce(j.reason, CASE WHEN i.unmoved IS NOT NULL AND NOT EXISTS (SELECT 1 FROM moved m WHERE m.scenario = j.scenario AND m.metric = j.metric AND m.moves) THEN 'x' END) IS NULL AS applicable,
-       coalesce(a.periods, []::TIMESTAMP[]) AS ahead, i.levers
+       coalesce(a.periods, []::TIMESTAMP[]) AS ahead, i.levers,
+       CASE WHEN j.reason IS NOT NULL THEN j.origin IS NOT NULL AND j.until <= j.origin + main.grain_step(j.grain)
+            ELSE i.unmoved IS NOT NULL AND NOT EXISTS (SELECT 1 FROM moved m WHERE m.scenario = j.scenario AND m.metric = j.metric AND m.moves) END AS fixable
 FROM judged j LEFT JOIN ahead a USING (scenario, metric) JOIN inputs i USING (scenario, metric)
 ORDER BY j.scenario, j.metric;
 
@@ -649,8 +765,7 @@ CREATE OR REPLACE MACRO main.scenario_bodies(paths := NULL) AS TABLE
 WITH r AS (SELECT * FROM main.scenario_request() WHERE applicable),
 hist AS (
   SELECT r.scenario, r.metric, s.period, 'actual' AS status, s.value, 0 AS ord
-  FROM r JOIN (SELECT metric, period, value FROM main.metric_series(unclaimed := 'skip')
-               WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL) s USING (metric)),
+  FROM r JOIN (SELECT metric, period, value FROM main.complete_series(NULL)) s USING (metric)),
 ahead AS (
   SELECT r.scenario, r.metric, u.p AS period, st.status, NULL::DOUBLE AS value, st.ord
   FROM r, unnest(r.ahead) AS u(p), (VALUES ('plan', 1), ('scenario', 2)) st(status, ord)),
@@ -711,13 +826,16 @@ ORDER BY r.scenario, r.metric;
 -- every scenario glossed: per scenario its judgement and levers, per
 -- metric reached its grain, origin, the service's sign, confidence and
 -- basis, explains and error, the points ahead (period, low, value, high
--- at the 10, 50 and 90 levels; the history's own reading with its 90%
+-- at the 10, 50 and 90 levels; baseline, the same estimate's median with
+-- every lever as planned; the history's own reading with its 90%
 -- interval) and the parts (per lever, what it alone does by the
--- history). Stale once the data or the catalog it read moves, which a new
--- scenario gloss does. scenario_points(s): the newest estimate, one row
--- per scenario (or every one, NULL), metric and period ahead, with how
--- often such a range held, the forecast service's share at that grain and
--- step; a metric not estimated is one row with its reason.
+-- history); inputs is the digest of what the request read
+-- (outlook_inputs()). Due again once the scenarios, their levers or the
+-- metrics they reach change. scenario_points(s): the newest estimate, one
+-- row per scenario (or every one, NULL), metric and period ahead, with
+-- baseline and effect (value minus baseline: what the scenario changes)
+-- and how often such a range held, the forecast service's share at that
+-- grain and step; a metric not estimated is one row with its reason.
 -- scenario_levers(s): the parts.
 --===------------------------------------------------------------------===--
 
@@ -725,6 +843,7 @@ DECLARE ASPECT metric_scenario WITH $${
   "type": "object", "x-used-by": ["scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
+    "inputs": {"type": ["string", "null"]},
     "scenarios": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -772,13 +891,19 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
            unnest(coalesce(json_extract(a, '$.table.explains')::DOUBLE[], list_transform(json_extract(a, '$.table.member')::VARCHAR[], lambda x: NULL::DOUBLE))) AS explains,
            unnest(coalesce(json_extract(a, '$.table.error')::DOUBLE[], list_transform(json_extract(a, '$.table.member')::VARCHAR[], lambda x: NULL::DOUBLE))) AS error
     FROM b WHERE a IS NOT NULL),
+  -- the service answers each period ahead twice: under the scenario, and with every lever as planned (the baseline)
   points AS (
     SELECT scenario, metric, period,
-           max(CASE WHEN level = 0.1 THEN value END) AS low, max(CASE WHEN level = 0.5 THEN value END) AS value,
-           max(CASE WHEN level = 0.9 THEN value END) AS high,
-           any_value(history_value) AS history_value, any_value(history_low) AS history_low, any_value(history_high) AS history_high
-    FROM rows_ WHERE member = metric AND status = 'scenario' AND target = 'value' AND period IS NOT NULL
-    GROUP BY scenario, metric, period),
+           max(CASE WHEN status = 'scenario' AND level = 0.1 THEN value END) AS low,
+           max(CASE WHEN status = 'scenario' AND level = 0.5 THEN value END) AS value,
+           max(CASE WHEN status = 'scenario' AND level = 0.9 THEN value END) AS high,
+           max(CASE WHEN status = 'plan' AND level = 0.5 THEN value END) AS baseline,
+           any_value(history_value) FILTER (WHERE status = 'scenario') AS history_value,
+           any_value(history_low) FILTER (WHERE status = 'scenario') AS history_low,
+           any_value(history_high) FILTER (WHERE status = 'scenario') AS history_high
+    FROM rows_ WHERE member = metric AND status IN ('scenario', 'plan') AND target = 'value' AND period IS NOT NULL
+    GROUP BY scenario, metric, period
+    HAVING count(*) FILTER (WHERE status = 'scenario') > 0),
   said AS (
     SELECT scenario, metric, any_value(sign) AS sign, any_value(confidence) AS confidence, any_value(basis) AS basis,
            any_value(explains) AS explains, any_value(error) AS error
@@ -799,10 +924,11 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
                 WHEN bd.unmoved IS NOT NULL THEN 'the scenario moves no input of ' || r.metric || ': ' || bd.unmoved
                 WHEN NOT EXISTS (SELECT 1 FROM points p WHERE p.scenario = r.scenario AND p.metric = r.metric)
                   THEN coalesce(f.errors[1], 'the service answered no point') END AS reason,
+           coalesce(NOT r.applicable AND r.fixable, false) AS fixable,
            (SELECT coalesce(list({'lever': pf.lever, 'planned_from': pf.planned_from} ORDER BY pf.lever), [])
             FROM planned_from pf WHERE pf.scenario = r.scenario AND pf.metric = r.metric) AS levers,
            s.sign, s.confidence, s.basis, s.explains, s.error,
-           (SELECT coalesce(list({'period': p.period, 'low': p.low, 'value': p.value, 'high': p.high, 'history_value': p.history_value,
+           (SELECT coalesce(list({'period': p.period, 'low': p.low, 'value': p.value, 'high': p.high, 'baseline': p.baseline, 'history_value': p.history_value,
                                   'history_low': p.history_low, 'history_high': p.history_high} ORDER BY p.period), [])
             FROM points p WHERE p.scenario = r.scenario AND p.metric = r.metric) AS points,
            (SELECT coalesce(list({'lever': pt.lever, 'history_shift': pt.history_shift, 'history_low': pt.history_low, 'history_high': pt.history_high} ORDER BY pt.lever), [])
@@ -814,19 +940,26 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
     SELECT sc.scenario, sc.applicable, sc.reason,
            list_transform(sc.levers, lambda l: {'lever': l.lever, 'basis': l.basis, 'reason': l.reason}) AS levers,
            (SELECT coalesce(list({'metric': m.metric, 'grain': m.grain, 'origin': strftime(m.origin, '%Y-%m-%d'), 'applicable': m.applicable, 'reason': m.reason,
-                                  'levers': m.levers, 'sign': m.sign, 'confidence': m.confidence, 'basis': m.basis, 'explains': m.explains, 'error': m.error,
+                                  'fixable': m.fixable, 'levers': m.levers, 'sign': m.sign, 'confidence': m.confidence, 'basis': m.basis, 'explains': m.explains, 'error': m.error,
                                   'points': m.points, 'parts': m.parts} ORDER BY m.metric), [])
             FROM per_metric m WHERE m.scenario = sc.scenario) AS metrics
     FROM sc)
   SELECT (SELECT string_agg(DISTINCT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version'), ', ') FROM b) AS served_by,
+         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_scenario') AS inputs,
          (SELECT coalesce(list({'scenario': scenario, 'applicable': applicable, 'reason': reason, 'levers': levers, 'metrics': metrics} ORDER BY scenario), [])
           FROM per_scenario) AS scenarios
 $$ RETURNS metric_scenario;
 
--- The estimate's test says an estimate exists: green once one is stored,
--- so that it is required while none is, and again once stale.
+-- The estimate's test says an estimate exists: green once a stored run
+-- holds a point for some scenario and metric. A run that estimated
+-- nothing — every scenario refused with its reason — is no row, so the
+-- test reads as not run and never as green.
 DECLARE FUNCTION scenario_exists FOR GLOBAL AS $$
-  SELECT subject, 'green' AS state, 0.0 AS score FROM annotations WHERE actor_kind = 'function'
+  SELECT subject, 'green' AS state, 0.0 AS score FROM annotations
+  WHERE actor_kind = 'function'
+    AND list_contains(flatten(list_transform(
+          from_json(json_extract(body, '$.scenarios'), '[{"metrics": [{"applicable": "BOOLEAN"}]}]'),
+          lambda s: list_transform(s.metrics, lambda m: m.applicable))), true)
 $$;
 
 DECLARE TEST scenario_test ON metric_scenario DETECTOR scenario_exists;
@@ -841,7 +974,7 @@ scn AS (
            '[{"scenario": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR",
               "metrics": [{"metric": "VARCHAR", "grain": "VARCHAR", "origin": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR",
                            "levers": [{"lever": "VARCHAR", "planned_from": "VARCHAR"}], "sign": "VARCHAR", "confidence": "VARCHAR", "basis": "VARCHAR", "explains": "DOUBLE", "error": "DOUBLE",
-                           "points": [{"period": "VARCHAR", "low": "DOUBLE", "value": "DOUBLE", "high": "DOUBLE",
+                           "points": [{"period": "VARCHAR", "low": "DOUBLE", "value": "DOUBLE", "high": "DOUBLE", "baseline": "DOUBLE",
                                        "history_value": "DOUBLE", "history_low": "DOUBLE", "history_high": "DOUBLE"}]}]}]')) AS sc
   FROM newest),
 mets AS (
@@ -859,11 +992,12 @@ held AS (
   WHERE r.applicable AND r.span IS NULL AND r.step IS NOT NULL)
 SELECT s.scenario, s.metric, s.grain, s.origin, s.applicable, s.reason, list_transform(s.levers, lambda l: l.lever) AS levers, 'estimated' AS pass, s.step::BIGINT AS step,
        s.p.period::TIMESTAMP AS period, s.p.low AS low, s.p.value AS value, s.p.high AS high,
+       s.p.baseline AS baseline, s.p.value - s.p.baseline AS effect,
        s.p.history_value AS history_value, s.p.history_low AS history_low, s.p.history_high AS history_high,
        h.held_80, h.held_from, s.sign, s.confidence, s.basis, s.explains, s.error, s.served_by, s.computed_at
 FROM stepped s LEFT JOIN held h ON h.metric = s.metric AND h.grain = s.grain AND h.step = s.step
 UNION ALL
-SELECT scenario, m.metric, m.grain, m.origin, m.applicable, m.reason, list_transform(m.levers, lambda l: l.lever), 'estimated', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+SELECT scenario, m.metric, m.grain, m.origin, m.applicable, m.reason, list_transform(m.levers, lambda l: l.lever), 'estimated', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
        NULL, NULL, m.sign, m.confidence, m.basis, m.explains, m.error, served_by, computed_at
 FROM mets WHERE coalesce(cardinality(m.points), 0) = 0
 ORDER BY scenario, metric, step NULLS FIRST;
@@ -976,14 +1110,19 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 -- period has begun; for the current period, to date), variance (actual
 -- minus plan, on a complete period), low, expected, high (the newest
 -- forecast's 80% range and median: the step's at the metric's own grain;
--- at a coarser grain, for a flow the actual to date plus the total that
--- runs to the period's end, for a stock the range of the last period of
--- the metric's grain inside it), planned (complete; inside, below,
--- above: where the plan lies against the range; partial: begun and the
--- rows cover part of the period, no range; open: begun, no range covers the
+-- at a coarser grain, for a flow the actual of the complete periods plus
+-- the total that runs to the period's end, for a stock the range of the
+-- last period of the metric's grain inside it), planned (complete: the
+-- period is over and the actuals cover every period of it; not_covered:
+-- begun, and the actuals served do not reach back to its start or hold
+-- no value for it, so no actual and no variance; inside, below, above:
+-- where the plan lies against the range; partial: begun and the rows
+-- cover part of the period, no range; open: begun, no range covers the
 -- rest; ahead: not begun), covers (on the year row of a plan whose rows
 -- cover part of the year: how much), held_80, held_from, origin (the
--- forecast's). Computed at read; metric_plan stores it per plan.
+-- forecast's). A period is complete once the metric's last complete
+-- period reaches its end (complete_series()). Computed at read;
+-- metric_plan stores it per plan.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.plan_points() AS TABLE
@@ -995,7 +1134,14 @@ g AS (
 floor_cells AS MATERIALIZED (
   SELECT metric, period, value, num, den, additivity FROM main.metric_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual'),
-origins AS (SELECT metric, max(period) AS origin FROM floor_cells WHERE value IS NOT NULL GROUP BY metric),
+-- edge: the last period with a value; origin: the last complete one, the period before where the data ends inside the
+-- edge's; first_actual: where the served actuals begin (the series serves a window of periods, not the whole history)
+edges AS (SELECT metric, max(period) AS edge, min(period) AS first_actual FROM floor_cells WHERE value IS NOT NULL GROUP BY metric),
+origins AS (
+  SELECT e.metric, e.edge, e.first_actual,
+         CASE WHEN EXISTS (SELECT 1 FROM main.partial_periods(NULL) pp WHERE pp.metric = e.metric AND pp.period = e.edge)
+              THEN e.edge - main.grain_step(m.floor) ELSE e.edge END AS origin
+  FROM edges e JOIN main.view_summary() m ON m.view = e.metric),
 cells AS (
   -- the plan's cells at its own grain and at the year
   SELECT r.plan, r.metric, gr.step_grain AS grain, date_trunc(gr.step_grain, r.instant) AS period,
@@ -1016,16 +1162,18 @@ cover AS (
   GROUP BY o.plan, date_trunc('year', o.period), g.grain),
 actuals AS (
   SELECT f.metric, r.grain, date_trunc(r.grain, f.period) AS period,
-         CASE f.additivity WHEN 'semi-additive' THEN arg_max(f.value, f.period) WHEN 'ratio' THEN sum(f.num) / nullif(sum(f.den), 0) ELSE sum(f.value) END AS value
-  FROM floor_cells f JOIN (SELECT DISTINCT metric, grain FROM rows_) r USING (metric)
+         CASE f.additivity WHEN 'semi-additive' THEN arg_max(f.value, f.period) WHEN 'ratio' THEN sum(f.num) / nullif(sum(f.den), 0) ELSE sum(f.value) END AS value,
+         -- a flow's actual over the complete periods alone: what a total to go is added to
+         sum(f.value) FILTER (WHERE f.period <= o.origin) AS value_done
+  FROM floor_cells f JOIN (SELECT DISTINCT metric, grain FROM rows_) r USING (metric) LEFT JOIN origins o ON o.metric = f.metric
   GROUP BY f.metric, r.grain, date_trunc(r.grain, f.period), f.additivity),
 judged AS (
-  SELECT r.plan, r.metric, r.grain, r.period, r.value, g.additivity, g.metric_floor, g.grain AS own_grain, o.origin,
+  SELECT r.plan, r.metric, r.grain, r.period, r.value, g.additivity, g.metric_floor, g.grain AS own_grain, o.origin, o.edge, o.first_actual,
          o.origin + main.grain_step(g.metric_floor) AS origin_end,
          r.period + main.grain_step(r.grain) AS period_end,
          date_trunc(g.metric_floor, r.period + main.grain_step(r.grain) - INTERVAL 1 MICROSECOND) AS last_inside,
-         r.period <= o.origin AS begun,
-         a.value AS actual_cell,
+         r.period <= o.edge AS begun,
+         a.value AS actual_cell, a.value_done AS actual_done,
          c.covered, c.of_, c.first, c.last_end,
          coalesce(r.grain = 'year' AND c.plan IS NOT NULL AND c.covered < c.of_, false) AS part
   FROM rows_ r JOIN g USING (plan)
@@ -1036,27 +1184,41 @@ part_actual AS (
   SELECT j.plan, j.period AS year,
          CASE j.additivity WHEN 'additive' THEN sum(a.value) WHEN 'semi-additive' THEN arg_max(a.value, a.period) END AS actual
   FROM judged j JOIN own o ON o.plan = j.plan AND date_trunc('year', o.period) = j.period
-  JOIN actuals a ON a.metric = j.metric AND a.grain = o.grain AND a.period = o.period AND o.period <= j.origin
+  JOIN actuals a ON a.metric = j.metric AND a.grain = o.grain AND a.period = o.period AND o.period <= j.edge
   WHERE j.part GROUP BY j.plan, j.period, j.additivity),
-result AS (
+stated AS (
   SELECT j.*,
-    CASE WHEN j.part THEN pa.actual WHEN j.begun THEN j.actual_cell END AS actual,
+    CASE WHEN j.part THEN pa.actual WHEN j.begun THEN j.actual_cell END AS actual_read,
     CASE WHEN j.part THEN j.last_end <= j.origin_end ELSE j.period_end <= j.origin_end END AS complete,
-    CASE WHEN j.part THEN j.first <= j.origin ELSE j.begun END AS has_begun
+    CASE WHEN j.part THEN j.first <= j.edge ELSE j.begun END AS has_begun
   FROM judged j LEFT JOIN part_actual pa ON pa.plan = j.plan AND pa.year = j.period),
+-- a begun period is compared only where the actuals cover it: they hold a value for it and, for anything but a stock (whose
+-- level is the last period's), the served series begins at or before its start
+result AS (
+  SELECT s.* EXCLUDE (actual_read),
+    coalesce(s.has_begun AND NOT (s.actual_read IS NOT NULL
+               AND (s.additivity = 'semi-additive' OR s.first_actual <= CASE WHEN s.part THEN s.first ELSE s.period END)), false) AS uncovered,
+    CASE WHEN s.has_begun AND s.actual_read IS NOT NULL
+              AND (s.additivity = 'semi-additive' OR s.first_actual <= CASE WHEN s.part THEN s.first ELSE s.period END)
+         THEN s.actual_read END AS actual
+  FROM stated s),
 -- the newest forecast's ranges, with how often such a range held: the catalog's own share where it holds thirty points, else the
 -- service's; the actual behind each run as forecast_runs() joins it, over this read's own cells
 runs AS MATERIALIZED (
   SELECT r.*,
          CASE WHEN r.span IS NULL THEN a.value
               ELSE (SELECT CASE WHEN count(*) = r.span THEN sum(a2.value) END FROM floor_cells a2
-                    WHERE a2.metric = r.metric AND a2.period > r.origin AND a2.period <= r.period) END AS actual
+                    WHERE a2.metric = r.metric AND a2.period > r.origin AND a2.period <= r.period
+                      AND a2.period <= (SELECT o.origin FROM origins o WHERE o.metric = r.metric)) END AS actual
   FROM main.forecast_stored() r
   LEFT JOIN floor_cells a ON a.metric = r.metric AND a.period = r.period AND r.span IS NULL
+    AND a.period <= (SELECT o.origin FROM origins o WHERE o.metric = r.metric)
   WHERE r.applicable AND r.step IS NOT NULL),
+-- one point per metric, origin, step and span: a forecast run again from one origin counts once
 tally AS (
   SELECT metric, grain, step, span, to_go, count(actual) AS points, count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80
-  FROM runs GROUP BY metric, grain, step, span, to_go),
+  FROM (SELECT * FROM runs QUALIFY row_number() OVER (PARTITION BY metric, grain, origin, step, span, to_go ORDER BY run DESC) = 1)
+  GROUP BY metric, grain, step, span, to_go),
 whole AS (SELECT grain, step, span, to_go, sum(points) AS points, sum(inside_80) AS inside_80 FROM tally GROUP BY grain, step, span, to_go),
 newest_run AS (SELECT max(run) AS run FROM runs),
 fp AS MATERIALIZED (
@@ -1072,14 +1234,14 @@ candidates AS (
   SELECT v.plan, v.grain, v.period, f.p10, f.p50, f.p90, f.held_80, f.held_from, f.origin,
          row_number() OVER (PARTITION BY v.plan, v.grain, v.period ORDER BY f.span NULLS FIRST, f.step) AS rn
   FROM result v JOIN fp f ON f.metric = v.metric
-  WHERE NOT v.complete AND NOT v.part
+  WHERE NOT v.complete AND NOT v.part AND NOT v.uncovered
     AND ((v.grain = v.metric_floor AND f.span IS NULL AND f.period = v.period)
       OR (v.grain <> v.metric_floor AND v.additivity = 'semi-additive' AND f.span IS NULL AND f.period = v.last_inside)
       OR (v.grain <> v.metric_floor AND v.additivity = 'additive' AND v.has_begun AND v.actual IS NOT NULL
           AND f.span IS NOT NULL AND f.to_go = v.grain AND f.period >= v.period AND f.period < v.period_end))),
 ranged AS (
   SELECT v.*, c.p10, c.p50, c.p90, c.held_80, c.held_from, c.origin AS forecast_origin,
-         CASE WHEN v.grain = v.metric_floor OR v.additivity = 'semi-additive' THEN 0.0 ELSE coalesce(v.actual, 0.0) END AS base
+         CASE WHEN v.grain = v.metric_floor OR v.additivity = 'semi-additive' THEN 0.0 ELSE coalesce(v.actual_done, 0.0) END AS base
   FROM result v LEFT JOIN candidates c ON c.plan = v.plan AND c.grain = v.grain AND c.period = v.period AND c.rn = 1)
 SELECT plan, metric, grain, period,
        CASE grain WHEN 'year' THEN strftime(period, '%Y')
@@ -1087,11 +1249,12 @@ SELECT plan, metric, grain, period,
                   WHEN 'month' THEN strftime(period, '%Y-%m')
                   ELSE strftime(period, '%Y-%m-%d') END AS label,
        value, actual,
-       CASE WHEN complete THEN actual - value END AS variance,
+       CASE WHEN complete AND NOT uncovered THEN actual - value END AS variance,
        CASE WHEN complete OR part OR p10 IS NULL THEN NULL ELSE base + p10 END AS low,
        CASE WHEN complete OR part OR p50 IS NULL THEN NULL ELSE base + p50 END AS expected,
        CASE WHEN complete OR part OR p90 IS NULL THEN NULL ELSE base + p90 END AS high,
-       CASE WHEN complete THEN 'complete'
+       CASE WHEN uncovered THEN 'not_covered'
+            WHEN complete THEN 'complete'
             WHEN part THEN CASE WHEN has_begun THEN 'partial' ELSE 'ahead' END
             WHEN p10 IS NULL THEN CASE WHEN has_begun THEN 'open' ELSE 'ahead' END
             WHEN value < base + p10 THEN 'below' WHEN value > base + p90 THEN 'above' ELSE 'inside' END AS planned,
@@ -1106,12 +1269,13 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- metric_plan: the plan judged, as a measurement on the plan — the rows
 -- plan_points() serves for it as of the data, with the forecast run they
 -- were judged against (forecast_run, the newest metric_forecast
--- measurement's seq, and its origin). Wanted on the plan's row until one
--- exists; stale by the data version once the data or the catalog it read moves; the
--- plan goal asks for it again once a newer forecast exists, which the data version
--- does not see, measurements being no input of a data version. plan_stored(): the newest
--- judgement per plan from the measurements alone, one row per point, the
--- read an arm of the `next` read takes; plan_points() stays the live read.
+-- measurement's seq, and its origin) and inputs, the digest of the plan
+-- (view_inputs()). Refused on a view that is not a plan, or a plan that
+-- is not served, by name. Wanted on the plan's row until one exists; due
+-- again once a newer forecast exists or the plan's digest differs.
+-- plan_stored(): the newest judgement per plan from the measurements
+-- alone, one row per point, the read an arm of the `next` read takes;
+-- plan_points() stays the live read.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_plan WITH $${
@@ -1122,19 +1286,27 @@ DECLARE ASPECT metric_plan WITH $${
     "grain": {"type": ["string", "null"]},
     "forecast_run": {"type": ["integer", "null"]},
     "forecast_origin": {"type": ["string", "null"]},
+    "inputs": {"type": ["string", "null"]},
     "points": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON TABLE;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
-  WITH pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
+  WITH named AS (SELECT kind, applicable, reason FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
+  refusal AS (
+    SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM named WHERE kind = 'plan')
+                THEN error($subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')
+                WHEN EXISTS (SELECT 1 FROM named WHERE NOT applicable)
+                THEN error($subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
+  pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
   own AS (SELECT metric, grain FROM main.plan_grains() WHERE plan = split_part($subject, '.', 2)),
   run AS (SELECT max(seq) AS seq FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')
-  SELECT split_part($subject, '.', 2) AS plan,
+  SELECT coalesce((SELECT r FROM refusal)::VARCHAR, split_part($subject, '.', 2)) AS plan,
          (SELECT any_value(metric) FROM own) AS metric,
          (SELECT any_value(grain) FROM own) AS grain,
          (SELECT seq FROM run) AS forecast_run,
          (SELECT any_value(origin) FROM pts WHERE origin IS NOT NULL) AS forecast_origin,
+         (SELECT inputs FROM main.view_inputs() WHERE view = split_part($subject, '.', 2)) AS inputs,
          (SELECT coalesce(list({'grain': grain, 'period': strftime(period, '%Y-%m-%d'), 'label': label, 'value': value,
                                 'actual': actual, 'variance': variance, 'low': low, 'expected': expected, 'high': high,
                                 'planned': planned, 'covers': covers, 'held_80': held_80, 'held_from': held_from}
@@ -1188,13 +1360,29 @@ FROM judged WHERE coalesce(cardinality(points), 0) = 0
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
 --===------------------------------------------------------------------===--
+-- outlook_measurements(): the preview measurements the bound dataset
+-- needs, where a model service is named and a metric is served — name,
+-- stored, due (outlook_due()): the expected ranges; the forecast once a
+-- plan is served or a scenario can be estimated, since the plan is held
+-- against its ranges and the scenario reads how often they held; the
+-- scenario estimate once a scenario can be estimated. `next` lists the
+-- ones that are due.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.outlook_measurements() AS TABLE
+SELECT name, stored, due FROM main.outlook_due() WHERE needed;
+
+--===------------------------------------------------------------------===--
 -- outlook_findings(): what the preview features leave open on the bound
 -- dataset, as rows for `next`: step (test or serve), asset, state,
--- open (the finding), for_view, statement (the fix). A value outside
--- its expected range, a plan outside the forecast's range, a plan whose
--- comparison predates the newest forecast, a plan without a definition.
--- A finding a person was asked about or decided on is closed. Served
--- only where a model service is named.
+-- open (the finding), for_view, statement (the fix), test (the test the
+-- finding belongs to). A value outside its expected range, a plan
+-- outside the forecast's range, a plan whose comparison predates the
+-- newest forecast or the plan's own change, a plan without a
+-- definition, a scenario that cannot be estimated for a reason its
+-- author can settle. A reason nobody can settle (too little history) is
+-- no row. A finding a person was asked about or decided on is closed.
+-- Served only where a model service is named.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.outlook_findings() AS TABLE
@@ -1203,24 +1391,48 @@ live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS na
 asked AS (
   SELECT aspect, key FROM main.review_decisions r, ds WHERE r.dataset = ds.d
   UNION SELECT aspect, key FROM main.open_questions q, ds WHERE q.dataset = ds.d),
+-- every view of the dataset once, with the digest of what a read of it depends on
+views AS MATERIALIZED (SELECT view, kind, stopped, applicable, inputs FROM main.view_inputs()),
 plans AS (
-  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.reason, x.stopped
+  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.stopped, x.inputs
   FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
-  LEFT JOIN main.view_summary() x ON x.view = a.name
+  LEFT JOIN views x ON x.view = a.name
   WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
 forecast AS (
   SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
 compared AS (
-  SELECT json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run
+  SELECT subject, json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run,
+         json_extract_string(value, '$.inputs') AS inputs
   FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
-  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1)
+  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
+-- the catalog's stale rule on each stored comparison
+held AS (
+  SELECT subject, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
+  WHERE actor = 'function' AND aspect = 'metric_plan' GROUP BY subject),
+-- the newest estimate's scenarios and the metrics they reach
+estimate AS (
+  SELECT value, computed_at FROM main.measurements
+  WHERE dataset = current_schema() AND function = 'metric_scenario'
+  ORDER BY seq DESC LIMIT 1),
+estimated AS (
+  SELECT sc.scenario AS scenario, unnest(sc.metrics) AS m, computed_at
+  FROM (SELECT unnest(from_json(json_extract(value, '$.scenarios'),
+          '[{"scenario": "VARCHAR", "metrics": [{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "fixable": "BOOLEAN"}]}]')) AS sc,
+               computed_at
+        FROM estimate)),
+-- a scenario's annotation as it stands, to edit and send
+scenario_bodies AS (
+  SELECT w.aspect AS scenario, w.body::VARCHAR AS body, w.written_at FROM main.glossary w, ds
+  WHERE w.dataset = ds.d AND w.subject = ds.d
+  QUALIFY row_number() OVER (PARTITION BY w.aspect ORDER BY w.seq DESC) = 1)
 SELECT 'test' AS step, ds.d || '.' || p.metric AS asset, 'red' AS state,
        'range_test (preview): ' || p.metric || ' is ' || CAST(round(p.actual, 2) AS VARCHAR) || ' at ' || p.period
          || ', outside its expected range of ' || CAST(round(p.p05, 2) AS VARCHAR) || ' to ' || CAST(round(p.p95, 2) AS VARCHAR) AS open,
        p.metric AS for_view,
        '-- a defect in the data is fixed in the load or the definition. A real shift is for a person: add it to "assumptions" as {"dimension": "definition", "key": "range-' || p.period
          || '", "assumption": "<the shift at ' || p.period || ', in the business''s words>", "basis": "<what it rests on>", "confidence": 0.7}. Then record the definition again:' || chr(10)
-         || main.view_redefine(ds.d, p.metric) AS statement
+         || main.view_redefine(ds.d, p.metric) AS statement,
+       'range_test' AS test
 FROM main.range_points() p, ds, live
 WHERE live.named AND p.newest AND p.displacement > 0.9
   AND EXISTS (SELECT 1 FROM main.range_result() w WHERE w.state = 'red')
@@ -1232,44 +1444,153 @@ SELECT 'test', ds.d || '.' || g.plan, 'red',
        g.metric,
        '-- add the gap to "assumptions" of the plan as {"dimension": "definition", "key": "plan-' || g.label
          || '", "assumption": "<the gap at ' || g.label || ' and what closes it, in the business''s words>", "basis": "<what it rests on>", "confidence": 0.7}. Then record the plan again:' || chr(10)
-         || main.view_redefine(ds.d, g.plan)
+         || main.view_redefine(ds.d, g.plan),
+       'plan_test'
 FROM main.plan_stored() g, ds, live
 WHERE live.named AND g.grain = 'year' AND g.planned IN ('below', 'above')
   AND NOT EXISTS (SELECT 1 FROM asked a WHERE a.aspect = g.plan AND a.key = 'plan-' || g.label)
 UNION ALL
 SELECT 'test', ds.d || '.' || p.plan, 'not_run',
        'plan_test (preview): ' || p.plan || CASE WHEN c.plan IS NULL THEN ' is not compared with the actual and the forecast yet'
-                                                ELSE ' was compared before the newest forecast' END,
-       p.metric, 'SELECT metric_plan() FROM ' || ds.d || '.' || p.plan || ';'
-FROM plans p LEFT JOIN compared c USING (plan), forecast f, ds, live
-WHERE live.named AND p.applicable AND (c.plan IS NULL OR c.forecast_run IS DISTINCT FROM f.run)
+                                                WHEN c.forecast_run IS DISTINCT FROM f.run THEN ' was compared before the newest forecast'
+                                                ELSE ' was compared before the plan changed' END,
+       p.metric, 'SELECT metric_plan() FROM ' || ds.d || '.' || p.plan || ';', 'plan_test'
+FROM plans p LEFT JOIN compared c USING (plan) LEFT JOIN held h ON h.subject = c.subject, forecast f, ds, live
+WHERE live.named AND p.applicable
+  AND (c.plan IS NULL OR c.forecast_run IS DISTINCT FROM f.run
+       OR (NOT coalesce(h.current, true) AND c.inputs IS NOT NULL AND c.inputs <> p.inputs))
 UNION ALL
 SELECT 'serve', ds.d || '.' || p.plan, 'missing',
        p.plan || ' (preview) plans ' || p.metric || ' and has no definition', p.metric,
-       main.gloss_statement(p.plan, ds.d, '{"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}')
+       main.gloss_statement(p.plan, ds.d, '{"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}'),
+       NULL
 FROM plans p LEFT JOIN main.view_definitions s ON s.name = p.plan, ds, live
-WHERE live.named AND p.stopped IS NULL AND coalesce(s.stopped, '') = '' AND NOT coalesce(s.defined, false);
+WHERE live.named AND p.stopped IS NULL AND coalesce(s.stopped, '') = '' AND NOT coalesce(s.defined, false)
+  -- an aspect is the workspace's: a plan is this dataset's where the metric it plans is
+  AND EXISTS (SELECT 1 FROM views m WHERE m.view = p.metric)
+UNION ALL
+-- a scenario annotated on this dataset that the catalog cannot read as one: a lever that is none, a factor that is no map
+SELECT 'test', ds.d, 'not_run',
+       'scenario_test (preview): ' || s.scenario || ' cannot be estimated: ' || s.reason, '',
+       main.gloss_statement(s.scenario, ds.d, coalesce(b.body,
+         '{"levers": [{"column": "<metric>.<column>", "factor": {"<YYYY-MM>": <factor>}, "basis": "<what the scenario assumes>"}]}'))
+         || CASE WHEN s.reason LIKE '%not annotated as a lever%'
+                 THEN chr(10) || '-- a lever is a column someone sets: ' || main.gloss_statement('lever', '<metric>.<column>', '{"value": true, "basis": "<who sets it>"}') ELSE '' END,
+       'scenario_test'
+FROM main.scenarios() s LEFT JOIN scenario_bodies b USING (scenario), ds, live
+WHERE live.named AND s.glossed AND NOT s.applicable
+UNION ALL
+-- a scenario estimated for no period of a metric, for a reason its author can settle; once the scenario is
+-- annotated again the estimate is due, and the finding is the old annotation's
+SELECT 'test', ds.d || '.' || e.m.metric, 'not_run',
+       'scenario_test (preview): ' || e.scenario || ' is not estimated for ' || e.m.metric || ': ' || e.m.reason, e.m.metric,
+       '-- change the periods or the factors so that the scenario moves a lever in a period after the last complete one, then run the estimate again:' || chr(10)
+         || main.gloss_statement(e.scenario, ds.d, coalesce(b.body, '<the scenario>')) || chr(10)
+         || 'SELECT metric_scenario() FROM ' || ds.d || ';',
+       'scenario_test'
+FROM estimated e LEFT JOIN scenario_bodies b ON b.scenario = e.scenario, ds, live
+WHERE live.named AND NOT e.m.applicable AND coalesce(e.m.fixable, false)
+  AND (b.written_at IS NULL OR b.written_at <= e.computed_at);
 
 --===------------------------------------------------------------------===--
--- outlook_measurements(): the preview measurements the bound dataset
--- needs, where a model service is named: the expected ranges, the
--- forecast once a plan is served, the scenario estimate once a scenario
--- is annotated. `next` lists the ones that are due.
+-- preview_tests(): the preview features' tests as rows of view_tests(),
+-- one per metric and test — view, test, aspect, subject, state, current,
+-- score, evidence, run. state: red where the metric's newest value lies
+-- outside its expected range or the plan outside the forecast's; green
+-- where the result holds a point for the metric; not_run where no
+-- result is stored yet, or one could be after a fix the evidence names;
+-- not_applicable where the result holds no point for the metric and
+-- nothing can be done about it (the evidence's reason says why). A
+-- plan's test shows under the metric it plans, the plan its subject.
+-- current is false once the measurement is due again. evidence carries
+-- applicable, reason, and finding and fix where outlook_findings() holds
+-- one. run is empty: a preview measurement calls the model service, and
+-- the server runs none by itself; `next` names the ones that are due.
+-- Served where a model service is named or a result is stored.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.outlook_measurements() AS TABLE
-WITH live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
-kinds AS (
-  SELECT a.name, a.kind, json_extract_string(a.schema, '$.x-kind') AS x_kind
-  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a)
-SELECT 'metric_ranges' AS name FROM live WHERE live.named
-UNION ALL
-SELECT 'metric_forecast' FROM live WHERE live.named
-  AND EXISTS (SELECT 1 FROM kinds k JOIN main.view_summary() x ON x.view = k.name
-              WHERE k.kind = 'VIEW' AND k.x_kind = 'plan' AND x.applicable)
-UNION ALL
-SELECT 'metric_scenario' FROM live WHERE live.named
-  AND EXISTS (SELECT 1 FROM kinds k WHERE k.kind = 'FACT' AND k.x_kind = 'scenario'
-              AND EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
-                          WHERE g.aspect = k.name AND g.state = 'current'));
-
+CREATE OR REPLACE MACRO main.preview_tests() AS TABLE
+WITH ds AS (SELECT current_schema() AS d),
+live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
+due AS MATERIALIZED (SELECT * FROM main.outlook_due()),
+declared AS (
+  SELECT name AS test, aspect FROM main.tests
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+tests AS (SELECT test, aspect FROM declared WHERE aspect IN ('metric_ranges', 'metric_forecast', 'metric_scenario', 'metric_plan')),
+results AS MATERIALIZED (
+  SELECT subject, test, state, score FROM glossql_tests(current_schema(), NULL) WHERE test IN (SELECT test FROM tests)),
+summary AS MATERIALIZED (SELECT view, kind, plan_of, stopped, applicable FROM main.view_summary()),
+metrics AS (SELECT view AS metric FROM summary WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')),
+open_ AS MATERIALIZED (SELECT asset, test, state, open, statement FROM main.outlook_findings() WHERE test IS NOT NULL),
+-- one finding per asset and test, a red one first
+findings AS (
+  SELECT asset, test, arg_min(open, CASE state WHEN 'red' THEN 0 ELSE 1 END) AS finding,
+         arg_min(statement, CASE state WHEN 'red' THEN 0 ELSE 1 END) AS fix
+  FROM open_ GROUP BY asset, test),
+-- a measurement on the dataset shows where it is stored, or where the dataset needs it
+shown AS (SELECT name, stored, due FROM due WHERE stored OR needed),
+ranged AS (
+  SELECT metric, any_value(applicable) AS applicable, any_value(reason) AS reason,
+         max(CASE WHEN newest THEN displacement END) AS displacement
+  FROM main.range_points() GROUP BY metric),
+forecasted AS (
+  SELECT metric, bool_or(applicable) AS applicable, any_value(reason) AS reason
+  FROM main.forecast_stored() WHERE run = (SELECT max(run) FROM main.forecast_stored()) GROUP BY metric),
+estimated AS (
+  SELECT metric, bool_or(applicable) AS applicable,
+         string_agg(DISTINCT CASE WHEN NOT applicable THEN scenario || ': ' || reason END, '; ') AS reason
+  FROM main.scenario_points(NULL) GROUP BY metric),
+reached AS (
+  SELECT DISTINCT u.l.metric AS metric FROM main.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
+plans AS (SELECT view AS plan, plan_of AS metric, applicable FROM summary WHERE kind = 'plan' AND stopped IS NULL),
+rows_ AS (
+  -- the expected ranges
+  SELECT m.metric AS view, t.test, t.aspect, ds.d || '.' || m.metric AS subject,
+         CASE WHEN NOT w.stored OR r.metric IS NULL THEN 'not_run'
+              WHEN NOT r.applicable OR x.state IS NULL THEN 'not_applicable'
+              WHEN f.finding IS NOT NULL THEN 'red'
+              ELSE 'green' END AS state,
+         NOT w.due AS current, r.displacement AS score,
+         r.applicable, r.reason, f.finding,
+         coalesce(f.fix, CASE WHEN w.due THEN 'SELECT metric_ranges() FROM ' || ds.d || ';' END) AS fix
+  FROM metrics m CROSS JOIN ds JOIN tests t ON t.aspect = 'metric_ranges' JOIN shown w ON w.name = 'metric_ranges'
+  LEFT JOIN ranged r ON r.metric = m.metric
+  LEFT JOIN results x ON x.subject = ds.d AND x.test = t.test
+  LEFT JOIN findings f ON f.asset = ds.d || '.' || m.metric AND f.test = t.test
+  UNION ALL
+  -- the forecast
+  SELECT m.metric, t.test, t.aspect, ds.d || '.' || m.metric,
+         CASE WHEN NOT w.stored OR r.metric IS NULL THEN 'not_run'
+              WHEN NOT r.applicable THEN 'not_applicable'
+              ELSE 'green' END,
+         NOT w.due, NULL::DOUBLE, r.applicable, r.reason, NULL::VARCHAR,
+         CASE WHEN w.due THEN 'SELECT metric_forecast() FROM ' || ds.d || ';' END
+  FROM metrics m CROSS JOIN ds JOIN tests t ON t.aspect = 'metric_forecast' JOIN shown w ON w.name = 'metric_forecast'
+  LEFT JOIN forecasted r ON r.metric = m.metric
+  UNION ALL
+  -- the scenario estimate, on the metrics a scenario reaches
+  SELECT m.metric, t.test, t.aspect, ds.d || '.' || m.metric,
+         CASE WHEN NOT w.stored OR r.metric IS NULL OR f.finding IS NOT NULL THEN 'not_run'
+              WHEN NOT r.applicable THEN 'not_applicable'
+              ELSE 'green' END,
+         NOT w.due, NULL::DOUBLE, r.applicable, r.reason, f.finding,
+         coalesce(f.fix, CASE WHEN w.due THEN 'SELECT metric_scenario() FROM ' || ds.d || ';' END)
+  FROM (SELECT metric FROM reached UNION SELECT metric FROM estimated) m CROSS JOIN ds
+  JOIN tests t ON t.aspect = 'metric_scenario' JOIN shown w ON w.name = 'metric_scenario'
+  LEFT JOIN estimated r ON r.metric = m.metric
+  LEFT JOIN findings f ON f.asset = ds.d || '.' || m.metric AND f.test = t.test
+  UNION ALL
+  -- the plan against the actual and the forecast, under the metric it plans
+  SELECT p.metric, t.test, t.aspect, ds.d || '.' || p.plan,
+         coalesce(x.state, 'not_run'),
+         x.state IS NOT NULL AND NOT EXISTS (SELECT 1 FROM open_ o
+                                             WHERE o.asset = ds.d || '.' || p.plan AND o.test = t.test AND o.state = 'not_run'),
+         x.score, p.applicable, NULL::VARCHAR,
+         CASE WHEN x.state = 'red' THEN f.finding END, f.fix
+  FROM plans p CROSS JOIN ds CROSS JOIN live JOIN tests t ON t.aspect = 'metric_plan'
+  LEFT JOIN results x ON x.subject = ds.d || '.' || p.plan AND x.test = t.test
+  LEFT JOIN findings f ON f.asset = ds.d || '.' || p.plan AND f.test = t.test
+  WHERE x.state IS NOT NULL OR (live.named AND p.applicable))
+SELECT view, test, aspect, subject, state, current, score,
+       json_object('applicable', applicable, 'reason', reason, 'finding', finding, 'fix', fix) AS evidence, '' AS run
+FROM rows_;

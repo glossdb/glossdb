@@ -154,7 +154,11 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 
 `view_tests()`: `declared_by` is `kit:<name>` for a shipped test.
 `current` is false once what the result read has changed; the state
-is kept until the test runs again.
+is kept until the test runs again. The preview tests are rows under
+the metric, a plan's test under the metric it plans; their `state`
+can be `not_applicable`, their `evidence` holds `applicable`,
+`reason`, `finding` and `fix`, and their `run` is empty.
+`view_tests_without_preview()` is the same read without them.
 
 ## The outlook kit (preview)
 
@@ -164,11 +168,11 @@ Stored results of the model service, read back as SQL
 | Read | Columns |
 |---|---|
 | `range_result()` | `served_by`, `grain`, `score`, `state`, `threshold`, `computed_at` |
-| `range_points()` | `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at` |
+| `range_points()` | `metric`, `applicable`, `reason`, `additivity`, `backtested`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at` |
 | `forecast_points()` | `seq`, `metric`, `applicable`, `reason`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `held_80`, `held_90`, `held_from` |
 | `forecast_coverage()` | `metric`, `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90`, `held_80`, `held_90` |
 | `scenarios()` | `scenario`, `glossed`, `applicable`, `reason`, `levers` |
-| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
+| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
 | `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `held_80`, `held_from`, `origin` |
 | `plan_stored()` | the stored comparison: the columns of `plan_points()` without `origin`, with `plan_grain`, `forecast_run`, `forecast_origin`, `computed_at` |
@@ -178,5 +182,14 @@ Stored results of the model service, read back as SQL
   `actuals` is `below`, `low`, `inside`, `high` or `above`.
   `held_from` says whose count `held_80` is: `metric`, `dataset` or
   `service`.
-- `plan_points()`: `planned` is `complete`, `inside`, `below`,
-  `above`, `partial`, `open` or `ahead`.
+- `plan_points()`: `planned` is `complete`, `not_covered`, `inside`,
+  `below`, `above`, `partial`, `open` or `ahead`. `not_covered`: the
+  period has begun and the metric's series does not cover it, so the
+  row has no `actual` and no `variance`.
+- `range_points()`: `backtested` is how many months were predicted
+  from the months before them.
+- `scenario_points()`: `baseline` is the same estimate with every
+  lever as planned; `effect` is `value` minus `baseline`.
+- `outlook_measurements()`: `name`, `stored`, `due`: the preview
+  functions the dataset needs; `due` is true where none is stored or
+  what the function reads changed since its result.

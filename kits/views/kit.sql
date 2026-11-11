@@ -64,7 +64,9 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- 'none' where nobody annotated it, 'conflict' where the test withholds it),
 -- dims (the slicing columns, primary first), unranked (the dimension
 -- columns no dimension gloss ranks), unadmitted (the served columns with
--- no role), required (the gloss each of those wants),
+-- no role), missing (the annotation each of those wants, on the view's
+-- own column: a view's column takes no role from the column it reads;
+-- `next` lists the same statements under the view),
 -- wanted (the measurement the row reads and nobody ran), judged_current
 -- (the profile is current at the data's own version). A plan (x-kind plan) is
 -- read through the metric it names: its period and value are the columns
@@ -713,10 +715,20 @@ DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tol
 -- result), run (the statement that runs it again, empty where there is
 -- none). The tests marked x-subject view appear on every metric, run
 -- or not. A single value, a derived relation, a plan and a sample are
--- not metrics here. Ordered by what to look at first.
+-- not metrics here. The preview features' tests (expected ranges,
+-- forecast, scenario, plan) are the outlook kit's rows, preview_tests(),
+-- which is empty until that kit is loaded; their state can also be
+-- not_applicable. view_tests_without_preview() is the same read
+-- without them: what `next` lists under its own rule and the server
+-- runs again by itself. Ordered by what to look at first.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.view_tests() AS TABLE
+CREATE OR REPLACE MACRO main.preview_tests() AS TABLE
+SELECT NULL::VARCHAR AS view, NULL::VARCHAR AS test, NULL::VARCHAR AS aspect, NULL::VARCHAR AS subject, NULL::VARCHAR AS state,
+       NULL::BOOLEAN AS current, NULL::DOUBLE AS score, NULL::JSON AS evidence, NULL::VARCHAR AS run
+WHERE false;
+
+CREATE OR REPLACE MACRO main.view_tests_without_preview() AS TABLE
 WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
 views AS (
   SELECT view FROM summary
@@ -780,6 +792,16 @@ declared AS (
 SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared) t LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
+         current, view, test, subject;
+
+CREATE OR REPLACE MACRO main.view_tests() AS TABLE
+SELECT * FROM (
+  SELECT * FROM main.view_tests_without_preview()
+  UNION ALL
+  SELECT p.view, p.test, p.aspect, a.declared_by, p.subject, p.state, p.current, p.score, p.evidence, p.run
+  FROM main.preview_tests() p
+  LEFT JOIN (SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a USING (test))
+ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 WHEN 'not_applicable' THEN 4 ELSE 5 END,
          current, view, test, subject;
 
 --===------------------------------------------------------------------===--

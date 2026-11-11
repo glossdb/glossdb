@@ -67,6 +67,36 @@ pub struct SummaryFacts {
     datasets: usize,
 }
 
+/// The `_meta` key a tool result carries its moved summary under.
+pub const SUMMARY_META: &str = "glossdb/summary";
+
+/// The summary a call moved: the line, as the `summary:` block carries
+/// it, and the counts it renders, as the result's `_meta` carries them.
+struct SummaryMoved {
+    line: String,
+    facts: SummaryFacts,
+}
+
+impl SummaryMoved {
+    /// The counts as the result's `_meta` field, beside the line: what
+    /// a client or a test reads without parsing the text.
+    fn meta(&self) -> rmcp::model::MetaObject {
+        let mut meta = rmcp::model::MetaObject::new();
+        meta.0.insert(
+            SUMMARY_META.to_string(),
+            serde_json::json!({
+                "line": self.line,
+                "datasets": self.facts.datasets,
+                "assumptions_waiting": self.facts.questions,
+                "decisions_to_apply": self.facts.counts.decisions_open,
+                "load_changes_to_declare": self.facts.counts.approvals_pending,
+                "annotations_by_a_person": self.facts.counts.human_writings,
+            }),
+        );
+        meta
+    }
+}
+
 /// The summary's shared state, one per interface process: the composed line
 /// (served in the initialize instructions and on the tool result that
 /// moved it), the opening (how to begin here — served at initialize
@@ -1251,18 +1281,28 @@ impl GlossqlMcp {
     /// keeping per-actor state the run has never asked for. Scoped to
     /// the cause: only a write (or a loaded review decision) can move the
     /// counts, so a pure read never pays the recomposition.
-    async fn summary_moved(&self, moved: bool, before: Option<SummaryFacts>) -> Option<String> {
+    async fn summary_moved(
+        &self,
+        moved: bool,
+        before: Option<SummaryFacts>,
+    ) -> Option<SummaryMoved> {
         if !moved {
             return None;
         }
         Self::refresh_summary(&self.plane, &self.summary).await;
         let after = self.summary.facts.read().ok().and_then(|f| f.clone());
-        (after.is_some() && after != before).then(|| format!("summary: {}", self.summary.line()))
+        after
+            .filter(|facts| Some(facts) != before.as_ref())
+            .map(|facts| SummaryMoved {
+                line: self.summary.line(),
+                facts,
+            })
     }
 }
 
 /// The call's result: the rows, the review's account, the window and
-/// the summary where it moved. A failed statement is the agent's
+/// the summary where it moved, as a closing `summary:` block and as
+/// counts under `_meta`. A failed statement is the agent's
 /// business, not the transport's: an error result, never a protocol
 /// error — and the summary still travels: an input_responses review decision may
 /// have loaded even when the statement then refused.
@@ -1272,9 +1312,11 @@ fn call_result(
     reviewed: Option<String>,
     completed: Option<serde_json::Value>,
     window: String,
-    summary_moved: Option<String>,
+    summary_moved: Option<SummaryMoved>,
 ) -> CallToolResult {
-    match rendered {
+    let meta = summary_moved.as_ref().map(SummaryMoved::meta);
+    let summary_moved = summary_moved.map(|moved| format!("summary: {}", moved.line));
+    let mut result = match rendered {
         Ok(body) => {
             let mut blocks = vec![ContentBlock::text(body.to_string())];
             if let Some(note) = reviewed {
@@ -1300,7 +1342,9 @@ fn call_result(
             }
             CallToolResult::error(blocks)
         }
-    }
+    };
+    result.meta = meta;
+    result
 }
 
 impl GlossqlMcp {

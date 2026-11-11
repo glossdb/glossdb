@@ -26,7 +26,7 @@ GLOSSDB_WAREHOUSE_SECRET (GLOSSDB_WAREHOUSE_REGION for S3), or, a gs:// \
 bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
 GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT, GLOSSDB_ROOT.\n\
-the model service — the walk, the forecast, the what-if — is \
+the model service — the expected ranges, the forecast, the what-if — is \
 named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
 minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
 refuse by name and everything else serves.\n\

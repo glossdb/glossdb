@@ -2,16 +2,10 @@
 -- after the kits, where core.sql comes before them: `open_items` and
 -- `next`, the work list of the bound dataset.
 
--- What waits on an action in the bound dataset, from the data
--- alone: `recipe-change`, an approved load-query change with no load since;
--- `formula`, a person's formula answer newer than the metric's recorded
--- definition; `conflict`, a value withheld at read; `re-measure`, a
--- measurement stored before the last change; `never measured`, a
--- measurement a metric's row reads and nobody ran, or a tested
--- measurement on the dataset with no result while a metric is defined;
--- `apply-decision`, a review decision whose key is still below full confidence.
--- Each row resolves by the action it names, never by a flag.
-CREATE OR REPLACE VIEW main.open_items AS
+-- decided_items(): what a person decided and the catalog does not carry
+-- yet — the `recipe-change` and `formula` rows of open_items, as a read
+-- of their own, since `next` lists these two kinds and nothing else of it.
+CREATE OR REPLACE MACRO main.decided_items() AS TABLE
   WITH ds AS (SELECT current_schema() AS dataset),
   approvals AS (
     SELECT h.dataset, json_extract_string(h.body, '$.table') AS tbl, h.written_at
@@ -42,14 +36,29 @@ CREATE OR REPLACE VIEW main.open_items AS
     SELECT 'formula' AS kind, g.aspect AS subject, 'formula answer on ' || g.aspect AS what,
            'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
     FROM current_definition g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.seq > g.seq
-    WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
+    WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL)
+  SELECT * FROM recipes
+  UNION ALL SELECT * FROM formulas;
+
+-- What waits on an action in the bound dataset, from the data
+-- alone: `recipe-change`, an approved load-query change with no load since;
+-- `formula`, a person's formula answer newer than the metric's recorded
+-- definition; `conflict`, a value withheld at read; `re-measure`, a
+-- measurement stored before the last change; `never measured`, a
+-- measurement a metric's row reads and nobody ran, or a tested
+-- measurement on the dataset with no result while a metric is defined;
+-- `apply-decision`, a review decision whose key is still below full confidence.
+-- Each row resolves by the action it names, never by a flag.
+CREATE OR REPLACE VIEW main.open_items AS
+  WITH ds AS (SELECT current_schema() AS dataset),
   collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   contests AS (
     SELECT 'conflict' AS kind, c.subject, 'conflict: ' || c.subject || ' ' || c.aspect AS what,
            'withheld at read — a detector crossed its threshold or the values differ' AS why, '' AS since
     FROM collapsed c WHERE c.state = 'conflict'),
   -- a kit's check on a metric (x-subject view) is the server's to run
-  -- again, at the next touch of the metric: never an item here
+  -- again, at the next touch of the metric: never an item here; a
+  -- preview measurement is one only while it is due (outlook_due())
   remeasures AS (
     SELECT 're-measure' AS kind, v.actor AS subject, 'stale results from ' || v.actor AS what,
            'stored before the last change — run the function again, or use Re-measure in the console' AS why, '' AS since
@@ -57,7 +66,8 @@ CREATE OR REPLACE VIEW main.open_items AS
           JOIN main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
           WHERE r.actor = 'function' AND NOT r.current
             AND r.aspect NOT IN (SELECT name FROM main.aspects
-                                 WHERE json_extract_string(schema, '$.x-subject') = 'view')) v),
+                                 WHERE json_extract_string(schema, '$.x-subject') = 'view')) v
+    WHERE NOT EXISTS (SELECT 1 FROM main.outlook_due() d WHERE d.name = v.actor AND NOT d.due)),
   wanted AS (
     SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
     FROM (SELECT unnest(wanted) AS w FROM main.view_summary())),
@@ -82,8 +92,7 @@ CREATE OR REPLACE VIEW main.open_items AS
     SELECT 'apply-decision' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
            'decided (' || r.stance || ') — not yet applied to the definition' AS why, r.written_at::VARCHAR AS since
     FROM main.review_decisions r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
-  SELECT * FROM recipes
-  UNION ALL SELECT * FROM formulas
+  SELECT * FROM main.decided_items()
   UNION ALL SELECT * FROM contests
   UNION ALL SELECT * FROM remeasures
   UNION ALL SELECT * FROM unmeasured
@@ -109,7 +118,9 @@ CREATE OR REPLACE VIEW main.next AS
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
             FROM glossql_views_scans(current_schema())),
   summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
-  vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
+  items AS MATERIALIZED (SELECT * FROM main.decided_items()),
+  -- the preview features' tests come in through outlook_findings(), below
+  vt AS MATERIALIZED (SELECT * FROM main.view_tests_without_preview()),
   -- the assets a view reads, the view itself, and the columns of a
   -- table view: a table is handed over with its columns described
   reach AS (
@@ -145,9 +156,15 @@ CREATE OR REPLACE VIEW main.next AS
   -- the newest annotation on each asset: an outdated one is offered
   -- back to be checked and recorded again
   written AS (
-    SELECT w.subject, w.aspect, w.body::VARCHAR AS body FROM main.glossary w, ds
+    SELECT w.subject, w.aspect, w.body::VARCHAR AS body, w.seq FROM main.glossary w, ds
     WHERE w.dataset = ds.d AND w.actor_kind IN ('agent', 'human')
     QUALIFY row_number() OVER (PARTITION BY w.subject, w.aspect ORDER BY w.seq DESC) = 1),
+  -- each view's newest definition: an annotation on the view written
+  -- before it describes the definition before
+  defined AS (
+    SELECT ds.d || '.' || w.aspect AS home, w.aspect AS view, max(w.seq) AS seq FROM main.glossary w, ds
+    WHERE w.dataset = ds.d AND w.subject = ds.d AND w.aspect IN (SELECT view FROM summary)
+    GROUP BY ALL),
   -- what the views read, and every value withheld as a conflict; a
   -- conflict a test reports is the test's row
   homed AS (
@@ -155,6 +172,9 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN g.subject LIKE '% -> %' THEN g.subject
                 ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home,
            s.shape IS NULL AND g.state = 'missing' AS unshaped,
+           coalesce(g.state = 'stale' AND EXISTS (
+             SELECT 1 FROM defined d
+             WHERE d.seq > w.seq AND (g.subject = d.home OR starts_with(g.subject, d.home || '.'))), false) AS redefined,
            'GLOSS ' || g.aspect || ' ON ' || g.subject || ' AS $$'
              || CASE WHEN g.state = 'stale' THEN coalesce(w.body, s.shape, '<value>') ELSE coalesce(s.shape, '<value>') END
              || '$$;' AS gloss
@@ -162,7 +182,14 @@ CREATE OR REPLACE VIEW main.next AS
     LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
     WHERE (x.asset IS NOT NULL OR g.state = 'conflict')
       AND NOT (g.state = 'conflict' AND EXISTS (
-        SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))),
+        SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))
+    UNION ALL
+    -- a metric's served column with no role: the statement its summary
+    -- row names (`missing`), on the view's own column, so that the
+    -- summary row and this list ask for the same annotation
+    SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, false, false, u.statement
+    FROM (SELECT m.view, unnest(m.unadmitted) AS col, unnest(m.missing) AS statement FROM summary m
+          WHERE m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation', 'plan')) u, ds),
   -- the newest load of each table against the one before it
   loads AS (
     SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
@@ -219,19 +246,29 @@ CREATE OR REPLACE VIEW main.next AS
            'a person approved a change to the load query of ' || o.subject || '; it is not declared yet', '', '',
            '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'' ORDER BY seq DESC;' || chr(10)
              || 'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
-    FROM main.open_items o, ds WHERE o.kind = 'recipe-change'),
+    FROM items o, ds WHERE o.kind = 'recipe-change'),
   s_describe AS (
     SELECT CASE h.state WHEN 'conflict' THEN 1 WHEN 'stale' THEN 2 ELSE 3 END, 2, 'describe', h.home, h.state, 'agent',
            count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' WHEN 'conflict' THEN 'in conflict' ELSE h.state END || ': '
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
            coalesce(max(h.views), ''),
-           CASE WHEN h.state = 'stale' THEN coalesce(max(l.cause), '') ELSE '' END,
+           -- what made the annotations outdated: the table's own load, the
+           -- view's definition recorded again, or a load of a table the view scans
+           CASE WHEN h.state = 'stale'
+                THEN coalesce(max(l.cause),
+                              CASE WHEN bool_or(h.redefined) THEN 'the definition of ' || h.home || ' was recorded again' END,
+                              (SELECT string_agg(r.tbl || ' ' || r.cause, chr(10) ORDER BY r.tbl) FROM reloaded r
+                               WHERE r.tbl IN (SELECT s.tbl FROM scans s, ds WHERE ds.d || '.' || s.view = h.home)),
+                              '')
+                ELSE '' END,
            CASE h.state
              WHEN 'conflict'
              THEN '-- two values differ. Read both, check the data, and annotate again only if the data changed your mind:' || chr(10)
                   || 'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || h.home || ', all => true);'
              WHEN 'stale'
-             THEN '-- the data under these annotations changed. Check each value against the new data and record it again:' || chr(10)
+             THEN CASE WHEN max(l.cause) IS NULL AND bool_or(h.redefined)
+                       THEN '-- the definition of ' || h.home || ' changed after these annotations were written. Check each value against the new definition and record it again:'
+                       ELSE '-- the data under these annotations changed. Check each value against the new data and record it again:' END || chr(10)
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss)
              ELSE CASE WHEN bool_or(h.unshaped)
                        THEN '-- the shape of a value: SELECT name, schema FROM aspects WHERE name = ''<property>'';' || chr(10)
@@ -264,7 +301,7 @@ CREATE OR REPLACE VIEW main.next AS
            'a person''s formula for ' || o.subject || ' is newer than its definition', o.subject, '',
            '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.subject || '''; change the SQL to match it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, o.subject)
-    FROM main.open_items o, ds WHERE o.kind = 'formula'
+    FROM items o, ds WHERE o.kind = 'formula'
     UNION ALL
     SELECT 9, 4, 'decide', ds.d || '.' || q.aspect, 'waiting', 'person',
            count(*) || ' ' || CASE WHEN count(*) = 1 THEN 'assumption waits' ELSE 'assumptions wait' END || ' for a person''s decision', q.aspect, '',
@@ -308,10 +345,10 @@ CREATE OR REPLACE VIEW main.next AS
     FROM main.outlook_findings() f
     UNION ALL
     SELECT 3, 3, 'test', ds.d, 'not_run', 'agent',
-           o.subject || ' (preview): ' || CASE o.kind WHEN 're-measure' THEN 'its result is older than the data or a definition' ELSE 'not run yet' END,
-           '', '', 'SELECT ' || o.subject || '() FROM ' || ds.d || ';'
-    FROM main.open_items o JOIN main.outlook_measurements() d ON d.name = o.subject, ds
-    WHERE o.kind IN ('never measured', 're-measure'))
+           m.name || ' (preview): ' || CASE WHEN m.stored THEN 'the data or a definition it reads changed since its result' ELSE 'not run yet' END,
+           '', '', 'SELECT ' || m.name || '() FROM ' || ds.d || ';'
+    FROM main.outlook_measurements() m, ds
+    WHERE m.due)
   SELECT * FROM (
     SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
     UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve UNION ALL SELECT * FROM s_outlook)

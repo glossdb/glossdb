@@ -85,9 +85,12 @@ pub enum SessionError {
     NoDataset,
     #[error("not a subject: {detail}")]
     UnknownName { detail: String },
-    #[error("not a subject: {detail}")]
+    /// A read or a measurement that needs the model service, and none
+    /// is named for the instance: `interface` is the service's path.
+    #[error("{detail}")]
     NotServed { interface: String, detail: String },
-    #[error("function runtime: {0}")]
+    /// The model service was called and refused or did not answer.
+    #[error("{0}")]
     Service(String),
     #[error("not a subject: {detail}")]
     BadShape { detail: String },
@@ -121,11 +124,49 @@ impl SessionError {
     /// name the catalog does not hold reads as an unknown name.
     fn engine(e: impl std::fmt::Display) -> Self {
         let text = e.to_string();
+        if let Some(refusal) = service_refusal(&text) {
+            return refusal;
+        }
         let lower = text.to_lowercase();
         if lower.contains("does not exist") || lower.contains("not found") {
             return SessionError::UnknownName { detail: text };
         }
         SessionError::Engine(text)
+    }
+}
+
+/// The extension's refusals of a model service call, classed: no
+/// service named for the instance, or a service that refused or did not
+/// answer. The reason starts at the extension's own words, without the
+/// engine's error-class prefixes before them, and an unnamed service is
+/// named by the server's setting, the one an operator can set.
+fn service_refusal(text: &str) -> Option<SessionError> {
+    const UNNAMED: &str = "no service is named for ";
+    if let Some(at) = text.find(UNNAMED) {
+        let interface: String = text[at + UNNAMED.len()..]
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ':')
+            .collect();
+        let detail = format!(
+            "no model service is configured, and {interface} needs one: start the server with \
+             {SERVICE_URL} set to the service's URL"
+        );
+        return Some(SessionError::NotServed { interface, detail });
+    }
+    ["the service at ", "the service answered "]
+        .iter()
+        .find_map(|marker| text.find(marker))
+        .map(|at| SessionError::Service(text[at..].to_string()))
+}
+
+impl SessionError {
+    /// The refusal itself, under a sequence's account of where it
+    /// happened.
+    pub fn cause(&self) -> &SessionError {
+        match self {
+            SessionError::Sequence { source, .. } => source.cause(),
+            other => other,
+        }
     }
 }
 
@@ -360,25 +401,6 @@ impl TokenSink {
             ),
         )
     }
-}
-
-/// What a recipe or a preview can call: the engine's readers over the
-/// source's files, as DuckDB names them.
-pub fn reader_functions() -> Vec<Registered> {
-    ["read_csv", "read_parquet", "read_json"]
-        .iter()
-        .map(|name| Registered {
-            kind: "table",
-            name: (*name).to_string(),
-            syntax: Some(format!("{name}('<path under the source>')")),
-        })
-        .collect()
-}
-
-/// What a detector's query can call over its `annotations` relation: the
-/// engine's own functions, nothing more.
-pub fn detector_functions() -> Vec<Registered> {
-    Vec::new()
 }
 
 /// The summary's counts: what people have written in the catalog.
@@ -1345,7 +1367,20 @@ impl Session {
             let total = pieces.len();
             let mut outcomes = Vec::with_capacity(total);
             let mut lines = Vec::new();
+            // What the call wrote decides which metrics' tests run:
+            // before the next read of the call, so that a read of
+            // `next` or the tests in the same call sees what the lines
+            // after the result count, and once more at the end. A
+            // failed sequence runs none, and the next call's write does.
+            // A measurement the call ran may be the evidence a check
+            // reads, so the checks whose result predates it run again
+            // too; so does a load, which is what a declared test is
+            // checked at.
+            let mut pending = Pending::default();
             for (i, piece) in pieces.iter().enumerate() {
+                if is_read(piece) && !measurement_call(piece) {
+                    pending.run(&conn, &lines);
+                }
                 let ran = if root {
                     execute_one(&conn, piece, cap)
                 } else {
@@ -1354,6 +1389,7 @@ impl Session {
                 match ran {
                     Ok((outcome, line)) => {
                         outcomes.push(outcome);
+                        pending.measured |= measurement_call(piece);
                         lines.extend(line);
                     }
                     Err(e) if total == 1 => return Err(e),
@@ -1368,18 +1404,7 @@ impl Session {
                     }
                 }
             }
-            // What the call wrote decides which metrics' tests run now;
-            // a failed sequence runs none, and the next call's write does.
-            // A measurement the call ran may be the evidence a check reads,
-            // so the checks whose result predates it run again too; so
-            // does a load, which is what a declared test is checked at.
-            let measured = pieces.iter().any(|p| measurement_call(p));
-            let loaded = lines.iter().any(|l| loaded_table(l).is_some());
-            if (measured || loaded || lines.iter().any(|l| l.starts_with("glossed ")))
-                && let Err(e) = built_in_tests(&conn, &lines, measured || loaded)
-            {
-                tracing::debug!(error = %e, "built-in tests: not run");
-            }
+            pending.run(&conn, &lines);
             Ok(outcomes)
         })
         .await
@@ -1514,10 +1539,10 @@ impl Session {
     /// dataset that loaded before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
     /// ran, and every tested measurement on the dataset nobody ran
-    /// (the walk), runs for the first time, in the functions' name order,
+    /// (the expected ranges), runs for the first time, in the functions' name order,
     /// which runs the forecast before the plan judgement that reads it.
     /// Returns how many ran. A
-    /// function that refuses — the walk with no service named — is
+    /// function that refuses — the expected ranges with no service named — is
     /// logged and stays required, where the banner and the goal's next act
     /// carry its refusal by name; the others run.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
@@ -1576,7 +1601,7 @@ impl Session {
             .collect();
         let declared = self
             .batches(
-                &format!("SELECT name FROM {LAKE}.main.functions ORDER BY name"),
+                &format!("SELECT DISTINCT name FROM {LAKE}.main.functions ORDER BY name"),
                 &[],
             )
             .await?;
@@ -1634,8 +1659,32 @@ fn execute_one(
     }
 }
 
-/// The built-in tests the server runs itself, once per call, after the
-/// statements ran: for every metric the call defined, glossed (the view
+/// What a call wrote since its built-in tests last ran: the outcome
+/// lines from `from` on, and whether a measurement ran.
+#[derive(Default)]
+struct Pending {
+    from: usize,
+    measured: bool,
+}
+
+impl Pending {
+    /// Runs the built-in tests over what is pending, and clears it. A
+    /// test that cannot run is logged and never fails the call.
+    fn run(&mut self, conn: &Connection, lines: &[String]) {
+        let new = &lines[self.from..];
+        let loaded = new.iter().any(|l| loaded_table(l).is_some());
+        let measured = std::mem::take(&mut self.measured);
+        self.from = lines.len();
+        if (measured || loaded || new.iter().any(|l| l.starts_with("glossed ")))
+            && let Err(e) = built_in_tests(conn, new, measured || loaded)
+        {
+            tracing::debug!(error = %e, "built-in tests: not run");
+        }
+    }
+}
+
+/// The built-in tests the server runs itself, after the statements of a
+/// call that wrote and before its next read: for every metric the call defined, glossed (the view
 /// or one of its columns) or whose scanned table it imported, every test
 /// whose aspect is marked `x-subject: view` runs over the metric, as
 /// CI runs a suite after a commit. A check that fails is logged and
@@ -1729,7 +1778,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
         && let Ok((_, _, stale)) = arrow_batches(
             conn,
             &format!(
-                "SELECT run FROM {LAKE}.main.view_tests() \
+                "SELECT run FROM {LAKE}.main.view_tests_without_preview() \
                  WHERE NOT current AND run <> ''"
             ),
             &[],

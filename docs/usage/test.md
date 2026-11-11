@@ -11,6 +11,7 @@ data. It has a state, and the state is read again after each load.
 | `red` | does not hold |
 | `error` | the detector failed; the text is in `error` (`TESTS()`) |
 | `not_run` | expected on a metric and not run yet (`view_tests()`) |
+| `not_applicable` | a preview test whose result holds no number for the metric, with the reason in `evidence` (`view_tests()`) |
 
 ## The built-in tests
 
@@ -40,8 +41,11 @@ SELECT view, test, subject, state, score, run FROM view_tests();
 
 `view_tests()` lists each test on each view and on the tables and
 columns it reads, worst first. `evidence` holds the check's result,
-`run` the statement that runs it again. `TESTS()` is the language's
-own read, for any asset:
+`run` the statement that runs it again. The preview tests
+(`range_test`, `forecast_test`, `scenario_test`, `plan_test`) are
+rows too, under the metric, with an empty `run`: the server does not
+call the model service by itself ([outlook](outlook.md)). `TESTS()`
+is the language's own read, for any asset:
 
 ```glossql
 SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';

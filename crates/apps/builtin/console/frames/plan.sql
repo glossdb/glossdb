@@ -8,7 +8,8 @@
 -- rounding and the chip's class are this frame's. Below or above: the
 -- range does not hold the plan, which is what the next read's plan goal
 -- asks a judgment on. A year row of a plan whose rows cover part of
--- the year says how much, and takes no range.
+-- the year says how much, and takes no range. A period the metric's
+-- series does not cover has no actual and no variance, and says so.
 SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
        fmt_number(value) AS planned,
        coalesce(fmt_number(actual), '—') AS actual,
@@ -24,6 +25,7 @@ SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
          WHEN 'inside' THEN 'inside the range'
          WHEN 'below' THEN 'below the range'
          WHEN 'above' THEN 'above the range'
+         WHEN 'not_covered' THEN 'the actuals do not cover it'
          ELSE planned END || coalesce(', covers ' || covers, '') AS planned,
        CASE planned WHEN 'below' THEN 'warn' WHEN 'above' THEN 'warn' ELSE 'ok' END AS scls,
        coalesce(

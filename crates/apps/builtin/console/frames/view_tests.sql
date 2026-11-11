@@ -1,7 +1,8 @@
 -- The tests per metric, worst first: each test on a metric and on what
 -- it reads, with its state, what the check found in a sentence, who
 -- declared it and whether the result still holds. A metric whose tests
--- are all green is one row saying so.
+-- are all green is one row saying so; a preview test that does not
+-- apply to the metric (too little history) is not an open row.
 WITH d AS (SELECT dataset FROM current_dataset),
 t AS (SELECT * FROM view_tests()),
 open AS (
@@ -20,7 +21,7 @@ open AS (
          CASE WHEN t.state <> 'not_run' AND NOT t.current THEN 'from before the last change' ELSE '' END AS stale,
          '/' || d.dataset || '/app/console/p/views?view=' || t.view AS link,
          CASE t.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 END AS rank
-  FROM t, d WHERE t.state <> 'green'),
+  FROM t, d WHERE t.state NOT IN ('green', 'not_applicable')),
 clean AS (
   SELECT m.view, count(*)::VARCHAR || ' tests' AS test, 'green' AS state, 'ok' AS scls,
          'every test is green or accepted' AS what, '' AS declared_by, '' AS stale, (SELECT '/' || dataset || '/app/console/p/views?view=' FROM d) || m.view AS link, 9 AS rank
