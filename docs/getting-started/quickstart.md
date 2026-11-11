@@ -1,292 +1,251 @@
 # Quickstart
 
-This walks one session from a company's raw exports to served metrics:
-work orders and the sites they serve, as Parquet files. An agent on the
-MCP interface usually sends these statements, and a person answers the
-questions only a person can. Statements are glossql; plain SQL runs in
-the same place.
+Two CSV files go in. A tested table, a single value and a metric come
+out. The session takes the five steps: connect, describe, test,
+decide, serve. An agent normally sends these statements over MCP; here
+you send them yourself, so each step is visible.
 
-## 1. Look around
+You need a running server with sign-in off
+([installation](installation.md)), `curl` and `jq`.
 
-A new workspace already holds the measurement functions and the
-semantic layer's vocabulary (the KPI kit). Read before you declare:
+## The data
 
-```glossql
-SELECT * FROM datasets;
-SELECT name, kind FROM aspects;
+```bash
+mkdir -p ~/shop/exports && cd ~/shop
+cat > exports/customers.csv <<'EOF'
+customer_id,name,region
+C1,Alder Cafe,north
+C2,Birch Hotel,north
+C3,Cedar Foods,south
+C4,Dune Market,south
+EOF
+cat > exports/orders.csv <<'EOF'
+order_id,customer_id,ordered,amount,status
+O01,C1,06.01.2025,120.00,shipped
+O02,C3,20.01.2025,80.50,shipped
+O03,C2,03.02.2025,210.00,shipped
+O04,C4,17.02.2025,N/A,cancelled
+O05,C1,04.03.2025,95.00,shipped
+O06,C3,18.03.2025,130.25,shipped
+O07,C2,02.04.2025,60.00,shipped
+O08,C4,15.04.2025,175.00,shipped
+O09,C1,05.05.2025,140.00,shipped
+O10,C9,19.05.2025,99.00,shipped
+O11,C3,03.06.2025,220.00,shipped
+O12,C2,16.06.2025,45.75,cancelled
+EOF
 ```
 
-## 2. Create a dataset
+The files hold three defects on purpose: dates as text, an `N/A`
+amount, and an order for a customer `C9` that the customer file does
+not hold.
 
-A dataset has a purpose, and the purpose decides later choices: which
-tables to load, which metrics to define.
+## A helper
 
-```glossql
-DECLARE DATASET ops SET (purpose: 'service delivery — what gets done, how fast, and where it stalls');
-USE ops;
+The MCP interface has one tool, `glossql`. This function sends a file
+of statements to it as an agent would and prints the result:
+
+```bash
+gq() {
+  jq -Rs '{jsonrpc: "2.0", id: 1, method: "tools/call",
+           params: {name: "glossql", arguments: {statements: .}}}' "$1" |
+  curl -s "http://127.0.0.1:8080/${2:-mcp}" -d @- \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' |
+  jq -r '.result.content[].text'
+}
 ```
 
-Create datasets on the workspace path, `/mcp`. `USE` applies to the
-statements after it, for the length of the call. From here on the
-dataset has its own path, `/ops/mcp`, where every call opens on it and
-no `USE` is needed.
+Save each block below as a file and run it: `gq 1-connect.sql` for the
+workspace, `gq 2-load.sql shop/mcp` once the dataset exists.
 
-## 3. Declare the source
+## 1. Connect
 
-A source names a root directory; file globs belong in the load query.
-What you learn about a source system, such as placeholder dates or
-odd formats, goes on the source, where every dataset reads it:
+Declare the source and the dataset, then look before loading. A dry
+run (`PREVIEW`) runs SQL at the source and loads nothing; `LIMIT 0`
+returns the columns.
 
 ```glossql
-DECLARE SOURCE erp_export SET (type: parquet, location: 'lake/erp');
-GLOSS conventions ON erp_export AS $${
-  "placeholder_date": "1900-01-01 stands for unset",
-  "timestamp_format": "%b %e %Y %I:%M%p, month names mixed-language"
-}$$;
+DECLARE SOURCE shop_export SET (type: csv, location: '/home/me/shop/exports');
+DECLARE DATASET shop SET (purpose: 'order intake: what is ordered, by whom, for how much');
+PREVIEW shop_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
+PREVIEW shop_export AS $$SELECT * FROM read_csv('orders.csv', all_varchar = true,
+  nullstr = null_markers(), store_rejects = true) LIMIT 0$$;
 ```
 
-## 4. Preview, then load
+Use the absolute path of your `exports` directory as the location.
 
-`PREVIEW` runs a query on the source without loading anything; with
-`LIMIT 0` it returns the schema a load would create. The load query
-carries the casts and names the columns, so the loaded table is typed.
-A failed cast loads NULL, and the result reports how many cells each
-`try_*` nulled, with the most common such values, so you can fix the
-query (`NULLIF` before the cast) and declare it again.
+A load query (`DECLARE RECIPE`) brings a table into the dataset. A CSV
+file has no types, so its reader gets one standard configuration and
+the load query carries the casts:
 
 ```glossql
-PREVIEW erp_export AS $$SELECT order_id,
-       try_cast(duration_min AS DOUBLE) AS duration_min,
-       try_strptime(completed_at, '%Y-%m-%d %H:%M:%S') AS completed_at
-FROM read_parquet('work_orders/*.parquet') LIMIT 0$$;
+DECLARE RECIPE customers ON shop FROM shop_export AS $$
+  SELECT trim(customer_id) AS customer_id, name, region
+  FROM read_csv('customers.csv', all_varchar = true,
+                nullstr = null_markers(), store_rejects = true)$$;
 
-DECLARE RECIPE work_orders ON ops FROM erp_export AS $$
-  SELECT order_id, site_id, status,
-         try_cast(duration_min AS DOUBLE) AS duration_min,
-         try_strptime(completed_at, '%Y-%m-%d %H:%M:%S') AS completed_at
-  FROM read_parquet('work_orders/*.parquet')$$;
-
-DECLARE RECIPE sites ON ops FROM erp_export AS $$
-  SELECT id, region, service_line
-  FROM read_parquet('sites/*.parquet')$$;
-
-DESCRIBE work_orders;
+DECLARE RECIPE orders ON shop FROM shop_export AS $$
+  SELECT trim(order_id) AS order_id,
+         trim(customer_id) AS customer_id,
+         try_strptime(ordered, '%d.%m.%Y')::DATE AS ordered,
+         try_cast(amount AS DOUBLE) AS amount,
+         status
+  FROM read_csv('orders.csv', all_varchar = true,
+                nullstr = null_markers(), store_rejects = true)$$;
 ```
 
-Load the tables the metrics need, and only the columns they use: a
-dataset is a working set for its purpose, not a copy of the export.
-More: [loading data](../usage/loading-data.md).
+```
+[{"done":"loaded shop.customers: 4 rows, 0 dropped (new)"},
+ {"done":"loaded shop.orders: 12 rows, 0 dropped (new)"}]
+status: done
+```
 
-## 5. Describe each table
+`N/A` is one of the strings `null_markers()` lists, so that amount is
+NULL.
 
-Say what one row is, whether the table holds facts or a dimension, the
-columns that identify a row (check that `COUNT(*)` and
-`COUNT(DISTINCT …)` agree), and the time column:
+## 2. Describe
+
+Annotate (`GLOSS`) what a row is and what the amount means. Declare
+the join. Then measure how well the join holds.
 
 ```glossql
-GLOSS entity ON work_orders AS $${"value": "one site visit on a work order", "role": "fact",
-  "grain": ["order_id"], "time_axis": "completed_at"}$$;
+GLOSS entity ON orders AS $${"value": "one row per order", "role": "fact",
+  "identity_columns": ["order_id"], "time_axis": "ordered"}$$;
+GLOSS meaning ON orders.amount AS $${"value": "order value net of tax"}$$;
+GLOSS role ON orders.amount AS $${"value": "measure"}$$;
+GLOSS unit ON orders.amount AS $${"value": "EUR"}$$;
+GLOSS additivity ON orders.amount AS $${"value": "additive", "basis": "one amount per order"}$$;
+
+DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
+SELECT relationship_coherence() FROM shop;
 ```
 
-## 6. Measure
+The measurement finds the defect: 1 of 12 orders has no customer
+(`"orphans":1,"orphan_rate":0.0833…`). Each result now ends with the
+open work:
 
-The shipped functions answer what statistics can. A measurement is
-stored with the versions of what it read, and served again until that
-data changes:
+```
+next: serve 1
+first: serve shop (missing): no view is defined (a table, a single value or a metric) (next://shop/serve)
+```
+
+## 3. Define three views
+
+A view is named SQL on the dataset. Declare the name (`AS VIEW`), then
+annotate it with its SQL.
 
 ```glossql
-SELECT column_profile(), outlier_profile() FROM ops.work_orders.duration_min;
-SELECT temporal() FROM ops.work_orders.completed_at;
-```
-
-Discovery functions propose candidates with evidence, not conclusions.
-Deciding what a measurement means is your job, or the agent's.
-
-## 7. Declare the joins
-
-`detect_relationships` proposes joins; anti-joins in both directions
-decide. Orphans that are exactly a business population confirm a join;
-random misses argue against it. Record the decision on the join:
-
-```glossql
-DECLARE RELATIONSHIP work_orders.site_id -> sites.id;
-GLOSS meaning ON work_orders.site_id -> sites.id AS
-  $${"value": "each order serves one site; the orphans are the cancelled orders, never dispatched"}$$;
-```
-
-Before you trust a join, check that it keeps the row count. If the
-counts differ, the join multiplies every aggregate built on it:
-
-```sql
-SELECT count(*) FROM work_orders;
-SELECT count(*) FROM work_orders w JOIN sites s ON w.site_id = s.id;
-```
-
-More: [relationships](../usage/relationships.md).
-
-## 8. Describe the columns
-
-Start with each column's role; what else a column must carry follows
-from it. A measure's additivity (`additivity`: additive, or semi-additive for a level) says how
-the number combines over periods; read it off the rows, not the name.
-Where a declared join reaches an event table, `SELECT
-additivity_evidence() FROM <table>.<column>` measures it first: the level
-reconciled against the movements.
-
-```glossql
-GLOSS meaning ON work_orders.duration_min AS $${"value": "on-site working time per visit, in minutes"}$$;
-GLOSS role ON work_orders.duration_min AS $${"value": "measure"}$$;
-GLOSS additivity ON work_orders.duration_min AS $${"value": "additive"}$$;
-GLOSS unit ON work_orders.duration_min AS $${"value": "minutes"}$$;
-```
-
-More: [describing data](../usage/describing-data.md).
-
-## 9. Define a metric
-
-Declare one view aspect (`AS VIEW`) per metric. The business definition,
-meaning, unit and owner, goes in the `definitions` annotation, where a
-correction is stored with its author and time. The metric definition is
-SQL at row grain, without GROUP BY, with mechanics as SQL comments and
-judgment as assumptions. Every assumption carries a `key`, which review
-decisions refer to.
-
-```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS VIEW;
-
-GLOSS definitions ON ops AS $${"definitions": {
-  "throughput": {"meaning": "work completed and accepted; counted at completion date",
-                 "unit": "hours", "owner": "Operations", "source": "KPI handbook v3 §2"}
-}}$$;
-
-GLOSS throughput ON ops AS $${
-  "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, s.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
+DECLARE ASPECT shipped_orders WITH $${"title": "Shipped orders", "x-kind": "relation"}$$ AS VIEW;
+GLOSS shipped_orders ON shop AS $${
+  "sql": "SELECT o.order_id, o.ordered, o.amount, c.region FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE o.status = 'shipped'",
   "assumptions": [
-    {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "additivity", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
+    {"dimension": "scope", "key": "shipped-only", "assumption": "cancelled orders are left out",
+     "basis": "the status column holds shipped and cancelled", "confidence": 0.7}
   ]
 }$$;
+
+DECLARE ASPECT customer_count WITH $${"title": "Customers", "x-kind": "scalar"}$$ AS VIEW;
+GLOSS customer_count ON shop AS $${"sql": "SELECT count(*) AS value FROM customers"}$$;
+
+DECLARE ASPECT order_value WITH $${"title": "Order value"}$$ AS VIEW;
+GLOSS order_value ON shop AS $${
+  "sql": "SELECT ordered, amount AS value, region FROM shipped_orders",
+  "time": "ordered",
+  "measure": {"column": "value", "additivity": "additive", "unit": "EUR"},
+  "dimensions": ["region"]
+}$$;
+GLOSS time_grains ON order_value.ordered AS $${"floor": "month", "basis": "orders are reported by month"}$$;
 ```
 
-The metric is now a view under its name, and you can query it at any
-grain. A person's definition outranks the agent's, so if a person
-corrects it, the person's version is what runs:
+- `shipped_orders` is a table (`x-kind: relation`). Its definition
+  states one assumption below full confidence, for a person to confirm.
+- `customer_count` is a single value (`x-kind: scalar`): one row, one
+  `value` column.
+- `order_value` is a metric: a value per period, sliced by region. It
+  builds on `shipped_orders`. The order dates follow no regular grain,
+  so `time_grains` states the grain the series is served at.
+
+## 4. Serve
+
+All three read like tables. The metric also has a series:
 
 ```sql
-SELECT date_trunc('month', date) AS month, sum(value) AS hours
-FROM throughput GROUP BY date_trunc('month', date)
-ORDER BY month
+SELECT region, count(*) AS orders, sum(amount) AS amount
+FROM shop.shipped_orders GROUP BY region ORDER BY region;
 ```
 
-More: [metrics](../usage/views.md).
+```sql
+FROM shop.customer_count;
+```
 
-## 10. Add a data test
+```sql
+SELECT period, value FROM metric_series()
+WHERE metric = 'order_value' AND dimension = '' ORDER BY period;
+```
 
-Write the expectation down; never assume a breach rate of zero, since a
-source with known dirt has its own. The test (`DECLARE TEST`) compares your
-expectation with a function that measures the same property, and
-`TESTS()` returns the result. The shipped `rate_tolerance` detector is
-one-sided: green at or under the tolerance. To also catch
-over-cleaning, declare a detector of your own that goes red on both
-sides.
+The table returns 5 orders and 625.00 for north, 4 and 605.75 for
+south. The single value returns 4. The series returns one row per
+month, January to June: 200.5, 210, 225.25, 235, 140, 220.
+
+## 5. Test
+
+The server ran the built-in tests when the metric was defined. One is
+red, and `next` puts it first:
+
+```
+next: describe 5 · test 1 · waiting for a person 1
+first: test shop.order_value (red): orphan_test: 8.3% of rows on shop.orders.customer_id -> shop.customers.customer_id find no parent: an inner join drops them, an outer join counts them under no member (next://shop/test)
+```
+
+Order `O10` is missing from May: the inner join dropped it. Each test
+with its state:
+
+```sql
+SELECT test, subject, state, score FROM view_tests();
+```
+
+`orphan_test` is red; `fan_out_test`, `measure_additivity_test` and
+`validity_test` are green. The `statement` column of `next` carries
+the fix: repair the load, or accept the rate with a reason.
+
+## 6. Decide
+
+Two things wait for a person: the red test, and the assumption in
+`shipped_orders`. A person answers in the console
+(`http://127.0.0.1:8080/shop/app`) or with statements over the query
+endpoint, which writes as a person:
 
 ```glossql
-DECLARE ASPECT duration_present WITH $${
-  "type": "object", "required": ["outcome"],
-  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"},
-                 "breach_rate": {"type": "number"}}
-}$$ AS FACT ON TABLE WHEN entity = 'one site visit on a work order';
-GLOSS duration_present ON work_orders AS $${
-  "outcome": "Closed orders carry a positive on-site duration.", "tolerance": 0.01}$$;
-DECLARE TEST duration_test ON duration_present BY (AGENT, HUMAN)
-  DETECTOR rate_tolerance THRESHOLD 0.01;
-
-DECLARE FUNCTION duration_present_check FOR ops AS $$
-  SELECT 'measured: closed orders against positive durations' AS outcome,
-         CASE WHEN count(*) = 0 THEN 0.0
-              ELSE CAST(count(*) FILTER (WHERE duration_min IS NULL OR duration_min <= 0) AS DOUBLE) / count(*)
-         END AS breach_rate
-  FROM work_orders WHERE status = 'closed'
-$$ RETURNS duration_present;
-
-SELECT subject, state, score FROM TESTS(ops::duration_present);
+GLOSS orphan_check ON shop.order_value AS $${"tolerance": 0.1,
+  "basis": "C9 is a walk-in customer without a master record"}$$;
+GLOSS review_decision ON shop AS $${"decisions": [
+  {"aspect": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
+   "note": "cancelled orders are not revenue"}]}$$;
 ```
 
-More: [data tests](../usage/data-tests.md).
-
-## 11. Read the metrics
-
-`metric_series()` serves each metric's values at its finest grain, the
-total and the slices along its dimensions, computed when you read it.
-`view_summary()` says what the catalog knows of each metric's columns:
-
-```sql
-SELECT name, title, unit, meaning, formula
-FROM view_definitions ORDER BY name
+```bash
+curl -s -X POST --data-binary @6-decide.sql http://127.0.0.1:8080/shop/query
 ```
 
-```sql
-SELECT view, applicable, reason, additivity, floor, dims
-FROM view_summary() ORDER BY view
+The test is green at the accepted rate, with the reason stored. The
+decision goes back to the agent as a row of `next`:
+
+```
+decide shop.shipped_orders (decided): a person decided shipped-only (confirmed): cancelled orders are not revenue; the definition does not carry it yet
 ```
 
-```sql
-SELECT metric, period, value FROM metric_series(grain := 'month')
-WHERE dimension = '' ORDER BY metric, period
-```
+The agent records the definition again with that assumption at
+confidence 1.0, and the row closes. What remains in `next` is the
+describe step: the columns nobody annotated yet.
 
-## 12. Answer the review questions
+## Where next
 
-Every assumption below full confidence is a question for a person:
-
-```sql
-SELECT aspect, dimension, key, assumption, conf
-FROM open_questions ORDER BY conf ASC;
-```
-
-Over MCP they arrive as forms on calls that read the catalog; in the
-console they are the Review tab. An answer is stored as a review
-decision, in the person's words, and the question closes. The agent
-then records the metric definition again with the decision applied:
-
-```sql
-SELECT aspect, key, stance, folded_in FROM review_decisions ORDER BY written_at DESC
-```
-
-More: [the review queue](../usage/review.md).
-
-## 13. Open the console
-
-Open `http://127.0.0.1:8080/ops/app`. Review, Metrics, Quality,
-Glossary and Lineage show what the catalog holds; Export and Query hand
-the data over. More: [the console](../usage/console.md).
-
-## 14. See what is left
-
-Every tool result ends with what is open on the dataset:
-
-```text
-next: describe 3 · test 1
-first: test ops.work_orders_open (red): measure_additivity_test: value of work_orders_open does not say how it adds up, which a total and a coarser time grain need (next://ops/test)
-```
-
-The first line counts the open rows per step: connect, describe, test,
-decide, serve. The second is the first row of the list. The built-in
-tests are join fan-out, orphaned keys on the declared joins, validity
-dates and the additivity of the value; the server runs them after a
-definition is written and after a load. The link is an MCP resource;
-the same rows come through the tool, with the statement to send:
-
-```sql
-SELECT step, asset, state, open, statement FROM next
-```
-
-A statement there is a proposal: edit it, send it, or skip it.
-`workspace_status` lists every area the workspace can grow along, with
-what exists, what is open for the agent, and what waits for a person:
-
-```sql
-SELECT area, how, existing, open, waiting FROM workspace_status ORDER BY open DESC;
-```
-
-More: [next steps](../extending/next-steps.md).
+- Each step in depth: [connect and load](../usage/load.md),
+  [describe](../usage/describe.md), [define views](../usage/views.md),
+  [test](../usage/test.md), [review and decide](../usage/review.md),
+  [serve and read](../usage/serve.md).
+- Let an agent do the work: connect one
+  ([installation](installation.md#connect-an-agent)) and ask it to
+  load a folder and describe it. The skills it reads are served by the
+  server.

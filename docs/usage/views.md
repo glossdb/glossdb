@@ -1,145 +1,152 @@
-# Metrics
+# Define views
 
-A metric is a `VIEW` property: SQL with its assumptions, served as a
-view under the metric's name. Annotations on the view's columns make it
-a series: which column is the period, which the value, which the
-slices, and how the value adds up. The signatures of the metric views
-are in [views and table functions](../reference/reads.md).
+A view is named SQL on a dataset, read as `FROM <dataset>.<name>`.
+There are three kinds, and each is a product in its own right:
 
-## Define a metric
+| Kind | Declared with | Serves |
+|---|---|---|
+| a table | `"x-kind": "relation"` | rows: cleaned, joined or filtered data that people and other views read |
+| a single value | `"x-kind": "scalar"` | one row with a `value` column |
+| a metric | no `x-kind` | a value per period, sliced by dimensions |
 
-Declare one property per concept, and keep its declaration thin: a
-`title` and the `x-kind` flag. What the company revises (meaning, unit,
-owner, source, a formula) goes in the `definitions` annotation, where a
-correction replaces the entry with its author and time.
+## Declare, then define
+
+Declare the name once (`AS VIEW`), with a title. Then annotate it on
+the dataset with its SQL. The annotation is the view definition.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput", "x-kind": "measure"}$$ AS VIEW;
-GLOSS definitions ON ops AS $${"definitions": {
-  "throughput": {"meaning": "work completed and accepted; counted at completion date",
-                 "unit": "hours", "owner": "Operations", "source": "KPI handbook v3 §2"}
-}}$$;
-GLOSS throughput ON ops AS $${
-  "sql": "-- completed work: hours per closed order, at completion date, with its judged axes\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, s.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
+USE stays;
+DECLARE ASPECT confirmed_bookings WITH $${"title": "Confirmed bookings", "x-kind": "relation"}$$ AS VIEW;
+GLOSS confirmed_bookings ON stays AS $${
+  "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
   "assumptions": [
-    {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7},
-    {"dimension": "additivity", "key": "throughput-is-a-flow", "assumption": "a flow: sums valid over any partition", "basis": "minutes per visit, one row per visit", "confidence": 1.0}
+    {"dimension": "scope", "key": "confirmed-only",
+     "assumption": "tentative and cancelled bookings are left out",
+     "basis": "status values", "confidence": 0.7}
   ]
+}$$;
+
+DECLARE ASPECT room_count WITH $${"title": "Rooms", "x-kind": "scalar"}$$ AS VIEW;
+GLOSS room_count ON stays AS $${"sql": "SELECT count(*) AS value FROM rooms"}$$;
+```
+
+The body holds `sql`, or `stopped` with the reason no number is
+served, and `assumptions`. The server answers a view definition with
+the view's row of `view_summary()`: whether it is served, and what it
+still needs.
+
+A view and a loaded table of one dataset do not share a name. A view
+may read other views.
+
+## A metric
+
+A metric's definition also says which column is the time, which the
+measure and how it adds up, and which columns slice it:
+
+```glossql
+DECLARE ASPECT booked_nights WITH $${"title": "Booked nights"}$$ AS VIEW;
+GLOSS booked_nights ON stays AS $${
+  "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
+  "time": "check_in",
+  "measure": {"column": "value", "additivity": "additive", "unit": "nights"},
+  "dimensions": ["room_type"]
 }$$;
 ```
 
-- **Write the SQL at row grain,** with no `GROUP BY`: one row per
-  event, with a period column, a `value` column and the columns to
-  slice by. The series views aggregate it to any grain.
-- **Put mechanics in SQL comments,** where they cannot drift from the
-  query, and judgment in `assumptions`.
-- **Give every assumption a `key`.** It is the claim's identity; an
-  assumption below full confidence with a key becomes a question in the
-  [review queue](review.md).
-- **Preview first.** Run the SQL with `LIMIT 0` before you record it.
-- **`definitions` is one annotation for the whole dataset,** so a write
-  replaces the whole map. Read the current entries before you add one.
-- **A level is semi-additive.** Payables outstanding, inventory, headcount:
-  anything you could state as of any date. Collapse the events to one
-  row per entity per period, and annotate `additivity` semi-additive on the value.
+The server writes these as annotations on the view's columns (`role`,
+`additivity`, `unit`, `dimension`; the first dimension is `primary`)
+and profiles the time column with `temporal()`. You can write the same
+annotations yourself on `<dataset>.<view>.<column>`.
 
-A metric is a view of the dataset: `SELECT … FROM <name>` reads,
-filters and joins it like any view. A person's definition outranks the
-agent's, so a person's correction is what runs:
+### Additivity
 
-```sql
-SELECT date_trunc('month', date) AS month, sum(value) AS hours
-FROM throughput GROUP BY date_trunc('month', date)
-ORDER BY month
-```
-
-The write answers with the metric's summary row, in the
-`view_summary()` shape: whether the SQL plans, the period and value
-columns, the additivity, the cadence, the slices admitted, and every
-column still missing an annotation. Read it before the next write.
-
-## Three other kinds of view
-
-The same `VIEW` property serves three other things, told apart by
-`x-kind` in the declaration:
-
-| `x-kind` | What it is | Served as |
+| `additivity` | Combines over periods and members | Serve |
 |---|---|---|
-| `measure` | a metric: a series over time | the series views, the console's charts |
-| `scalar` | a single value with no date, such as a balance the source hands over already summed | `FROM <name>`, `fact_values()`, the console's single values |
-| `relation` | shared SQL other definitions build on: a cleaned join, a scoped subset | `FROM <name>`; a change to it reaches every definition that reads it |
-
-A single value given a date becomes a one-point series. A validation
-is not a metric: it is a [data test](data-tests.md).
-
-## Make it a series
-
-Annotate the view's columns:
-
-- `role` timestamp on the period column, `role` measure on the value
-  column (the one named `value` where several are measures), `role`
-  dimension on each column to slice by;
-- `additivity` on the value column: `additive` sums (revenue, orders), `semi-additive` (a level: headcount, a balance) keeps each
-  bucket's last level, `ratio` divides its summed halves, named by
-  `numerator` and `denominator`;
-- `dimension` on a slice column to rank it: `primary` first, `none`
-  closes it.
-
-Then run `temporal()` over the period column. Its measured cadence is
-the grain the series is served at by default. The `time_grains` annotation
-on the period column sets the time grains instead: `floor`, the finest
-grain served, and `windows`, how many whole buckets a read serves per
-grain, counted back from the data's newest point.
+| `additive` | sums | the rows as they are |
+| `semi-additive` | keeps the period's last level, summed over members | one row per period, or per entity and period |
+| `ratio` | the summed numerator over the summed denominator | the two halves beside `value`, named in `measure` |
+| `non-additive` | does not combine | one row per period |
 
 ```glossql
-GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
+DECLARE ASPECT occupancy WITH $${"title": "Occupancy"}$$ AS VIEW;
+GLOSS occupancy ON stays AS $${
+  "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
+  "time": "period",
+  "measure": {"column": "value", "additivity": "ratio", "numerator": "sold", "denominator": "available", "unit": "share"},
+  "dimensions": ["room_type"]
+}$$;
 ```
 
-Check what the catalog says of each metric's columns:
+Where rows must be combined and the value column has no current
+`additivity`, `metric_series()` refuses and names the annotation to
+write. It sets no default.
+
+### Time grains
+
+The series is served at the metric's finest grain, its floor: the
+cadence `temporal()` measured on the time column. Where the dates
+follow no regular grain, or you want another, state it:
+
+```glossql
+GLOSS time_grains ON booked_nights.check_in AS $${"floor": "week"}$$;
+```
+
+Each grain serves a window of whole periods counted back from the
+newest data: 1440 minutes, 720 hours, 548 days, 156 weeks, 48 months,
+40 quarters or 20 years. `"windows": {"month": 120}` changes one.
+
+## Assumptions
+
+Each judgment call in a definition is an assumption with a stable
+`key` and a `confidence` below 1: what counts, which date, which
+status. A keyed assumption below full confidence goes to the review
+queue ([review and decide](review.md)). What the data settles, such
+as a sign or a grain, is measured, not asked.
+
+## Stop instead of serving
+
+Where the data cannot carry the number, state why in place of the
+SQL. Readers get the reason, and a person's definition with `sql`
+lifts the stop.
+
+```glossql
+DECLARE ASPECT revenue_per_room WITH $${"title": "Revenue per available room"}$$ AS VIEW;
+GLOSS revenue_per_room ON stays AS $${
+  "stopped": "room rates were not loaded: the export carries nights and no price"
+}$$;
+```
+
+## The business glossary of the views
+
+A view's declaration stays thin. Its meaning, unit, owner, source and
+a derived metric's formula go into `definitions` on the dataset, keyed
+by the view's name. It is one annotation: read it, add your entry,
+write it back.
+
+```glossql
+GLOSS definitions ON stays AS $${"definitions": {
+  "booked_nights": {"meaning": "nights of confirmed bookings, counted at check-in",
+                    "unit": "nights", "owner": "Revenue management"},
+  "occupancy": {"meaning": "sold room nights over available room nights", "unit": "share",
+                "formula": "sold[w] / available[w]"}
+}}$$;
+```
+
+## Read what you defined
 
 ```sql
-SELECT view, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
-FROM view_summary() ORDER BY view
+SELECT name, title, kind, unit, defined, stopped FROM view_definitions;
 ```
-
-## Read the series
 
 ```sql
-SELECT metric, period, value FROM metric_series(grain := 'month')
-WHERE dimension = '' ORDER BY metric, period
+SELECT view, kind, applicable, reason, floor, additivity, dims, missing, wanted
+FROM view_summary();
 ```
 
-`metric_series()` serves every applicable metric at the asked grain,
-one row per metric, dimension, member and period. `dimension = ''` is
-the metric's total.
+`applicable` says whether a series is served. For a table and a
+single value it is false, and `reason` says how to read them. `missing` lists the annotations the columns still need,
+`wanted` the measurements to run. Reading the views:
+[serve and read](serve.md). Each column: [reads](../reference/reads.md).
 
-- Without a grain, each metric is served at its own floor. A metric
-  coarser than the asked grain serves no rows.
-- An additive metric's empty period is a zero up to the data's newest point. A
-  stock's or a ratio's empty period has no row.
-- Where rows have to be combined and the value column has no
-  `additivity`, the read refuses and names the missing annotation; it
-  assumes nothing. `unclaimed := 'skip'` serves the other metrics.
-- A dimension with more than 24 members serves its top 23 by weight
-  and `other`. `other` is not a business member; serve a narrower
-  column from the metric's SQL if you need one.
-- A distinct count or a ratio serves no slices, since no column slices
-  it whole.
-
-`view_definitions` lists every metric with its title, unit, meaning and
-formula.
-
-## Formulas
-
-A derived metric's `formula` in `definitions` defines it over sibling
-metrics, for any window `w`: `[w]` reads an additive metric over the window,
-`[end of w]` a semi-additive metric at its end, `[w-1]` the previous window. The
-formula documents the metric; the stored SQL is what runs. Formulas
-are not checked, so read the operand names back against
-`SELECT name FROM aspects WHERE kind = 'VIEW'`.
-
-## Stop a metric
-
-A metric the data cannot support is recorded as stopped: `stopped`
-with the reason in place of `sql`. The console shows the reason beside
-the name, and the `metrics` goal counts it as done.
+Plans, forecasts and scenarios on a metric are preview features:
+[outlook](outlook.md).

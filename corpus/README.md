@@ -1,15 +1,12 @@
 # The server's corpus
 
-Two transcriptions of this system's own runs, the record behind the
-server's kits' worlds (`kits/README.md`). The language's corpus is the
-extension's, where the parser is; these three are in its form, parse on
-its grammar, and the serverd suite checks that
-(`crates/serverd/tests/suite/spec.rs`).
+Two worked examples behind the outlook kit, written in glossql. The
+serverd suite parses each ` ```glossql ` block on the extension's
+grammar (`crates/serverd/tests/suite/spec.rs`); a ` ```glossql-gap `
+block must fail to parse. The language's own corpus is the
+extension's.
 
-Block tags: ` ```glossql ` must parse under the extension's grammar;
-` ```glossql-gap ` is invented syntax documenting a gap and must fail.
-
-| # | fixture | verdict (dominant) |
-|---|---|---|
-| 19 | what-if scenario (evaluation runs) | TRANSCRIBES (lever = FACT aspect on the column; scenario = FACT aspect per scenario, a factor per period; the scenario world on `metric_series`; the two passes are machinery) |
-| 27 | plan: a budget beside its actuals (Baton Rouge expense budget) | RULED: a plan is its own VIEW aspect, `x-kind: plan`, tied to its metric by name in the declaration; the plan world on `metric_series`, read by name |
+| # | Example |
+|---|---|
+| 19 | [A what-if scenario on a price](19-whatif-scenario.md) |
+| 27 | [A budget beside its actuals](27-plan-budget.md) |
