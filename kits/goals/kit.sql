@@ -235,6 +235,10 @@ CREATE OR REPLACE VIEW main.next_steps AS
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM scans)
     UNION ALL
     SELECT 5, 'serve', ds.d || '.' || m.metric, 'blocked', coalesce(m.reason, 'not served'), m.metric, '', ''
-    FROM main.metric_summary() m, ds WHERE NOT m.applicable)
+    FROM main.metric_summary() m, ds WHERE NOT m.applicable),
+  -- the preview features' findings, from the outlook kit
+  s_outlook AS (
+    SELECT CASE f.step WHEN 'test' THEN 3 ELSE 5 END, f.step, f.asset, f.state, f.open, f.for_metric, '', f.statement
+    FROM main.outlook_findings() f)
   SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
-  UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve;
+  UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve UNION ALL SELECT * FROM s_outlook;

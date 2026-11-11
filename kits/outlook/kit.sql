@@ -1188,6 +1188,69 @@ FROM judged WHERE coalesce(cardinality(points), 0) = 0
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
 --===------------------------------------------------------------------===--
+-- outlook_findings(): what the preview features leave open on the bound
+-- dataset, as rows for `next_steps`: step (test or serve), asset, state,
+-- open (the finding), for_metric, statement (the fix). A value outside
+-- its expected range, a plan outside the forecast's range, a plan whose
+-- comparison predates the newest forecast, a plan without a definition.
+-- A finding a person was asked about or decided on is closed. Served
+-- only where a model service is named.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.outlook_findings() AS TABLE
+WITH ds AS (SELECT current_schema() AS d),
+live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
+asked AS (
+  SELECT aspect, key FROM main.review_decisions r, ds WHERE r.dataset = ds.d
+  UNION SELECT aspect, key FROM main.open_questions q, ds WHERE q.dataset = ds.d),
+plans AS (
+  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.reason, x.stopped
+  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  LEFT JOIN main.metric_summary() x ON x.metric = a.name
+  WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
+forecast AS (
+  SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
+compared AS (
+  SELECT json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run
+  FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
+  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1)
+SELECT 'test' AS step, ds.d || '.' || p.metric AS asset, 'red' AS state,
+       'bands_test (preview): ' || p.metric || ' is ' || CAST(round(p.actual, 2) AS VARCHAR) || ' at ' || p.period
+         || ', outside its expected range of ' || CAST(round(p.p05, 2) AS VARCHAR) || ' to ' || CAST(round(p.p95, 2) AS VARCHAR) AS open,
+       p.metric AS for_metric,
+       '-- a defect in the data is fixed in the load or the definition. A real shift is for a person: add it to "assumptions" as {"dimension": "definition", "key": "band-' || p.period
+         || '", "assumption": "<the shift at ' || p.period || ', in the business''s words>", "basis": "<what it rests on>", "confidence": 0.7}. Then record the definition again:' || chr(10)
+         || main.metric_redefine(ds.d, p.metric) AS statement
+FROM main.band_points() p, ds, live
+WHERE live.named AND p.newest AND p.displacement > 0.9
+  AND EXISTS (SELECT 1 FROM main.band_verdict() w WHERE w.band = 'red')
+  AND NOT EXISTS (SELECT 1 FROM asked a WHERE a.aspect = p.metric AND a.key = 'band-' || p.period)
+UNION ALL
+SELECT 'test', ds.d || '.' || g.plan, 'red',
+       'plan_test (preview): ' || g.plan || ' is ' || CAST(round(g.value, 2) AS VARCHAR) || ' at ' || g.label || ', ' || g.planned
+         || ' the forecast''s range for ' || g.metric || ' of ' || CAST(round(g.low, 2) AS VARCHAR) || ' to ' || CAST(round(g.high, 2) AS VARCHAR),
+       g.metric,
+       '-- add the gap to "assumptions" of the plan as {"dimension": "definition", "key": "plan-' || g.label
+         || '", "assumption": "<the gap at ' || g.label || ' and what closes it, in the business''s words>", "basis": "<what it rests on>", "confidence": 0.7}. Then record the plan again:' || chr(10)
+         || main.metric_redefine(ds.d, g.plan)
+FROM main.plan_record() g, ds, live
+WHERE live.named AND g.grain = 'year' AND g.planned IN ('below', 'above')
+  AND NOT EXISTS (SELECT 1 FROM asked a WHERE a.aspect = g.plan AND a.key = 'plan-' || g.label)
+UNION ALL
+SELECT 'test', ds.d || '.' || p.plan, 'not_run',
+       'plan_test (preview): ' || p.plan || CASE WHEN c.plan IS NULL THEN ' is not compared with the actual and the forecast yet'
+                                                ELSE ' was compared before the newest forecast' END,
+       p.metric, 'SELECT metric_plan() FROM ' || ds.d || '.' || p.plan || ';'
+FROM plans p LEFT JOIN compared c USING (plan), forecast f, ds, live
+WHERE live.named AND p.applicable AND (c.plan IS NULL OR c.forecast_run IS DISTINCT FROM f.run)
+UNION ALL
+SELECT 'serve', ds.d || '.' || p.plan, 'missing',
+       p.plan || ' (preview) plans ' || p.metric || ' and has no definition', p.metric,
+       main.gloss_statement(p.plan, ds.d, '{"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}')
+FROM plans p LEFT JOIN main.metric_surfaces s ON s.name = p.plan, ds, live
+WHERE live.named AND p.stopped IS NULL AND coalesce(s.stopped, '') = '' AND NOT coalesce(s.grounded, false);
+
+--===------------------------------------------------------------------===--
 -- The two goals this kit answers for the `next` read. bands: the walk
 -- exists and no band is red. plan: the plan served, the forecast at the
 -- current origin, the plan judged against it, every gap judged by a

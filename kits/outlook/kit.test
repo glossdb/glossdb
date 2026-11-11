@@ -20,6 +20,9 @@ statement ok
 PRAGMA glossql;
 
 statement ok
+FROM glossql_kit('{KITS}/core/kit.sql');
+
+statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok
@@ -448,6 +451,13 @@ SELECT count(*) FILTER (WHERE arms LIKE '%''outlook'', 2, ''next'', ''metric_pla
 FROM routes_outlook();
 ----
 1	1
+
+# what the preview features leave open, as rows for next_steps: a plan year outside the forecast's range, a value outside its expected range
+query TTT
+SELECT step, asset, state FROM outlook_findings() ORDER BY step, asset, state;
+----
+test	fin.sales_budget	red
+test	fin.spend	red
 
 # --- the scenario: a lever on a column of a metric's view, a scenario of a factor per period, the estimate ahead from the service
 
