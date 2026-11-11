@@ -33,8 +33,8 @@ is a SQL body the engine executes.
 
 - **One engine.** One DuckDB instance per process. At open it loads the
   extension and the lake's extensions, attaches the lake, declares the
-  catalog reads, runs the kits, declares the interfaces' reads, and
-  composes the `next` read from every kit's steps.
+  catalog reads, runs the kits and declares the interfaces' reads,
+  the `next` read among them.
 - **A connection per call.** The grammar on, the actor set as session
   variables the extension reads, the dataset in use. The catalog reads
   work bare from any dataset, since the lake's `main` schema is on

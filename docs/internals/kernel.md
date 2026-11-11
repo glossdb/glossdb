@@ -13,7 +13,7 @@ Two kinds of party answer:
 - a **service** turns rows into rows.
 
 Both attach on the server. An agent learns nothing new when an
-extension point is filled: it sees a declaration in a kit, a step in
+extension point is filled: it sees a declaration in a kit, a row in
 the `next` read, and a page.
 
 ## The core
@@ -39,9 +39,10 @@ the `next` read, and a page.
   endpoint, and the console with the data apps
   ([MCP interface](../reference/mcp.md),
   [HTTP endpoints](../reference/http.md)).
-- **Next steps.** Eight goals, each with its steps, composed at open
-  from the kits' steps and the core's; the two lines every result ends
-  with ([next steps](../extending/next-steps.md)).
+- **Next steps.** The `next` read: what is open on a dataset by step
+  (connect, describe, test, decide, serve), read from the states the
+  catalog holds; the lines every result ends with
+  ([next steps](../extending/next-steps.md)).
 - **The kits.** Below.
 
 The core is complete without any service. It answers from the
@@ -65,7 +66,7 @@ extension's `kits/` and two from this repository's:
   temporal profile.
 - **The metrics kit** (`kits/metrics` here): time grains, the metric
   summary row, the cells, single values, lineage; the built-in tests
-  and the test report per metric in `next`.
+  and the test report per metric, each test with its finding and fix.
 - **The outlook kit** (`kits/outlook` here, preview): expected ranges,
   forecasts, plan judgments and scenario estimates, each a measurement;
   the `outlook` goal, and a metric's steps for a point outside its expected range or a plan outside the forecast's.
@@ -126,7 +127,7 @@ Two rules hold for every service:
 Any agent that speaks MCP drives glossdb through one tool, the skills
 and the pages ([MCP interface](../reference/mcp.md)). Nothing extends
 here. A filled extension point reaches the agent as a declaration it
-reads in the catalog, a step in the `next` read, and a page.
+reads in the catalog, a row in the `next` read, and a page.
 
 ## The code
 

@@ -34,7 +34,7 @@ fn meta() -> Value {
     json!({
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": {"name": "routes-test", "version": "0"}
+        "io.modelcontextprotocol/clientInfo": {"name": "next-test", "version": "0"}
     })
 }
 
@@ -119,7 +119,7 @@ async fn fin() -> (Router, tempfile::TempDir) {
         mcp_on(
             app.clone(),
             "/mcp",
-            call(0, "DECLARE DATASET fin SET (purpose: 'the routes');"),
+            call(0, "DECLARE DATASET fin SET (purpose: 'the next steps');"),
         )
         .await,
     )
