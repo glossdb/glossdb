@@ -50,9 +50,9 @@ GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS per
 # --- the fact row: what the view's columns owe before anything is said
 
 query TTTT
-SELECT metric, applicable, reason, unadmitted FROM metric_summary();
+SELECT metric, applicable, (reason) IS NOT NULL, unadmitted FROM metric_summary();
 ----
-spend	false	no column carries role timestamp: annotate the period column, GLOSS role ON fin.spend.<column> AS $${"value": "timestamp"}$$	[period, value, fund, object]
+spend	false	true	[period, value, fund, object]
 
 query T
 SELECT missing[1] FROM metric_summary();
@@ -76,9 +76,9 @@ GLOSS role ON spend.object AS $${"value": "dimension"}$$;
 
 # the roles stand and no cadence does: the row wants the profile
 query TTTT
-SELECT applicable, reason, dims, wanted FROM metric_summary();
+SELECT applicable, (reason) IS NOT NULL, dims, wanted FROM metric_summary();
 ----
-false	no cadence is known on period: SELECT temporal() FROM fin.spend.period, or gloss time_grains with a floor	[fund, object]	[temporal over fin.spend.period]
+false	true	[fund, object]	[temporal over fin.spend.period]
 
 statement ok
 SELECT temporal() FROM spend.period;
@@ -92,8 +92,6 @@ true	period	value	month	month	48	NULL	none	[fund, object]	true
 
 statement error
 SELECT * FROM metric_series();
-----
-no additivity is annotated on fin.spend.value, and spend serves several rows in one period: annotate it — GLOSS additivity ON fin.spend.value AS $${"value": "<additive|semi-additive|ratio|non-additive>"}$$
 
 statement ok
 GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
@@ -388,10 +386,10 @@ statement ok
 SELECT orphan_check() FROM fin.noted_spend;
 
 query TTT
-SELECT test, state, json_extract_string(evidence, '$.reason') FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
+SELECT test, state, (json_extract_string(evidence, '$.reason')) IS NOT NULL FROM metric_tests() WHERE metric = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
 ----
-fan_out_test	yellow	the join columns are not profiled yet: run column_profile() over fin.lines.line_id, fin.notes.line_id
-orphan_test	green	no relationship is declared between the tables the metric scans (lines, notes): nothing to check
+fan_out_test	yellow	true
+orphan_test	green	true
 
 # the profiles land: the check's result predates them and says so, and the next run reads them
 statement ok

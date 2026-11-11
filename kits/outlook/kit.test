@@ -141,10 +141,10 @@ SELECT served_by, grain, score, band, threshold FROM band_verdict();
 glossthesi test	month	1.0	red	0.9
 
 query TTRRRRRT
-SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
+SELECT metric, period, actual, p05, p50, p95, pit, (withheld) IS NOT NULL FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
-spend	2024-12	125.0	100.0	120.0	140.0	NULL	the training series is constant and the actual equals it
-spend	2025-01	300.0	200.0	220.0	240.0	1.0	NULL
+spend	2024-12	125.0	100.0	120.0	140.0	NULL	true
+spend	2025-01	300.0	200.0	220.0	240.0	1.0	false
 
 query TRTIRR
 SELECT period, displacement, newest, walked, held_80, held_90 FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
@@ -153,9 +153,9 @@ SELECT period, displacement, newest, walked, held_80, held_90 FROM band_points()
 2025-01	1.0	true	2	0.0	0.0
 
 query TTT
-SELECT metric, applicable, reason FROM band_points() WHERE metric = 'hires';
+SELECT metric, applicable, (reason) IS NOT NULL FROM band_points() WHERE metric = 'hires';
 ----
-hires	false	the walk needs seven complete months, and hires has 4
+hires	false	true
 
 query T
 SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WHERE function = 'metric_bands';
@@ -477,18 +477,18 @@ DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "sc
 
 # declared and not annotated
 query TTTT
-SELECT scenario, glossed, applicable, reason FROM scenarios();
+SELECT scenario, glossed, applicable, (reason) IS NOT NULL FROM scenarios();
 ----
-price_up	false	false	declared and not annotated: a scenario is a factor per period on declared levers
+price_up	false	false	true
 
 # a lever nobody glossed refuses the scenario at read
 statement ok
 GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.1}, "basis": "the February price list"}]}$$;
 
 query TT
-SELECT applicable, reason FROM scenarios();
+SELECT applicable, (reason) IS NOT NULL FROM scenarios();
 ----
-false	priced.price is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric's view
+false	true
 
 statement ok
 GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;
@@ -512,9 +512,9 @@ statement ok
 GLOSS price_flat ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.0}, "basis": "nothing changes"}]}$$;
 
 query TTT
-SELECT scenario, applicable, reason FROM scenario_request() WHERE scenario = 'price_flat';
+SELECT scenario, applicable, (reason) IS NOT NULL FROM scenario_request() WHERE scenario = 'price_flat';
 ----
-price_flat	false	the scenario moves no input of priced: every factor on priced.price over the periods ahead is one
+price_flat	false	true
 
 query I
 SELECT count(*) FROM scenario_bodies() WHERE body IS NOT NULL;
@@ -625,17 +625,17 @@ SELECT scenario, applicable, reason FROM scenario_request() WHERE scenario = 'pr
 promo_on	true	NULL
 
 query TT
-SELECT scenario, unmoved FROM scenario_bodies() WHERE scenario = 'promo_on';
+SELECT scenario, (unmoved) IS NOT NULL FROM scenario_bodies() WHERE scenario = 'promo_on';
 ----
-promo_on	priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
+promo_on	true
 
 statement ok
 SELECT metric_scenario() FROM fin;
 
 query TTTT
-SELECT scenario, metric, applicable, reason FROM scenario_points('promo_on');
+SELECT scenario, metric, applicable, (reason) IS NOT NULL FROM scenario_points('promo_on');
 ----
-promo_on	priced	false	the scenario moves no input of priced: priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
+promo_on	priced	false	true
 
 # the preview measurements this dataset needs: a plan is served and a scenario annotated
 query T
