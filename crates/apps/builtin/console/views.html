@@ -16,7 +16,7 @@
 {% set tab = state.tab | default(value="description") %}
 {# A picked slice is a measurement: the slice link opens that tab. #}
 {% if dim and not state.tab %}{% set tab = "measurements" %}{% endif %}
-{% if kind == "scalar" or kind == "relation" %}{% set section = "Views" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% else %}{% set section = "" %}{% set q = "view=" ~ view %}{% endif %}
+{% if kind == "relation" %}{% set section = "Tables" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% elif kind == "scalar" %}{% set section = "Single values" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "view=" ~ view %}{% endif %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section=section, object=view) }}
 <gl-rows frame="frames/view_head" empty="">
   <template>

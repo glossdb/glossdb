@@ -27,11 +27,11 @@ test AS (
   FROM tests
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 pages(top, label, link, o) AS (
-  SELECT 'Overview', 'Scorecard', (SELECT * FROM root), 1
+  SELECT 'Overview', 'Summary', (SELECT * FROM root), 1
   UNION ALL SELECT 'Overview', 'Model', (SELECT * FROM base) || 'model', 2
   UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 3
   UNION ALL SELECT 'Overview', 'Lineage', (SELECT * FROM base) || 'lineage', 4
-  UNION ALL SELECT 'Catalog', 'Properties', (SELECT * FROM base) || 'glossary', 1
+  UNION ALL SELECT 'Catalog', 'Glossary', (SELECT * FROM base) || 'glossary', 1
   UNION ALL SELECT 'Views', 'All views', (SELECT * FROM base) || 'views', 1
   UNION ALL SELECT 'Quality', 'All results', (SELECT * FROM base) || 'quality', 1
   UNION ALL SELECT 'Review', 'The queue', (SELECT * FROM base) || 'review', 1
@@ -55,11 +55,11 @@ FROM (
          (SELECT * FROM base) || 'glossary?column=' || table_name || '.' || column_name, ordinal_position
   FROM cols
   UNION ALL
-  SELECT 'Catalog', 3, 'Views', '', name, name,
-         (SELECT * FROM base) || 'views?view=' || name || '&kind=' || kind, 0
-  FROM views WHERE kind IN ('scalar', 'relation')
+  SELECT 'Views', 1, 'Tables', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=relation', 0
+  FROM views WHERE kind = 'relation'
   UNION ALL
-  SELECT 'Views', 1, 'Metrics', '', name, name,
+  SELECT 'Views', 3, 'Metrics', '', name, name,
          (SELECT * FROM base) || 'views?view=' || name, 0
   FROM views WHERE kind NOT IN ('scalar', 'relation')
   UNION ALL

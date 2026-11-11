@@ -87,10 +87,10 @@
    in place of a sentence. #}
 <div class="tiles">
   <section class="tile">
-    <header><span class="eyebrow" title="Every test on each metric and on the tables and columns it reads, worst first: join fan-out, orphaned keys, additivity, validity dates, and the team's own. A metric whose tests all pass is one green row.">Tests per metric</span>
+    <header><span class="eyebrow" title="Every test on each view and on the tables and columns it reads, worst first: join fan-out, referential integrity, additivity, validity dates, and the team's own. A view whose tests all pass is one green row.">Tests per view</span>
       <code class="chip">view_tests()</code></header>
-    <p class="hint">What can break each metric's number, checked. Worst first; a green row means every test on the metric passes or was accepted.</p>
-    <gl-rows frame="frames/view_tests" empty="no metric is served yet: the tests appear with the first definition">
+    <p class="hint">What can break what each view serves. Worst first. A green row means every test on the view passes or a person accepted it.</p>
+    <gl-rows frame="frames/view_tests" empty="no view is defined yet: the tests appear with the first definition">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:minmax(9rem,13rem) minmax(8rem,11rem) 1fr 5rem">
           <span class="r-subj">{view}</span>
@@ -199,20 +199,6 @@
           <span class="r-meta">{at}<br>{dropped}</span>
           <span class="r-what dict">{refused}</span>
         </div>
-      </template>
-    </gl-rows>
-  </section>
-
-  <section class="tile">
-    <header><span class="eyebrow" title="Every required annotation nobody has written, by property, the assets under their tables. A row opens the property on the Glossary tab.">Not yet annotated</span>
-      <code class="chip">GLOSSARY() · state = missing</code></header>
-    <p class="hint">What the harness schema still requires, by name. A row opens the property on the Glossary tab.</p>
-    <gl-rows frame="frames/unsaid" empty="every required annotation is written">
-      <template>
-        <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr)">
-          <span class="r-subj">{aspect}<br><span class="r-meta">{missing} missing</span></span>
-          <span class="dict">{names}</span>
-        </a>
       </template>
     </gl-rows>
   </section>

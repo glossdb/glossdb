@@ -1,7 +1,7 @@
 -- What the functions measured: one row per loaded measurement aspect
 -- with what it found, in words from its own body, how many subjects it
--- reached and when. The shipped aspects have their own sentence;
--- another is counted.
+-- reached and when. The kits' measurements have a sentence; another
+-- is counted.
 WITH m AS (
   SELECT g.subject, g.aspect, g.body, g.written_at
   FROM GLOSSARY(all => true) g
@@ -62,7 +62,7 @@ worded AS (
 others AS (
   SELECT aspect,
          CAST(count(*) AS VARCHAR) || CASE WHEN count(*) = 1 THEN ' subject' ELSE ' subjects' END AS subjects,
-         'Measured; the page has no words for this aspect beyond the count.' AS found
+         '' AS found
   FROM m
   WHERE aspect NOT IN (SELECT aspect FROM worded)
   GROUP BY aspect),

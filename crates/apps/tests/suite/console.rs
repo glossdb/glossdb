@@ -818,7 +818,8 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     for (frame, expected) in [
         ("open", "catalog"),
         ("settled", "catalog"),
-        ("open_items", "catalog"),
+        ("next_rows", "catalog"),
+        ("steps", "catalog"),
         ("assumptions", "catalog"),
         ("measures", "catalog"),
         ("views", "catalog"),
@@ -838,7 +839,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("findings", "catalog"),
         ("breaches", "catalog"),
         ("measured", "catalog"),
-        ("unsaid", "catalog"),
         ("relations", "catalog"),
         ("view_fields", "catalog"),
         ("tests", "catalog"),
@@ -912,24 +912,18 @@ async fn a_second_dataset_does_not_multiply_a_views_rows() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_recorded_again() {
-    // The waiting derivation: a human formula
-    // answer newer than the metric's recorded materialization requires the
-    // agent a re-alignment — the two forms of one definition. The
-    // summary shows it until the agent re-records; nothing is a
-    // maintained flag. The answer arrives through a session (the app
-    // carries no write besides the review decision form).
+    // A person writes a formula for a metric that is newer than the
+    // metric's recorded definition. The open list shows a row for the
+    // agent until the agent records the definition again.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    // Seeded state: the agent's handbook entry with its formula, and the
-    // agent's dso gloss — nothing waits
-    // but, on DuckDB, the outlook kit's expected ranges, forecast and estimate:
-    // tested measurements on the dataset nobody ran while a metric is
-    // defined.
-    let preview = 3;
-    let before = get(&app, "/perf/app/console/frames/open_items").await;
+    // Seeded state: the agent's definition of dso with its formula. No
+    // row of the open list says a person decided something.
+    let decided = |body: &str| body.matches("\ndecided\n").count();
+    let before = get(&app, "/perf/app/console/frames/next_rows").await;
     assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(row_count(before).await, preview);
+    assert_eq!(decided(&body_text(before).await), 0);
 
     // The human's answer is stored on their channel: newer than the
     // recorded dso gloss.
@@ -948,11 +942,11 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
         .execute(r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;"#)
         .await
         .unwrap();
-    let after = get(&app, "/perf/app/console/frames/open_items").await;
+    let after = body_text(get(&app, "/perf/app/console/frames/next_rows").await).await;
     assert_eq!(
-        row_count(after).await,
-        1 + preview,
-        "the formula answer waits on the agent"
+        decided(&after),
+        1,
+        "the person's formula waits for the agent:\n{after}"
     );
 
     // The agent re-records the materialization — the wait clears.
@@ -976,17 +970,12 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
         )
         .await
         .unwrap();
-    let cleared = get(&app, "/perf/app/console/frames/open_items").await;
-    // On DuckDB the re-record redefines the view, so the profile over
-    // its period column reads stale and waits on a re-measure; the
-    // formula answer itself no longer waits.
-    {
-        let cleared = body_text(cleared).await;
-        assert!(
-            !cleared.contains("/perf/app/console/p/views?view=dso\n"),
-            "re-recording clears the wait: {cleared}"
-        );
-    }
+    let cleared = body_text(get(&app, "/perf/app/console/frames/next_rows").await).await;
+    assert_eq!(
+        decided(&cleared),
+        0,
+        "recording the definition again closes the row:\n{cleared}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1624,8 +1613,7 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
         "{measures}"
     );
 
-    // Nobody profiled `dso.month`: the row wants the profile, `open_items`
-    // lists it, the banner counts it, and the series waits.
+    // Nobody profiled `dso.month`: the banner counts it, and the series waits.
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 0, "no cadence, no series yet");
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
@@ -1640,12 +1628,6 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     ] {
         assert!(banner.contains(function), "{function}: {banner}");
     }
-    let open = get(&app, "/perf/app/console/frames/open_items").await;
-    assert_eq!(
-        row_count(open).await,
-        4,
-        "the profile over dso.month, the expected ranges, the forecast and the estimate"
-    );
     let response = app
         .clone()
         .oneshot(
@@ -2438,7 +2420,11 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
         ),
         (
             "/perf/app/console/p/views?view=x&kind=scalar",
-            "/perf/app/console/p/glossary",
+            "/perf/app/console/p/views",
+        ),
+        (
+            "/perf/app/console/p/views?view=x&kind=relation",
+            "/perf/app/console/p/views",
         ),
         (
             "/perf/app/console/p/views?view=x",

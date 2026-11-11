@@ -209,22 +209,13 @@ async fn page_response(
         .into_iter()
         .try_for_each(|(name, text)| tera.add_raw_template(&format!("pages/{name}"), &text))
         .map(|()| tera);
-    // The section this page sits in: the manifest's, moved by the page's
-    // `kind` parameter where the manifest says so. A manifest without
-    // sections marks the page itself.
-    let kind = params
-        .iter()
-        .find(|(k, _)| k == "kind")
-        .map(|(_, v)| v.as_str());
+    // The section this page sits in, from the manifest. A manifest
+    // without sections marks the page itself.
     let section = def
         .pages
         .iter()
         .find(|t| t.name == page)
-        .map(|t| {
-            kind.and_then(|k| t.kind_sections.get(k))
-                .unwrap_or(&t.section)
-                .clone()
-        })
+        .map(|t| t.section.clone())
         .unwrap_or_default();
     // The bar's tabs: the pages the manifest puts in the bar. `sep` is
     // the hairline before a tab: the group changed from the tab before

@@ -967,3 +967,19 @@ dl.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 
 dl.facts dt { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
 dl.facts dd { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
 .preview { font-family: var(--mono); font-size: 0.68rem; color: var(--open); border: 1px solid currentColor; border-radius: 2px; padding: 0 0.3rem; margin-left: 0.4rem; letter-spacing: 0.04em; text-transform: lowercase; }
+
+/* ---- the overview's five steps ------------------------------------ */
+.steps gl-rows { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); margin-top: 1rem; }
+.step { display: flex; flex-direction: column; gap: 0.35rem; padding: 1rem 1.1rem 1.1rem; border-right: 1px solid var(--rule); text-decoration: none; color: inherit; min-height: 9.5rem; }
+.step:last-child { border-right: 0; }
+.step:hover { background: var(--panel); }
+.step .s-n { font-family: var(--mono); font-size: var(--step); color: var(--faint); }
+.step .s-title { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); font-weight: 600; }
+.step .s-have { color: var(--ink); font-size: 0.95rem; line-height: 1.35; margin-top: 0.3rem; }
+.step .s-more { color: var(--faint); font-size: 0.8rem; line-height: 1.4; }
+.step .s-open { margin-top: auto; padding-top: 0.6rem; font-family: var(--mono); font-size: var(--step); color: var(--settled); }
+.step.warn .s-open { color: var(--open); }
+@media (max-width: 900px) {
+  .steps gl-rows { grid-template-columns: 1fr; }
+  .step { border-right: 0; border-bottom: 1px solid var(--rule); min-height: 0; }
+}
