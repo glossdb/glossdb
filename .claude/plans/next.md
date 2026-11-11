@@ -14,8 +14,8 @@ outdated, a test turned red, a value outside its expected range).
 | `next_steps`, the generic read, beside today's `next` | Low: prototyped on the employees data | `kits/goals/kit.sql`, its suite | Built | |
 | What changed, per row: an outdated description and a test that is not green carry the cause: the newest load's row count against the load before, and the columns whose profile moved (distinct values, share empty, lowest, highest) | Low: measured on the employees data | `kits/goals/kit.sql`, `routes.rs` | Built | |
 | The server runs the measurements its tests read: a profile of every column a metric reads and the relationship check, after a definition, an annotation or a load, a declared load included | Low | `built_in_tests` in `crates/duck/src/lib.rs` | Built | |
-| The fix advice per test moves from the hand-written blocks to the test's own declaration, so a kit that adds a test brings its advice | Medium: touches every built-in test; a declaration field may be the extension's | `kits/metrics/kit.sql`, `kits/outlook/kit.sql`, maybe SPEC | Next | |
-| Expected ranges, forecast and plan findings as rows under test (preview) | Low | `kits/outlook/kit.sql` | After | |
+| A test brings its advice: each built-in check returns `finding` and `fix` in its result, and `next_steps` serves them, so a kit that adds a test adds no branch elsewhere | Low: no change to the language | `kits/metrics/kit.sql`, `kits/goals/kit.sql`, `routes.rs` | Built | |
+| Expected ranges, forecast and plan findings as rows under test (preview) | Low | `kits/outlook/kit.sql` | Next | |
 | The switch: `next` is the new read; `routes_<kit>()` and their composition at open are deleted; the line after each call gives the count per step and the first open row | Medium: every `next` test and the skills' text change | `crates/duck/src/lib.rs` (`next_view`, `write_next`), `crates/serverd/src/window.rs`, `routes.rs`, the kits' suites, `docs/extending/next-steps.md`, the skills | Last | |
 | glossval reads the new `next`; its finish line is an empty list for the agent | Low, outside this repository | glossval's `next_state.py` | With the switch | |
 

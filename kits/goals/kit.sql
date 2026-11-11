@@ -213,10 +213,11 @@ CREATE OR REPLACE VIEW main.next_steps AS
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state),
   s_test AS (
-    SELECT 3, 'test', t.subject, t.state, t.test, t.metric,
+    SELECT 3, 'test', t.subject, t.state,
+           t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.metric,
            coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
                      FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.metric = t.metric)), ''),
-           t.run
+           coalesce(t.evidence->>'fix', t.run)
     FROM main.metric_tests() t WHERE t.state <> 'green'),
   s_decide AS (
     SELECT 4, 'decide', ds.d || '.' || r.aspect, 'decided',

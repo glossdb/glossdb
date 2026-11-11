@@ -334,6 +334,27 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
             "{row}"
         );
     }
+    // The same finding in `next_steps`, with the fix the test itself
+    // returns: the metric's current definition, to edit and record.
+    let open = rows(
+        &app,
+        "SELECT asset, state, statement FROM next_steps WHERE step = 'test' ORDER BY asset",
+    )
+    .await;
+    let assets: Vec<String> = open.iter().map(|r| text(r, "asset")).collect();
+    assert_eq!(
+        assets,
+        ["fin.amount_per_booking", "fin.amount_per_booking_month"],
+        "{open:?}"
+    );
+    for row in &open {
+        assert_eq!(text(row, "state"), "red", "{row}");
+    }
+    let fix = text(&open[0], "statement");
+    assert!(
+        fix.contains("GLOSS amount_per_booking ON fin AS $${\"sql\""),
+        "{fix}"
+    );
     // Marked a ratio with its two halves, the daily metric is done.
     say(
         &app,

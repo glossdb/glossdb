@@ -452,6 +452,24 @@ SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
 FROM glossql_views_scans(ds) s
 WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 
+-- A test brings its own advice: its check returns `finding`, one
+-- sentence on what is wrong and what it does to the number, and `fix`,
+-- the statement that settles it, filled from the catalog (<...> marks
+-- what only the author can fill). The next steps serve both as they
+-- are, so a kit that adds a test adds no branch anywhere else.
+--
+-- gloss_statement(aspect, subject, body): the annotation statement.
+-- metric_redefine(ds, m): the statement that records metric m's
+-- current definition again, to edit and send.
+CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
+  'GLOSS ' || a || ' ON ' || subj || ' AS $$' || body || '$$;';
+
+CREATE OR REPLACE MACRO main.metric_redefine(ds, m) AS
+  main.gloss_statement(m, ds, coalesce(
+    (SELECT g.body::VARCHAR FROM main.glossary g
+     WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.seq DESC LIMIT 1),
+    '<the current definition>'));
+
 -- fan_out_check: the metric joins two tables on columns whose values
 -- repeat on both sides, so the join multiplies rows. The join columns
 -- come from the definition's own plan (glossql_views_joins), and whether
@@ -465,6 +483,7 @@ DECLARE ASPECT fan_out_check WITH $${
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "pairs": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
@@ -497,14 +516,26 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
   unprofiled AS (
     SELECT string_agg(c, ', ' ORDER BY c) AS columns
     FROM (SELECT left_column AS c FROM judged WHERE NOT profiled AND left_column NOT IN (SELECT subject FROM profiles)
-          UNION SELECT right_column FROM judged WHERE NOT profiled AND right_column NOT IN (SELECT subject FROM profiles)))
+          UNION SELECT right_column FROM judged WHERE NOT profiled AND right_column NOT IN (SELECT subject FROM profiles))),
+  repeating AS (
+    SELECT regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') AS pair
+    FROM judged WHERE repeats)
   SELECT n.tables > 0 AND NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled) AS applicable,
          CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
               WHEN EXISTS (SELECT 1 FROM judged WHERE NOT profiled) THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled) END AS reason,
          CASE WHEN n.tables = 0 OR EXISTS (SELECT 1 FROM judged WHERE NOT profiled) THEN NULL
               WHEN EXISTS (SELECT 1 FROM judged WHERE repeats) THEN 1.0 ELSE 0.0 END AS breach_rate,
-         (SELECT list(regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') ORDER BY left_column, right_column)
-          FROM judged WHERE repeats) AS pairs
+         (SELECT list(pair ORDER BY pair) FROM repeating) AS pairs,
+         CASE WHEN EXISTS (SELECT 1 FROM repeating)
+              THEN split_part($subject, '.', 2) || ' joins on ' || (SELECT string_agg(pair, ', ' ORDER BY pair) FROM repeating)
+                   || ', and the values repeat on both sides, so each match multiplies rows' END AS finding,
+         CASE WHEN EXISTS (SELECT 1 FROM repeating)
+              THEN '-- make one side of the join one row per value: join through the table that holds the key once, or keep one row per key in a subquery (the latest row per key, or GROUP BY the key). Then record the definition again:' || chr(10)
+                   || main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) || chr(10)
+                   || '-- where one of the tables holds a row per version, say so and the validity test names the fix:' || chr(10)
+                   || '-- ' || main.gloss_statement('validity', '<table>', '{"valid_from": "<column>", "valid_to": "<column>"}') || chr(10)
+                   || '-- where the join is meant as it is, accept it with the reason:' || chr(10)
+                   || '-- ' || main.gloss_statement('fan_out_check', $subject, '{"tolerance": 1.0, "grounds": "<why the join is meant>"}') END AS fix
   FROM n
 $$ RETURNS fan_out_check;
 
@@ -520,6 +551,7 @@ DECLARE ASPECT additivity_check WITH $${
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
                  "shape": {"type": ["string", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
@@ -535,7 +567,28 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
                                                    WHEN computed.shape = 'distinct' AND additivity = 'additive' THEN 1.0
                                                    ELSE 0.0 END FROM a) END AS breach_rate,
          (SELECT additivity FROM a) AS additivity,
-         computed.shape AS shape
+         computed.shape AS shape,
+         CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
+              WHEN additivity IS NULL OR additivity_state <> 'current'
+                THEN value_column || ' of ' || metric || ' does not say how it adds up, which a total and a coarser time grain need'
+              WHEN computed.shape = 'distinct' AND additivity = 'additive'
+                THEN value_column || ' of ' || metric || ' is a distinct count marked additive: distinct counts do not add up, so a total and a coarser time grain are wrong'
+              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
+                THEN value_column || ' of ' || metric || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
+                     || ' marked ' || additivity || ': its rows are summed, so a total and a coarser time grain are wrong' END FROM a) END AS finding,
+         CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
+              WHEN additivity IS NULL OR additivity_state <> 'current'
+                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
+                       '{"value": "<additive|semi-additive|ratio|non-additive>", "grounds": "<why, in the business''s words>"}')
+              WHEN computed.shape = 'distinct' AND additivity = 'additive'
+                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
+                       '{"value": "non-additive", "grounds": "a distinct count"}')
+              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
+                THEN '-- serve the numerator and the denominator beside the value and say so in "measure": {"column": "' || value_column
+                     || '", "additivity": "ratio", "numerator": "<column>", "denominator": "<column>"}. Then record the definition again:' || chr(10)
+                     || main.metric_redefine(split_part($subject, '.', 1), metric) || chr(10)
+                     || '-- where the number is right as it is, accept it with the reason:' || chr(10)
+                     || '-- ' || main.gloss_statement('additivity_check', $subject, '{"tolerance": 1.0, "grounds": "<why it may be summed>"}') END FROM a) END AS fix
   FROM ok, computed
 $$ RETURNS additivity_check;
 
@@ -551,6 +604,7 @@ DECLARE ASPECT orphan_check WITH $${
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "edges": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
@@ -583,7 +637,13 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
          CASE WHEN n.tables = 1 THEN 0.0
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
               WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM coherence) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
-         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges
+         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges,
+         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
+              THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
+                   || ' find no parent: an inner join drops them, an outer join counts them under no member' END AS finding,
+         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
+              THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
+                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "grounds": "<why these rows have no parent>"}') END AS fix
   FROM n
 $$ RETURNS orphan_check;
 
@@ -608,6 +668,7 @@ DECLARE ASPECT validity_check WITH $${
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "tables": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
@@ -627,7 +688,13 @@ DECLARE FUNCTION validity_check FOR GLOBAL AS $$
   SELECT EXISTS (SELECT 1 FROM scans) AS applicable,
          CASE WHEN NOT EXISTS (SELECT 1 FROM scans) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
          CASE WHEN EXISTS (SELECT 1 FROM scans) THEN CASE WHEN EXISTS (SELECT 1 FROM undated) THEN 1.0 ELSE 0.0 END END AS breach_rate,
-         (SELECT list(scan ORDER BY scan) FROM undated) AS tables
+         (SELECT list(scan ORDER BY scan) FROM undated) AS tables,
+         CASE WHEN EXISTS (SELECT 1 FROM undated)
+              THEN split_part($subject, '.', 2) || ' reads ' || (SELECT string_agg(scan, ', ' ORDER BY scan) FROM undated)
+                   || ' without bounding both validity dates, so a row counts once per version' END AS finding,
+         CASE WHEN EXISTS (SELECT 1 FROM undated)
+              THEN '-- bound both validity dates by the period (valid_from <= period AND valid_to > period). Then record the definition again:' || chr(10)
+                   || main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) END AS fix
 $$ RETURNS validity_check;
 
 DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
