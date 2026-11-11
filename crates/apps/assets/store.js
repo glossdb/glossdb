@@ -12,8 +12,8 @@
   const tables = new Map(); // frame url -> Promise<Arrow.Table>
   const rowSets = new Map(); // frame url -> Promise<Array<Object>>
   const specs = new Map(); // spec url -> Promise<Object>
-  // frame url -> 'record' | 'data', from the server's derived
-  // glossql-frame-class header: `record` frames read the glossary
+  // frame url -> 'catalog' | 'data', from the server's derived
+  // glossql-frame-class header: `catalog` frames read the glossary
   // somewhere in their expansion and can change under a review decision; `data`
   // frames provably cannot. Metadata and data are not one pile.
   const classes = new Map();
@@ -47,7 +47,7 @@
       throw new Error(message);
     }
     // Absent header reads as record — evict-on-write is the safe side.
-    classes.set(url, res.headers.get('glossql-frame-class') || 'record');
+    classes.set(url, res.headers.get('glossql-frame-class') || 'catalog');
     return Arrow.tableFromIPC(new Uint8Array(await res.arrayBuffer()));
   }
 
@@ -124,7 +124,7 @@
     'glossql:written',
     () => {
       for (const url of new Set([...tables.keys(), ...rowSets.keys()])) {
-        if ((classes.get(url) || 'record') === 'record') {
+        if ((classes.get(url) || 'catalog') === 'catalog') {
           tables.delete(url);
           rowSets.delete(url);
           classes.delete(url);

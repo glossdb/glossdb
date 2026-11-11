@@ -9,7 +9,7 @@ SELECT substr(r.left_side, len(d.dataset) + 2) AS src,
 FROM relationships r JOIN d ON d.dataset = r.dataset
 UNION ALL
 SELECT source AS src,
-       metric || '.' || field AS dst,
+       view || '.' || field AS dst,
        'reads' AS kind
-FROM metric_sources()
+FROM view_sources()
 WHERE field IS NOT NULL

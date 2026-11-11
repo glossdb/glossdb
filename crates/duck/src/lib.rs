@@ -17,7 +17,7 @@
     clippy::cast_possible_truncation
 )]
 
-pub mod rulings;
+pub mod decisions;
 pub mod sqllogic;
 
 use std::path::{Path, PathBuf};
@@ -86,15 +86,15 @@ pub enum SessionError {
     #[error("not a subject: {detail}")]
     UnknownName { name: String, detail: String },
     #[error("not a subject: {detail}")]
-    NotServed { door: String, detail: String },
+    NotServed { interface: String, detail: String },
     #[error("function runtime: {0}")]
     Service(String),
     #[error("not a subject: {detail}")]
     BadShape { subject: String, detail: String },
     #[error("not an aspect name: `{0}`")]
     BadAspectName(String),
-    #[error("the standing review_decision annotation has no decisions list")]
-    RulingSlotNotRulings,
+    #[error("the current review_decision annotation has no decisions list")]
+    DecisionValueNotDecisions,
     #[error("a body carrying `$$` cannot ride the dollar-quoted statement")]
     DollarQuotedBody,
     #[error("streaming takes exactly one query — everything else answers through execute")]
@@ -105,7 +105,7 @@ pub enum SessionError {
         total: usize,
         context: String,
         source: Box<SessionError>,
-        landed: Vec<Outcome>,
+        loaded: Vec<Outcome>,
     },
     #[error("{0}")]
     Engine(String),
@@ -153,7 +153,7 @@ impl From<arrow::error::ArrowError> for SessionError {
 
 /// What ran and what never ran, for a refusal at `index` of `total`.
 fn sequence_context(index: usize, total: usize) -> String {
-    let landed = match index {
+    let ran = match index {
         1 => "nothing ran before it".to_string(),
         2 => "statement 1 ran".to_string(),
         _ => format!("statements 1–{} ran", index - 1),
@@ -165,7 +165,7 @@ fn sequence_context(index: usize, total: usize) -> String {
     } else {
         format!("; statements {}–{} not run", index + 1, total)
     };
-    format!("{landed}{tail}")
+    format!("{ran}{tail}")
 }
 
 // -- the outcome -------------------------------------------------------
@@ -193,7 +193,7 @@ pub struct QueryStream {
     /// `usize::MAX` on a read of the catalog, which must be whole.
     pub cap: usize,
     /// Whether the statement reads the catalog anywhere.
-    pub record: bool,
+    pub catalog: bool,
 }
 
 /// A file the engine writes a read into, for the app interface's downloads:
@@ -222,7 +222,7 @@ impl CopyFormat {
 
 /// A page the interface serves as a resource.
 #[derive(Debug, Clone)]
-pub struct DoorPage {
+pub struct ServedPage {
     pub uri: String,
     pub name: String,
     pub title: String,
@@ -242,15 +242,15 @@ pub struct Registered {
 /// The server's own table functions by name: on this engine each is a kit's
 /// table macro, so the list is read from the catalog ([`Session::registered_functions`])
 /// and this constant stays empty for the callers that still name it.
-pub const DOORS: &[(&str, &str)] = &[];
+pub const INTERFACES: &[(&str, &str)] = &[];
 
-/// The request's standing as the gate stamps it: the actor the interface
+/// The request's actor as the gate stamps it: the actor the interface
 /// verified, carried into the handlers.
 #[derive(Debug, Clone)]
 pub struct Caller(pub Actor);
 
 /// The model service, named once for the instance: `GLOSSDB_SERVICE_URL`
-/// its base, the route each call's own; `GLOSSDB_SERVICE_TOKEN` a key
+/// its base, the path each call's own; `GLOSSDB_SERVICE_TOKEN` a key
 /// sent as-is, or `GLOSSDB_SERVICE_AUDIENCE` the audience an ID token is
 /// minted for by the platform this process runs on — the host mints and
 /// refreshes it through `Plane::token_sink`. Unnamed, every service call
@@ -377,7 +377,7 @@ impl TokenSink {
     }
 }
 
-/// What a recipe or a probe can call: the engine's readers over the
+/// What a recipe or a preview can call: the engine's readers over the
 /// source's files, as DuckDB names them.
 pub fn reader_functions() -> Vec<Registered> {
     ["read_csv", "read_parquet", "read_json"]
@@ -390,19 +390,19 @@ pub fn reader_functions() -> Vec<Registered> {
         .collect()
 }
 
-/// What a detector's query can call over its `slots` relation: the
+/// What a detector's query can call over its `annotations` relation: the
 /// engine's own functions, nothing more.
 pub fn detector_functions() -> Vec<Registered> {
     Vec::new()
 }
 
-/// The brief's counts: what people have written in the catalog.
+/// The summary's counts: what people have written in the catalog.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct BriefCounts {
+pub struct SummaryCounts {
     pub human_writings: i64,
     pub latest_human_at: Option<String>,
     pub approvals_pending: i64,
-    pub rulings_owed: i64,
+    pub decisions_open: i64,
 }
 
 /// The shape of a call, read off the statements before they run.
@@ -415,25 +415,25 @@ pub struct CallShape {
 
 /// The shape, from the statements' text: `USE` names the dataset, the
 /// last one standing; a statement that is not a read, and an
-/// extraction, write; a call of reads alone that names a record
+/// extraction, write; a call of reads alone that names a catalog
 /// relation is a review. Syntactic, as the interfaces need it before the
 /// engine runs anything: a statement that is none of these is refused
 /// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
-    let mut reads_the_record = false;
+    let mut reads_the_catalog = false;
     let mut writes = false;
     let mut dataset = None;
     for piece in split_statements(statements) {
         if let Some(name) = use_target(&piece) {
             dataset = Some(name);
         } else if is_read(&piece) && !is_extraction(&piece) {
-            reads_the_record |= reads_record(&piece);
+            reads_the_catalog |= reads_catalog(&piece);
         } else {
             writes = true;
         }
     }
     CallShape {
-        reviews: reads_the_record && !writes,
+        reviews: reads_the_catalog && !writes,
         writes,
         dataset,
     }
@@ -456,18 +456,18 @@ fn use_target(statement: &str) -> Option<String> {
 }
 
 /// The store's relations, as the extension serves them in the
-/// lake's `main` schema, and the reads over the record.
-const RECORD: &[&str] = &[
+/// lake's `main` schema, and the reads over the catalog.
+const CATALOG: &[&str] = &[
     "glossary",
     // the interface's derived reads, which say what the catalog holds
     "open_questions",
     "review_decisions",
     "agent_assumptions",
     "open_items",
-    "metric_surfaces",
-    "metric_summary",
-    "metric_sources",
-    "metric_tests",
+    "view_definitions",
+    "view_summary",
+    "view_sources",
+    "view_tests",
     "workspace_status",
     "app_parts",
     "app_releases",
@@ -488,14 +488,14 @@ const RECORD: &[&str] = &[
 /// name, bare or under the store's schema, or the two reads over it.
 /// Syntactic, as the frame class needs: the words of the text, with
 /// the quoting and punctuation taken off.
-pub fn reads_record(sql: &str) -> bool {
+pub fn reads_catalog(sql: &str) -> bool {
     let lower = sql.to_lowercase();
     lower
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
         .filter(|w| !w.is_empty())
         .any(|word| {
             let name = word.rsplit('.').next().unwrap_or(word);
-            name == "glossary" || RECORD.contains(&name)
+            name == "glossary" || CATALOG.contains(&name)
         })
 }
 
@@ -558,7 +558,7 @@ fn admitted(sql: &str) -> Result<(), SessionError> {
         ("PRAGMA", _) if sql.contains('(') => return Ok(()),
         ("SET" | "RESET" | "PRAGMA", _) => (
             first.to_string(),
-            "the engine's settings and the session's variables are the door's, and the actor and the workspace ride them",
+            "the engine's settings and the session's variables are the interface's, and the actor and the workspace ride them",
         ),
         ("ATTACH" | "DETACH", _) => (
             first.to_string(),
@@ -651,7 +651,7 @@ struct Pieces {
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
-    /// This repository's kits, `kits/`: core, metrics, outlook and goals.
+    /// This repository's kits, `kits/`: core, views, outlook and goals.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
@@ -717,7 +717,7 @@ impl Config {
                 pieces.kits.join("core/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
-                pieces.kits.join("metrics/kit.sql"),
+                pieces.kits.join("views/kit.sql"),
                 pieces.kits.join("outlook/kit.sql"),
                 pieces.kits.join("goals/kit.sql"),
             ],
@@ -765,7 +765,7 @@ pub struct Plane {
     _environment: Environment,
     instance: Arc<Instance>,
     config: Config,
-    pages: Arc<[DoorPage]>,
+    pages: Arc<[ServedPage]>,
 }
 
 impl std::fmt::Debug for Plane {
@@ -1011,7 +1011,7 @@ impl Plane {
                 run(
                     &conn,
                     &format!(
-                        "CREATE TABLE IF NOT EXISTS {PAGES_DB}.main.door_pages \
+                        "CREATE TABLE IF NOT EXISTS {PAGES_DB}.main.served_pages \
                          (uri VARCHAR, title VARCHAR, body VARCHAR)"
                     ),
                 )?;
@@ -1059,26 +1059,26 @@ impl Plane {
     /// `pages()`, a temp macro of every channel over a table in the
     /// instance's own in-memory database, never the lake, since a page
     /// is the build's and not the catalog's.
-    pub fn with_pages(mut self, pages: Arc<[DoorPage]>) -> Self {
+    pub fn with_pages(mut self, pages: Arc<[ServedPage]>) -> Self {
         if let Err(e) = self.publish_pages(&pages) {
-            tracing::warn!(error = %e, "the door pages are not rows of pages()");
+            tracing::warn!(error = %e, "the served pages are not rows of pages()");
         }
         self.pages = pages;
         self
     }
 
-    fn publish_pages(&self, pages: &[DoorPage]) -> Result<(), SessionError> {
+    fn publish_pages(&self, pages: &[ServedPage]) -> Result<(), SessionError> {
         let conn = self.instance.connect()?;
         run(
             &conn,
             &format!(
-                "CREATE OR REPLACE TABLE {PAGES_DB}.main.door_pages (uri VARCHAR, title VARCHAR, body VARCHAR)"
+                "CREATE OR REPLACE TABLE {PAGES_DB}.main.served_pages (uri VARCHAR, title VARCHAR, body VARCHAR)"
             ),
         )?;
         for page in pages {
             arrow_batches(
                 &conn,
-                &format!("INSERT INTO {PAGES_DB}.main.door_pages VALUES ($uri, $title, $body)"),
+                &format!("INSERT INTO {PAGES_DB}.main.served_pages VALUES ($uri, $title, $body)"),
                 &[
                     ("uri".to_string(), page.uri.clone()),
                     ("title".to_string(), page.title.clone()),
@@ -1089,7 +1089,7 @@ impl Plane {
         Ok(())
     }
 
-    pub fn pages(&self) -> Arc<[DoorPage]> {
+    pub fn pages(&self) -> Arc<[ServedPage]> {
         Arc::clone(&self.pages)
     }
 
@@ -1148,7 +1148,7 @@ impl Plane {
                     &conn,
                     &format!(
                         "CREATE OR REPLACE TEMP MACRO pages() AS TABLE \
-                         SELECT uri, title, body FROM {PAGES_DB}.main.door_pages"
+                         SELECT uri, title, body FROM {PAGES_DB}.main.served_pages"
                     ),
                 )?;
                 Ok(conn)
@@ -1192,8 +1192,8 @@ impl Plane {
         Ok(self.datasets().await?.iter().any(|d| d == name))
     }
 
-    /// The brief's counts over the record.
-    pub async fn brief_counts(&self) -> Result<BriefCounts, SessionError> {
+    /// The summary's counts over the catalog.
+    pub async fn summary_counts(&self) -> Result<SummaryCounts, SessionError> {
         let session = self.channel(bootstrap_actor(), None).await?;
         let sql = format!(
             "WITH g AS (SELECT * FROM {LAKE}.main.glossary),
@@ -1206,34 +1206,34 @@ impl Plane {
                SELECT count(*) AS n FROM approvals a
                WHERE NOT EXISTS (SELECT 1 FROM {LAKE}.main.imports i
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
-             rulings AS (
+             decisions AS (
                SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
                FROM latest r, unnest(coalesce(json_extract(r.body, '$.decisions')::JSON[], [])) t(jr)
                WHERE r.actor_kind = 'human' AND r.aspect = 'review_decision'),
-             owed AS (
-               SELECT count(*) AS n FROM rulings ru
+             unapplied AS (
+               SELECT count(*) AS n FROM decisions ru
                WHERE EXISTS (SELECT 1 FROM latest a, unnest(coalesce(json_extract(a.body, '$.assumptions')::JSON[], [])) t(ja)
                              WHERE a.actor_kind = 'agent' AND a.dataset = ru.dataset AND a.subject = ru.subject AND a.aspect = ru.aspect
                                AND json_extract_string(ja, '$.key') = ru.key
                                AND coalesce(json_extract(ja, '$.confidence')::DOUBLE, 0) < 1.0))
-             SELECT humans.n::BIGINT, humans.latest, pending.n::BIGINT, owed.n::BIGINT FROM humans, pending, owed"
+             SELECT humans.n::BIGINT, humans.latest, pending.n::BIGINT, unapplied.n::BIGINT FROM humans, pending, unapplied"
         );
         let batches = session.batches(&sql, &[]).await?;
         let rows = rows_as_text(&batches);
         let row = rows
             .first()
-            .ok_or_else(|| SessionError::Engine("the brief read no row".into()))?;
+            .ok_or_else(|| SessionError::Engine("the summary read no row".into()))?;
         let int = |i: usize| {
             row.get(i)
                 .and_then(|c| c.as_deref())
                 .and_then(|c| c.parse::<i64>().ok())
                 .unwrap_or(0)
         };
-        Ok(BriefCounts {
+        Ok(SummaryCounts {
             human_writings: int(0),
             latest_human_at: row.get(1).cloned().flatten(),
             approvals_pending: int(2),
-            rulings_owed: int(3),
+            decisions_open: int(3),
         })
     }
 }
@@ -1384,7 +1384,7 @@ impl Session {
                             total,
                             context: sequence_context(i + 1, total),
                             source: Box::new(e),
-                            landed: outcomes,
+                            loaded: outcomes,
                         });
                     }
                 }
@@ -1509,10 +1509,10 @@ impl Session {
         }
         let one = pieces[0].clone();
         self.admit(&one)?;
-        let record = reads_record(&one);
+        let catalog = reads_catalog(&one);
         // an extraction is the language's, not a SELECT to page: it runs
         // as written, and stores one row per function
-        let cap = if paged && !record && !is_extraction(&one) {
+        let cap = if paged && !catalog && !is_extraction(&one) {
             self.row_cap
         } else {
             usize::MAX
@@ -1528,7 +1528,7 @@ impl Session {
             schema,
             stream,
             cap,
-            record,
+            catalog,
         })
     }
 
@@ -1552,7 +1552,7 @@ impl Session {
                      WHERE r.actor = 'function' AND NOT r.current \
                      UNION \
                      SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_summary()) \
+                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.view_summary()) \
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
                      FROM {LAKE}.main.open_items o \
@@ -1591,7 +1591,7 @@ impl Session {
         let mut out: Vec<Registered> = column_strings(&macros, 0)
             .into_iter()
             .map(|name| Registered {
-                kind: "door",
+                kind: "interface",
                 syntax: Some(format!("{name}(...)")),
                 name,
             })
@@ -1625,7 +1625,7 @@ fn execute_one(
     sql: &str,
     cap: usize,
 ) -> Result<(Outcome, Option<String>), SessionError> {
-    let cap = if reads_record(sql) { usize::MAX } else { cap };
+    let cap = if reads_catalog(sql) { usize::MAX } else { cap };
     let (kind, _, batches) = arrow_batches(conn, sql, &[])?;
     match kind {
         ResultType::ChangedRows => {
@@ -1639,7 +1639,7 @@ fn execute_one(
             if is_glossql_head(sql)
                 && let Some(text) = one_cell(&batches)
             {
-                if let Some(row) = grounding_row(conn, &text)? {
+                if let Some(row) = definition_row(conn, &text)? {
                     return Ok((
                         Outcome::Rows {
                             batches: row,
@@ -1659,7 +1659,7 @@ fn execute_one(
 /// The built-in tests the server runs itself, once per call, after the
 /// statements ran: for every metric the call defined, glossed (the view
 /// or one of its columns) or whose scanned table it imported, every test
-/// whose aspect is marked `x-subject: metric` runs over the metric, as
+/// whose aspect is marked `x-subject: view` runs over the metric, as
 /// CI runs a suite after a commit. A check that fails is logged and
 /// never fails the call; its row stays missing and the test report
 /// says so.
@@ -1673,7 +1673,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
         conn,
         &format!(
             "SELECT a.name FROM {} w JOIN {} a ON a.name = w.aspect \
-             WHERE json_extract_string(a.schema, '$.x-subject') = 'metric' ORDER BY a.name",
+             WHERE json_extract_string(a.schema, '$.x-subject') = 'view' ORDER BY a.name",
             newest("tests"),
             newest("aspects")
         ),
@@ -1688,7 +1688,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
     }
     // A metric is a VIEW aspect that serves a series: a plan, a sample,
     // a single value and a derived relation have no tests of this kind.
-    let is_metric = |name: &str| -> Result<bool, SessionError> {
+    let is_measure = |name: &str| -> Result<bool, SessionError> {
         let quoted = name.replace('\'', "''");
         let (_, _, kind) = arrow_batches(
             conn,
@@ -1715,7 +1715,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
                 [dataset, view, ..] => (*dataset, *view),
                 _ => continue,
             };
-            if is_metric(candidate)? {
+            if is_measure(candidate)? {
                 metrics.insert((dataset.to_string(), candidate.to_string()));
             } else if segments.len() >= 2 {
                 // an annotation on a table or its column: every metric
@@ -1724,7 +1724,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
                     conn,
                     dataset,
                     &format!("{dataset}.{candidate}"),
-                    &is_metric,
+                    &is_measure,
                     &mut metrics,
                 )?;
             }
@@ -1732,7 +1732,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
                 continue;
             };
-            scanning(conn, dataset, table, &is_metric, &mut metrics)?;
+            scanning(conn, dataset, table, &is_measure, &mut metrics)?;
         }
     }
     check_relationships(conn, &metrics);
@@ -1750,7 +1750,7 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
         && let Ok((_, _, stale)) = arrow_batches(
             conn,
             &format!(
-                "SELECT run FROM {LAKE}.main.metric_tests() \
+                "SELECT run FROM {LAKE}.main.view_tests() \
                  WHERE NOT current AND declared_by LIKE 'kit:%' AND run <> ''"
             ),
             &[],
@@ -1782,12 +1782,12 @@ fn check_relationships(conn: &Connection, metrics: &std::collections::BTreeSet<(
 }
 
 /// The table a statement loaded, from its acknowledgement: a load
-/// query declared (`landed <table>: …`) or run again (`imported
+/// query declared (`loaded <table>: …`) or run again (`imported
 /// <table>: …`).
 fn loaded_table(line: &str) -> Option<&str> {
     let rest = line
         .strip_prefix("imported ")
-        .or_else(|| line.strip_prefix("landed "))?;
+        .or_else(|| line.strip_prefix("loaded "))?;
     Some(rest.split(':').next().unwrap_or("").trim())
 }
 
@@ -1824,7 +1824,7 @@ fn scanning(
     conn: &Connection,
     dataset: &str,
     table: &str,
-    is_metric: &dyn Fn(&str) -> Result<bool, SessionError>,
+    is_measure: &dyn Fn(&str) -> Result<bool, SessionError>,
     metrics: &mut std::collections::BTreeSet<(String, String)>,
 ) -> Result<(), SessionError> {
     let (_, _, views) = arrow_batches(
@@ -1838,7 +1838,7 @@ fn scanning(
     )?;
     for row in rows_as_text(&views) {
         if let Some(Some(view)) = row.first()
-            && is_metric(view)?
+            && is_measure(view)?
         {
             metrics.insert((dataset.to_string(), view.clone()));
         }
@@ -1871,10 +1871,10 @@ fn measurement_call(sql: &str) -> bool {
 }
 
 /// A metric definition's write answers with the metric's fact row: what the
-/// view's columns say and what they owe, at the pin the write moved
+/// view's columns say and what is missing, at the data version the write moved
 /// to, in place of the outcome's one line. Any other gloss keeps its
 /// line; a metric with no row (the kit not loaded) keeps it too.
-fn grounding_row(
+fn definition_row(
     conn: &Connection,
     outcome: &str,
 ) -> Result<Option<Vec<RecordBatch>>, SessionError> {
@@ -1898,7 +1898,7 @@ fn grounding_row(
     inline_columns(conn, aspect, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
-        &format!("SELECT * FROM {LAKE}.main.metric_summary() WHERE metric = '{quoted}'"),
+        &format!("SELECT * FROM {LAKE}.main.view_summary() WHERE view = '{quoted}'"),
         &[],
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
@@ -1975,7 +1975,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                 });
             if let Some(value) = additivity {
                 let mut said = serde_json::json!({"value": value});
-                for half in ["numerator", "denominator", "grounds"] {
+                for half in ["numerator", "denominator", "basis"] {
                     if let Some(v) = measure.get(half) {
                         said[half] = v.clone();
                     }
@@ -2122,7 +2122,7 @@ mod tests {
         );
         assert!(call_shape("SELECT column_profile() FROM ops").writes);
         let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'brief delivery');
+        DECLARE DATASET fin SET (purpose: 'summary delivery');
         USE fin;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -2131,8 +2131,8 @@ mod tests {
         let shape = call_shape(setup);
         assert!(shape.writes && !shape.reviews, "{shape:?}");
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
-        assert!(reads_record("SELECT * FROM GLOSSARY(orders)"));
-        assert!(!reads_record("SELECT * FROM fin.orders"));
+        assert!(reads_catalog("SELECT * FROM GLOSSARY(orders)"));
+        assert!(!reads_catalog("SELECT * FROM fin.orders"));
     }
 
     /// A warehouse in an object store is known by its scheme, and its

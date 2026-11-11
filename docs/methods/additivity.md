@@ -15,7 +15,7 @@ summary:
 Every anchor can be read in full through
 `GLOSSARY(table.column::additivity_evidence)`.
 
-Summing a stock corrupts a metric silently. The metrics kit rolls a
+Summing a stock corrupts a metric silently. The views kit rolls a
 metric up to a coarser grain by the `additivity` annotated on its value
 column, and refuses where none is annotated. This measurement is what
 the agent reads before writing that annotation. It never counts as a

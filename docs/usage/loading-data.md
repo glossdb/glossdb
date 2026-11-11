@@ -112,7 +112,7 @@ The load query holds the typing: casts, date formats and the source's
 null markers. Excluding rows, recoding values or dropping duplicates is
 a decision, not typing. It goes in a derived view the metrics read
 from (`x-kind: "relation"`), and each metric records it as an
-assumption a person reviews ([metrics](metrics.md)). Nothing finds
+assumption a person reviews ([metrics](views.md)). Nothing finds
 placeholder values for you: `column_profile()` shows the candidates.
 
 ## Correct a load query

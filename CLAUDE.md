@@ -49,7 +49,7 @@ workspace version.
   console and data apps) · `serverd` (the binary and its interfaces).
   Packages are `glossdb-*`. Details: the crate headers and
   `docs/internals/`.
-- `kits/` — the server's kits: core, metrics, outlook, goals. SQL
+- `kits/` — the server's kits: core, views, outlook, goals. SQL
   loaded at open around the extension's kpi and quality kits, each
   with a `kit.test` suite beside it. A kit whose words depend on the
   server lives here; `kits/README.md` says what they add: vocabulary

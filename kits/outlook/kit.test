@@ -29,7 +29,7 @@ statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/metrics/kit.sql');
+FROM glossql_kit('{KITS}/views/kit.sql');
 
 statement ok
 FROM glossql_kit('{KITS}/outlook/kit.sql');
@@ -92,13 +92,13 @@ GLOSS additivity ON hires.value AS $${"value": "additive"}$$;
 # --- the request: whole months only, the month the edge falls inside left out; seven at least
 
 query TTIT
-SELECT metric, additivity, months, walkable FROM band_request();
+SELECT metric, additivity, months, walkable FROM range_request();
 ----
 hires	additive	4	false
 spend	additive	13	true
 
 query T
-SELECT reason FROM band_request() WHERE metric = 'hires';
+SELECT reason FROM range_request() WHERE metric = 'hires';
 ----
 the walk needs seven complete months, and hires has 4
 
@@ -107,74 +107,74 @@ SELECT json_extract(body, '$.spec.origins')::INTEGER, json_array_length(json_ext
        json_extract(body, '$.spec.threshold')::DOUBLE, json_extract_string(body, '$.table.period[0]'),
        json_extract_string(body, '$.table.period[12]'), json_extract_string(body, '$.table.member[12]'),
        json_extract(body, '$.table.value[0]')::DOUBLE
-FROM band_body();
+FROM range_body();
 ----
 6	13	0.98	2024-01	2025-01	spend	118.0
 
 # the test's threshold is the red line the walk is asked with
 statement ok
-DECLARE TEST bands_test ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
+DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.9;
 
 query R
-SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM band_body();
+SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM range_body();
 ----
 0.9
 
 # --- no service named: the walk refuses by name, before any call
 
 statement error
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 ----
 no service is named for /forecast
 
 # --- the service stood in for: two walked months, the newest outside the corridor, the older one withheld
 
 statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "walk": {"score": 1.0, "band": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "walked": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "walk": {"score": 1.0, "band": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "walked": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
 
 statement ok
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 
 query TTRTR
-SELECT served_by, grain, score, band, threshold FROM band_verdict();
+SELECT served_by, grain, score, state, threshold FROM range_result();
 ----
 glossthesi test	month	1.0	red	0.9
 
 query TTRRRRRT
-SELECT metric, period, actual, p05, p50, p95, pit, (withheld) IS NOT NULL FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
+SELECT metric, period, actual, p05, p50, p95, pit, (withheld) IS NOT NULL FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
 spend	2024-12	125.0	100.0	120.0	140.0	NULL	true
 spend	2025-01	300.0	200.0	220.0	240.0	1.0	false
 
 query TRTIRR
-SELECT period, displacement, newest, walked, held_80, held_90 FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
+SELECT period, displacement, newest, walked, held_80, held_90 FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
 2024-12	NULL	false	2	0.0	0.0
 2025-01	1.0	true	2	0.0	0.0
 
 query TTT
-SELECT metric, applicable, (reason) IS NOT NULL FROM band_points() WHERE metric = 'hires';
+SELECT metric, applicable, (reason) IS NOT NULL FROM range_points() WHERE metric = 'hires';
 ----
 hires	false	true
 
 query T
-SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WHERE function = 'metric_bands';
+SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WHERE function = 'metric_ranges';
 ----
 6 known values of history: a forecast needs 7
 
 # the result is the service's, repeated by the test's detector
 query TTTR
-SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_test';
+SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
-fin	bands_test	red	1.0
+fin	range_test	red	1.0
 
 # --- a repeat is served; a change to what the walk read owes a new one
 
 statement ok
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 
 query I
-SELECT count(*) FROM measurements WHERE function = 'metric_bands';
+SELECT count(*) FROM measurements WHERE function = 'metric_ranges';
 ----
 1
 
@@ -182,15 +182,15 @@ statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-04', 3.0, 'water');
 
 query T
-SELECT current FROM TESTS() WHERE test = 'bands_test';
+SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
 false
 
 statement ok
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_bands' AND a.test = 'bands_test';
+SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_ranges' AND a.test = 'range_test';
 ----
 2	true
 
@@ -258,7 +258,7 @@ SELECT json_extract_string(body, '$.table.period[13]'), json_extract_string(body
 2025-02-01	actual	2026-02-01
 
 statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[{"step":1,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":1,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":1,"span":1,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10}]}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[{"step":1,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":1,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":1,"span":1,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10}]}}'::JSON;
 
 statement ok
 SELECT metric_forecast() FROM fin;
@@ -307,9 +307,9 @@ sales	forecast	12	100.0
 statement ok
 DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
 
-# declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the metric definition
+# declared and not defined: no fact row yet, as for a metric; the plan goal asks for the metric definition
 query I
-SELECT count(*) FROM metric_summary() WHERE metric = 'sales_budget';
+SELECT count(*) FROM view_summary() WHERE view = 'sales_budget';
 ----
 0
 
@@ -317,7 +317,7 @@ statement ok
 GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
 
 query TTTTTT
-SELECT metric, plan_of, applicable, period_column, value_column, additivity FROM metric_summary() WHERE metric = 'sales_budget';
+SELECT view, plan_of, applicable, period_column, value_column, additivity FROM view_summary() WHERE view = 'sales_budget';
 ----
 sales_budget	sales	true	period	value	additive
 
@@ -328,7 +328,7 @@ SELECT count(*) FROM metric_series(grain := 'month') WHERE metric = 'sales_budge
 0
 
 query I
-SELECT count(*) FROM band_request() WHERE metric = 'sales_budget';
+SELECT count(*) FROM range_request() WHERE metric = 'sales_budget';
 ----
 0
 
@@ -367,8 +367,8 @@ SELECT * FROM metric_series(world := 'dream');
 ----
 the worlds are actual, plan, forecast and scenario
 
-# plan_points(): the year first — whole, begun, not complete: the actual to date plus the year to go bands it; then the months,
-# loaded through the origin with their variance, the rest against their own step's band
+# plan_points(): the year first — whole, begun, not complete: the actual to date plus the year to go gives its range; then the months,
+# loaded through the origin with their variance, the rest against their own step's range
 query TTTRRRRRRTTRT
 SELECT grain, label, period::DATE, value, actual, variance, low, expected, high, planned, covers, held_80, origin
 FROM plan_points() WHERE plan = 'sales_budget' AND (grain = 'year' OR label IN ('2025-01', '2025-02', '2025-03', '2025-04', '2025-12'))
@@ -386,9 +386,9 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 ----
 13
 
-# --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the routes read it
+# --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the reads use it
 query T
-SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
+SELECT wanted FROM view_summary() WHERE view = 'sales_budget';
 ----
 [metric_plan over fin.sales_budget]
 
@@ -396,18 +396,18 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query T
-SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
+SELECT wanted FROM view_summary() WHERE view = 'sales_budget';
 ----
 []
 
 query TTTTI
 SELECT plan, metric, plan_grain, forecast_run = (SELECT max(seq) FROM measurements WHERE function = 'metric_forecast'), count(*)
-FROM plan_record() GROUP BY ALL;
+FROM plan_stored() GROUP BY ALL;
 ----
 sales_budget	sales	month	true	13
 
 query TTR
-SELECT label, planned, value FROM plan_record() WHERE planned IN ('below', 'above')
+SELECT label, planned, value FROM plan_stored() WHERE planned IN ('below', 'above')
 ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 ----
 2025	above	2120.0
@@ -415,7 +415,7 @@ ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 2025-12	above	1000.0
 
 query TTTR
-SELECT subject, test, band, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
+SELECT subject, test, state, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
 ----
 fin.sales_budget	plan_test	red	0.27
 
@@ -491,7 +491,7 @@ SELECT applicable, (reason) IS NOT NULL FROM scenarios();
 false	true
 
 statement ok
-GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;
+GLOSS lever ON priced.price AS $${"value": true, "basis": "the list price, set each quarter"}$$;
 
 query TTT
 SELECT applicable, reason, len(levers) FROM scenarios();
@@ -550,10 +550,10 @@ FROM lever_bodies();
 priced.price	day	23	425	23	forecast
 
 statement ok
-CREATE OR REPLACE MACRO main.service_soft(route, body) AS '{"table":{"member":["priced.price","priced.price","priced.price"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[]}}'::JSON;
+CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"table":{"member":["priced.price","priced.price","priced.price"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[]}}'::JSON;
 
 statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08"],"column":["value","value","value","value","value","value","value","value","value"],"status":["scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[4.0,5.0,6.0,4.1,5.1,6.1,4.2,5.2,6.2],"history_value":[5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7],"history_low":[5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0],"history_high":[6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0],"sign":["+","+","+","+","+","+","+","+","+"],"confidence":["direction","direction","direction","direction","direction","direction","direction","direction","direction"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}]}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08"],"column":["value","value","value","value","value","value","value","value","value"],"status":["scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[4.0,5.0,6.0,4.1,5.1,6.1,4.2,5.2,6.2],"history_value":[5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7],"history_low":[5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0],"history_high":[6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0],"sign":["+","+","+","+","+","+","+","+","+"],"confidence":["direction","direction","direction","direction","direction","direction","direction","direction","direction"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}]}}'::JSON;
 
 statement ok
 SELECT metric_scenario() FROM fin;
@@ -587,13 +587,13 @@ SELECT * FROM metric_series(world := 'scenario', scenario := 'nothing');
 no scenario of that name is declared
 
 query TTTT
-SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_test';
+SELECT subject, test, state, current FROM TESTS() WHERE test = 'scenario_test';
 ----
 fin	scenario_test	green	true
 
 # a lever whose forecast the service refuses is held, and the estimate holds
 statement ok
-CREATE OR REPLACE MACRO main.service_soft(route, body) AS '{"error": "the service answered 422 on /forecast: 3 periods of history, a forecast needs 6"}'::JSON;
+CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"error": "the service answered 422 on /forecast: 3 periods of history, a forecast needs 6"}'::JSON;
 
 statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-06', 4.0, 'parks');
@@ -611,7 +611,7 @@ statement ok
 GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price, CASE WHEN booked >= DATE '2025-02-01' THEN 0.0 ELSE 1.0 END AS promo FROM fin.ledger"}$$;
 
 statement ok
-GLOSS lever ON priced.promo AS $${"value": true, "grounds": "the promotion flag"}$$;
+GLOSS lever ON priced.promo AS $${"value": true, "basis": "the promotion flag"}$$;
 
 statement ok
 DECLARE ASPECT promo_on WITH $${"title": "Promotion doubled", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
@@ -641,6 +641,6 @@ promo_on	priced	false	true
 query T
 SELECT name FROM outlook_measurements() ORDER BY name;
 ----
-metric_bands
 metric_forecast
+metric_ranges
 metric_scenario

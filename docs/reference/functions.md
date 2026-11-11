@@ -18,7 +18,7 @@ There are two kinds:
   complete answer, not an error.
 - A **detector** returns no aspect. A test names it in its `DETECTOR`
   clause. It sees only the values written for that aspect and returns a
-  band and a score.
+  state and a score.
 
 Measurements propose; they never decide. The agent reading them
 removes the false positives.
@@ -59,7 +59,7 @@ calendar buckets over the column's own window. A gap is a stretch
 longer than twice the median; the twenty largest are sampled. Only a
 date or timestamp has a window; for a number or text the reason names
 the type. The cadence is the default finest grain of a metric's series
-([views and table functions](reads.md), `metric_summary()`).
+([views and table functions](reads.md), `view_summary()`).
 
 ## Table measurements
 
@@ -97,7 +97,7 @@ cannot decide it. The evidence is a movement summed per entity and
 period from an event table that the declared relationships connect to
 the column's table, scored against both readings: flow where the level
 matches the movement, stock where its change does. The summary carries
-the verdict, the event table and alignment that decided, its
+the result, the event table and alignment that decided, its
 convention, the Wilson support over the entities both sides share, the
 voted count, the median residuals of both readings and the sign split.
 Every candidate reads back through
@@ -132,9 +132,9 @@ A relationship within one table is checked as a dependency: its
 orphans are the rows whose finer value maps to more than one coarser
 value, and it has no date pairs ([coherence](../methods/coherence.md)).
 
-### detect_grounding_collisions
+### detect_definition_collisions
 
-`SELECT detect_grounding_collisions() FROM <dataset>` → `grounding_collisions`
+`SELECT detect_definition_collisions() FROM <dataset>` → `definition_collisions`
 
 Metrics that are the same thing twice: definitions whose SQL is the
 same statement once parsed, under different names; and definitions
@@ -147,15 +147,15 @@ be deliberate, and telling them from mistakes is the agent's call.
 These call the model service the deployment names
 ([preview](../preview/forecasts.md)).
 
-### metric_bands
+### metric_ranges
 
-`SELECT metric_bands() FROM <dataset>` → `metric_bands`
+`SELECT metric_ranges() FROM <dataset>` → `metric_ranges`
 
 For every applicable metric, backtests the six most recent complete months
-and asks the model service what range each month should have landed in
-given everything before it. Each point records the band quantiles
-(p05–p95) and its PIT, the quantile the actual landed at; the backtest
-records the service's verdict, score, band and threshold. A metric with
+and asks the model service what range each month should have fallen in
+given everything before it. Each point records the range quantiles
+(p05–p95) and its PIT, the quantile the actual fell at; the backtest
+records the service's result, score, state and threshold. A metric with
 fewer than seven complete months is not applicable
 ([expected ranges](../preview/expected-ranges.md)).
 
@@ -164,11 +164,11 @@ fewer than seven complete months is not applicable
 `SELECT metric_forecast() FROM <dataset>` → `metric_forecast`
 
 For every applicable metric, the periods ahead from the last period
-with a value: the band quantiles (p05–p95) per step over a horizon per
+with a value: the range quantiles (p05–p95) per step over a horizon per
 grain (day 31, week 13, month 12, quarter 4), and for an additive metric the
 totals of the month, quarter or year to go. The run is stored with its
 origin and `served_by`, and each point with the service's held-out
-share inside the 80% and 90% band at that grain, step and span.
+share inside the 80% and 90% range at that grain, step and span.
 `forecast_points()` joins the actuals as they arrive and
 `forecast_coverage()` counts the coverage. A metric finer than day,
 coarser than quarter, or shorter than six periods is not applicable
@@ -195,7 +195,7 @@ again once a newer forecast exists ([plans](../preview/plans.md)).
 
 ## Detectors
 
-### slot_entropy
+### value_entropy
 
 Used by the KPI kit's tests `role_test`, `additivity_test` and `unit_test`
 (threshold 0.7). The score is the share of extra distinct values among
@@ -204,19 +204,19 @@ to the threshold, red above it.
 
 ### rate_tolerance
 
-Bands a written expectation against a computed breach rate on the same
+Scores a written expectation against a computed breach rate on the same
 aspect: green at or under the tolerance. One-sided; a source that must
 also catch over-cleaning declares its own detector
 ([data tests](../usage/data-tests.md)).
 
-### band_breach
+### range_breach
 
-Used by the outlook kit's test `bands_test` on `metric_bands` (threshold
-0.98). Repeats the service's verdict over the backtest: the worst
+Used by the outlook kit's test `range_test` on `metric_ranges` (threshold
+0.98). Repeats the service's result over the backtest: the worst
 displacement, |2·PIT − 1|, across the newest point of every metric
 backtested, raised to the number of metrics scored. `TESTS()` carries it
 and the metric's goal in `next` acts on it where a model service is named. Which metric and month is in the
-measurement's own output; `band_points()` returns them as rows.
+measurement's own output; `range_points()` returns them as rows.
 
 ### forecast_exists, scenario_exists
 
@@ -226,6 +226,6 @@ once they go stale.
 
 ### plan_gap
 
-Used by `plan_test` on `metric_plan`: red where a period with a band lies
-below or above the forecast's band; the score is the share of such
+Used by `plan_test` on `metric_plan`: red where a period with a range lies
+below or above the forecast's range; the score is the share of such
 periods.

@@ -65,7 +65,7 @@ measurements were computed on, so their results are out of date;
 expected-ranges step once.
 
 - Read the results on the metrics you touched: `TESTS()` on their
-  checks, and `metric_summary().alternative_divergence` where an
+  checks, and `view_summary().alternative_divergence` where an
   assumption names an alternative.
 - A test that turned red after a decision is a conflict for the
   console. Leave it open so the person decides again with the

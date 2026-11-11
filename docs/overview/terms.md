@@ -17,11 +17,11 @@ defined once here. How they fit together: [how it works](how-it-works.md).
 | function | measurement | One SQL query that measures the data; its result is stored with its provenance |
 | detector | scoring function | A function that scores how far the values for an aspect agree |
 | test (`DECLARE TEST`) | data test | Declared on an aspect: who may annotate it and which detector scores agreement, with a threshold |
-| `TESTS()` | test results | One row per asset and aspect: band, score, whether it is current |
+| `TESTS()` | test results | One row per asset and aspect: state, score, whether it is current |
 | `GLOSSARY()` | the glossary | What is known: one row per asset and aspect, with its state |
 | `current` · `stale` · `conflict` · `missing` | valid · outdated · conflict · missing | The state of an asset's aspect in the glossary |
-| band | severity, confidence | green, yellow, orange, red, or error |
-| `pin`, `reads` | provenance | The versions of what a measurement read |
+| state (of a test result) | severity, confidence | green, yellow, orange, red, or error |
+| `data_version`, `reads` | provenance | The versions of what a measurement read |
 | source | connection | A directory, a URL prefix, or an attached database |
 | `RECIPE` | load query | The SQL that loads a table from a source |
 | `IMPORT` | load | Runs a load query; every load is a DuckLake snapshot with its row count and column lineage |
@@ -73,8 +73,8 @@ An import from Ossie is planned.
 | `fan_out_test` | join fan-out, many-to-many join | Two tables a metric scans share a key that repeats on both sides; the join multiplies rows unless the definition reduces one side to one row per key before the join |
 | `orphan_test` | referential integrity, orphaned keys; dbt's `relationships` test | The share of rows on a declared join between tables the metric scans whose key finds no parent |
 | `measure_additivity_test` | additivity: additive, semi-additive, non-additive measures | Whether the metric's value column says how it combines over time and members |
-| `metric_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
-| `red` · `not_run` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `metric_tests()`, and whether its result still holds |
+| `view_tests()` | test results per metric | Every test on each metric and on what it reads, worst first, with the statement that runs it |
+| `red` · `not_run` · `green`, `current` | fail · skipped · pass, fresh | A test's state in `view_tests()`, and whether its result still holds |
 | `tolerance`, `breach_rate` | threshold, failure rate | The rate a person accepts; the violation share a check measures |
 
 ## The server
@@ -87,7 +87,7 @@ An import from Ossie is planned.
 | MCP interface | MCP server | `/mcp` and `/<dataset>/mcp`: one tool for glossql and SQL |
 | query endpoint | Arrow over HTTP | `/<dataset>/query`: a query in the request body, an Arrow IPC stream back |
 | console | data catalog UI | `/<dataset>/app`: the review queue, metrics, quality, a page per table and column |
-| goal | objective | One row of `next`: a served metric with its tests, the review queue, and the preview goals bands and plan where a model service is named |
+| goal | objective | One row of `next`: a served metric with its tests, the review queue, and the preview goals ranges and plan where a model service is named |
 | `next` | next steps, test results | The line every MCP result ends with: per served metric its worst test and the statement that settles it, then the review queue |
 | review queue (`open_questions`) | review queue | Assumptions below full confidence, waiting for a person |
 | review decision | approval | A person's answer, stored as their annotation; it outranks every agent's |

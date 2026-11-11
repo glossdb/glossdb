@@ -44,7 +44,7 @@
              server answers 204 + HX-Trigger glossql:written, the store
              drops its caches, and every panel refetches in place —
              no navigation, nothing to go back to. #}
-          <form class="rule" hx-post="/{{ dataset }}/app/console/rule" hx-swap="none">
+          <form class="rule" hx-post="/{{ dataset }}/app/console/decide" hx-swap="none">
             <input type="hidden" name="subject" value="{subj_id}">
             <input type="hidden" name="aspect" value="{asp_id}">
             <input type="hidden" name="key" value="{key_id}">

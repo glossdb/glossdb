@@ -36,7 +36,7 @@
   {% if ckind == "corridor" %}
   <section class="tile">
     <header><span class="eyebrow" title="For each metric, the newest complete month as recorded: the actual, the range its own history predicted, and how far outside it fell. A metric that could not be checked says why.">Every metric's newest complete month</span>
-      <code class="chip">band_points()</code></header>
+      <code class="chip">range_points()</code></header>
     <p class="hint">Per metric, the newest complete point: the actual against the range its own history predicted, how far out it sits (0 at the median, 0.8 at the range's edge, 1 at the extremes) and on which side. Farthest out first. A point that was held back, or a metric that could not be checked, says why.</p>
     <gl-rows frame="frames/check_points" empty="the expected ranges have not been computed: metric_bands computes them, and the bands goal in the next steps gives the statement">
       <template>
@@ -136,7 +136,7 @@
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="Every test on each metric and on the tables and columns it reads, worst first: join fan-out, orphaned keys, additivity, validity dates, and the team's own. A metric whose tests all pass is one green row.">Tests per metric</span>
-      <code class="chip">metric_tests()</code></header>
+      <code class="chip">view_tests()</code></header>
     <p class="hint">What can break each metric's number, checked. Worst first; a green row means every test on the metric passes or was accepted.</p>
     <gl-rows frame="frames/metric_tests" empty="no metric is served yet: the tests appear with the first definition">
       <template>

@@ -4,7 +4,7 @@ A function is one SQL query that measures the data: profiling, quality
 screens, detection. A measurement function `RETURNS` a property and
 runs over data. A detector has no `RETURNS` and scores how far the
 values for a property agree ([data tests](data-tests.md)). Metrics are
-neither: a metric is a `VIEW` property ([metrics](metrics.md)). The
+neither: a metric is a `VIEW` property ([metrics](views.md)). The
 language reference is [SPEC.md §6](https://github.com/glossdb/glossql/blob/main/SPEC.md);
 the shipped functions are listed in [functions](../reference/functions.md).
 
@@ -48,7 +48,7 @@ SELECT outlier_profile() FROM work_orders.duration_min;
 
 Running a function computes it at the current versions of everything
 the statement resolved, and stores one row in `measurements` with what
-the body actually read (`reads`) and at which version (`pin`).
+the body actually read (`reads`) and at which version (`data_version`).
 
 - The stored row is served again, and marked `current`, while what it
   read is unchanged. A write to anything else, such as another table's
@@ -71,8 +71,8 @@ because of the data's shape has found something too.
 ## Write a detector
 
 A detector is named only in a test's `DETECTOR` clause. Its query runs
-over `slots`: the test's collected values for its property, with
-`speaker` and `current` beside each, and `body` typed by the values'
+over `annotations`: the test's collected values for its property, with
+`actor_kind` and `current` beside each, and `body` typed by the values'
 own JSON. The test's `THRESHOLD` is bound as `$threshold`. The query
-returns one row per asset: `subject`, `band`, `score`. The engine adds
+returns one row per asset: `subject`, `state`, `score`. The engine adds
 the test, its property and the time.

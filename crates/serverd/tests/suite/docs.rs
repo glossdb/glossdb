@@ -135,7 +135,7 @@ async fn every_doc_function_body_compiles() {
             };
             let body = &after[..close];
             // A body is SQL — a measurement over data, a detector over
-            // `slots` (§6) — so the check is the session's shape rule.
+            // `annotations` (§6) — so the check is the session's shape rule.
             let one_query = session.parse(body).await.is_ok_and(|n| n == 1);
             if !one_query {
                 broken.push(format!(
@@ -270,7 +270,7 @@ fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
         "the served guide is the files under vendor/"
     );
     assert_eq!(served, on_disk, "a served page is the file as it stands");
-    let pages = glossdb_serverd::skills::door_pages()
+    let pages = glossdb_serverd::skills::served_pages()
         .expect("the language's documents beside the extension's kits");
     for p in glossdb_serverd::skills::VENDORED {
         assert!(

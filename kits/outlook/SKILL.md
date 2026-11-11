@@ -6,13 +6,13 @@ description: The outlook kit (preview) for a glossql workspace — the worlds be
 # The outlook kit: what it teaches
 
 This kit is a preview. For an actor working in a DuckDB that has the
-glossql extension loaded, the KPI, quality and metrics kits declared and
-this kit after them. The metrics kit serves the actual world: the cells
+glossql extension loaded, the KPI, quality and views kits declared and
+this kit after them. The views kit serves the actual world: the cells
 of every metric. This kit adds three worlds beside it: the forecast, the
 scenario and the plan. Each is what the model service answers, stored as
-a measurement with its provenance (`pin`), and read back as SQL. The
-service owns its topic: the bands, the PIT and why it is withheld, the
-walk's verdict. The kit owns the calendar and sends complete periods
+a measurement with its provenance (`data_version`), and read back as SQL. The
+service owns its topic: the ranges, the PIT and why it is withheld, the
+walk's result. The kit owns the calendar and sends complete periods
 only. The server's `next` read judges from the catalog and never
 computes over the data.
 
@@ -21,13 +21,13 @@ computes over the data.
 ```sql
 FROM glossql_kit('kits/kpi/kit.sql');
 FROM glossql_kit('kits/quality/kit.sql');
-FROM glossql_kit('kits/metrics/kit.sql');
+FROM glossql_kit('kits/views/kit.sql');
 FROM glossql_kit('kits/outlook/kit.sql');
 SET GLOBAL glossql_service_url = 'http://127.0.0.1:8100';  -- the service, named once for the instance; the server names it from GLOSSDB_SERVICE_URL
-SELECT * FROM band_request();                    -- one row per metric: can the walk take it
+SELECT * FROM range_request();                    -- one row per metric: can the walk take it
 ```
 
-Every call goes through `service(route, body)`, one macro over
+Every call goes through `service(path, body)`, one macro over
 `glossql_service`. A test suite replaces the service by re-declaring the
 macro. Without a service named, a measurement refuses by name before any
 call goes out.
@@ -36,7 +36,7 @@ call goes out.
 
 | World | What it is | Read as |
 |---|---|---|
-| actual | the metrics kit's cells, computed from the view at read | `metric_series()` |
+| actual | the views kit's cells, computed from the view at read | `metric_series()` |
 | forecast | the newest forecast's medians at its grain | `metric_series(world := 'forecast')` |
 | scenario | the newest estimate's medians ahead, per scenario | `metric_series(world := 'scenario', scenario := '<name>')` |
 | plan | a plan's rows through the metric it plans, at the plan's own grain | `metric_series(world := 'plan', plan := '<name>')` |
@@ -45,7 +45,7 @@ A world other than these four refuses by name. The actual world is the
 only one computed from the data; the others read measurements and the
 plan's view.
 
-## The walk: bands
+## The walk: ranges
 
 The walk sends every applicable metric's total at month grain, complete
 months only, seven at least, so that one origin has the six known values
@@ -53,16 +53,16 @@ the service needs. The test's threshold is the red line
 the walk is asked with.
 
 ```sql
-SELECT metric_bands() FROM fin;
-SELECT served_by, grain, score, band, threshold FROM band_verdict();
-SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = 'spend';
+SELECT metric_ranges() FROM fin;
+SELECT served_by, grain, score, state, threshold FROM range_result();
+SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM range_points() WHERE metric = 'spend';
 ```
 
-`metric_bands` stores the service's verdict over every metric walked and,
+`metric_ranges` stores the service's result over every metric walked and,
 per metric, whether it was applicable and why not, its additivity, the
-months walked, the share of points inside the 80% and the 90% band, the
-newest point and every walked point. The test `bands_test` repeats the
-verdict through `band_breach` at 0.98. A metric too short for the walk
+months walked, the share of points inside the 80% and the 90% range, the
+newest point and every walked point. The test `range_test` repeats the
+result through `range_breach` at 0.98. A metric too short for the walk
 serves one row with its reason.
 
 ## The forecast
@@ -77,11 +77,11 @@ One request per metric at its floor. The horizon is 31 days, 13 weeks,
 12 months or 4 quarters; an hour, a minute and a year stay unforecast.
 A flow also asks the totals to go: the month, the quarter or the year
 the first period ahead falls in. The measurement stores each point as
-a step or a span with its band, p05 to p95, and the service's held-out
+a step or a span with its range, p05 to p95, and the service's held-out
 share at that grain, step and span. No actual is stored with it. The
 read joins the actual once it is loaded, says where it fell against the
-band (`below`, `low`, `inside`, `high`, `above`) and how often such a
-band held: the catalog's own share once thirty points have an actual for
+range (`below`, `low`, `inside`, `high`, `above`) and how often such a
+range held: the catalog's own share once thirty points have an actual for
 the metric, else for the dataset, else the service's.
 `forecast_coverage()` is that tally. The test `forecast_test` says whether
 a current forecast exists.
@@ -96,7 +96,7 @@ levers. A period not named keeps a factor of one.
 
 ```sql
 DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
-GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;
+GLOSS lever ON priced.price AS $${"value": true, "basis": "the list price, set each quarter"}$$;
 GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.1}, "basis": "the February price list"}]}$$;
 SELECT * FROM scenarios();
 SELECT metric_scenario() FROM fin;
@@ -133,12 +133,12 @@ SELECT metric_plan() FROM fin.sales_budget;
 `plan_points()` judges every served plan against the actual and the
 newest forecast, one row per period at the plan's own grain and, where
 that is finer, at the year: the plan's cell, the actual to date, the
-variance on a complete period, the forecast's 80% band, and `planned`:
+variance on a complete period, the forecast's 80% range, and `planned`:
 `complete`, `inside`, `below`, `above`, `partial`, `open` or `ahead`.
 `metric_plan` stores that judgement on the plan with the forecast run
 it was judged against. The plan's row asks for it until a current one
 exists; it goes stale once the data or the catalog rows it read change.
-`plan_record()` is the newest judgement from the measurements alone,
+`plan_stored()` is the newest judgement from the measurements alone,
 the read the `next` step for the plan takes. The test `plan_test` names
 the gap.
 
@@ -146,14 +146,14 @@ the gap.
 
 | Read | Serves |
 |---|---|
-| `band_request()`, `band_body()` | the walk's request per metric, and the body as the service's contract spells it |
-| `band_verdict()`, `band_points()` | the newest walk: its verdict; one row per metric and walked month |
+| `range_request()`, `range_body()` | the walk's request per metric, and the body as the service's contract spells it |
+| `range_result()`, `range_points()` | the newest walk: its result; one row per metric and walked month |
 | `forecast_request()`, `forecast_bodies()` | the forecast's request per metric, and one body per grain and set of totals |
-| `forecast_points()`, `forecast_runs()`, `forecast_record()`, `forecast_coverage()` | the newest run flattened with the actual joined; every run; every run's points; the tally of how bands held |
+| `forecast_points()`, `forecast_runs()`, `forecast_stored()`, `forecast_coverage()` | the newest run flattened with the actual joined; every run; every run's points; the tally of how ranges held |
 | `scenarios()`, `scenario_request()`, `scenario_bodies()`, `lever_bodies()` | every scenario judged; its reach per metric; the what-if bodies; the levers' own forecast requests |
 | `scenario_points(s)`, `scenario_levers(s)` | the newest estimate per scenario, metric and period ahead; the parts per lever |
 | `plan_rows()`, `plan_grains()`, `plan_cells(at_grain)` | every applicable plan's rows through its metric; its grain; its cells at a grain |
-| `plan_points()`, `plan_record()` | the plans judged at read; the newest judgement from the catalog |
+| `plan_points()`, `plan_stored()` | the plans judged at read; the newest judgement from the catalog |
 | `world_cells(w, p, s, g)` | the forecast, scenario and plan worlds under the metric, for `metric_series(world := …)` |
 
 ## The goals
@@ -167,6 +167,6 @@ that are due. Every row reads the catalog, none the data.
 
 ## What is not here
 
-The model is the service's: the bands, the PIT, the verdict, the
+The model is the service's: the ranges, the PIT, the result, the
 estimate. An hour, a minute and a year are not forecast. No metric
 definition is replayed over the data under a scenario.

@@ -15,8 +15,8 @@ reads AS (
               WHEN s.kind = 'relation' THEN 'view'
               ELSE s.kind END AS kind,
          CAST(NULL AS BIGINT) AS n, s.meaning AS what
-  FROM metric_surfaces s
-  WHERE s.grounded AND s.stopped = '' AND s.kind <> 'plan'),
+  FROM view_definitions s
+  WHERE s.defined AND s.stopped = '' AND s.kind <> 'plan'),
 all_ AS (SELECT * FROM tables UNION ALL SELECT * FROM reads)
 SELECT name, kind,
        coalesce(CAST(n AS VARCHAR), '') AS rows,

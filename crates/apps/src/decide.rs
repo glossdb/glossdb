@@ -2,14 +2,14 @@
 //!
 //! The gate is the derivation itself. A posted review decision is accepted only
 //! if `open_questions` still carries that exact `(subject, aspect,
-//! key)` — so the page cannot rule something already decided, already
+//! key)` — so the page cannot decide something already decided, already
 //! folded in, or never disclosed, and a stale tab is refused rather
 //! than believed. The prose the review decision records comes from that read,
 //! not from the form: what the human agreed with is what the workspace
 //! says, never what a browser posted.
 //!
 //! Nothing else about the page changes. It still holds no other write,
-//! and the review decision is stored exactly where the round's would — the human's
+//! and the review decision is stored exactly where the MCP review's would — the human's
 //! own value, on the human's own channel, witnessed by this server.
 //!
 //! Who that human is comes from the token the request carries; that
@@ -26,7 +26,7 @@
 //! current state instead of asking for a reload.
 
 use crate::engine::Caller;
-use crate::engine::rulings::{self, Ruling};
+use crate::engine::decisions::{self, Decision};
 use axum::Extension;
 use axum::Form;
 use axum::extract::{Path, State};
@@ -34,7 +34,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
-use crate::AppDoor;
+use crate::AppInterface;
 use crate::app::AppDef;
 
 #[derive(Deserialize)]
@@ -42,7 +42,7 @@ pub struct Answer {
     subject: String,
     aspect: String,
     key: String,
-    /// `confirmed`, `corrected`, or `unclear` — the stances the round
+    /// `confirmed`, `corrected`, or `unclear` — the stances the review
     /// serves. `unclear` refuses the question rather than the claim:
     /// the agent owes a reformulation, not an applied decision. Admission is the
     /// one gate: the review decision aspect's schema holds the enum, so an
@@ -58,30 +58,32 @@ pub struct Answer {
 /// bubbles — the store clears on it, components refetch on it.
 pub(crate) const WRITTEN: [(&str, &str); 1] = [("HX-Trigger", "glossql:written")];
 
-pub async fn rule(
-    State(door): State<AppDoor>,
+pub async fn decide(
+    State(interface): State<AppInterface>,
     Path((dataset, app)): Path<(String, String)>,
     Extension(Caller(actor)): Extension<Caller>,
     Form(answer): Form<Answer>,
 ) -> Response {
     let stance = answer.stance.as_str();
-    if let Some(missing) = crate::missing(&door, &dataset).await {
+    if let Some(missing) = crate::missing(&interface, &dataset).await {
         return plain(StatusCode::NOT_FOUND, missing);
     }
-    let glossed = crate::glossed::parts(&door, &dataset, false).await.parts;
+    let glossed = crate::glossed::parts(&interface, &dataset, false)
+        .await
+        .parts;
     match AppDef::load(&app, &glossed) {
         Ok(Some(_)) => {}
         Ok(None) => return plain(StatusCode::NOT_FOUND, format!("no app `{app}`")),
         Err(e) => return plain(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let human = match door.plane.channel(actor, Some(&dataset)).await {
+    let human = match interface.plane.channel(actor, Some(&dataset)).await {
         Ok(session) => session,
         Err(e) => return plain(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
     };
 
     // The question must still stand, and its own words are what the
     // review decision records.
-    let standing = match crate::frames::one_open_question(
+    let question = match crate::frames::one_open_question(
         &human,
         &answer.subject,
         &answer.aspect,
@@ -89,7 +91,7 @@ pub async fn rule(
     )
     .await
     {
-        Ok(Some(standing)) => standing,
+        Ok(Some(question)) => question,
         Ok(None) => {
             // The trigger rides the refusal too: the stale tab's panels
             // re-derive to the current state on their own.
@@ -104,14 +106,14 @@ pub async fn rule(
     };
 
     let note = (!answer.note.trim().is_empty()).then(|| answer.note.trim().to_string());
-    match rulings::land(
+    match decisions::store(
         &human,
-        Ruling {
+        Decision {
             subject: &answer.subject,
             aspect: &answer.aspect,
-            dimension: &standing.dimension,
+            dimension: &question.dimension,
             key: &answer.key,
-            assumption: &standing.assumption,
+            assumption: &question.assumption,
             stance,
             note,
         },

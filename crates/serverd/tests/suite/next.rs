@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
-use glossdb_serverd::{Access, DoorConfig, router};
+use glossdb_serverd::{Access, InterfaceConfig, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -19,12 +19,16 @@ async fn app() -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
         plane.with_pages(
-            glossdb_serverd::skills::door_pages()
+            glossdb_serverd::skills::served_pages()
                 .expect("the language's documents beside the extension's kits"),
         ),
     );
     (
-        router(plane, DoorConfig::default(), Access::Gated(common::login())),
+        router(
+            plane,
+            InterfaceConfig::default(),
+            Access::Gated(common::login()),
+        ),
         dir,
     )
 }
@@ -111,7 +115,7 @@ fn text(row: &Value, key: &str) -> String {
     row[key].as_str().unwrap_or_default().to_string()
 }
 
-/// A workspace with the dataset `fin` and a daily ledger landed.
+/// A workspace with the dataset `fin` and a daily ledger loaded.
 async fn fin() -> (Router, tempfile::TempDir) {
     let (app, dir) = app().await;
     let body = expect_ok(
@@ -181,11 +185,11 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     )
     .await;
     let written = &outcomes[1]["rows"][0];
-    assert_eq!(written["metric"], json!("spend"), "{outcomes}");
+    assert_eq!(written["view"], json!("spend"), "{outcomes}");
     assert_eq!(written["applicable"], json!(false), "{outcomes}");
     let tests = rows(
         &app,
-        "SELECT test, state FROM metric_tests() WHERE metric = 'spend' ORDER BY test",
+        "SELECT test, state FROM view_tests() WHERE view = 'spend' ORDER BY test",
     )
     .await;
     let states: Vec<(String, String)> = tests

@@ -181,4 +181,4 @@ looks.
   without one is known only to you.
 
 Whether a metric is served on that data or stopped is decided in its
-definition: `references/ground.md`.
+definition: `references/define.md`.

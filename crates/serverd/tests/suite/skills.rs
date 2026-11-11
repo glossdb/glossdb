@@ -145,7 +145,7 @@ async fn every_skill_example_parses() {
 /// Rule 1 cannot see this: a function's body is opaque text to the
 /// engine's parser, so an example whose body the engine would refuse
 /// parses perfectly and ships as teaching. A body is SQL — a
-/// measurement over data, a detector over `slots` (§6) — so the check
+/// measurement over data, a detector over `annotations` (§6) — so the check
 /// is the same shape rule the session applies.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_skill_function_body_compiles() {

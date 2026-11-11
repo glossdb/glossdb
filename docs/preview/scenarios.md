@@ -20,7 +20,7 @@ with no test, saying who sets it. `false` says the column was looked at
 and nobody sets it. A column with no `lever` annotation is not a lever.
 
 ```glossql
-GLOSS lever ON net_sales.unit_price AS $${"value": true, "grounds": "the list price, set by sales operations"}$$;
+GLOSS lever ON net_sales.unit_price AS $${"value": true, "basis": "the list price, set by sales operations"}$$;
 ```
 
 A scenario is one FACT aspect per scenario, with `x-kind: scenario`,

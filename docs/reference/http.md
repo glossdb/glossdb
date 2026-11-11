@@ -55,7 +55,7 @@ The console and the data apps ([app authoring](apps.md)):
 | `/<dataset>/app/{app}/p/{page}` | a page |
 | `/<dataset>/app/{app}/frames/{frame}` | a frame as Arrow IPC; URL parameters bind as `$name` |
 | `/<dataset>/app/{app}/specs/{spec}` | a chart spec |
-| `POST /<dataset>/app/{app}/rule` | a review decision |
+| `POST /<dataset>/app/{app}/decide` | a review decision |
 | `POST /<dataset>/app/{app}/remeasure` | run stale and missing measurements again |
 
 Frames only read; they run as the person `app:<name>`. The two writes

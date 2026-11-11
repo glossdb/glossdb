@@ -16,7 +16,7 @@ from the `Dockerfile` at the tag, the extension at the commit
 model service is glossthesi, released from its own repository on its
 own cadence. **Never built**: macOS x86_64, ARM Linux, Jetson,
 a cuda flavor, a Linux package (the image is the Linux artifact) —
-ruled, don't propose them back.
+decided, don't propose them back.
 
 The detail lives in the files themselves — `.github/workflows/
 release.yml`, `.github/release-macos.sh`, the `Dockerfile`,
@@ -48,7 +48,7 @@ nowhere else.
    draft release on the tag, uploads it, and renders
    `.github/homebrew/glossql.rb` with the real checksum.
 5. Write the notes on the release: a very short overview and the
-   fixes, one line each. Brief — the notes are not the docs, and
+   fixes, one line each. Summary — the notes are not the docs, and
    never a commit list. When the image run is green and the tarball sits on
    the draft: `gh release edit v<version> --notes-file <notes>
    --draft=false`. Publish once, complete — that is the standing

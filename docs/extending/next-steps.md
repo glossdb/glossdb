@@ -42,7 +42,7 @@ One row per asset and state, in this order:
   `waiting`, `blocked`.
 - `who`: `agent`, or `person` for a question in the review queue.
 - `open`: the finding in one sentence.
-- `for_metric`: the metrics that read the asset.
+- `for_view`: the metrics that read the asset.
 - `cause`: on an outdated description and on a test that is not
   green, what the newest load changed: its row count against the load
   before, and the columns whose profile moved (distinct values, share
@@ -67,7 +67,7 @@ serves the step's rows with cause and statement as markdown;
 
 ## The tests behind a metric
 
-The metrics kit ships four tests on every metric, over the tables its
+The views kit ships four tests on every metric, over the tables its
 definition scans: `fan_out_test`, join fan-out; `orphan_test`,
 referential integrity on the declared joins; `validity_test`, an
 effective-dated table read without both of its dates;
@@ -75,9 +75,9 @@ effective-dated table read without both of its dates;
 up. The server runs them after a call that defines a metric,
 annotates its columns or loads a table it scans. It also runs the
 measurements they read: a profile of every column the metric reads
-and the relationship check of the dataset. `metric_tests()` lists
+and the relationship check of the dataset. `view_tests()` lists
 every test on each metric and on what it reads, a team's own tests
-included ([views and table functions](../reference/reads.md#metric_tests)).
+included ([views and table functions](../reference/reads.md#view_tests)).
 
 A result that predates a change to what it read keeps its state, and
 the server runs it again at the next call that touches the metric.
@@ -97,23 +97,23 @@ adds its rows to `next` with it and changes nothing else.
 
 ```glossql
 DECLARE ASPECT currency_check WITH $${
-  "type": "object", "x-subject": "metric",
+  "type": "object", "x-subject": "view",
   "properties": {"breach_rate": {"type": ["number", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION currency_check FOR GLOBAL AS $$
   SELECT 1.0 AS breach_rate,
          'the value sums amounts in more than one currency' AS finding,
-         main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) AS fix
+         main.view_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) AS fix
 $$ RETURNS currency_check;
 
 DECLARE TEST currency_test ON currency_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 
-`x-subject: metric` marks a test the server runs on every metric.
-`metric_redefine(dataset, metric)` returns the statement that records
+`x-subject: view` marks a test the server runs on every metric.
+`view_redefine(dataset, metric)` returns the statement that records
 the metric's current definition again, to edit and send.
 
 ## What a kit adds

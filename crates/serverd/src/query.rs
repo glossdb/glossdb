@@ -62,15 +62,15 @@ pub async fn query(
                 // The statement was refused: the body says why — and what
                 // a sequence had already loaded rides beside the reason.
                 Err(e) => {
-                    let landed = match &e {
-                        SessionError::Sequence { landed, .. } if !landed.is_empty() => {
-                            wire::outcomes_json(landed).ok()
+                    let completed = match &e {
+                        SessionError::Sequence { loaded, .. } if !loaded.is_empty() => {
+                            wire::outcomes_json(loaded).ok()
                         }
                         _ => None,
                     };
                     let mut body = serde_json::json!({ "error": e.to_string() });
-                    if let Some(landed) = landed {
-                        body["completed"] = landed;
+                    if let Some(completed) = completed {
+                        body["completed"] = completed;
                     }
                     (StatusCode::UNPROCESSABLE_ENTITY, Json(body)).into_response()
                 }

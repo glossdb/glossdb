@@ -178,7 +178,7 @@ FROM throughput GROUP BY date_trunc('month', date)
 ORDER BY month
 ```
 
-More: [metrics](../usage/metrics.md).
+More: [metrics](../usage/views.md).
 
 ## 10. Add a data test
 
@@ -209,7 +209,7 @@ DECLARE FUNCTION duration_present_check FOR ops AS $$
   FROM work_orders WHERE status = 'closed'
 $$ RETURNS duration_present;
 
-SELECT subject, band, score FROM TESTS(ops::duration_present);
+SELECT subject, state, score FROM TESTS(ops::duration_present);
 ```
 
 More: [data tests](../usage/data-tests.md).
@@ -218,16 +218,16 @@ More: [data tests](../usage/data-tests.md).
 
 `metric_series()` serves each metric's values at its finest grain, the
 total and the slices along its dimensions, computed when you read it.
-`metric_summary()` says what the catalog knows of each metric's columns:
+`view_summary()` says what the catalog knows of each metric's columns:
 
 ```sql
 SELECT name, title, unit, meaning, formula
-FROM metric_surfaces ORDER BY name
+FROM view_definitions ORDER BY name
 ```
 
 ```sql
-SELECT metric, applicable, reason, additivity, floor, dims
-FROM metric_summary() ORDER BY metric
+SELECT view, applicable, reason, additivity, floor, dims
+FROM view_summary() ORDER BY view
 ```
 
 ```sql
@@ -282,11 +282,11 @@ SELECT step, asset, state, open, statement FROM next
 ```
 
 A statement there is a proposal: edit it, send it, or skip it.
-`workspace_status` lists every surface the workspace can grow along, with
+`workspace_status` lists every area the workspace can grow along, with
 what exists, what is open for the agent, and what waits for a person:
 
 ```sql
-SELECT surface, how, existing, open, waiting FROM workspace_status ORDER BY open DESC;
+SELECT area, how, existing, open, waiting FROM workspace_status ORDER BY open DESC;
 ```
 
 More: [next steps](../extending/next-steps.md).

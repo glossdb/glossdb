@@ -4,8 +4,8 @@
 -- definition carries, and the as-of, the newest load of the tables
 -- the metric definition reads.
 WITH reads AS (
-  SELECT DISTINCT table_name AS t FROM metric_sources()
-  WHERE metric = CAST($metric AS VARCHAR) AND table_name IS NOT NULL),
+  SELECT DISTINCT table_name AS t FROM view_sources()
+  WHERE view = CAST($metric AS VARCHAR) AND table_name IS NOT NULL),
 as_of AS (
   SELECT max(i.imported_at) AS landed_at
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset
@@ -16,6 +16,6 @@ SELECT f.metric,
        coalesce(s.meaning, '') AS meaning,
        coalesce('as of ' || strftime(a.landed_at, '%Y-%m-%d %H:%M'), '') AS asof
 FROM fact_values() f
-LEFT JOIN metric_surfaces s ON s.name = f.metric
+LEFT JOIN view_definitions s ON s.name = f.metric
 CROSS JOIN as_of a
 WHERE f.metric = CAST($metric AS VARCHAR) AND f.value IS NOT NULL

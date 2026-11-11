@@ -1,5 +1,5 @@
 -- The terms: every metric and view with its agreed meaning — the
--- definitions registry as metric_surfaces serves it — and every column
+-- definitions registry as view_definitions serves it — and every column
 -- whose meaning entry names a term, in one alphabet. A person's review decision
 -- on a metric's definition, or a person's meaning on a column, shows as
 -- a mark; a conflicting meaning shows as one. A row opens the metric's
@@ -34,7 +34,7 @@ surfaces AS (
          CASE WHEN r.n > 0 THEN 'a person decided the definition, ' || strftime(r.ruled_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title,
          '/' || d.dataset || '/app/console/p/metrics?metric=' || s.name
            || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
-  FROM metric_surfaces s
+  FROM view_definitions s
   CROSS JOIN d
   LEFT JOIN rulings r ON r.aspect = s.name
   WHERE s.kind <> 'plan'),

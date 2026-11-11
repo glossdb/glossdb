@@ -81,7 +81,7 @@ the person's annotations. Anything that is not an answer defers: the
 question stays open and is asked again ([the review queue](../usage/review.md)).
 
 The skills that teach an agent the language and the work ship with the
-server: `glossql`, `glossql-metrics`, `glossql-functions` and
+server: `glossql`, `glossql-modeling`, `glossql-functions` and
 `glossql-apps`, served as MCP resources and prompts. Every interface
 detail: [the MCP interface](../reference/mcp.md).
 

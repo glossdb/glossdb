@@ -1,6 +1,6 @@
 //! The engine's own suite: a workspace opened on a tempdir, the kits
 //! declared, statements of the language run through a channel, reads
-//! streamed, the brief counted, a review decision landed. Needs the extension
+//! streamed, the summary counted, a review decision stored. Needs the extension
 //! beside this checkout (`GLOSSQL_EXTENSION` overrides the path).
 
 use glossdb_duck::{
@@ -140,11 +140,11 @@ async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
         Err(SessionError::Sequence {
             index: 2,
             source,
-            landed,
+            loaded,
             ..
         }) => {
             assert!(matches!(*source, SessionError::Closed { .. }), "{source}");
-            assert_eq!(landed.len(), 1);
+            assert_eq!(loaded.len(), 1);
         }
         other => panic!("{other:?}"),
     }
@@ -168,7 +168,7 @@ async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
     }
     let (_dir, plane) = plane().await;
     assert!(plane.datasets().await.unwrap().is_empty());
-    assert_eq!(plane.brief_counts().await.unwrap().human_writings, 0);
+    assert_eq!(plane.summary_counts().await.unwrap().human_writings, 0);
 
     let session = plane.channel(agent(), None).await.unwrap();
     let outcomes = session
@@ -207,13 +207,13 @@ async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
         "{rows:?}"
     );
 
-    // A page is cut one row past the cap; a record read never is.
+    // A page is cut one row past the cap; a catalog read never is.
     let page = bound.query_page("SELECT * FROM fin.orders").await.unwrap();
     assert_eq!(page.cap, 200);
-    assert!(!page.record);
+    assert!(!page.catalog);
     let whole = bound.query_page("SELECT * FROM glossary").await.unwrap();
     assert_eq!(whole.cap, usize::MAX);
-    assert!(whole.record);
+    assert!(whole.catalog);
     assert!(matches!(
         bound.query_stream("SELECT 1; SELECT 2").await,
         Err(SessionError::NotOneRead)
@@ -230,10 +230,10 @@ async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
         Err(SessionError::Sequence {
             index,
             total,
-            landed,
+            loaded,
             ..
         }) => {
-            assert_eq!((index, total, landed.len()), (2, 2, 1));
+            assert_eq!((index, total, loaded.len()), (2, 2, 1));
         }
         other => panic!("{other:?}"),
     }
@@ -249,7 +249,7 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
         .execute(
             agent(),
             None,
-            "DECLARE DATASET fin SET (purpose: 'rulings')",
+            "DECLARE DATASET fin SET (purpose: 'decisions')",
         )
         .await
         .unwrap();
@@ -262,13 +262,13 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
         )
         .await
         .unwrap();
-    let before = plane.brief_counts().await.unwrap();
+    let before = plane.summary_counts().await.unwrap();
     assert_eq!(before.human_writings, 0);
 
     let session = plane.channel(human(), Some("fin")).await.unwrap();
-    let said = glossdb_duck::rulings::land(
+    let said = glossdb_duck::decisions::store(
         &session,
-        glossdb_duck::rulings::Ruling {
+        glossdb_duck::decisions::Decision {
             subject: "orders.id",
             aspect: "meaning",
             dimension: "scope",
@@ -282,15 +282,15 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
     .unwrap();
     assert!(said.contains("confirmed") && said.contains("k1"), "{said}");
 
-    let after = plane.brief_counts().await.unwrap();
+    let after = plane.summary_counts().await.unwrap();
     assert_eq!(after.human_writings, 1);
     assert!(after.latest_human_at.is_some());
-    assert_eq!(after.rulings_owed, 0);
+    assert_eq!(after.decisions_open, 0);
 
     let shape = call_shape("USE fin; SELECT * FROM glossary");
     assert!(
         shape.reviews && !shape.writes,
-        "a record read under USE reviews: {shape:?}"
+        "a catalog read under USE reviews: {shape:?}"
     );
     assert_eq!(shape.dataset.as_deref(), Some("fin"));
     assert!(
@@ -365,7 +365,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
     assert_eq!(
         kits,
         vec![vec![Some("6".to_string())]],
-        "every kit landed once at the first open and stood at the second"
+        "every kit ran once at the first open and was current at the second"
     );
     let next = text(
         &second
@@ -430,7 +430,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
         .map(|kit| {
             let name = kit.parent().and_then(|p| p.file_name()).unwrap();
             let mut text = std::fs::read_to_string(kit).unwrap();
-            if ["core", "metrics", "outlook", "goals"]
+            if ["core", "views", "outlook", "goals"]
                 .iter()
                 .any(|k| name == *k)
             {

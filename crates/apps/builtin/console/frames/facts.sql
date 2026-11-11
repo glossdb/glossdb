@@ -9,7 +9,7 @@ WITH asked AS (
 ruled AS (
   SELECT r.aspect, max(r.written_at) AS ruled_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect),
-reads AS (SELECT DISTINCT metric, table_name AS t FROM metric_sources() WHERE table_name IS NOT NULL),
+reads AS (SELECT DISTINCT view AS metric, table_name AS t FROM view_sources() WHERE table_name IS NOT NULL),
 landed AS (
   SELECT i.table_name, max(i.imported_at) AS landed_at
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset GROUP BY i.table_name),
@@ -25,16 +25,16 @@ SELECT s.name,
          WHEN s.stopped <> '' THEN 'stopped'
          WHEN coalesce(q.n, 0) > 0 THEN CAST(q.n AS VARCHAR) || ' open'
          WHEN r.ruled_at IS NOT NULL THEN 'decided by a person ' || strftime(r.ruled_at, '%Y-%m-%d')
-         WHEN NOT s.grounded THEN 'nothing written'
+         WHEN NOT s.defined THEN 'nothing written'
          ELSE 'grounded' END AS status,
        CASE
          WHEN s.stopped <> '' THEN 'warn'
          WHEN coalesce(q.n, 0) > 0 THEN 'warn'
          WHEN r.ruled_at IS NOT NULL THEN 'ok'
-         WHEN NOT s.grounded THEN 'warn'
+         WHEN NOT s.defined THEN 'warn'
          ELSE 'ok' END AS scls,
        '?metric=' || s.name || '&kind=scalar' AS link
-FROM metric_surfaces s
+FROM view_definitions s
 LEFT JOIN fact_values() f ON f.metric = s.name
 LEFT JOIN as_of a ON a.metric = s.name
 LEFT JOIN asked q ON q.aspect = s.name

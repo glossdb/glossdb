@@ -11,7 +11,7 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use std::collections::HashMap;
 
-use glossdb_serverd::{ARROW_STREAM, Access, DoorConfig, INSECURE_DEV_MODE, Login, router};
+use glossdb_serverd::{ARROW_STREAM, Access, INSECURE_DEV_MODE, InterfaceConfig, Login, router};
 
 use crate::common;
 
@@ -20,27 +20,27 @@ type IntArray = arrow::array::Int32Array;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-async fn app_with(doors: DoorConfig, login: Arc<Login>) -> (Router, tempfile::TempDir) {
-    app_capped(glossdb_serverd::DEFAULT_ROW_CAP, doors, login).await
+async fn app_with(interfaces: InterfaceConfig, login: Arc<Login>) -> (Router, tempfile::TempDir) {
+    app_capped(glossdb_serverd::DEFAULT_ROW_CAP, interfaces, login).await
 }
 
 async fn app_capped(
     row_cap: usize,
-    doors: DoorConfig,
+    interfaces: InterfaceConfig,
     login: Arc<Login>,
 ) -> (Router, tempfile::TempDir) {
     let (dir, plane) = common::scratch_plane().await;
     let plane = Arc::new(
         plane.with_row_cap(row_cap).with_pages(
-            glossdb_serverd::skills::door_pages()
+            glossdb_serverd::skills::served_pages()
                 .expect("the language's documents beside the extension's kits"),
         ),
     );
-    (router(plane, doors, Access::Gated(login)), dir)
+    (router(plane, interfaces, Access::Gated(login)), dir)
 }
 
 async fn app() -> (Router, tempfile::TempDir) {
-    app_with(DoorConfig::default(), common::login()).await
+    app_with(InterfaceConfig::default(), common::login()).await
 }
 
 /// The same interfaces over a workspace that already holds one dataset.
@@ -54,7 +54,7 @@ async fn app_on_fin() -> (Router, tempfile::TempDir) {
             call_with(
                 meta(),
                 1,
-                "DECLARE DATASET fin SET (purpose: 'door test');",
+                "DECLARE DATASET fin SET (purpose: 'interface test');",
                 None,
             ),
         )
@@ -146,9 +146,9 @@ async fn a_refusal_answers_by_its_class() {
     let (status, body) = ask(missing).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert!(body["error"].as_str().unwrap().contains(said), "{body}");
-    let (status, body) = ask("SELECT * FROM metric_summary('revenue')").await;
+    let (status, body) = ask("SELECT * FROM view_summary('revenue')").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    let fault = "metric_summary";
+    let fault = "view_summary";
     assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
 }
 
@@ -207,7 +207,7 @@ async fn the_query_interface_refuses_a_read_the_engine_cannot_start() {
 
 /// The interface's gate: a human at the query interface is a standard actor
 /// unless the deployment names them root, so a `SET` that would take
-/// another standing is closed with its reason, and so is an `ATTACH`.
+/// another actor kind is closed with its reason, and so is an `ATTACH`.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_refuses_engine_settings_to_a_standard_actor() {
     let (app, _dir) = app_on_fin().await;
@@ -306,13 +306,13 @@ async fn the_query_interface_answers_a_refusal_in_the_body() {
 }
 
 /// The gate. A bearer token from the issuer names who is speaking; the
-/// interface names with which standing. Nothing in the tree signs a token
+/// interface names with which actor kind. Nothing in the tree signs a token
 /// except the test issuer in `common`.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
     let (app, _dir) = app().await;
 
-    // Over the agent interface: agent standing, the token's subject as the
+    // Over the agent interface: the agent actor kind, the token's subject as the
     // id — never the handshake's `clientInfo` name, which a client
     // picks for itself on every request.
     let request = Request::post("/mcp")
@@ -330,7 +330,7 @@ async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
                 "DECLARE DATASET fin SET (purpose: 'token test');\n\
                  USE fin;\n\
                  DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
-                 GLOSS note ON fin AS $${\"value\": \"through the agent door\"}$$;\n\
+                 GLOSS note ON fin AS $${\"value\": \"through the agent interface\"}$$;\n\
                  SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';",
                 None,
             )
@@ -346,14 +346,14 @@ async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"), "{outcomes}");
 
     // The same token over a human interface: the same subject, human
-    // standing. Both rows stand — the supersession key's third leg is
+    // actor kind. Both rows are current — the supersession key's third leg is
     // the kind, and the interface set it.
     let response = app
         .oneshot(
             Request::post("/fin/query")
                 .header(header::AUTHORIZATION, common::bearer("ada"))
                 .body(Body::from(
-                    "GLOSS note ON fin AS $${\"value\": \"through the human door\"}$$;\n\
+                    "GLOSS note ON fin AS $${\"value\": \"through the human interface\"}$$;\n\
                      SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' \
                      ORDER BY actor_kind;",
                 ))
@@ -374,15 +374,15 @@ async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
 
 /// The explicit open arrangement (`Access::Open`, the
 /// GLOSSDB_INSECURE_OPEN switch): no interface asks for a token, and the
-/// record still names who spoke — the well-known dev actor, with the
-/// interface's standing. No login and no discovery document are served;
+/// catalog still names who spoke — the well-known dev actor, with the
+/// interface's actor kind. No login and no discovery document are served;
 /// with no 401 to answer, a client is never sent to authenticate.
 #[tokio::test(flavor = "multi_thread")]
 async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
     let (_dir, plane) = common::scratch_plane().await;
-    let app = router(Arc::new(plane), DoorConfig::default(), Access::Open);
+    let app = router(Arc::new(plane), InterfaceConfig::default(), Access::Open);
 
-    // The agent interface, bare: agent standing, the dev actor as the id.
+    // The agent interface, bare: the agent actor kind, the dev actor as the id.
     let request = Request::post("/mcp")
         .header(header::HOST, "127.0.0.1")
         .header(header::CONTENT_TYPE, "application/json")
@@ -394,10 +394,10 @@ async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
             call_with(
                 meta(),
                 1,
-                "DECLARE DATASET fin SET (purpose: 'open door test');\n\
+                "DECLARE DATASET fin SET (purpose: 'open interface test');\n\
                  USE fin;\n\
                  DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
-                 GLOSS note ON fin AS $${\"value\": \"through the open agent door\"}$$;\n\
+                 GLOSS note ON fin AS $${\"value\": \"through the open agent interface\"}$$;\n\
                  SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';",
                 None,
             )
@@ -412,14 +412,14 @@ async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
     assert_eq!(last["rows"][0]["actor_id"], json!(INSECURE_DEV_MODE));
     assert_eq!(last["rows"][0]["actor_kind"], json!("agent"));
 
-    // A human interface, bare: the same id, human standing — the
+    // A human interface, bare: the same id, the human actor kind — the
     // supersession key's third leg still works, the interface still sets it.
     let response = app
         .clone()
         .oneshot(
             Request::post("/fin/query")
                 .body(Body::from(
-                    "GLOSS note ON fin AS $${\"value\": \"through the open human door\"}$$;\n\
+                    "GLOSS note ON fin AS $${\"value\": \"through the open human interface\"}$$;\n\
                      SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' \
                      ORDER BY actor_kind;",
                 ))
@@ -480,7 +480,7 @@ async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
     );
 
     // The agent interface refuses before the protocol ever sees the body.
-    let agent_door = app
+    let agent_interface = app
         .clone()
         .oneshot(
             Request::post("/mcp")
@@ -491,7 +491,7 @@ async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
         )
         .await
         .unwrap();
-    assert_eq!(agent_door.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(agent_interface.status(), StatusCode::UNAUTHORIZED);
 
     let foreign = [
         ("not a token", "not.a.token".to_string()),
@@ -613,7 +613,7 @@ async fn a_browser_without_a_token_is_sent_to_sign_in() {
 /// with PKCE and the resource named, back with a code, the code
 /// exchanged at the token endpoint with the verifier and the
 /// application's secret in the body, the token verified by the gate and
-/// handed to the browser as the cookie — which then opens a human door.
+/// handed to the browser as the cookie — which then opens a human interface.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     // The issuer's token endpoint, stood in for: it records what it was
@@ -640,7 +640,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     let token_url = format!("http://{}/token", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, issuer).await.unwrap() });
 
-    let (app, _dir) = app_with(DoorConfig::default(), common::login_with(&token_url)).await;
+    let (app, _dir) = app_with(InterfaceConfig::default(), common::login_with(&token_url)).await;
     expect_ok(
         mcp(
             app.clone(),
@@ -766,7 +766,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     assert_eq!(exchange["resource"], common::RESOURCE);
     assert!(exchange.contains_key("code_verifier"), "{exchange:?}");
 
-    // The cookie opens a human door.
+    // The cookie opens a human interface.
     let cookie = token_cookie.split(';').next().unwrap().to_string();
     // And no agent interface: a browser's session never speaks as an agent.
     let as_agent = app
@@ -929,7 +929,7 @@ async fn the_discovery_document_and_the_assets_answer_without_a_token() {
 async fn the_probe_answers_without_a_token_in_both_arrangements() {
     let (gated, _dir) = app().await;
     let (_dir, plane) = common::scratch_plane().await;
-    let open = router(Arc::new(plane), DoorConfig::default(), Access::Open);
+    let open = router(Arc::new(plane), InterfaceConfig::default(), Access::Open);
     for app in [gated, open] {
         let response = app
             .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
@@ -952,7 +952,7 @@ async fn mcp_at(app: Router, host: &str, payload: Value) -> Response<Body> {
     mcp_on(app, "/mcp", host, payload).await
 }
 
-/// The call at `path` — the workspace interface or a dataset's bound door.
+/// The call at `path` — the workspace interface or a dataset's bound interface.
 async fn mcp_on(app: Router, path: &str, host: &str, payload: Value) -> Response<Body> {
     let method = payload["method"].as_str().unwrap().to_string();
     let mut request = Request::post(path)
@@ -983,7 +983,7 @@ fn initialize() -> Value {
         "params": {
             "protocolVersion": "2026-07-28",
             "capabilities": {},
-            "clientInfo": {"name": "doors-test", "version": "0"}
+            "clientInfo": {"name": "interfaces-test", "version": "0"}
         }
     })
 }
@@ -995,7 +995,7 @@ fn meta() -> Value {
     json!({
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {},
-        "io.modelcontextprotocol/clientInfo": {"name": "doors-test", "version": "0"}
+        "io.modelcontextprotocol/clientInfo": {"name": "interfaces-test", "version": "0"}
     })
 }
 
@@ -1020,7 +1020,7 @@ async fn the_agent_interface_answers_the_hosts_its_config_names() {
     let refused = mcp_at(app, public, initialize()).await;
     assert_eq!(refused.status(), StatusCode::FORBIDDEN);
 
-    let mut named = DoorConfig::default();
+    let mut named = InterfaceConfig::default();
     named.allowed_hosts.push(public.to_string());
     let (app, _dir) = app_with(named, common::login()).await;
     let body = expect_ok(mcp_at(app, public, initialize()).await).await;
@@ -1137,10 +1137,10 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         .collect();
     for uri in [
         "skill://glossql/SKILL.md",
-        "skill://glossql-metrics/SKILL.md",
+        "skill://glossql-modeling/SKILL.md",
         "skill://glossql-functions/SKILL.md",
         "skill://glossql-apps/SKILL.md",
-        "skill://glossql-metrics/references/ground.md",
+        "skill://glossql-modeling/references/define.md",
         "doc://SPEC.md",
         "doc://grammar.ebnf",
         "doc://docs/reference/reads.md",
@@ -1161,7 +1161,7 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         body["result"]["contents"][0]["text"]
             .as_str()
             .unwrap()
-            .contains("metric_summary()"),
+            .contains("view_summary()"),
         "{body}"
     );
 
@@ -1300,10 +1300,10 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
     // What ran rides beside the refusal, in the usual shape — the
     // first statement's rows are not discarded with the second's error.
-    let landed = body["result"]["content"][1]["text"].as_str().unwrap();
+    let completed = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(
-        landed.contains("\"completed\"") && landed.contains("\"a\""),
-        "{landed}"
+        completed.contains("\"completed\"") && completed.contains("\"a\""),
+        "{completed}"
     );
 }
 
@@ -1397,12 +1397,12 @@ fn meta_elicit() -> Value {
     json!({
         "io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {"elicitation": {}},
-        "io.modelcontextprotocol/clientInfo": {"name": "doors-test", "version": "0"}
+        "io.modelcontextprotocol/clientInfo": {"name": "interfaces-test", "version": "0"}
     })
 }
 
-/// The same round on DuckDB: the kits are declared at open, a source
-/// and a recipe land the table, and the role gloss leaves the additivity
+/// The same review on DuckDB: the kits are declared at open, a source
+/// and a recipe load the table, and the role gloss leaves the additivity
 /// claim required — the tested claim a measurement settles, never a
 /// question for the human.
 #[tokio::test(flavor = "multi_thread")]
@@ -1599,8 +1599,8 @@ async fn a_judged_assumption_is_decided_by_the_answer_on_the_retry() {
     // confirm/correct form; "holds as stated" stores a review decision entry —
     // the judgment alone, never a copy of the agent's body (a
     // frozen copy would outrank every later correction).
-    // The review decision holds the question closed, the brief counts the
-    // applying the decision debt, and the agent's re-record clears it.
+    // The review decision holds the question closed, the summary counts the
+    // decision still to apply, and the agent's re-record clears it.
     let (app, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'loose test');
@@ -1808,7 +1808,7 @@ async fn every_way_out_that_is_not_an_answer_is_a_defer() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     // Cadence: forms ride
-    // only calls that read the record. A load call and a plain data
+    // only calls that read the catalog. A load call and a plain data
     // read run uninterrupted even while a question holds open; the
     // review-shaped call carries the form.
     let (app, _dir) = app().await;
@@ -1881,7 +1881,7 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     );
 }
 
-/// The handshake's own name never reaches the record. `clientInfo`
+/// The handshake's own name never reaches the catalog. `clientInfo`
 /// carries one here and the token carries another; the catalog takes
 /// the token's, because a caller names itself on every request and the
 /// string proves nothing.
@@ -1933,7 +1933,7 @@ async fn the_clients_own_name_is_never_stored_as_the_actor() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn metadata_reads_pass_the_cap_uncapped() {
-    let (app, _dir) = app_capped(3, DoorConfig::default(), common::login()).await;
+    let (app, _dir) = app_capped(3, InterfaceConfig::default(), common::login()).await;
     let call = |id: u64, statements: &str| {
         json!({
             "jsonrpc": "2.0", "id": id, "method": "tools/call",
@@ -2003,7 +2003,7 @@ async fn metadata_reads_pass_the_cap_uncapped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_interface_caps_rows_and_declares_it() {
-    let (app, _dir) = app_capped(3, DoorConfig::default(), common::login()).await;
+    let (app, _dir) = app_capped(3, InterfaceConfig::default(), common::login()).await;
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -2060,13 +2060,13 @@ async fn the_mcp_interface_caps_rows_and_declares_it() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_second_review_decision_keeps_the_first() {
-    // Ruling a second assumption must not revert the
+    // Deciding a second assumption must not revert the
     // first. Review decisions accumulate as entries in the human's
     // one review decision value — each append carries the earlier entries along,
     // and no review decision ever touches the agent's body.
     let (app, _dir) = app().await;
     let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'sequential rulings');
+        DECLARE DATASET fin SET (purpose: 'sequential decisions');
         USE fin;
         DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
           "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
@@ -2080,7 +2080,7 @@ async fn a_second_review_decision_keeps_the_first() {
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 80, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // Rule the first (lowest confidence asks first), then the second.
+    // Decide the first (lowest confidence asks first), then the second.
     for key in [
         "loose:fin:dso:flat-30-day-month",
         "loose:fin:dso:total-revenue-denominator",
@@ -2132,7 +2132,7 @@ async fn a_second_review_decision_keeps_the_first() {
         "the agent body moved: {agent_body}"
     );
 
-    // And the round is quiet — nothing re-derives.
+    // And the review is quiet — nothing re-derives.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -2157,14 +2157,14 @@ async fn a_review_form_shows_the_earlier_decision_on_the_same_key() {
     // differently on purpose — pairing rests on the declared key,
     // never on the prose (STRING EQUALITY ON NON-KEYS IS FORBIDDEN).
     //
-    // The form is the whole mechanism: when the round asks about a key
+    // The form is the whole mechanism: when the review asks about a key
     // the human already decided under another aspect, the message names
     // that sibling review decision, and the human decides with both in view.
     // Nothing pairs the review decisions afterwards — two aspects may genuinely
     // differ, and an agent that needs it settled again asks again.
     let (app, _dir) = app().await;
     let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'one claim, two rulings');
+        DECLARE DATASET fin SET (purpose: 'one claim, two decisions');
         USE fin;
         DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
           "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
@@ -2205,7 +2205,7 @@ async fn a_review_form_shows_the_earlier_decision_on_the_same_key() {
 
     // purchases asks next, and the form offers what was already decided
     // on that same key as an answer — the `sibling` column, carried by
-    // the read, standing as its own box with the prior words beneath.
+    // the read, as its own box with the prior words beneath.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 103, review, None)).await).await;
     let form = &body["result"]["inputRequests"]["loose:fin:purchases:goods-only"];
     assert!(form.is_object(), "{body}");
@@ -2237,7 +2237,7 @@ async fn a_review_form_shows_the_earlier_decision_on_the_same_key() {
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // Both review decisions stand, each on its own aspect, and the round is
+    // Both review decisions stand, each on its own aspect, and the review is
     // quiet — the catalog needs no third act.
     let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 105, review, None)).await).await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
@@ -2247,11 +2247,11 @@ async fn a_review_form_shows_the_earlier_decision_on_the_same_key() {
 async fn a_call_that_changes_the_counts_carries_the_summary() {
     // Run 2's friction 11: initialize instructions are fetched once
     // per connection, so a long-lived session never saw the counts
-    // move. The brief now also rides any tool result whose call
+    // move. The summary now also rides any tool result whose call
     // changed it — and stays off the quiet ones.
     let (app, _dir) = app().await;
     let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'brief delivery');
+        DECLARE DATASET fin SET (purpose: 'summary delivery');
         USE fin;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -2261,7 +2261,7 @@ async fn a_call_that_changes_the_counts_carries_the_summary() {
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let blocks = body["result"]["content"].as_array().unwrap();
     // The metric definition's write answers with its fact row through the
-    // interface — the `metric_summary()` shape, abstaining here with its
+    // interface — the `view_summary()` shape, abstaining here with its
     // reason (this app declares no `cube` aspect) and loaded all the
     // same.
     let outcomes = blocks[0]["text"].as_str().unwrap();
@@ -2303,7 +2303,7 @@ async fn a_call_that_changes_the_counts_carries_the_summary() {
 async fn an_unkeyed_assumption_is_never_asked() {
     // A KNOWN, ACCEPTED GAP. Identity is the
     // declared `key`; an assumption disclosed without one cannot be
-    // held closed by a review decision, so the round would re-ask it forever.
+    // held closed by a review decision, so the review would re-ask it forever.
     // It is therefore never asked at all — the catalog still shows it,
     // and the skills make the key part of the disclosure shape. The
     // alternative — pairing on the prose — is forbidden.
@@ -2340,7 +2340,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_open_questions_read_composes_like_a_table() {
-    // The point of the read library: the round's derivation is a
+    // The point of the read library: the review's derivation is a
     // relation anyone can select from, so the interface, the app's queue and
     // any ad-hoc query share one file instead of three copies. Filters
     // ride WHERE — the same posture `read.<aspect>()` and
@@ -2368,7 +2368,7 @@ async fn the_open_questions_read_composes_like_a_table() {
 
     // The whole read: two askable rows. `grain` is the function map's
     // dimension, so the read drops it — the gate lives in the file now,
-    // not in the door.
+    // not in the interface.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -2381,7 +2381,7 @@ async fn the_open_questions_read_composes_like_a_table() {
     assert_eq!(out["row_count"], json!(2), "{out}");
 
     // A filter narrows it, a projection reshapes it, an aggregate closes
-    // over it: it is a relation, not a door-shaped special case.
+    // over it: it is a relation, not a interface-shaped special case.
     let body = expect_ok(
         mcp(
             app.clone(),
@@ -2405,7 +2405,7 @@ async fn the_open_questions_read_composes_like_a_table() {
             call_with(
                 meta(),
                 143,
-                "SELECT count(*) AS owed FROM open_questions;",
+                "SELECT count(*) AS waiting FROM open_questions;",
                 None,
             ),
         )
@@ -2413,9 +2413,9 @@ async fn the_open_questions_read_composes_like_a_table() {
     )
     .await;
     let out = rows(&body);
-    assert_eq!(out["rows"][0]["owed"], json!(2), "{out}");
+    assert_eq!(out["rows"][0]["waiting"], json!(2), "{out}");
 
-    // And the round serves exactly what the read holds.
+    // And the review serves exactly what the read holds.
     let body = expect_ok(
         mcp(
             app,
@@ -2429,11 +2429,11 @@ async fn the_open_questions_read_composes_like_a_table() {
         .await,
     )
     .await;
-    // A round is one metric definition: the least confident open claim picks
+    // A review is one metric definition: the least confident open claim picks
     // the aspect, and every open claim on THAT aspect travels together.
     // dpo and dso are two metric definitions, so only dpo's is asked — and the
     // message says how many stand open in the whole, so the end of a
-    // round never reads as the end of the work.
+    // review never reads as the end of the work.
     let asked = body["result"]["inputRequests"].as_object().unwrap();
     assert_eq!(asked.len(), 1, "one metric definition per call: {body}");
     assert!(asked["loose:fin:dpo:goods-only"].is_object(), "{body}");
@@ -2459,12 +2459,12 @@ async fn an_agent_authors_an_app_over_the_tool() {
           "properties": {"sql": {"type": "string"}}}$$ AS FACT;
         GLOSS app ON cash AS $${"title": "Monday cash", "dataset": "fin"}$$;
         GLOSS app_page ON cash.index AS $${"html": "{% extends \"shell.html\" %}{% block main %}<h1>What stands open</h1>{% endblock %}"}$$;
-        GLOSS app_frame ON cash.open AS $${"sql": "SELECT count(*) AS owed FROM open_questions"}$$;
+        GLOSS app_frame ON cash.open AS $${"sql": "SELECT count(*) AS waiting FROM open_questions"}$$;
     "#;
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 150, setup, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
-    // The page the agent wrote is served by the app door.
+    // The page the agent wrote is served by the app interface.
     let response = app
         .clone()
         .oneshot(
@@ -2545,7 +2545,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 161,
-                "SELECT surface, existing, open, waiting FROM workspace_status ORDER BY surface;",
+                "SELECT area, existing, open, waiting FROM workspace_status ORDER BY area;",
                 None,
             ),
         )
@@ -2555,14 +2555,14 @@ async fn the_workspace_says_what_it_affords() {
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     let outcomes: Value = serde_json::from_str(text).unwrap();
     let rows = outcomes[0]["rows"].as_array().unwrap();
-    let surfaces: Vec<&str> = rows.iter().filter_map(|r| r["surface"].as_str()).collect();
+    let areas: Vec<&str> = rows.iter().filter_map(|r| r["area"].as_str()).collect();
     let samples: &[&str] = &[];
     for expected in [
         "apps",
         "aspects",
         "claims",
         "functions",
-        "metrics",
+        "views",
         "plans",
         "relationships",
         "review",
@@ -2574,11 +2574,11 @@ async fn the_workspace_says_what_it_affords() {
     .iter()
     .chain(samples)
     {
-        assert!(surfaces.contains(expected), "{expected} missing: {rows:?}");
+        assert!(areas.contains(expected), "{expected} missing: {rows:?}");
     }
     let row = |name: &str| {
         rows.iter()
-            .find(|r| r["surface"] == json!(name))
+            .find(|r| r["area"] == json!(name))
             .unwrap_or_else(|| panic!("no {name} row"))
             .clone()
     };
@@ -2587,15 +2587,15 @@ async fn the_workspace_says_what_it_affords() {
     // metric and no claim open, so "nothing open" stays reachable
     // without a person (glossdb#210). The sample frame is a VIEW aspect
     // too and must not inflate the metrics.
-    assert_eq!(row("metrics")["existing"], json!(1), "{rows:?}");
-    assert_eq!(row("metrics")["open"], json!(0), "{rows:?}");
+    assert_eq!(row("views")["existing"], json!(1), "{rows:?}");
+    assert_eq!(row("views")["open"], json!(0), "{rows:?}");
     assert_eq!(row("claims")["open"], json!(0), "{rows:?}");
     assert_eq!(row("review")["waiting"], json!(1), "{rows:?}");
-    assert_eq!(row("metrics")["waiting"], json!(0), "{rows:?}");
+    assert_eq!(row("views")["waiting"], json!(0), "{rows:?}");
     // The scenarios and the sample frames. The sample interface is a planner interface, not a row
     // in `functions`, so this map is the only place an agent meets them
     // at all. Each is declared here and never glossed — vocabulary
-    // standing with no body, which is exactly what `open` means.
+    // current with no body, which is exactly what `open` means.
     assert_eq!(row("scenarios")["existing"], json!(1), "{rows:?}");
     assert_eq!(row("scenarios")["open"], json!(1), "{rows:?}");
     // Nothing decided yet, so no decision waits to be applied.
@@ -2605,7 +2605,7 @@ async fn the_workspace_says_what_it_affords() {
     // value. The kits' fifteen tests exist from the start; with no table
     // loaded, only these are in use: the agent's own `ar_tie`, the
     // scenario and forecast measurements (a scenario is declared), and
-    // the bands every metric is checked against.
+    // the ranges every metric is checked against.
     let kit_tests = 15;
     assert_eq!(
         row("validations")["existing"],
@@ -2616,10 +2616,10 @@ async fn the_workspace_says_what_it_affords() {
     assert_eq!(row("validations")["open"], json!(in_use), "{rows:?}");
 
     // The authored expectation is speech on the aspect: the validation
-    // stops being required the moment somebody speaks.
-    let speak = r#"USE fin;
+    // stops being required the moment somebody annotates.
+    let annotate = r#"USE fin;
         GLOSS ar_tie ON fin AS $${"outcome": "the subledger ties to its control account", "tolerance": 0.01}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 162, speak, None)).await).await;
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 162, annotate, None)).await).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let body = expect_ok(
         mcp(
@@ -2627,7 +2627,7 @@ async fn the_workspace_says_what_it_affords() {
             call_with(
                 meta(),
                 163,
-                "SELECT open FROM workspace_status WHERE surface = 'validations';",
+                "SELECT open FROM workspace_status WHERE area = 'validations';",
                 None,
             ),
         )
@@ -2644,8 +2644,8 @@ async fn the_workspace_says_what_it_affords() {
 }
 
 /// Run 4 read `workspace_status` twice in one session and got two
-/// different answers: filtered by `surface`, it came back with every row
-/// and reported `aspects` and `functions` as 0 standing, while the same
+/// different answers: filtered by `area`, it came back with every row
+/// and reported `aspects` and `functions` as 0 existing, while the same
 /// read unfiltered — and the relations read directly — reported the
 /// real counts. A filter that is silently dropped is bad; one that also
 /// corrupts the counts it returns is worse, so both halves are asserted
@@ -2674,23 +2674,23 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     };
 
     let whole = read(
-        "SELECT surface, existing FROM workspace_status ORDER BY surface;",
+        "SELECT area, existing FROM workspace_status ORDER BY area;",
         171,
     )
     .await;
     let whole_rows = whole[0]["rows"].as_array().unwrap().clone();
-    let standing = |rows: &[Value], name: &str| -> i64 {
+    let existing = |rows: &[Value], name: &str| -> i64 {
         rows.iter()
-            .find(|r| r["surface"] == json!(name))
+            .find(|r| r["area"] == json!(name))
             .and_then(|r| r["existing"].as_i64())
             .unwrap_or(-1)
     };
-    let aspects_whole = standing(&whole_rows, "aspects");
+    let aspects_whole = existing(&whole_rows, "aspects");
     assert!(aspects_whole > 0, "aspects should stand: {whole_rows:?}");
 
     // The same question, filtered.
     let one = read(
-        "SELECT surface, existing FROM workspace_status WHERE surface = 'aspects';",
+        "SELECT area, existing FROM workspace_status WHERE area = 'aspects';",
         172,
     )
     .await;
@@ -2698,27 +2698,27 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
     assert_eq!(
         one_rows.len(),
         1,
-        "the filter must bind — got every surface back: {one_rows:?}"
+        "the filter must bind — got every area back: {one_rows:?}"
     );
     assert_eq!(
-        standing(&one_rows, "aspects"),
+        existing(&one_rows, "aspects"),
         aspects_whole,
         "filtered and unfiltered disagree on the same count"
     );
 
     // And a filter that keeps several rows keeps exactly those.
     let some = read(
-        "SELECT surface, existing FROM workspace_status \
-         WHERE surface IN ('tables', 'sources') ORDER BY surface;",
+        "SELECT area, existing FROM workspace_status \
+         WHERE area IN ('tables', 'sources') ORDER BY area;",
         173,
     )
     .await;
     let some_rows = some[0]["rows"].as_array().unwrap().clone();
-    let surfaces: Vec<&str> = some_rows
+    let areas: Vec<&str> = some_rows
         .iter()
-        .filter_map(|r| r["surface"].as_str())
+        .filter_map(|r| r["area"].as_str())
         .collect();
-    assert_eq!(surfaces, vec!["sources", "tables"], "{some_rows:?}");
+    assert_eq!(areas, vec!["sources", "tables"], "{some_rows:?}");
 }
 
 /// A workspace before its first dataset has no dataset-bound read to
@@ -2727,7 +2727,7 @@ async fn a_filter_on_the_affordance_map_neither_widens_nor_zeroes_it() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_instructions_of_an_empty_workspace_name_workspace_status() {
     let (app, _dir) = app().await;
-    // A call refreshes the brief; the opening rides initialize.
+    // A call refreshes the summary; the opening rides initialize.
     expect_ok(
         mcp(
             app.clone(),

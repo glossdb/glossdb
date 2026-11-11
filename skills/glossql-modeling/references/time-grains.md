@@ -35,7 +35,7 @@ GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month"
   coarse, serve a narrower column from the metric's own SQL.
 - The dimensions are the served columns with `role` dimension. A
   `dimension` annotation ranks them: `primary` first, `none` hides
-  one. In `metric_summary()`, `unranked` lists the dimensions without
+  one. In `view_summary()`, `unranked` lists the dimensions without
   a rank, `unadmitted` the served columns without a role, and
   `missing` the annotation each needs.
 
@@ -43,14 +43,14 @@ Every metric with its business description:
 
 ```sql
 SELECT name, title, unit, meaning, formula
-FROM metric_surfaces ORDER BY name
+FROM view_definitions ORDER BY name
 ```
 
 What each metric can be served from:
 
 ```sql
-SELECT metric, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
-FROM metric_summary() ORDER BY metric
+SELECT view, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
+FROM view_summary() ORDER BY view
 ```
 
 The numbers: one row per metric, dimension, member and period.
@@ -65,29 +65,29 @@ WHERE dimension = '' ORDER BY metric, period
 ```
 
 After applying a batch of review decisions, run `temporal()` over the
-period columns once; `metric_summary().judged_current` is then true.
+period columns once; `view_summary().judged_current` is then true.
 
 `fact_values()` serves each single value (`x-kind: scalar`). A derived
 relation (`x-kind: relation`) is read as its view.
 
 ## Expected ranges (preview)
 
-`metric_bands` asks, per metric and recent month: given only the
+`metric_ranges` asks, per metric and recent month: given only the
 months before, what range would this month fall in? `PIT` says where
 the actual fell in that range: 0.5 is the middle; above 0.95 or below
 0.05 is outside what the metric's history explains. The test
-`bands_test` carries the score of each metric's newest month.
+`range_test` carries the score of each metric's newest month.
 
-- `SELECT metric_bands() FROM <dataset>` runs it. `next` lists it
+- `SELECT metric_ranges() FROM <dataset>` runs it. `next` lists it
   under `test` when it is due. It is due
   again when a metric definition or the data changes.
 - It sends complete months only, at least seven. Where rows arrive
   finer than monthly, the month the newest data falls in is left out.
-- `band_points()` serves the stored run as rows and names the metric
+- `range_points()` serves the stored run as rows and names the metric
   and month of a red result. Nothing is run again.
 - You judge the result. A business shift and a data defect look the
   same. Fix a defect in the metric definition. Tell a person about a
-  shift: record it as an assumption with the key `band-<period>` in
+  shift: record it as an assumption with the key `range-<period>` in
   the metric definition, and the console asks.
 
 ## Forecasts (preview)
@@ -118,7 +118,7 @@ runs it. It is due again after every load.
 A lever is a column of a metric's view that someone sets. Annotate it:
 
 ```glossql
-GLOSS lever ON net_sales.unit_price AS $${"value": true, "grounds": "the list price, set by sales"}$$;
+GLOSS lever ON net_sales.unit_price AS $${"value": true, "basis": "the list price, set by sales"}$$;
 ```
 
 A scenario is one FACT aspect with `x-kind: scenario`, annotated with
@@ -161,7 +161,7 @@ GLOSS revised_budget ON fin AS $${"sql": "SELECT month AS date, revised AS value
 - The plan is read through its metric. Its period and value columns
   carry the same names as the metric's, or `period` and `value`. Its
   additivity is the metric's. Its own columns are not annotated.
-- `metric_summary()` lists the plan; `plan_of` names its metric.
+- `view_summary()` lists the plan; `plan_of` names its metric.
 - A row covers its own period. Where a row holds the whole year (the
   adopted budget on the January row), add `x-covers: year` to the
   declaration and the plan is read at the year.

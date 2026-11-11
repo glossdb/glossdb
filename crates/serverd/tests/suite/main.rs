@@ -6,7 +6,7 @@
 
 mod common;
 mod docs;
-mod doors;
+mod interfaces;
 mod lock;
 mod next;
 mod skills;

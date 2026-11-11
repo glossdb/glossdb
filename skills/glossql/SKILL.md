@@ -18,7 +18,7 @@ pages() WHERE uri = '…'` reads one — and a resource for a client that
 reads resources. Everything live — the vocabulary, the tables, the
 catalog — is read through the language, never assumed. The work
 itself — the goals and the judgment inside each — is
-`skill://glossql-metrics/SKILL.md`.
+`skill://glossql-modeling/SKILL.md`.
 
 ## The MCP interface
 
@@ -34,7 +34,7 @@ per statement:
   tables are uncapped.
 - a write — `{"affected": n}` or `{"done": "…"}`. One write answers
   with rows: a `GLOSS` on a VIEW aspect returns the metric's summary
-  row in the `metric_summary()` shape — read it before the next write.
+  row in the `view_summary()` shape — read it before the next write.
 - a refused statement — a tool error whose text is the refusal. It
   names what was wrong and, in a sequence, its place: `statement 2 of
   7 refused: … — statement 1 ran; 3–7 not run`, with a
@@ -85,9 +85,9 @@ is what `SELECT * FROM datasets` wants; a qualified
 | `SELECT … FROM GLOSSARY(subject);` | the collapsed view of what is known, one row per aspect |
 | `SELECT … FROM GLOSSARY(subject, all => true);` | every value from every author, raw; `all => true` is the call's second argument, never a WHERE condition |
 | `DECLARE FUNCTION f FOR ops\|GLOBAL AS $$body$$ [RETURNS aspect];` | register a function — with `RETURNS` one SQL query the engine plans, without it a detector script; `SELECT script FROM functions` reads the shipped library back as worked examples (`glossql-functions` teaches writing one) |
-| `SELECT f() FROM work_orders.duration_min;` | run a measurement — it computes at the read's pin (the versions it reads) and stores a `measurements` row; the same pin serves the row back, `computed` says which happened; a body with a `summary` serves the summary alone, the full body reads back via `GLOSSARY(subject::aspect)` |
+| `SELECT f() FROM work_orders.duration_min;` | run a measurement — it computes at the read's data version (the versions it reads) and stores a `measurements` row; the same data version serves the row back, `computed` says which happened; a body with a `summary` serves the summary alone, the full body reads back via `GLOSSARY(subject::aspect)` |
 | `DECLARE TEST w ON aspect [BY (AGENT, HUMAN)] [DETECTOR f THRESHOLD x];` | declare a test: who may annotate the aspect, and which detector scores their agreement |
-| `SELECT … FROM TESTS(subject \| ops::aspect);` | test results: bands and scores; sweeps are WHERE clauses |
+| `SELECT … FROM TESTS(subject \| ops::aspect);` | test results: states and scores; sweeps are WHERE clauses |
 
 There is no ordering statement: send statements in the order you need
 them. Schema-altering engine DDL — `CREATE VIEW` included — is
@@ -99,7 +99,7 @@ inside, nothing escaped — and closes as `}$$;`.
 
 A fresh workspace is not empty: the kits — the KPI kit's `meaning`,
 `role`, `additivity`, `unit`, `dimension`, `entity` and the rest with
-their tests, the quality kit's measurements, the metrics kit's
+their tests, the quality kit's measurements, the views kit's
 `time_grains`, the outlook kit's worlds — are declared at open; read them
 back before declaring anything.
 
@@ -111,7 +111,7 @@ back before declaring anything.
   condition, schema, declared_at)` · `tests (seq, name, aspect,
   actors, detector, threshold, declared_at)` · `functions (seq,
   name, scope, script, returns, declared_at)` · `measurements (seq,
-  dataset, function, subject, aspect, pin, value, computed_at, reads)`
+  dataset, function, subject, aspect, data_version, value, computed_at, reads)`
   · `imports (seq, dataset, table_name, mode, rows, dropped_rows_count,
   lineage, snapshot_id, imported_at)` · `recipes (seq, dataset,
   table_name, source, settings, sql, declared_at)` · `relationships`
@@ -120,7 +120,7 @@ back before declaring anything.
   serve the whole workspace — the binding does not narrow them, so say
   which dataset you mean.
 - `GLOSSARY(subject)` — the collapsed read, `(subject, aspect, value,
-  band, score, state)`, `state` in `current | stale | conflict |
+  test_state, score, state)`, `state` in `current | stale | conflict |
   missing`; a conflicting value is withheld, and a missing value is a
   visible row. A subject is a bare path, never a string:
   `GLOSSARY(orders)`, `GLOSSARY(orders.amount)`, `GLOSSARY(fin::revenue)`
@@ -130,8 +130,8 @@ back before declaring anything.
   body, written_at, current)` — no `value`, no `state`; `current` is
   false for a function's value computed before the last write. `value`
   belongs to the collapsed read, `body` to the raw one.
-- `TESTS(…)` — `(subject, aspect, test, band, score, computed_at,
-  current, error)`, band in green/yellow/orange/red; `error` carries
+- `TESTS(…)` — `(subject, aspect, test, state, score, computed_at,
+  current, error)`, state in green/yellow/orange/red; `error` carries
   a detector's own failure, nothing withheld.
 - the loaded schema: `SELECT table_name, column_name, data_type FROM
   information_schema.columns WHERE table_name NOT LIKE '%$%'` serves
@@ -147,30 +147,30 @@ back before declaring anything.
 
 **Shipped reads** — derived relations you select from like any table,
 filters in WHERE. `DESCRIBE <read>` serves the columns of any of
-them — `DESCRIBE band_points()`, `DESCRIBE metric_series(grain := 'month')` —
+them — `DESCRIBE range_points()`, `DESCRIBE metric_series(grain := 'month')` —
 and every column's meaning is `doc://docs/reference/reads.md`; a
 guessed column costs a refusal. A named argument spells `:=`.
 
 | read | serves |
 |---|---|
-| `workspace_status` | every surface the workspace can grow along: what exists, what is open, what waits for a person |
-| `metric_tests()` | every test on each metric of the bound dataset and on what it reads — `metric`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
+| `workspace_status` | every area the workspace can grow along: what exists, what is open, what waits for a person |
+| `view_tests()` | every test on each metric of the bound dataset and on what it reads — `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
 | `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
 | `review_decisions` | the person's review decisions in force, with `folded_in` |
 | `open_items` | what waits on an action: a load-query approval, a formula answer, a conflicting value, a measurement stale or never made, a review decision not yet applied |
 | `agent_assumptions` | every assumption you currently disclose |
-| `metric_surfaces` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `grounded`, `stopped` — what the catalog says; the numbers are `metric_series()` and `metric_summary()` |
+| `view_definitions` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `defined`, `stopped` — what the catalog says; the numbers are `metric_series()` and `view_summary()` |
 | `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `additivity`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `additivity` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
-| `metric_summary()` | one row per metric: `metric`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `additivity`, `additivity_state`, `dims`, `unranked`, `unadmitted`, `missing` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
-| `band_points()` | the stored `metric_bands` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `band_verdict()` is the walk's verdict in one row |
-| `forecast_points()` | the stored `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `actuals` fill as the periods arrive in the data; `held_80` is how often such a band held — this metric's own history once 30 of its points have arrived at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
+| `view_summary()` | one row per metric: `view`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `additivity`, `additivity_state`, `dims`, `unranked`, `unadmitted`, `missing` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
+| `range_points()` | the stored `metric_ranges` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `range_result()` is the walk's result in one row |
+| `forecast_points()` | the stored `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `actuals` fill as the periods arrive in the data; `held_80` is how often such a range held — this metric's own history once 30 of its points have arrived at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
 | `forecast_coverage()` | over every stored forecast where a point has arrived: `metric` (`''` the dataset as a whole), `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90` (the counts), `held_80`, `held_90` (the shares) — the rows `held_80` comes from once one reaches 30 points |
-| `scenario_points('name')` | the newest estimate cell by cell, `scenario_points(NULL)` every scenario — `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass` (`estimated`), `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at`; a lever is declared on a metric's column, `GLOSS lever ON metric.column AS $${"value": true, "grounds": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` annotated with `levers` — per lever the column as `metric.column`, a factor per period (`"2027-01": 1.15`) and a basis; `SELECT metric_scenario() FROM <dataset>` runs the estimate; hand an estimate out with its band and `held_80` |
+| `scenario_points('name')` | the newest estimate cell by cell, `scenario_points(NULL)` every scenario — `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass` (`estimated`), `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at`; a lever is declared on a metric's column, `GLOSS lever ON metric.column AS $${"value": true, "basis": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` annotated with `levers` — per lever the column as `metric.column`, a factor per period (`"2027-01": 1.15`) and a basis; `SELECT metric_scenario() FROM <dataset>` runs the estimate; hand an estimate out with its range and `held_80` |
 | `scenario_levers('name')` | what each lever does alone — `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from` (`forecast`, or `held: <why>`), `history_shift`, `history_low`, `history_high` (the lever's own effect over the periods ahead and its 90% interval), `computed_at`; the parts add up to the joint estimate, so read them beside `scenario_points()` when a scenario moves several levers — two that cancel show as two parts of opposite sign |
-| `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% band and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `planned` (`complete`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; `SELECT metric_plan() FROM <dataset>.<plan>` stores the same rows as the plan's judgement, which the plan goal reads — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
+| `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% range and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `planned` (`complete`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; `SELECT metric_plan() FROM <dataset>.<plan>` stores the same rows as the plan's judgement, which the plan goal reads — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
 | `semantic_model()` | the bound dataset as one Apache Ossie document (`document`, JSON): tables and metrics as datasets with fields, time and dimensions, metric expressions, relationships — the hand-over to a BI tool or a catalog |
 | `lineage_events()` | the bound dataset's lineage as OpenLineage run events (`event`, JSON): one per load and one per view, with column lineage |
-| `metric_sources()` | what feeds each metric definition — `metric`, `field`, `source` (`table.column`), `table_name`, `reason`: per served field the column it descends from, and every table it scans |
+| `view_sources()` | what feeds each metric definition — `view`, `field`, `source` (`table.column`), `table_name`, `reason`: per served field the column it descends from, and every table it scans |
 | `PREVIEW erp AS $$SELECT file FROM glob('*')$$` | every file under a source's location, listed at the source; `glob('**')` the subdirectories too |
 | `app_parts` | apps written as annotations, one row per file (`glossql-apps`) |
 | `current_dataset` | the dataset the call is bound to, one row — join it to narrow a workspace-wide read |
@@ -179,7 +179,7 @@ guessed column costs a refusal. A named argument spells `:=`.
 A shipped name is reserved: it shadows a table and a CTE of the same
 name. `open_questions`, `review_decisions` and `agent_assumptions` carry
 a `dataset` column, so narrow them yourself; `open_items` and
-`metric_surfaces` narrow themselves.
+`view_definitions` narrow themselves.
 
 ```sql
 SELECT r.aspect, r.key, r.stance, r.folded_in FROM review_decisions r
@@ -197,7 +197,7 @@ change, a formula answer, a conflicting value — and gives you the
 statement. A question is served once, through the MCP interface's
 forms, and waits; the work goes on and the metric definition stays
 yours. A client without forms gets none: read `open_questions` and
-relay it in chat, multiple choice with your grounds, then run the
+relay it in chat, multiple choice with your basis, then run the
 statement the answer names. What a review decision is, what each kind
 asks of you, and what the confidence number means:
 `references/review.md` — open it before disclosing your first

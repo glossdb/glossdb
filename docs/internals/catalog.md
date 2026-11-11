@@ -23,7 +23,7 @@ older row remains, with its actor and time, and the read decides what
 ## Provenance and staleness
 
 A measurement stores the versions of what it read: the data's
-snapshot, and the catalog relations the function read (`pin`). It is
+snapshot, and the catalog relations the function read (`data_version`). It is
 current, and is reused, while those are unchanged. It is stale once one
 changes, and the read says so. An annotation on a column ages the same
 way against the column's own history. Old rows are the history of
@@ -32,7 +32,7 @@ inputs returns the same result.
 
 The catalog's version is the lake's snapshot plus every relation's
 highest sequence number, and any write moves it. The catalog reads
-(`GLOSSARY()`, `TESTS()`, the newest values with their bands) are
+(`GLOSSARY()`, `TESTS()`, the newest values with their states) are
 planned once per dataset and kept in the engine's object cache under
 that version, shared by every connection. A dataset's views are kept
 the same way, so a query over the metrics scans what is stored instead
@@ -53,5 +53,5 @@ past the cap is asked for, and the result says `truncated`.
 - Dependencies are declared, never guessed.
 - Staleness is marked when read.
 - Nothing hides a judgment: `stale` is returned and marked, `conflict`
-  is withheld with its band and score, and `missing` is a visible
+  is withheld with its test state and score, and `missing` is a visible
   row.

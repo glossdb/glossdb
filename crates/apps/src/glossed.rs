@@ -1,4 +1,4 @@
-//! Apps the workspace authored as glosses, loaded from the record.
+//! Apps the workspace authored as glosses, loaded from the catalog.
 //!
 //! This is what lets an agent author an app at all: over MCP it has
 //! statements and no filesystem, so an app that only exists as a
@@ -23,7 +23,7 @@ use arrow::record_batch::RecordBatch;
 use arrow::util::display::array_value_to_string;
 use futures::StreamExt;
 
-use crate::AppDoor;
+use crate::AppInterface;
 
 /// The aspects an app is made of, and where each part goes.
 const PARTS: [&str; 4] = ["app", "app_page", "app_frame", "app_spec"];
@@ -58,8 +58,8 @@ struct Row {
 /// `draft`, as its newest parts stand. A dataset that does not exist,
 /// holds no glossed apps, or a store that will not read serves none
 /// — the built-ins still answer.
-pub(crate) async fn parts(door: &AppDoor, dataset: &str, draft: bool) -> Loaded {
-    let rows = rows(door, dataset).await;
+pub(crate) async fn parts(interface: &AppInterface, dataset: &str, draft: bool) -> Loaded {
+    let rows = rows(interface, dataset).await;
     // The cut per app: the serving release's own time, or the earlier
     // release its body names.
     let mut releases: BTreeMap<String, String> = BTreeMap::new();
@@ -143,27 +143,27 @@ fn serving<'a>(rows: impl Iterator<Item = &'a Row>) -> Option<&'a Row> {
     let mut human: Option<&Row> = None;
     let mut agent: Option<&Row> = None;
     for row in rows {
-        let slot = if row.actor_kind == "human" {
+        let held = if row.actor_kind == "human" {
             &mut human
         } else {
             &mut agent
         };
-        if slot.is_none_or(|have| row.written_at > have.written_at) {
-            *slot = Some(row);
+        if held.is_none_or(|have| row.written_at > have.written_at) {
+            *held = Some(row);
         }
     }
     human.or(agent)
 }
 
 /// Every writing on an app subject in the dataset.
-async fn rows(door: &AppDoor, dataset: &str) -> Vec<Row> {
-    // The loader reads as a Human — the same standing every frame
+async fn rows(interface: &AppInterface, dataset: &str) -> Vec<Row> {
+    // The loader reads as a Human — the same actor kind every frame
     // takes, and the read collapses human over agent anyway.
     let actor = Actor {
         kind: ActorKind::Human,
         id: "app:loader".into(),
     };
-    let Ok(session) = door.plane.channel(actor, Some(dataset)).await else {
+    let Ok(session) = interface.plane.channel(actor, Some(dataset)).await else {
         return Vec::new();
     };
     let aspects = PARTS

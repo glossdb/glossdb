@@ -21,7 +21,7 @@ cols AS (
   JOIN loaded l ON l.table_name = c.table_name
   WHERE c.table_catalog = current_database()),
 surfaces AS (
-  SELECT name, kind FROM metric_surfaces WHERE kind <> 'plan'),
+  SELECT name, kind FROM view_definitions WHERE kind <> 'plan'),
 test AS (
   SELECT name, aspect, detector
   FROM tests
@@ -69,8 +69,8 @@ FROM (
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
          (SELECT * FROM base) || 'quality?check=' || name || '&kind=' || CASE detector
-           WHEN 'band_breach' THEN 'corridor'
-           WHEN 'slot_entropy' THEN 'voices'
+           WHEN 'range_breach' THEN 'corridor'
+           WHEN 'value_entropy' THEN 'voices'
            WHEN 'rate_tolerance' THEN 'rate'
            ELSE 'verdicts' END, 0
   FROM test)

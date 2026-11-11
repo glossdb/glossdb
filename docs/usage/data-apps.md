@@ -50,7 +50,7 @@ the app's own parts wait for a release.
   `?region=EMEA` in the URL); they arrive as text, so cast them. The
   dataset comes from the path, and `current_dataset` names it. A frame
   can read anything a query can: a metric by its name,
-  `metric_series()` for a metric at a grain, `band_points()` for the
+  `metric_series()` for a metric at a grain, `range_points()` for the
   expected ranges. Labels, percentages and CSS classes are columns the
   frame computes; templates only place values. `fmt_number()` and
   `fmt_change()` print numbers the way the console does.

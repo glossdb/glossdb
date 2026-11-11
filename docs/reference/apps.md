@@ -73,7 +73,7 @@ A frame is one SQL query served as Arrow IPC.
 
 Display logic (glyphs, classes, links) belongs in the frame's SQL, not
 the template. The views and table functions (`open_questions`, `open_items`,
-`metric_surfaces`, `metric_series()`, …) are the natural sources
+`view_definitions`, `metric_series()`, …) are the natural sources
 ([views and table functions](reads.md)); narrow a workspace-wide one
 by joining `current_dataset`. `fmt_number(x)` and `fmt_change(p)`
 print a number the console's way.
@@ -129,7 +129,7 @@ first N rows (default 50), the total row count in the footer.
 
 One number from the frame's first row, with an optional change beside
 it. `format` is `compact | days | raw | month | text` (`text` passes a
-word such as a band through unformatted); `good` says which direction
+word such as a test state through unformatted); `good` says which direction
 reads as healthy. The SQL computes the change; the tile only shows it.
 
 ### gl-window
@@ -137,7 +137,7 @@ reads as healthy. The SQL computes the change; the tile only shows it.
 `<gl-window frame="frames/axes">`
 
 The viewer's grain and span as links over the page URL (`grain`,
-`span`). It reads the metric's finest grain from a `metric_summary()`
+`span`). It reads the metric's finest grain from a `view_summary()`
 frame and offers the grains from there up.
 
 ### gl-query
@@ -182,7 +182,7 @@ fetches again in place.
 own page (`/<dataset>/app` opens it): pages `index.html` (the review
 queue), `metrics.html`, `quality.html`, `glossary.html`,
 `lineage.html`, `export.html` and `query.html`; frames over the views
-and table functions, `metric_series()`, `metric_summary()`,
-`forecast_points()`, `plan_points()`, `metric_sources()` and `imports`;
+and table functions, `metric_series()`, `view_summary()`,
+`forecast_points()`, `plan_points()`, `view_sources()` and `imports`;
 two specs. Every built-in frame runs under the test suite. What each
 page shows: [the console](../usage/console.md).

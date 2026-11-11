@@ -28,8 +28,8 @@ no dataset. Join it to narrow a workspace-wide view.
 ### workspace_status
 
 Where the workspace stands on each thing it can be extended with. Not
-a task list. Columns: `surface` (`sources`, `tables`, `relationships`,
-`aspects`, `claims`, `functions`, `metrics`, `validations`,
+a task list. Columns: `area` (`sources`, `tables`, `relationships`,
+`aspects`, `claims`, `functions`, `views`, `validations`,
 `scenarios`, `plans`, `review`, `apps`), `how` (the statement that
 extends it), `existing` (what exists), `open` (what is unfinished and
 the agent can finish; 0 where nothing can be), `waiting` (what waits
@@ -98,18 +98,18 @@ release's own, or an earlier release its body names), `note`,
 later release names it in `at` to return to it). `at` is a reserved
 word: quote it, `"at"`.
 
-### metric_surfaces
+### view_definitions
 
 Every metric of the bound dataset and its state: one row per VIEW
 aspect defined here, served or stopped, or named in the `definitions`
 glossary. Columns: `name`, `title`, `kind` (the aspect's `x-kind`),
 `unit` and `meaning` (from `definitions`), `formula` (from
-`definitions`, or the default for a base metric), `grounded` (a
+`definitions`, or the default for a base metric), `defined` (a
 definition with `sql` was written), `stopped` (the stop reason; empty
-while it serves). The numbers are in `metric_summary()` and
+while it serves). The numbers are in `view_summary()` and
 `metric_series()`; join on `name`.
 
-## The metrics kit
+## The views kit
 
 A metric's view is a table of its dataset. Its columns carry roles:
 `timestamp` is the period, `measure` the value (the one named `value`
@@ -123,10 +123,10 @@ each grain serves, counted back from the data's edge. Nothing is
 recomputed at read: an annotation older than its data is stale, and
 the functions return it as the catalog has it.
 
-### metric_summary()
+### view_summary()
 
 One row per metric of the bound dataset: what its columns are, and
-whether a series can be served. Columns: `metric`, `kind` (the
+whether a series can be served. Columns: `view`, `kind` (the
 aspect's `x-kind`), `plan_of` and `covers` (a plan's metric, and the
 grain its rows are booked at), `stopped` (the stop reason),
 `applicable`, `reason` (what to do when it is not), `period_column`,
@@ -150,8 +150,8 @@ outlook kit's `metric_plan` until one exists, as a metric's row asks
 for the profile of its period column.
 
 ```sql
-SELECT metric, applicable, reason, additivity, floor, rung, dims, missing, wanted
-FROM metric_summary() ORDER BY metric
+SELECT view, applicable, reason, additivity, floor, rung, dims, missing, wanted
+FROM view_summary() ORDER BY view
 ```
 
 ### metric_series()
@@ -179,7 +179,7 @@ instant. A ratio divides its summed halves. A dimension with more than
 No default: where rows must be combined and the value column has no
 `additivity`, the function refuses and names the annotation it needs. A
 list over every metric passes `unclaimed := 'skip'`: such a metric
-serves no cell, and its `metric_summary()` row says what it needs. A
+serves no cell, and its `view_summary()` row says what it needs. A
 metric marked `non-additive` never refuses: it is served where it has
 one row per period and left out where rows would have to be combined.
 
@@ -208,36 +208,36 @@ aspect declares `x-kind: scalar`. Columns: `metric`, `value` where the
 view is one row with a `value` column, `reason` where it is not.
 Computed at read; nothing is stored.
 
-### metric_sources()
+### view_sources()
 
 ```
-metric_sources(for_metric := …)
+view_sources(for_view := …)
 ```
 
 What feeds each metric of the bound dataset, or one, through the
 views' lineage: one row per served field and the loaded column it
-comes from. Columns: `metric`, `field`, `source` (`table.column`),
+comes from. Columns: `view`, `field`, `source` (`table.column`),
 `table_name`, `reason`. A computed field (an aggregate, an expression)
 comes from no single column and has no row. Beside those, one row per
 table the view reads, with `table_name` alone. A view that does not
 plan returns one row with `reason`. The console's lineage page draws
 this beside the declared relationships.
 
-### metric_tests()
+### view_tests()
 
 ```
-metric_tests()
+view_tests()
 ```
 
 Every test on each metric of the bound dataset and on what it reads,
-worst first. Columns: `metric`, `test`, `aspect`, `declared_by`
+worst first. Columns: `view`, `test`, `aspect`, `declared_by`
 (`kit:<name>` for a shipped test, else the actor as `kind:id`),
 `subject` (the metric, or a table or column it reads), `state` (`red`,
 `orange`, `yellow`, `green`, or `not_run` while the test has not
-run), `current` (false once what the result read has moved; the band
-stands and the test runs again at the next touch), `score`, `evidence`
+run), `current` (false once what the result read has moved; the state
+is kept and the test runs again at the next touch), `score`, `evidence`
 (the check's own result), `run` (the statement that runs it again;
-empty where none does). The metrics kit's own tests appear on every
+empty where none does). The views kit's own tests appear on every
 metric, run or not: `fan_out_test` (join fan-out), `orphan_test`
 (referential integrity on the declared joins) and `measure_additivity_test`
 (whether the value column says how it adds up, and whether that agrees
@@ -291,31 +291,31 @@ answered by the model service the deployment names
 (`GLOSSDB_SERVICE_URL`); without one, these measurements refuse by
 name and everything else serves. Each result is stored as a
 measurement and read back as SQL, so `next` reads the catalog and never
-computes over the data. The service owns its subject: the bands, the
-PIT and when it is withheld, the backtest's verdict, the forecast's
+computes over the data. The service owns its subject: the ranges, the
+PIT and when it is withheld, the backtest's result, the forecast's
 quantiles, the estimate's sign. The kit owns the calendar and sends
 complete periods only.
 
-### band_verdict()
+### range_result()
 
-The newest backtest's verdict, one row, none before a backtest: `served_by`
-(the service and its version), `grain`, `score`, `band`, `threshold`
+The newest backtest's result, one row, none before a backtest: `served_by`
+(the service and its version), `grain`, `score`, `state`, `threshold`
 (the red line the backtest was asked with), `computed_at`.
 
-### band_points()
+### range_points()
 
 The newest backtest, one row per metric and month backtested. Columns:
 `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80` and
 `held_90` (the share of backtested points inside the 10–90 and the 5–95
-band), `period`, `actual`, `p05` … `p95`, `pit`, `withheld`,
+range), `period`, `actual`, `p05` … `p95`, `pit`, `withheld`,
 `displacement` (|2·pit − 1|, what the detector scores), `newest` (the
-latest point backtested, the one the verdict scores), `point_seq`,
+latest point backtested, the one the result scores), `point_seq`,
 `computed_at`. A metric not backtested returns one row with its reason and
-no numbers. This reads the catalog and never runs again: `metric_bands`
+no numbers. This reads the catalog and never runs again: `metric_ranges`
 backtests again and calls the service.
 
 ```sql
-SELECT metric, period, displacement FROM band_points()
+SELECT metric, period, displacement FROM range_points()
 WHERE newest ORDER BY displacement DESC
 ```
 
@@ -329,12 +329,12 @@ floor), `origin` (the last period with a value), `served_by`,
 steps it sums), `to_go` (what a total runs to: `month`, `quarter` or
 `year`), `period` (the period forecast; for a total, the one it ends
 at), `p05` … `p95`, `service_80` and `service_90` (the service's
-held-out share of actuals inside the 80% and the 90% band at that
+held-out share of actuals inside the 80% and the 90% range at that
 grain, step and span), `actual` (joined from the actual world at read,
 once the period has data; a total's is the sum of its periods, once all
 have), `actuals` (`below`, `low`, `inside`, `high` or `above` against
 p05, p10, p90 and p95), `held_80`, `held_90` and `held_from` (how often
-such a band held, and whose count: this metric's own where 30 of its
+such a range held, and whose count: this metric's own where 30 of its
 points have arrived at that grain, step and span, else the dataset's
 where it reaches 30, else the service's). A metric the forecast found
 not applicable is one row with its reason. The horizon is 31 days, 13
@@ -395,19 +395,19 @@ year ([plans](../preview/plans.md)). Columns: `plan`, `metric`,
 `2026-Q3`, `2026-07`, `2026-07-13`), `value` (the plan's cell),
 `actual` (the actual cell once the period has begun; for the current
 period, to date), `variance` (actual minus plan, on a complete period),
-`low`, `expected`, `high` (the newest forecast's 80% band and median:
+`low`, `expected`, `high` (the newest forecast's 80% range and median:
 the step's at the metric's own grain; at a coarser grain, for an additive metric
 the actual to date plus the total to the period's end, for a semi-additive metric the
-band of the last period inside it), `planned` (`complete`: the period is complete;
-`inside`, `below`, `above`: where the plan lies against the band;
-`partial`: begun, and the rows cover part of the period, so no band;
-`open`: begun, no band covers the rest; `ahead`: not begun), `covers`
+range of the last period inside it), `planned` (`complete`: the period is complete;
+`inside`, `below`, `above`: where the plan lies against the range;
+`partial`: begun, and the rows cover part of the period, so no range;
+`open`: begun, no range covers the rest; `ahead`: not begun), `covers`
 (on the year row of a plan covering part of the year: `9 of 12
 months`), `held_80`, `held_from`, `origin` (the forecast's). Computed
 at read. `metric_plan` stores the same rows per plan as a measurement,
 which `next` reads.
 
-### plan_record()
+### plan_stored()
 
 The newest stored comparison per plan, from the measurements alone,
 one row per point; `next` reads this, and `plan_points()`
@@ -459,7 +459,7 @@ withheld, 2 something changed or was decided, 3 not there yet, 9
 waiting for a person), `ord` (the step's order), `step`, `asset`,
 `state` (`missing`, `stale`, `conflict`, a test's state, `decided`,
 `waiting`, `blocked`), `who` (`agent` or `person`), `open` (the
-finding), `for_metric` (the metrics that read the asset), `cause`
+finding), `for_view` (the metrics that read the asset), `cause`
 (what the newest load changed: row counts and the columns whose
 profile moved) and `statement` (what opens the work, filled from the
 catalog; `<…>` marks what only the author can fill). The rows come in

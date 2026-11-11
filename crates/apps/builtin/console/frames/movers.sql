@@ -7,7 +7,7 @@
 -- the row tile groups their digits.
 WITH walked AS (
   SELECT period, row_number() OVER (ORDER BY point_seq DESC) AS recency
-  FROM band_points()
+  FROM range_points()
   WHERE metric = CAST($metric AS VARCHAR) AND applicable AND period IS NOT NULL
 ),
 newest AS (SELECT max(period) AS period FROM walked WHERE recency = 1),

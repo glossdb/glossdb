@@ -33,8 +33,8 @@ Finished before anything new is picked.
 | Connect | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
 | Describe | The workspace as code: declarations as `.glossql` files, tested in CI | See `platform.md` | | | #219 |
 | Describe | Citations to documents on tables, columns, relationships and metrics | Low | an optional kit | With documents | #220 |
-| Test | A certification level per metric: the level sets which tests and which review a metric needs before it is served as certified | Low: a property and a read over `metric_tests()` | the metrics kit, `next`, the console's metric page | After the harmonisation kit | |
-| Test | A recompute rule: a measure that does not sum from its members is recomputed, not summed | Medium | the metrics kit | | #41 |
+| Test | A certification level per metric: the level sets which tests and which review a metric needs before it is served as certified | Low: a property and a read over `view_tests()` | the views kit, `next`, the console's metric page | After the harmonisation kit | |
+| Test | A recompute rule: a measure that does not sum from its members is recomputed, not summed | Medium | the views kit | | #41 |
 | Decide | Access per user | See `gate.md` | | When a workspace has a second user | |
 | Decide | A recommendations read: findings with their options, chosen in the console (preview) | Low | the outlook kit, a console tile | | #174 |
 | Decide | A review decision made inside the chat | See `chat.md` | | With the trial | #20 |
@@ -50,11 +50,10 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| The extension still acknowledges a load as `landed` and refuses with `grounding`; its description reads "the context language over DuckDB" | the extension's runner, store and grammar, about 90 rows of its tests, then the pin here | before the pull requests |
-| About 40 test names here use door, round, ruling, record, stands | `crates/*/tests/suite/` | before the pull requests |
-| The console's tests pin about 110 labels | `crates/apps/tests/suite/door.rs` | with row 5 |
+| The extension's description reads "the context language over DuckDB" | the extension | before the pull requests |
+| The console's tests pin about 110 labels | `crates/apps/tests/suite/console.rs` | with row 5 |
 | A workspace opened before the switch keeps a dead `next_steps` view and three `routes_*` macros | the demo workspace is rebuilt | with row 6 |
-| A test's result reads as not current after a load of a table the metric does not read | `metric_tests()`, the extension's pin of what a result read | after row 6 |
+| A test's result reads as not current after a load of a table the metric does not read | `view_tests()`, the data version the extension stores for a result | after row 6 |
 | One pull request per repository for the branch `data-intelligence` | both repositories, glossval on its own | when rows 1 to 6 are done |
 
 ## Measured

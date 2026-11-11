@@ -3,7 +3,7 @@
 -- declared it and whether the result still holds. A metric whose tests
 -- are all green is one row saying so.
 WITH d AS (SELECT dataset FROM current_dataset),
-t AS (SELECT * FROM metric_tests()),
+t AS (SELECT * RENAME (view AS metric) FROM view_tests()),
 open AS (
   SELECT t.metric, t.test, t.state,
          CASE WHEN t.state IN ('red', 'orange', 'yellow') THEN 'warn' ELSE '' END AS bcls,

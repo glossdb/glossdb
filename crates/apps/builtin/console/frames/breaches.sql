@@ -4,23 +4,23 @@
 -- record's fields, the numbers behind it, the bands test's result
 -- as the chip, and the axis that moved most for the link to the metric
 -- sliced by it. The corridor picture and the movers under the finding
--- are the metric's own frames, keyed by its name. `band_points()` is
+-- are the metric's own frames, keyed by its name. `range_points()` is
 -- the recorded walk, no re-run; a point is outside at displacement
 -- 0.95 and over. A green corridor serves no row. The axis that moved
 -- most is the series' own cells at month grain, the newest walked
 -- month against the one before it.
 WITH verdict AS (
-  SELECT a.test, a.band, a.computed_at, a.current, w.detector, w.threshold,
-         row_number() OVER (ORDER BY CASE a.band WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
+  SELECT a.test, a.state AS band, a.computed_at, a.current, w.detector, w.threshold,
+         row_number() OVER (ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
   FROM glossql_tests(current_schema(), NULL) a
   JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
     ON w.name = a.test
-  WHERE w.detector = 'band_breach'
+  WHERE w.detector = 'range_breach'
 ),
 walked AS (
   SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
-  FROM band_points()
+  FROM range_points()
   WHERE applicable AND period IS NOT NULL
 ),
 newest AS (SELECT * FROM walked WHERE recency = 1),
@@ -67,7 +67,7 @@ SELECT coalesce(t2.title, o.name) AS title,
             ELSE 'The other ' || CAST(c.n - k.k AS VARCHAR) || ' checked metrics sit inside their expected ranges.' END AS others,
        coalesce(v.band, 'outside') AS band,
        CASE WHEN v.band IS NULL OR v.band = 'green' THEN '' ELSE 'warn' END AS bcls,
-       coalesce(v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on metric_bands',
+       coalesce(v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on metric_ranges',
                 'no test scores the expected range') AS meta,
        coalesce('measured ' || strftime(v.computed_at, '%d %b %Y %H:%M'), '') AS at,
        CASE WHEN coalesce(v.current, true) THEN '' ELSE ' · from before the last change' END AS stale,

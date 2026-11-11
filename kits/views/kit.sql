@@ -7,7 +7,7 @@
 --
 --   FROM glossql_kit('kits/kpi/kit.sql');
 --   FROM glossql_kit('kits/quality/kit.sql');
---   FROM glossql_kit('kits/metrics/kit.sql');
+--   FROM glossql_kit('kits/views/kit.sql');
 --
 -- A metric definition's view is a table of its dataset: the column that carries
 -- role timestamp is the metric's period, the column that carries role
@@ -33,7 +33,7 @@ DECLARE ASPECT time_grains WITH $${
       "day": {"type": "integer", "minimum": 1}, "week": {"type": "integer", "minimum": 1},
       "month": {"type": "integer", "minimum": 1}, "quarter": {"type": "integer", "minimum": 1},
       "year": {"type": "integer", "minimum": 1}}},
-    "grounds": {"type": "string"}
+    "basis": {"type": "string"}
   }
 }$$ AS FACT ON COLUMN WHEN role = 'timestamp';
 
@@ -52,9 +52,9 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
          WHEN 'month' THEN 48 WHEN 'quarter' THEN 40 WHEN 'year' THEN 20 END;
 
 --===------------------------------------------------------------------===--
--- metric_summary(): one row per metric of the bound dataset — a VIEW aspect
+-- view_summary(): one row per metric of the bound dataset — a VIEW aspect
 -- whose metric definition is a view — what the catalog says its columns are
--- and whether a series can be served: metric, kind (the aspect's x-kind),
+-- and whether a series can be served: view, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
 -- against), stopped (the author's text), applicable, reason (the road out
 -- when it is not), period_column, value_column, numerator and denominator
@@ -76,7 +76,7 @@ CREATE OR REPLACE MACRO main.rung_default(g) AS
 -- the profile over its period column.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.metric_summary() AS TABLE
+CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (
   SELECT name, schema FROM (
@@ -94,13 +94,13 @@ cols AS (
   SELECT c.table_name AS metric, c.column_name AS col, c.ordinal_position AS pos
   FROM glossql_columns(current_schema()) c
   WHERE c.table_name IN (SELECT metric FROM views)),
-slots AS MATERIALIZED (
+annotated AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
   FROM glossql_glossary(current_schema(), NULL, false)
   WHERE aspect IN ('role', 'additivity', 'dimension', 'time_grains', 'temporal_profile')
     AND len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
-claims AS (SELECT * FROM slots WHERE state IN ('current', 'stale') AND value IS NOT NULL),
+claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
 periods AS (
   SELECT r.metric, list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) AS cols
@@ -121,7 +121,7 @@ additivitys AS (
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'numerator' END AS numerator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'denominator' END AS denominator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'conflict' END AS additivity_state
-  FROM slots s WHERE s.aspect = 'additivity' AND s.state <> 'missing'),
+  FROM annotated s WHERE s.aspect = 'additivity' AND s.state <> 'missing'),
 profiles AS (
   SELECT metric, col,
          CASE WHEN (value->>'applicable') = 'true' AND (value->>'granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
@@ -216,7 +216,7 @@ judged_plans AS (
          WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
     END AS reason
   FROM plans)
-SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
+SELECT metric AS view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, cadence, floor,
        CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.rung_default(floor)) END AS rung,
        additivity, additivity_state, dims, unranked, unadmitted, missing, wanted, judged_current
@@ -231,7 +231,7 @@ SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, rea
             THEN ['metric_plan over ' || current_schema() || '.' || metric] ELSE []::VARCHAR[] END,
        true
 FROM judged_plans
-ORDER BY metric;
+ORDER BY view;
 
 --===------------------------------------------------------------------===--
 -- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
@@ -266,8 +266,8 @@ WHERE false;
 
 CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
 WITH asked AS MATERIALIZED (
-  SELECT m.*, coalesce(grain, m.floor) AS at_grain
-  FROM main.metric_summary() m
+  SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
+  FROM main.view_summary() m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
@@ -370,7 +370,7 @@ ORDER BY metric, dimension, member, period;
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
-WITH facts AS (SELECT metric, stopped FROM main.metric_summary() WHERE kind = 'scalar'),
+WITH facts AS (SELECT view AS metric, stopped FROM main.view_summary() WHERE kind = 'scalar'),
 cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
@@ -386,37 +386,37 @@ FROM facts f LEFT JOIN shape s USING (metric)
 ORDER BY f.metric;
 
 --===------------------------------------------------------------------===--
--- metric_sources(for_metric := NULL): what feeds each metric of the bound
+-- view_sources(for_view := NULL): what feeds each metric of the bound
 -- dataset, or one — one row per served field and the loaded column it
--- descends from, through the views' lineage: metric, field, source
+-- descends from, through the views' lineage: view, field, source
 -- (table.column), table_name; a computed field with no column behind it
 -- has no row; beside those, one row per table the view reads, table_name
 -- alone; a view that does not plan serves one row with reason.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.metric_sources(for_metric := NULL) AS TABLE
-WITH metrics AS (
-  SELECT m.metric FROM main.metric_summary() m WHERE m.stopped IS NULL AND (for_metric IS NULL OR m.metric = for_metric)),
+CREATE OR REPLACE MACRO main.view_sources(for_view := NULL) AS TABLE
+WITH views AS (
+  SELECT m.view FROM main.view_summary() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
 lineage AS (
-  SELECT l.view AS metric, l."column" AS field, l.derivation, l.complete
-  FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT metric FROM metrics)),
+  SELECT l.view AS view, l."column" AS field, l.derivation, l.complete
+  FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT view FROM views)),
 -- a field descends from the columns its derivation names; an aggregate
 -- descends from no column — it is computed over them
 fields AS (
-  SELECT metric, field, unnest(regexp_extract_all(derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path,
+  SELECT view, field, unnest(regexp_extract_all(derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path,
          regexp_matches(derivation, '^(sum|count|avg|mean|min|max|median|mode|stddev|stddev_pop|stddev_samp|var_pop|var_samp|variance|string_agg|list|array_agg|arg_min|arg_max|first|last|any_value|bool_and|bool_or|quantile|quantile_cont|quantile_disc|approx_count_distinct|product)\(') AS aggregate
   FROM lineage WHERE field IS NOT NULL),
 tables AS (
-  SELECT DISTINCT metric, split_part(path, '.', 2) AS table_name FROM fields),
+  SELECT DISTINCT view, split_part(path, '.', 2) AS table_name FROM fields),
 sources AS (
-  SELECT DISTINCT metric, field, split_part(path, '.', 2) || '.' || split_part(path, '.', 3) AS source, split_part(path, '.', 2) AS table_name
+  SELECT DISTINCT view, field, split_part(path, '.', 2) || '.' || split_part(path, '.', 3) AS source, split_part(path, '.', 2) AS table_name
   FROM fields WHERE NOT aggregate)
-SELECT metric, field, source, table_name, NULL::VARCHAR AS reason FROM sources
+SELECT view, field, source, table_name, NULL::VARCHAR AS reason FROM sources
 UNION ALL
-SELECT metric, NULL, NULL, table_name, NULL FROM tables
+SELECT view, NULL, NULL, table_name, NULL FROM tables
 UNION ALL
-SELECT metric, NULL, NULL, NULL, 'the metric definition does not plan' FROM lineage WHERE field IS NULL
-ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
+SELECT view, NULL, NULL, NULL, 'the view definition does not plan' FROM lineage WHERE field IS NULL
+ORDER BY view, table_name NULLS LAST, field NULLS FIRST;
 
 --===------------------------------------------------------------------===------------------------------------------------------------------===--
 -- The built-in tests on a metric: what can break its number, checked
@@ -431,23 +431,23 @@ ORDER BY metric, table_name NULLS LAST, field NULLS FIRST;
 -- yellow; a metric over one table cannot fan out and has no join to
 -- check. A person who accepts a result records a tolerance at or above
 -- it on the metric; their value outranks the agent's. `x-subject:
--- metric` marks a test metric_tests() expects on every metric, run or
+-- view` marks a test view_tests() expects on every metric, run or
 -- not, and the test the server runs itself after a call that defined
 -- the metric, glossed its columns or imported a table it scans.
 --
--- metric_reads_of(ds, m): the tables and columns metric m of dataset ds
+-- view_reads_of(ds, m): the tables and columns metric m of dataset ds
 -- descends from, through its view's lineage; none when it does not plan.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.metric_reads_of(ds, m) AS TABLE
+CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
 FROM (SELECT unnest(regexp_extract_all(l.derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
       FROM glossql_views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
--- metric_scans_of(ds, m): every table of ds metric m's definition scans,
+-- view_scans_of(ds, m): every table of ds metric m's definition scans,
 -- joins and filters included, from its view's plan.
-CREATE OR REPLACE MACRO main.metric_scans_of(ds, m) AS TABLE
+CREATE OR REPLACE MACRO main.view_scans_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
 FROM glossql_views_scans(ds) s
 WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
@@ -459,12 +459,12 @@ WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 -- are, so a kit that adds a test adds no branch anywhere else.
 --
 -- gloss_statement(aspect, subject, body): the annotation statement.
--- metric_redefine(ds, m): the statement that records metric m's
+-- view_redefine(ds, m): the statement that records metric m's
 -- current definition again, to edit and send.
 CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
   'GLOSS ' || a || ' ON ' || subj || ' AS $$' || body || '$$;';
 
-CREATE OR REPLACE MACRO main.metric_redefine(ds, m) AS
+CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
   main.gloss_statement(m, ds, coalesce(
     (SELECT g.body::VARCHAR FROM main.glossary g
      WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.seq DESC LIMIT 1),
@@ -479,16 +479,16 @@ CREATE OR REPLACE MACRO main.metric_redefine(ds, m) AS
 -- them, or the latest row per value by row_number() = 1) does not repeat,
 -- whatever its table holds. A metric that joins nothing cannot fan out.
 DECLARE ASPECT fan_out_check WITH $${
-  "type": "object", "x-subject": "metric",
+  "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "pairs": {"type": ["array", "null"], "items": {"type": "string"}},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
-  WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  WITH reads AS (SELECT table_name FROM main.view_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
   n AS (SELECT count(*) AS tables FROM reads),
   -- a join on an effective-dated table repeats its key by design: the
   -- validity test judges that join
@@ -531,11 +531,11 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
                    || ', and the values repeat on both sides, so each match multiplies rows' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM repeating)
               THEN '-- make one side of the join one row per value: join through the table that holds the key once, or keep one row per key in a subquery (the latest row per key, or GROUP BY the key). Then record the definition again:' || chr(10)
-                   || main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) || chr(10)
+                   || main.view_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) || chr(10)
                    || '-- where one of the tables holds a row per version, say so and the validity test names the fix:' || chr(10)
                    || '-- ' || main.gloss_statement('validity', '<table>', '{"valid_from": "<column>", "valid_to": "<column>"}') || chr(10)
                    || '-- where the join is meant as it is, accept it with the reason:' || chr(10)
-                   || '-- ' || main.gloss_statement('fan_out_check', $subject, '{"tolerance": 1.0, "grounds": "<why the join is meant>"}') END AS fix
+                   || '-- ' || main.gloss_statement('fan_out_check', $subject, '{"tolerance": 1.0, "basis": "<why the join is meant>"}') END AS fix
   FROM n
 $$ RETURNS fan_out_check;
 
@@ -547,18 +547,18 @@ DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_toler
 -- and that agrees with how the column is computed: the lineage's shape says
 -- a ratio, an average or a distinct count, none of which may be summed.
 DECLARE ASPECT additivity_check WITH $${
-  "type": "object", "x-subject": "metric",
+  "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
                  "shape": {"type": ["string", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH a AS (SELECT * FROM main.metric_summary() WHERE metric = split_part($subject, '.', 2)),
+  WITH a AS (SELECT * FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
   ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
-  computed AS (SELECT max(l.shape) AS shape FROM glossql_views_lineage(split_part($subject, '.', 1)) l JOIN a ON l.view = a.metric AND l."column" = a.value_column)
+  computed AS (SELECT max(l.shape) AS shape FROM glossql_views_lineage(split_part($subject, '.', 1)) l JOIN a ON l.view = a.view AND l."column" = a.value_column)
   SELECT ok.applicable,
          CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM a WHERE coalesce(kind, '') IN ('scalar', 'relation')),
                                                   'the definition does not say yet which column is the time and which the measure') END AS reason,
@@ -570,28 +570,28 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
          computed.shape AS shape,
          CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
               WHEN additivity IS NULL OR additivity_state <> 'current'
-                THEN value_column || ' of ' || metric || ' does not say how it adds up, which a total and a coarser time grain need'
+                THEN value_column || ' of ' || view || ' does not say how it adds up, which a total and a coarser time grain need'
               WHEN computed.shape = 'distinct' AND additivity = 'additive'
-                THEN value_column || ' of ' || metric || ' is a distinct count marked additive: distinct counts do not add up, so a total and a coarser time grain are wrong'
+                THEN value_column || ' of ' || view || ' is a distinct count marked additive: distinct counts do not add up, so a total and a coarser time grain are wrong'
               WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
-                THEN value_column || ' of ' || metric || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
+                THEN value_column || ' of ' || view || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
                      || ' marked ' || additivity || ': its rows are summed, so a total and a coarser time grain are wrong' END FROM a) END AS finding,
          CASE WHEN NOT ok.applicable
               THEN (SELECT CASE WHEN len(coalesce(missing, [])) > 0 THEN list_aggregate(missing, 'string_agg', chr(10))
-                                ELSE main.metric_redefine(split_part($subject, '.', 1), metric) END FROM a)
+                                ELSE main.view_redefine(split_part($subject, '.', 1), view) END FROM a)
               ELSE (SELECT CASE
               WHEN additivity IS NULL OR additivity_state <> 'current'
                 THEN main.gloss_statement('additivity', $subject || '.' || value_column,
-                       '{"value": "<additive|semi-additive|ratio|non-additive>", "grounds": "<why, in the business''s words>"}')
+                       '{"value": "<additive|semi-additive|ratio|non-additive>", "basis": "<why, in the business''s words>"}')
               WHEN computed.shape = 'distinct' AND additivity = 'additive'
                 THEN main.gloss_statement('additivity', $subject || '.' || value_column,
-                       '{"value": "non-additive", "grounds": "a distinct count"}')
+                       '{"value": "non-additive", "basis": "a distinct count"}')
               WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
                 THEN '-- serve the numerator and the denominator beside the value and say so in "measure": {"column": "' || value_column
                      || '", "additivity": "ratio", "numerator": "<column>", "denominator": "<column>"}. Then record the definition again:' || chr(10)
-                     || main.metric_redefine(split_part($subject, '.', 1), metric) || chr(10)
+                     || main.view_redefine(split_part($subject, '.', 1), view) || chr(10)
                      || '-- where the number is right as it is, accept it with the reason:' || chr(10)
-                     || '-- ' || main.gloss_statement('additivity_check', $subject, '{"tolerance": 1.0, "grounds": "<why it may be summed>"}') END FROM a) END AS fix
+                     || '-- ' || main.gloss_statement('additivity_check', $subject, '{"tolerance": 1.0, "basis": "<why it may be summed>"}') END FROM a) END AS fix
   FROM ok, computed
 $$ RETURNS additivity_check;
 
@@ -603,16 +603,16 @@ DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETEC
 -- them, an outer join counts them under no member. Where no edge is
 -- declared between the tables a metric scans there is nothing to check.
 DECLARE ASPECT orphan_check WITH $${
-  "type": "object", "x-subject": "metric",
+  "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "edges": {"type": ["array", "null"], "items": {"type": "object"}},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
-  WITH reads AS (SELECT table_name FROM main.metric_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
+  WITH reads AS (SELECT table_name FROM main.view_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
   n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
   declared AS (
     SELECT 1 FROM main.relationships r
@@ -646,7 +646,7 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
                    || ' find no parent: an inner join drops them, an outer join counts them under no member' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
               THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
-                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "grounds": "<why these rows have no parent>"}') END AS fix
+                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
   FROM n
 $$ RETURNS orphan_check;
 
@@ -659,7 +659,7 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 DECLARE ASPECT validity WITH $${
   "type": "object", "required": ["valid_from", "valid_to"],
   "properties": {"valid_from": {"type": "string"}, "valid_to": {"type": "string"},
-                 "open_end": {"type": "string"}, "grounds": {"type": "string"}}
+                 "open_end": {"type": "string"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 -- validity_check: the metric scans an effective-dated table and reads both
@@ -667,12 +667,12 @@ DECLARE ASPECT validity WITH $${
 -- scan that reads neither or one joins every version of a key, and the
 -- number counts a row once per version.
 DECLARE ASPECT validity_check WITH $${
-  "type": "object", "x-subject": "metric",
+  "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
                  "tables": {"type": ["array", "null"], "items": {"type": "string"}},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION validity_check FOR GLOBAL AS $$
@@ -697,30 +697,30 @@ DECLARE FUNCTION validity_check FOR GLOBAL AS $$
                    || ' without bounding both validity dates, so a row counts once per version' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM undated)
               THEN '-- bound both validity dates by the period (valid_from <= period AND valid_to > period). Then record the definition again:' || chr(10)
-                   || main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) END AS fix
+                   || main.view_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) END AS fix
 $$ RETURNS validity_check;
 
 DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
--- metric_tests(): every test on each metric of the bound dataset and on
--- what it reads — metric, test, aspect, declared_by (the kit that ships
+-- view_tests(): every test on each metric of the bound dataset and on
+-- what it reads — view, test, aspect, declared_by (the kit that ships
 -- the test, kit:<name>, or the agent or person who wrote it), subject
 -- (the metric, or a table or column it reads), state (red, orange,
 -- yellow, green, or not run while the test has not run), current
--- (false once what the result read has moved: the band stands and the
+-- (false once what the result read has moved: the state is kept and the
 -- test runs again at the next touch), score, evidence (the check's own
 -- result), run (the statement that runs it again, empty where there is
--- none). The tests marked x-subject metric appear on every metric, run
+-- none). The tests marked x-subject view appear on every metric, run
 -- or not. A single value, a derived relation, a plan and a sample are
 -- not metrics here. Ordered by what to look at first.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.metric_tests() AS TABLE
-WITH metrics AS (
-  SELECT metric FROM main.metric_summary()
+CREATE OR REPLACE MACRO main.view_tests() AS TABLE
+WITH views AS (
+  SELECT view FROM main.view_summary()
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
-results AS (SELECT subject, aspect, test, band, score, current FROM glossql_tests(current_schema(), NULL)),
+results AS (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 expected AS (
@@ -728,33 +728,33 @@ expected AS (
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) t
   JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
     ON a.name = t.aspect
-  WHERE json_extract_string(a.schema, '$.x-subject') = 'metric'),
+  WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
 evidence AS (
   SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY seq DESC) = 1),
 own AS (
-  SELECT m.metric, e.test, e.aspect, current_schema() || '.' || m.metric AS subject,
-         coalesce(r.band, 'not_run') AS state, coalesce(r.current, false) AS current,
+  SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,
+         coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
-         'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.metric AS run
-  FROM metrics m CROSS JOIN expected e
-  LEFT JOIN results r ON r.subject = current_schema() || '.' || m.metric AND r.test = e.test
-  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.metric AND v.aspect = e.aspect),
+         'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
+  FROM views m CROSS JOIN expected e
+  LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
+  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect),
 reads AS (
-  SELECT m.metric, current_schema() || '.' || r.table_name || '.' || r.column_name AS subject
-  FROM metrics m, main.metric_reads_of(current_schema(), m.metric) r
+  SELECT m.view, current_schema() || '.' || r.table_name || '.' || r.column_name AS subject
+  FROM views m, main.view_reads_of(current_schema(), m.view) r
   UNION
-  SELECT m.metric, current_schema() || '.' || s.table_name
-  FROM metrics m, main.metric_scans_of(current_schema(), m.metric) s),
+  SELECT m.view, current_schema() || '.' || s.table_name
+  FROM views m, main.view_scans_of(current_schema(), m.view) s),
 inputs AS (
-  SELECT DISTINCT d.metric, r.test, r.aspect, r.subject,
-         r.band AS state, r.current, r.score, NULL::JSON AS evidence, '' AS run
+  SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
+         r.state AS state, r.current, r.score, NULL::JSON AS evidence, '' AS run
   FROM reads d JOIN results r ON r.subject = d.subject
   WHERE r.test NOT IN (SELECT test FROM expected))
-SELECT t.metric, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
+SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
-         current, metric, test, subject;
+         current, view, test, subject;
 
 --===------------------------------------------------------------------===--
 -- semantic_model(): the bound dataset as one Apache Ossie document
@@ -774,8 +774,8 @@ CREATE OR REPLACE MACRO main.semantic_model() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 known AS (SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false) WHERE value IS NOT NULL),
 metrics AS (
-  SELECT metric, value_column, period_column, additivity, numerator, denominator
-  FROM main.metric_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+  SELECT view AS metric, value_column, period_column, additivity, numerator, denominator
+  FROM main.view_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
 cols AS (
   SELECT c.table_name, c.column_name, c.column_type, c.ordinal_position
   FROM glossql_columns(current_schema(), true) c

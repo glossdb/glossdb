@@ -9,8 +9,8 @@ roles AS (
   SELECT subject, json_extract_string(value, '$.value') AS role
   FROM GLOSSARY() WHERE aspect = 'role' AND value IS NOT NULL),
 prov AS (
-  SELECT DISTINCT s.field, s.source FROM metric_sources() s
-  WHERE s.metric = $metric AND s.field IS NOT NULL),
+  SELECT DISTINCT s.field, s.source FROM view_sources() s
+  WHERE s.view = $metric AND s.field IS NOT NULL),
 folded AS (
   SELECT p.field,
          string_agg(p.source, ', ' ORDER BY p.source) AS sources,

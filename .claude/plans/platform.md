@@ -10,8 +10,8 @@ tools use. Build order is risk order.
 | Spike: a dbt project that builds its models into the DuckLake glossdb attaches; glossdb reads the tables in place and the project's metadata as files | High: nothing is built, and freshness must come from that lake's own metadata | a scratch workspace, DuckDB's dbt integration, the server's open | First; it decides the three rows below | drafted below |
 | Read a lake or catalog in place (DuckLake, Iceberg, Delta), without a copy | High: today a load copies, and `stale` is read from glossdb's own load history | the server's open, the stale rule, `SPEC.md` §3's `via` | After the spike | #221 |
 | dbt import: models as tables, descriptions as `meaning`, dbt tests as tests, column lineage as lineage | Medium | an import kit: SQL over the project's metadata files | After the spike | #221 |
-| dbt export: a metric and a test written in dbt's form | Low: a read beside `semantic_model()` | the metrics kit | After the import | |
-| Ossie import: a semantic model written elsewhere becomes column annotations, relationships and metric definitions | Medium: a metric expression may be in another SQL dialect | the metrics kit | When a customer names a semantic layer | #221 |
+| dbt export: a metric and a test written in dbt's form | Low: a read beside `semantic_model()` | the views kit | After the import | |
+| Ossie import: a semantic model written elsewhere becomes column annotations, relationships and metric definitions | Medium: a metric expression may be in another SQL dialect | the views kit | When a customer names a semantic layer | #221 |
 | A database attached read-only (`postgres`, `mysql`, `sqlite`) and read by a load query | Low: the extensions exist and the image carries `postgres` | `SPEC.md` §3's `via`, the server's open, a suite case | When a customer names one | |
 | The workspace as code: declarations exported to `.glossql` files and loaded back; `TESTS()` in the team's CI | Medium: which annotations are code and which are run-time results is open | an export read, a load of a directory, a CI example | After the dbt rows; the files sit beside a dbt project | #219 |
 
@@ -20,7 +20,7 @@ tools use. Build order is risk order.
 - `semantic_model()` returns the bound dataset as one Apache Ossie
   document, and `lineage_events()` its lineage as OpenLineage events.
   Both are valid against the standards' JSON schemas and readable
-  over the query endpoint (`kits/metrics/kit.sql`).
+  over the query endpoint (`kits/views/kit.sql`).
 - dbt writes its project metadata, column lineage included, as
   Parquet files DuckDB reads, and builds models into a DuckLake
   catalog (https://duckdb.org/2026/09/22/dbt-fusion).

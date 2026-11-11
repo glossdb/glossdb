@@ -10,15 +10,15 @@ leaves the workspace, walk this map and run what answers it:
 | what values a column holds — range, nulls, distincts, top values | `column_profile()` |
 | outliers on a numeric column | `outlier_profile()` |
 | a date column's grain, span, gaps | `temporal()` — on a table's column and on a metric's period column alike; the cadence is the floor the series is served at |
-| **stock or flow — may it be summed** | `additivity_evidence()` over the declared edges: the level reconciled against a related event table's movements per entity and period, with the anchor that decided; then your reading of the column's meaning and the table's grain, annotated as `additivity` on the column citing the anchor in `grounds`; the test bands disagreement, and a series over the column refuses to combine rows until a claim is in force |
+| **stock or flow — may it be summed** | `additivity_evidence()` over the declared edges: the level reconciled against a related event table's movements per entity and period, with the anchor that decided; then your reading of the column's meaning and the table's grain, annotated as `additivity` on the column citing the anchor in `basis`; the test scores disagreement, and a series over the column refuses to combine rows until a claim is in force |
 | **a sign convention** (source-signed vs natural) | the `conventions` annotation on the source, read before the first probe |
 | which columns join, and how well | `detect_relationships()`, then your anti-join judging; ongoing health is `relationship_coherence()` |
 | whether a column derives from siblings (a = b × c) | `detect_derivations()` |
 | which axes are worth slicing | the served columns that carry `role` dimension; a `dimension` annotation ranks them, `primary` first, `none` closes one |
 | hierarchies inside dimensions | `detect_hierarchies()` |
-| two metrics accidentally identical | `detect_grounding_collisions()` |
-| whether a metric's month is surprising | `metric_bands()`, the service's verdict carried by `bands_test` |
-| the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `metric_summary()` says what the catalog says of its columns, and what each still needs |
+| two metrics accidentally identical | `detect_definition_collisions()` |
+| whether a metric's month is surprising | `metric_ranges()`, the service's result carried by `range_test` |
+| the app's series and slices | `metric_series(grain := …)`: each metric's cells at its floor or a coarser grain, from its view at read; `view_summary()` says what the catalog says of its columns, and what each still needs |
 | whether a written expectation holds | a check function's value and the detector you bind, read via `TESTS()` |
 
 A measurement is called in the SELECT list with its subject in FROM,

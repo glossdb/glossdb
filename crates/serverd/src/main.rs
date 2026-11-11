@@ -1,5 +1,5 @@
 //! The server binary, `glossql`: open the workspace, verify who knocks,
-//! serve the doors.
+//! serve the interfaces.
 
 // An unwrap outside a test is a panic waiting for the row that has it;
 // tests are exempt (clippy.toml).
@@ -26,7 +26,7 @@ use glossdb_serverd::{Access, Gate, INSECURE_DEV_MODE, Login, Plane, bootstrap, 
 fn main() {
     // Before parse: --version and --help answer and exit — a packaging
     // smoke test runs the first where no workspace or environment
-    // stands.
+    // holds.
     match std::env::args().nth(1).as_deref() {
         Some("--version") => {
             println!("glossql {}", env!("CARGO_PKG_VERSION"));
@@ -77,7 +77,7 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
     // After `.env`, so `GLOSSDB_LOG` and the export switch may come
     // from it; before anything opens, so the opening is on the record.
     let telemetry = glossdb_serverd::telemetry::install()?;
-    let served = doors(config).await;
+    let served = interfaces(config).await;
     // The flush blocks, so it runs on the blocking pool while the
     // runtime — and the gRPC channel on it — is still alive.
     tokio::task::spawn_blocking(move || telemetry.shutdown())
@@ -87,11 +87,11 @@ async fn serve(config: Config) -> Result<(), Box<dyn std::error::Error + Send + 
 }
 
 /// Everything between the runtime's start and the server's stop.
-async fn doors(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn interfaces(config: Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plane = opened(&config).await?;
     let plane = bootstrapped(plane).await?;
     let access = access_of(config.auth, &config.audience).await?;
-    let app = router(plane, config.doors, access);
+    let app = router(plane, config.interfaces, access);
     serve_until_stopped(app, &config.addr).await
 }
 
@@ -186,7 +186,7 @@ async fn bootstrapped(
     .await?;
     let listings = glossdb_serverd::functions::pages(&plane).await?;
     Ok(Arc::new(plane.with_pages(
-        glossdb_serverd::skills::door_pages_with(listings)?,
+        glossdb_serverd::skills::served_pages_with(listings)?,
     )))
 }
 
@@ -212,7 +212,7 @@ async fn access_of(
         None => {
             tracing::warn!(
                 actor = INSECURE_DEV_MODE,
-                "GLOSSDB_INSECURE_OPEN — the doors are open, nobody is verified"
+                "GLOSSDB_INSECURE_OPEN — the interfaces are open, nobody is verified"
             );
             Access::Open
         }

@@ -21,8 +21,8 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 reads AS (
-  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.metric), ', ') AS metrics
-  FROM metric_sources() ms LEFT JOIN a ON a.name = ms.metric
+  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS metrics
+  FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.table_name = CAST($table AS VARCHAR)),
 src AS (
   SELECT max(r.source) AS source FROM recipes r JOIN d ON d.dataset = r.dataset

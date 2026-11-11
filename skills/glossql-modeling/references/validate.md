@@ -33,14 +33,14 @@ GLOSS hours_reconcile ON work_logs AS $${
   with rows nobody can fill.
 - **`breach_rate` is the violation share.** 0.0 is fully passing, and
   it is compared against `tolerance` upward. Reporting a pass rate
-  under that key bands red.
+  under that key reads red.
 - **The expectation is the rate you measured, never an assumed zero.**
   Nobody knows a source's defects in advance. You measured them at
   load; author that rate as the tolerance, so the check is green
   today and red when the source drifts. A check reporting 0.0 where
   the profile showed dirt does not see the dirt — fix the check's SQL.
   The console's Quality tab is where the person sees both: what each
-  load dropped and nulled, and every check with its band.
+  load dropped and nulled, and every check with its state.
 - **Promote confirmed reconciliations.** A data test that settled a
   additivity claim — an event table's movements reconciling with a
   level — is a permanent invariant; make it a check.

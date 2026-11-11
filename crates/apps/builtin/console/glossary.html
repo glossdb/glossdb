@@ -75,7 +75,7 @@
 {% elif tab == "used" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
-      <code class="chip">metric_sources()</code></header>
+      <code class="chip">view_sources()</code></header>
     <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no metric reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
@@ -171,7 +171,7 @@
 {% elif tab == "used" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
-      <code class="chip">metric_sources()</code></header>
+      <code class="chip">view_sources()</code></header>
     <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no metric reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
@@ -359,7 +359,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="The words as the business uses them: every metric and view with its agreed meaning (the business glossary), and every column whose meaning names a term. A person&#x27;s decision or word shows as a mark, with the date on hover. A row opens the metric&#x27;s or the column&#x27;s page.">Terms</span>
-      <code class="chip">definitions · metric_surfaces · meaning.term · review_decisions</code></header>
+      <code class="chip">definitions · view_definitions · meaning.term · review_decisions</code></header>
     <p class="hint">The words as the business uses them, and what each one means here. A row opens its page.</p>
     <gl-rows frame="frames/terms" empty="no metric, view or term is declared yet: a definition is written when a metric is defined">
       <template>

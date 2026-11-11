@@ -46,7 +46,7 @@ token's subject, never the name its client gives itself.
 Authorship comes from the connection, not from the statement: no
 statement can claim to be someone else. A person who answers a
 review question in the agent's client writes as a person too; the
-server records the answer with that person's standing.
+server records the answer as that person.
 
 ## Which value wins
 
@@ -59,7 +59,7 @@ The agent's value, the person's value and each measurement stay side
 by side. `GLOSSARY()` serves one value per asset and aspect, by
 precedence: **person over agent over measurement**. It withholds the
 value only when a test scores the disagreement above its threshold;
-the state is then `conflict`, with the band and score saying how
+the state is then `conflict`, with the test state and score saying how
 badly. A person's decision outranks the agent without deleting
 anything: the agent's value stays, visible in the full read:
 

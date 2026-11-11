@@ -11,7 +11,7 @@ From the glossql extension:
 
 | Kit | Adds |
 |---|---|
-| `kpi` | the semantic layer's vocabulary: `meaning`, `role`, `additivity`, `unit`, `dimension`, `entity`, `conventions`, `definitions`; the column profiles; the `slot_entropy` detector ([the KPI kit](../reference/kpi-kit.md)) |
+| `kpi` | the semantic layer's vocabulary: `meaning`, `role`, `additivity`, `unit`, `dimension`, `entity`, `conventions`, `definitions`; the column profiles; the `value_entropy` detector ([the KPI kit](../reference/kpi-kit.md)) |
 | `quality` | how the data holds together: relationship, hierarchy and derivation discovery, relationship coherence, duplicate metrics, stock-or-flow evidence, the `temporal` profile, the `rate_tolerance` detector |
 | `spatial` | a small domain example: a shape and a coordinate system on every geometry column, and a geometry profile. Not loaded by the server |
 
@@ -20,12 +20,12 @@ From glossdb:
 | Kit | Adds |
 |---|---|
 | `core` | the server's own properties (review decisions, load-query approval, apps as annotations) and the catalog's views: `open_questions`, `review_decisions`, `current_dataset`, … |
-| `metrics` | the metric series: `metric_series()`, `metric_summary()`, `metric_sources()`; the `time_grains` on a period column |
+| `views` | the metric series: `metric_series()`, `view_summary()`, `view_sources()`; the `time_grains` on a period column |
 | `outlook` | preview: forecasts, expected ranges, plans and scenarios through the model service |
 | `goals` | `open_items`, what waits on an action, and the next steps of the core goals |
 
 The server loads them at every open, in order: `core`, `kpi`,
-`quality`, `metrics`, `outlook`, `goals`. A kit whose text the lake
+`quality`, `views`, `outlook`, `goals`. A kit whose text the lake
 already recorded is current and runs nothing, so an unchanged workspace
 opens fast. The views and functions each kit declares:
 [views and table functions](../reference/reads.md),
@@ -50,7 +50,7 @@ DECLARE ASPECT currency WITH $${"type": "object", "required": ["value"],
 DECLARE ASPECT min_max WITH $${"type": "object", "required": ["min", "max"]}$$ AS MEASUREMENT ON COLUMN;
 DECLARE FUNCTION min_max FOR GLOBAL AS
   $$ SELECT min(v) AS min, max(v) AS max FROM subject_column($subject) $$ RETURNS min_max;
-DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 ```
 
 - **Schemas.** A property's `WITH` is a JSON Schema. Every `FACT`
@@ -67,12 +67,12 @@ DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy T
   kit's measurements should read tables.
 - **Detectors.** A function without `RETURNS` runs when its test is
   read, over the values written for the aspect, with `$threshold`
-  bound, and returns `(subject, band, score)`. A detector that fails
-  returns band `error`, never a failed read.
+  bound, and returns `(subject, state, score)`. A detector that fails
+  returns state `error`, never a failed read.
 - **Metric definitions.** Every `VIEW` annotation is checked against
   the definition contract (`sql` or `stopped`, `assumptions`). A kit
   whose readers need a body key of their own declares a schema for it
-  as an aspect with `"x-kind": "grounding"`.
+  as an aspect with `"x-kind": "definition"`.
 - **Next steps.** A kit can add goals to `next`:
   [next steps](next-steps.md).
 

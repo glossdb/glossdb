@@ -121,7 +121,7 @@ frame once per state and every tile bound to it shares that one table.
   `current_dataset` when a read answers for the whole workspace.
 - **Compute display logic in the frame, never in the template.** A
   label, a percentage for a bar's height, a CSS class chosen by a
-  verdict — all of it is a column. Templates place values; they do not
+  result — all of it is a column. Templates place values; they do not
   decide them.
 - **Cast view types back.** The browser's Arrow reader speaks only the
   classic types, and a `Utf8View` in a frame's schema renders as
@@ -136,11 +136,11 @@ every read is available inside one — a metric definition under its name,
 `metric_series(grain := $grain)` for the cells at a grain
 (`dimension = ''` is the total; a row carries `num`/`den` for a
 ratio's summed halves and `additivity`, the verb that made it),
-`metric_summary()` for what the catalog says of each metric's columns,
-and `band_points()` for the stored walk beside the real books:
+`view_summary()` for what the catalog says of each metric's columns,
+and `range_points()` for the stored walk beside the real books:
 
 ```sql
-SELECT period, actual, p05, p50, p95 FROM band_points()
+SELECT period, actual, p05, p50, p95 FROM range_points()
 WHERE metric = CAST($metric AS VARCHAR) AND period IS NOT NULL ORDER BY point_seq
 ```
 
@@ -173,7 +173,7 @@ frame, a spec, a tile or a link. Four macros and a prose block:
 {% block main %}
 <div class="tiles">
   {{ tiles::value(frame="frames/front", field="open", label="Open questions",
-       chip="open_questions", note="what the door would ask a human") }}
+       chip="open_questions", note="what the review would ask a human") }}
   {{ tiles::chart(frame="frames/monthly", spec="specs/trend.vl.json",
        title="Throughput by month", chip="throughput") }}
 </div>
@@ -181,7 +181,7 @@ frame, a spec, a tile or a link. Four macros and a prose block:
 ```
 
 - `value(frame, field, label, …)` — one number, `format` in
-  `compact | text`. Use `text` for a word (a band name); the compact
+  `compact | text`. Use `text` for a word (a test state); the compact
   format renders `NaN` for it.
 - `chart(frame, spec, …)` — a vega-lite spec over the frame; a window
   over its series is the frame's own params.
@@ -193,18 +193,18 @@ frame, a spec, a tile or a link. Four macros and a prose block:
   of matters rather than a table of numbers. `join="frames/<name>"
   on="<key>"` merges a second frame's row by key into each row — how
   a catalog frame and a data frame meet in one list without becoming
-  one fetch (the console's pulse: `metric_surfaces` rows joined to the series'
+  one fetch (the console's pulse: `view_definitions` rows joined to the series'
   numbers by metric name).
 - `<gl-window frame="frames/<axes>">` — the viewer's grain and span as
   links over the page URL; it reads the metric's resolution from a
-  `metric_summary()` frame and offers the grains from there up. Member
+  `view_summary()` frame and offers the grains from there up. Member
   moves are a frame, not a component: rank them in SQL (the console's
   `drivers.sql` is the shape) and place them with `gl-rows`.
 - `<gl-graph nodes="frames/<nodes>" edges="frames/<edges>">` — column
   lineage: the tables placed along their key edges, the metrics they
   feed stacked beside them. The console's `lineage_nodes.sql` and
   `lineage_edges.sql` are the two frame shapes (`relationships` plus
-  `metric_sources()`); reuse them, or narrow them in SQL to one
+  `view_sources()`); reuse them, or narrow them in SQL to one
   metric's tables.
 - The **chip** is the tile's provenance: which read the number comes
   from, with `note` as its hover text — a disclosed assumption, a

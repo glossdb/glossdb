@@ -10,7 +10,7 @@
 //! two documents, SPEC.md and `grammar.ebnf`, are read at boot from
 //! the extension's share, the pin's — a connected agent has no
 //! checkout to read them from, and what an agent in this repository
-//! reads is what the interface serves. [`door_pages`] is the one list of
+//! reads is what the interface serves. [`served_pages`] is the one list of
 //! them: the plane holds it,
 //! the MCP interface lists and reads its resources from it, and the
 //! `pages()` read serves the same rows to a client that has the
@@ -32,8 +32,8 @@ pub const SKILLS: [Skill; 4] = [
         body: include_str!("../../../skills/glossql/SKILL.md"),
     },
     Skill {
-        name: "glossql-metrics",
-        body: include_str!("../../../skills/glossql-metrics/SKILL.md"),
+        name: "glossql-modeling",
+        body: include_str!("../../../skills/glossql-modeling/SKILL.md"),
     },
     Skill {
         name: "glossql-functions",
@@ -165,11 +165,11 @@ fn first_heading(body: &str) -> Option<&str> {
 /// references after its SKILL.md, the docs pages, the engine's SQL
 /// guide. A tree page is described by its first heading, which is what
 /// tells a reader when the page is worth its tokens.
-pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>> {
-    use crate::engine::DoorPage;
-    let mut out: Vec<DoorPage> = SKILLS
+pub fn served_pages() -> std::io::Result<std::sync::Arc<[crate::engine::ServedPage]>> {
+    use crate::engine::ServedPage;
+    let mut out: Vec<ServedPage> = SKILLS
         .iter()
-        .map(|s| DoorPage {
+        .map(|s| ServedPage {
             uri: s.uri(),
             name: s.name.to_string(),
             title: first_heading(s.body).unwrap_or(s.name).to_string(),
@@ -178,7 +178,7 @@ pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>
             body: s.body.to_string(),
         })
         .collect();
-    out.extend(docs()?.into_iter().map(|d| DoorPage {
+    out.extend(docs()?.into_iter().map(|d| ServedPage {
         uri: d.uri(),
         name: d.name.to_string(),
         title: d.description.to_string(),
@@ -191,7 +191,7 @@ pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>
             .iter()
             .chain(PAGES.iter())
             .chain(VENDORED.iter())
-            .map(|p| DoorPage {
+            .map(|p| ServedPage {
                 uri: p.uri(),
                 name: p.path.to_string(),
                 title: p.title().to_string(),
@@ -205,10 +205,10 @@ pub fn door_pages() -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>
 
 /// The interface's pages plus the ones built at boot — the function
 /// listings — in one list, the boot pages last.
-pub fn door_pages_with(
-    extra: Vec<crate::engine::DoorPage>,
-) -> std::io::Result<std::sync::Arc<[crate::engine::DoorPage]>> {
-    let mut out: Vec<crate::engine::DoorPage> = door_pages()?.to_vec();
+pub fn served_pages_with(
+    extra: Vec<crate::engine::ServedPage>,
+) -> std::io::Result<std::sync::Arc<[crate::engine::ServedPage]>> {
+    let mut out: Vec<crate::engine::ServedPage> = served_pages()?.to_vec();
     out.extend(extra);
     Ok(out.into())
 }

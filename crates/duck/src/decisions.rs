@@ -1,12 +1,12 @@
-//! A human's review decision loaded as a gloss: the standing review decision body on the
+//! A human's review decision loaded as a gloss: the current review decision body on the
 //! subject, the entry for the key replaced, the body re-glossed under
-//! human standing. The statement is the language's; this module only
+//! the human actor kind. The statement is the language's; this module only
 //! shapes the body.
 
 use crate::{Session, SessionError, rows_as_text};
 
 /// One review decision as the app interface takes it.
-pub struct Ruling<'a> {
+pub struct Decision<'a> {
     pub subject: &'a str,
     pub aspect: &'a str,
     pub dimension: &'a str,
@@ -29,8 +29,8 @@ fn ident_path(text: &str, max_segments: usize) -> bool {
 }
 
 /// Store `review_decision` on the human's channel.
-pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, SessionError> {
-    let Ruling {
+pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, SessionError> {
+    let Decision {
         subject,
         aspect,
         dimension,
@@ -38,7 +38,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
         assumption,
         stance,
         note,
-    } = ruling;
+    } = decision;
     if !ident_path(subject, 3) {
         return Err(SessionError::shape(
             subject,
@@ -54,7 +54,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
     } else {
         format!("{dataset}.{subject}")
     };
-    let standing = human
+    let current = human
         .batches(
             &format!(
                 "SELECT body::VARCHAR FROM {}.main.glossary \
@@ -65,15 +65,15 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
             &[],
         )
         .await?;
-    let mut body = rows_as_text(&standing)
+    let mut body = rows_as_text(&current)
         .first()
         .and_then(|r| r.first().cloned().flatten())
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .unwrap_or_else(|| serde_json::json!({ "decisions": [] }));
-    let Some(rulings) = body.get_mut("decisions").and_then(|r| r.as_array_mut()) else {
-        return Err(SessionError::RulingSlotNotRulings);
+    let Some(decisions) = body.get_mut("decisions").and_then(|r| r.as_array_mut()) else {
+        return Err(SessionError::DecisionValueNotDecisions);
     };
-    rulings.retain(|r| !(r["aspect"] == aspect && r["key"] == key));
+    decisions.retain(|r| !(r["aspect"] == aspect && r["key"] == key));
     let mut entry = serde_json::json!({
         "aspect": aspect,
         "dimension": dimension,
@@ -84,7 +84,7 @@ pub async fn land(human: &Session, ruling: Ruling<'_>) -> Result<String, Session
     if let Some(note) = note {
         entry["note"] = serde_json::json!(note);
     }
-    rulings.push(entry);
+    decisions.push(entry);
     let body = body.to_string();
     if body.contains("$$") {
         return Err(SessionError::DollarQuotedBody);

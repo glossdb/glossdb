@@ -22,7 +22,7 @@ and the rest of the backlog follows from it.
   look alike — so read the column's meaning and the table's grain:
   what one row is, and whether two rows of one period add up to
   something. Names lie either way — a column called "total" can
-  carry a per-period movement. Say the grounds in the annotation. The
+  carry a per-period movement. Say the basis in the annotation. The
   annotation is used: a metric's series combines rows by the
   `additivity` on its value column and refuses while there is none.
 - **unit** — where a magnitude has one; `source_column` names the
@@ -41,5 +41,5 @@ willing to go that far? Don't annotate: absence shows as an honest
 
 "Does not apply" *within* relevance is still a judgment: a ratio is a
 measure with no stock/flow nature, and that is stored as
-`{"value": "non-additive", "grounds": "…"}`, never as a permanent missing
+`{"value": "non-additive", "basis": "…"}`, never as a permanent missing
 row.

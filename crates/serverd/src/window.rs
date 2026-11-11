@@ -14,7 +14,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
         return format!("status: refused — {first}");
     }
     // a definition's summary row, never another read that names a metric
-    let Some(fact) = outcome.filter(|o| o.get("metric").is_some() && o.get("applicable").is_some())
+    let Some(fact) = outcome.filter(|o| o.get("view").is_some() && o.get("applicable").is_some())
     else {
         return "status: done".to_string();
     };
@@ -29,8 +29,8 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
             })
             .unwrap_or_default()
     };
-    let metric = fact.get("metric").and_then(Value::as_str).unwrap_or("");
-    let mut line = format!("status: done — {metric}: ");
+    let view = fact.get("view").and_then(Value::as_str).unwrap_or("");
+    let mut line = format!("status: done — {view}: ");
     // A re-record says first what it changed against the writing it
     // supersedes — the totals over their shared periods: the line is
     // read left to right, and a moved total unsays the axes after it.
@@ -43,22 +43,15 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     }
     if fact.get("applicable") == Some(&Value::Bool(true)) {
         // The metric definition's word on its axes, where it spoke: what the
-        // list closed and what a result or a gloss would have
+        // list closed and what a gloss would have
         // admitted, or that the empty list did not hold.
         let word = match fact.get("axes_basis").and_then(Value::as_str) {
             Some("authored") => {
-                let closed = tagged(
-                    fact,
-                    &["closed", "closed over verdict", "closed over gloss"],
-                );
-                let by_verdict = tagged(fact, &["closed over verdict"]);
+                let closed = tagged(fact, &["closed", "closed over gloss"]);
                 let by_gloss = tagged(fact, &["closed over gloss"]);
                 let mut word = String::from(" (as the definition says");
                 if !closed.is_empty() {
                     word.push_str(&format!(" — closes {}", closed.join(", ")));
-                }
-                if !by_verdict.is_empty() {
-                    word.push_str(&format!("; a measurement admits {}", by_verdict.join(", ")));
                 }
                 if !by_gloss.is_empty() {
                     word.push_str(&format!("; an annotation admits {}", by_gloss.join(", ")));
@@ -67,7 +60,7 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
                 word
             }
             Some("measured over authored") => format!(
-                " (measured over the definition's empty list — a {} keeps its verdicts; the empty \
+                " (measured over the definition's empty list — a {} keeps its results; the empty \
                  list closes a distinct count or a ratio)",
                 fact.get("additivity")
                     .and_then(Value::as_str)
@@ -181,7 +174,7 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
                 field(row, "state"),
                 field(row, "open")
             ));
-            let metrics = field(row, "for_metric");
+            let metrics = field(row, "for_view");
             if !metrics.is_empty() {
                 out.push_str(&format!("\nread by: {metrics}\n"));
             }

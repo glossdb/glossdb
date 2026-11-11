@@ -47,15 +47,15 @@ cols AS (
   LEFT JOIN ent e ON e.tbl = c.table_name
   WHERE c.table_catalog = current_database()),
 axes AS (
-  SELECT metric, "floor" AS grain, additivity FROM metric_summary()),
+  SELECT view AS metric, "floor" AS grain, additivity FROM view_summary()),
 -- a served field's role: the view's own column's where one holds, else
 -- the column's it descends from
 fields AS (
   SELECT s.metric AS node, 'metric' AS kind, s.field AS col,
          min(CAST(s.ord AS BIGINT)) AS ord,
          coalesce(max(own.role), max(r.role), '') AS role
-  FROM (SELECT metric, field, source, row_number() OVER (PARTITION BY metric ORDER BY field) AS ord
-        FROM metric_sources() WHERE field IS NOT NULL) s
+  FROM (SELECT view AS metric, field, source, row_number() OVER (PARTITION BY view ORDER BY field) AS ord
+        FROM view_sources() WHERE field IS NOT NULL) s
   CROSS JOIN d
   LEFT JOIN colsaid own ON own.subject = d.dataset || '.' || s.metric || '.' || s.field
   LEFT JOIN colsaid r ON r.subject = d.dataset || '.' || s.source

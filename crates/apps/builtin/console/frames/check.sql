@@ -7,8 +7,8 @@ WITH w AS (
   SELECT * FROM tests WHERE name = $check
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 v AS (
-  SELECT a.band, a.score, a.computed_at, a.current,
-         CASE a.band WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
+  SELECT a.state AS band, a.score, a.computed_at, a.current,
+         CASE a.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
   FROM TESTS() a WHERE a.test = $check),
 folded AS (
   SELECT count(v.band) AS n,
@@ -28,7 +28,7 @@ SELECT w.name AS test,
        coalesce(w.detector, '') AS detector,
        coalesce(CAST(w.threshold AS VARCHAR), 'none') AS threshold,
        CASE w.detector
-         WHEN 'slot_entropy' THEN 'Do the annotations on ' || w.aspect || ' agree, column by column? The score is the share of extra distinct values across a column''s annotations: 0 when every annotation agrees.'
+         WHEN 'value_entropy' THEN 'Do the annotations on ' || w.aspect || ' agree, column by column? The score is the share of extra distinct values across a column''s annotations: 0 when every annotation agrees.'
          ELSE 'Does ' || coalesce(w.detector, 'nobody') || ' pass on ' || w.aspect || '?' END AS asks,
        CASE WHEN f.n = 0 THEN 'no result yet' ELSE
          CAST(f.n AS VARCHAR) || CASE WHEN f.n = 1 THEN ' result: ' ELSE ' results: ' END || concat_ws(' · ',

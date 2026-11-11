@@ -20,14 +20,14 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use tokio::io::AsyncReadExt;
 
-use crate::AppDoor;
+use crate::AppInterface;
 use crate::engine::CopyFormat;
 
 pub async fn export(
-    State(door): State<AppDoor>,
+    State(interface): State<AppInterface>,
     Path((dataset, file)): Path<(String, String)>,
 ) -> Response {
-    if let Some(missing) = crate::missing(&door, &dataset).await {
+    if let Some(missing) = crate::missing(&interface, &dataset).await {
         return plain(StatusCode::NOT_FOUND, missing);
     }
     let Some((name, ext)) = file.rsplit_once('.') else {
@@ -56,7 +56,7 @@ pub async fn export(
         kind: ActorKind::Human,
         id: "app:export".into(),
     };
-    let session = match door.plane.channel(actor, Some(&dataset)).await {
+    let session = match interface.plane.channel(actor, Some(&dataset)).await {
         Ok(session) => session,
         Err(e) => return plain(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
     };

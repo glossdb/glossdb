@@ -30,8 +30,8 @@ the `next` read, and a page.
   one load query per table.
 - **Metrics.** A metric is a view. Its columns carry the vocabulary,
   and the time grains on its period column say how its periods are
-  walked. Four reads serve it: `metric_series()`, `metric_summary()`,
-  `fact_values()` and `metric_sources()`
+  walked. Four reads serve it: `metric_series()`, `view_summary()`,
+  `fact_values()` and `view_sources()`
   ([views and table functions](../reference/reads.md)).
 - **Tests and review.** Tests (`DECLARE TEST`), detectors, `TESTS()`, the
   review queue, and review decisions taken in the console.
@@ -64,7 +64,7 @@ extension's `kits/` and two from this repository's:
   and the measurements that read them: hierarchies, relationships and
   their coherence, derivations, metric definition collisions, the
   temporal profile.
-- **The metrics kit** (`kits/metrics` here): time grains, the metric
+- **The views kit** (`kits/views` here): time grains, the metric
   summary row, the cells, single values, lineage; the built-in tests
   and the test report per metric, each test with its finding and fix.
 - **The outlook kit** (`kits/outlook` here, preview): expected ranges,

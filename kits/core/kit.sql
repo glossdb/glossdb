@@ -66,7 +66,7 @@ CREATE OR REPLACE VIEW main.review_decisions AS
 -- carries a decision on the same key under another aspect, so the
 -- review can offer it back. No ORDER BY: order where you consume.
 CREATE OR REPLACE VIEW main.open_questions AS
-  WITH groundings AS (
+  WITH view_aspects AS (
     SELECT name FROM (
       SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
@@ -76,7 +76,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
          max(s.stance) AS sibling_stance,
          max(s.note) AS sibling_note
   FROM main.agent_assumptions o
-  JOIN groundings a ON a.name = o.aspect
+  JOIN view_aspects a ON a.name = o.aspect
   LEFT JOIN main.review_decisions s
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
@@ -137,26 +137,26 @@ CREATE OR REPLACE VIEW main.app_releases AS
 -- Every metric the bound dataset claims, with its state: one row per
 -- VIEW aspect with a metric definition here, served or stopped, or
 -- whose definitions entry names it — name, title, kind (the aspect's
--- x-kind), unit and meaning from the definitions handbook, grounded
+-- x-kind), unit and meaning from the definitions handbook, defined
 -- (a definition with sql was written), stopped (the collapsed
 -- definition's own text, '' where it serves). The numbers are
--- metric_summary() and metric_series(); join on name.
-CREATE OR REPLACE VIEW main.metric_surfaces AS
+-- view_summary() and metric_series(); join on name.
+CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (
     SELECT name, schema FROM (
       SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
-  slots AS (
+  current_values AS (
     SELECT aspect, body, actor_kind FROM (
       SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
       FROM main.glossary g, ds
       WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
         AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
   collapsed AS (
-    SELECT aspect, body FROM slots
+    SELECT aspect, body FROM current_values
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
-  grounded AS (
+  defined AS (
     SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
   registry AS (
@@ -170,11 +170,11 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
          coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS kind,
          coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.unit'), '') AS unit,
          coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.meaning'), '') AS meaning,
-         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.formula'), 'a base concept — grounded as an extract, no formula') AS formula,
-         g.aspect IS NOT NULL AS grounded,
+         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.formula'), 'a base concept — defined as an extract, no formula') AS formula,
+         g.aspect IS NOT NULL AS defined,
          coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
   FROM aspects a
-  LEFT JOIN grounded g ON g.aspect = a.name
+  LEFT JOIN defined g ON g.aspect = a.name
   LEFT JOIN collapsed c ON c.aspect = a.name
   LEFT JOIN registry d ON d.aspect = 'definitions'
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
@@ -182,12 +182,12 @@ CREATE OR REPLACE VIEW main.metric_surfaces AS
 
 -- What this workspace can be extended through, and its state on
 -- each: `existing` counts what exists, `open` what is unfinished on the
--- surface and the agent can finish, `waiting` what waits for a person,
+-- area and the agent can finish, `waiting` what waits for a person,
 -- `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_status AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
+  decided AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
     SELECT name, kind, grains, condition, schema FROM (
@@ -270,10 +270,10 @@ CREATE OR REPLACE VIEW main.workspace_status AS
            0 AS open_claims,
            (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW'
-              AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
+              AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_views,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW'
               AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('sample', 'plan')
-              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_metrics,
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_views,
            (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
            (SELECT count(*) FROM in_use u WHERE u.used
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
@@ -286,21 +286,21 @@ CREATE OR REPLACE VIEW main.workspace_status AS
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
-           (SELECT n FROM ruled) AS n_decisions,
-           (SELECT unapplied FROM ruled) AS open_decisions,
+           (SELECT n FROM decided) AS n_decisions,
+           (SELECT unapplied FROM decided) AS open_decisions,
            (SELECT n FROM apps) AS n_apps)
-  SELECT s.surface, s.how,
-         CASE s.surface WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
+  SELECT s.area, s.how,
+         CASE s.area WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
            WHEN 'relationships' THEN c.n_relationships WHEN 'aspects' THEN c.n_aspects
            WHEN 'claims' THEN c.n_claims WHEN 'functions' THEN c.n_functions
-           WHEN 'metrics' THEN c.n_metrics WHEN 'validations' THEN c.n_validations
+           WHEN 'views' THEN c.n_views WHEN 'validations' THEN c.n_validations
            WHEN 'scenarios' THEN c.n_scenarios WHEN 'plans' THEN c.n_plans
            WHEN 'review' THEN c.n_decisions ELSE c.n_apps END AS existing,
-         CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
-           WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
+         CASE s.area WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
+           WHEN 'views' THEN c.open_views WHEN 'validations' THEN c.open_validations
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
            WHEN 'review' THEN c.open_decisions ELSE 0 END AS open,
-         CASE s.surface WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
+         CASE s.area WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
   FROM counts c
   CROSS JOIN (VALUES
     ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
@@ -309,15 +309,15 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
     ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
     ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, additivity and dimension'),
+    ('views', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, additivity and dimension'),
     ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
     ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
     ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
     ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied — `waiting` counts the questions waiting for a person, which the agent cannot close'),
-    ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
-  ) AS s(surface, how);
+    ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so an app is written like anything else')
+  ) AS s(area, how);
 
--- A load-query change a person approved for a table: the brief counts it
+-- A load-query change a person approved for a table: the summary counts it
 -- as pending until a load of that table is newer than the approval.
 DECLARE ASPECT recipe_change WITH $${
   "type": "object", "required": ["table", "sql", "reason"],

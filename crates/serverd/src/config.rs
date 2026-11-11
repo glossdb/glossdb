@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use glossdb_serverd::engine::{WarehouseCredential, store_kind};
-use glossdb_serverd::{DEFAULT_ROW_CAP, DoorConfig};
+use glossdb_serverd::{DEFAULT_ROW_CAP, InterfaceConfig};
 
 const USAGE_TEXT: &str = "usage: glossdb [--workspace <dir>] [--addr <ip:port>] \
 [--row-cap <n>] [--memory-limit <megabytes>] [--spill-limit <megabytes>] \
@@ -29,7 +29,7 @@ GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT, GLOSSD
 {service}\
 the authorization arrangement is read from .env or the environment: \
 GLOSSDB_ISSUER, GLOSSDB_CLIENT_ID, GLOSSDB_CLIENT_SECRET, [GLOSSDB_AUDIENCE] \
-— or GLOSSDB_INSECURE_OPEN=true serves the doors without authentication, \
+— or GLOSSDB_INSECURE_OPEN=true serves the interfaces without authentication, \
 every caller recorded as insecure_dev_mode (the name is the warning) \
 (see .env.example)";
 
@@ -86,7 +86,7 @@ fn number<T: std::str::FromStr<Err: std::fmt::Display>>(
 /// flag or a variable.
 pub struct Config {
     pub addr: String,
-    pub doors: DoorConfig,
+    pub interfaces: InterfaceConfig,
     /// Rows a data read ships before an interface declares `truncated`.
     pub row_cap: usize,
     /// The engine's memory ceiling, in megabytes; unset, the engine's
@@ -156,7 +156,7 @@ impl Config {
             .or_else(|| var("GLOSSDB_ADDR"))
             .unwrap_or_else(|| "127.0.0.1:8080".to_string());
         let audience = var("GLOSSDB_AUDIENCE").unwrap_or_else(|| format!("http://{addr}"));
-        let doors = DoorConfig {
+        let interfaces = InterfaceConfig {
             allowed_hosts: allowed_hosts(&audience),
             own_uri: audience.clone(),
         };
@@ -202,7 +202,7 @@ impl Config {
                 })
                 .unwrap_or_default(),
             addr,
-            doors,
+            interfaces,
             row_cap,
             audience,
             auth,
@@ -246,7 +246,7 @@ fn open(get: &impl Fn(&str) -> Option<String>) -> bool {
 /// URL; one that does not answers its bind address alone, and the
 /// transport says so to every real request.
 fn allowed_hosts(audience: &str) -> Vec<String> {
-    let mut hosts = DoorConfig::default().allowed_hosts;
+    let mut hosts = InterfaceConfig::default().allowed_hosts;
     if let Some(host) = audience
         .parse::<axum::http::Uri>()
         .ok()
@@ -375,7 +375,7 @@ mod tests {
         assert_eq!(named.audience, "https://glossql.example");
         assert!(
             named
-                .doors
+                .interfaces
                 .allowed_hosts
                 .contains(&"glossql.example".to_string())
         );

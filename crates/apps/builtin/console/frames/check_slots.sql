@@ -1,10 +1,10 @@
 -- A value check's evidence: every subject whose values differ — the
 -- test's results that are not green — with every value on the value
 -- side by side, by actor kind, the human's first. Rows only for a
--- test whose detector is slot_entropy.
+-- test whose detector is value_entropy.
 WITH d AS (SELECT dataset FROM current_dataset),
 w AS (
-  SELECT name, aspect FROM tests WHERE name = $check AND detector = 'slot_entropy'
+  SELECT name, aspect FROM tests WHERE name = $check AND detector = 'value_entropy'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 voices AS (
   SELECT g.subject, g.aspect,
@@ -15,10 +15,10 @@ voices AS (
 SELECT a.subject,
        coalesce(v.voices, 'no annotation yet') AS voices,
        fmt_number(a.score) AS score,
-       a.band,
-       CASE WHEN a.band = 'green' THEN 'ok' ELSE 'warn' END AS bcls
+       a.state AS band,
+       CASE WHEN a.state = 'green' THEN 'ok' ELSE 'warn' END AS bcls
 FROM TESTS() a
 JOIN w ON w.name = a.test
 LEFT JOIN voices v ON v.subject = a.subject AND v.aspect = a.aspect
-WHERE a.band <> 'green'
+WHERE a.state <> 'green'
 ORDER BY a.score DESC, a.subject

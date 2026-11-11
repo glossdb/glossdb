@@ -7,7 +7,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 f AS (SELECT CAST($kind AS VARCHAR) AS k, CAST($object AS VARCHAR) AS o),
-metrics AS (SELECT name FROM metric_surfaces),
+metrics AS (SELECT name FROM view_definitions),
 loads AS (
   SELECT i.imported_at AS ts, 'load' AS kind, i.table_name AS object, 'the load query' AS who,
          fmt_number(i.rows) || ' rows (' || i.mode || ')'

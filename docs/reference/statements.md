@@ -159,7 +159,7 @@ is validated against the aspect's schema and stored with its actor and
 the data snapshot it describes. The asset is a dataset, table, column,
 relationship (`a.x -> b.y`) or source. On a `VIEW` aspect the body is
 a metric definition, and the result is the metric's summary row
-([metrics](../usage/metrics.md)).
+([metrics](../usage/views.md)).
 
 A metric definition's body:
 
@@ -214,7 +214,7 @@ agree; `THRESHOLD` is the score above which differing values read as
 takes only a detector ([data tests](../usage/data-tests.md)).
 
 ```glossql
-DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 ```
 
 ## Running a measurement
@@ -261,7 +261,7 @@ GLOSSARY([<asset>[::<aspect>]][, all => true])
 ```
 
 What is known: one row per asset and aspect, `(subject, aspect, value,
-band, score, state)`. The value is a person's over an agent's over a
+test_state, score, state)`. The value is a person's over an agent's over a
 function's. `state` is `current`, `stale` (the data changed after the
 annotation), `conflict` (actors disagree past the test's threshold)
 or `missing` (required, and nobody annotated it). A missing value is
@@ -282,11 +282,11 @@ TESTS([<asset>[::<aspect>]])
 ```
 
 The test results: one row per asset, aspect and test, `(subject,
-aspect, test, band, score, computed_at, current, error)`. `band` is
+aspect, test, state, score, computed_at, current, error)`. `state` is
 `green`, `yellow`, `orange`, `red` or `error`. Tests run when read.
 
 ```sql
-SELECT subject, band FROM TESTS(fin.trial_balance) WHERE band = 'red';
+SELECT subject, state FROM TESTS(fin.trial_balance) WHERE state = 'red';
 ```
 
 ## Metrics as relations

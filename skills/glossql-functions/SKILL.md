@@ -16,7 +16,7 @@ roles, told apart by shape:
   more value for that aspect, beside the agent's and the person's. The
   measuring half of a validation is a computed value.
 - **A detector** — no `RETURNS`. Named in a test's (`TEST`)
-  `DETECTOR` clause; its query runs over the test's `slots` relation,
+  `DETECTOR` clause; its query runs over the test's `annotations` relation,
   the values it collects.
 
 ## Read the closest one first
@@ -39,7 +39,7 @@ Read the one nearest your task before writing:
 - `outliers` — a measurement composing another measurement's
   aggregate inline (its fences derive from `profile(v)` in the same
   statement).
-- `slot_entropy` — a detector.
+- `value_entropy` — a detector.
 - `rate_tolerance` — a detector over the collected values (a written
   expectation against a computed value), which is the usual validation
   shape.
@@ -82,7 +82,7 @@ $$ RETURNS on_time_completion;
 - The body cannot contain `$$` — it would close the statement early.
 
 The name is the key, workspace-wide: one row per name, and a
-re-declare **replaces** it — old measurements sit at pins that no
+re-declare **replaces** it — old measurements sit at data versions that no
 longer resolve, so the next run recomputes. Take a shipped name only
 on purpose: the library's own body is kept nowhere else in the
 workspace, so replacing `profile` costs the tested one until a
@@ -102,13 +102,13 @@ the data's shape.
 
 ## Detectors
 
-A detector's query plans over the **`slots`** relation — one row per
+A detector's query plans over the **`annotations`** relation — one row per
 author's value on the test's aspect:
-`(subject, aspect, kind, test, actor, speaker, current, written_at, body)`.
-`speaker` is `human` | `agent` | `function`; `current` is false for a
+`(subject, aspect, kind, test, actor, actor_kind, current, written_at, body)`.
+`actor_kind` is `human` | `agent` | `function`; `current` is false for a
 function's value stored before the last write — it still counts, and
 `TESTS()` marks the result. `body` arrives **typed**:
-when every body is a JSON object (an aspect's slots share its
+when every body is a JSON object (an aspect's values share its
 schema, so they do), the column is a struct and fields read as
 `body['tolerance']`, nested arrays through `unnest(body['metrics'])`;
 anything else leaves `body` as text. A field no value carries is a
@@ -118,26 +118,26 @@ around.
 
 The test's `THRESHOLD` binds as `$threshold` (NULL when the test
 declares none — coalesce your default). The query returns one row per
-subject with `subject`, `band` (green|yellow|orange|red), and `score`
+subject with `subject`, `state` (green|yellow|orange|red), and `score`
 (0..1); the engine completes the result row with the test, its
 aspect, and its own clock. One query answers every subject — group by
 `subject`, and keep a row for subjects whose values say nothing (a
-LEFT JOIN back to `SELECT DISTINCT subject FROM slots`), because no
+LEFT JOIN back to `SELECT DISTINCT subject FROM annotations`), because no
 row means no result, not green.
 
 ```glossql
-DECLARE FUNCTION spread_bands FOR ops AS $$
+DECLARE FUNCTION spread_states FOR ops AS $$
   WITH s AS (
     SELECT subject,
            CASE WHEN count(*) <= 1 THEN 0.0
                 ELSE (count(DISTINCT body['value']) - 1.0) / (count(*) - 1.0)
            END AS score
-    FROM slots GROUP BY subject
+    FROM annotations GROUP BY subject
   )
   SELECT subject, score,
          CASE WHEN score = 0.0 THEN 'green'
               WHEN score <= coalesce($threshold, 1.0) THEN 'yellow'
-              ELSE 'red' END AS band
+              ELSE 'red' END AS state
   FROM s
 $$;
 ```
@@ -165,8 +165,8 @@ re-runnable, and its abstentions stay as honest as the library's.
 SELECT outlier_profile() FROM work_orders.duration_min;
 ```
 
-A run computes at the read's pin — the data and declarations the
-statement resolved — and stores a `measurements` row; the same pin serves
+A run computes at the read's data version — the data and declarations the
+statement resolved — and stores a `measurements` row; the same data version serves
 it back, and any input moving recomputes. A body carrying a `summary`
 object serves the summary alone — the full body reads back through
 `GLOSSARY(subject::aspect)`, uncapped.

@@ -9,8 +9,8 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 reads AS (
-  SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.metric), ', ') AS metrics
-  FROM metric_sources() ms LEFT JOIN a ON a.name = ms.metric
+  SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS metrics
+  FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.source IS NOT NULL
   GROUP BY ms.source),
 meanings AS (
@@ -20,10 +20,10 @@ meanings AS (
   WHERE g.aspect = 'meaning' AND g.actor_kind IN ('human', 'agent')),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 verdicts AS (
-  SELECT v.subject, v.aspect, v.test, v.band, v.score, v.error, v.computed_at, w.detector, w.threshold,
-         CASE v.band WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 ELSE 1 END AS sev
+  SELECT v.subject, v.aspect, v.test, v.state AS band, v.score, v.error, v.computed_at, w.detector, w.threshold,
+         CASE v.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 ELSE 1 END AS sev
   FROM TESTS() v JOIN w ON w.name = v.test
-  WHERE w.detector IS NOT NULL AND v.band <> 'green'),
+  WHERE w.detector IS NOT NULL AND v.state <> 'green'),
 voices AS (
   SELECT g.subject, g.aspect,
          string_agg(g.actor_kind || ': ' || coalesce(json_extract_string(g.body, '$.value'), g.body::VARCHAR), ' · '
@@ -34,11 +34,11 @@ voices AS (
 judged AS (
   SELECT v.band AS chip, 'warn' AS bcls,
          CASE v.detector
-           WHEN 'slot_entropy' THEN 'The annotations on ' || v.aspect || ' differ on ' || substr(v.subject, len(d.dataset) + 2) || '.'
+           WHEN 'value_entropy' THEN 'The annotations on ' || v.aspect || ' differ on ' || substr(v.subject, len(d.dataset) + 2) || '.'
            ELSE CASE WHEN v.band = 'error' THEN v.test || ' could not score ' || substr(v.subject, len(d.dataset) + 2) || '.'
                      ELSE v.test || ' reads ' || v.band || ' on ' || substr(v.subject, len(d.dataset) + 2) || '.' END END AS headline,
          CASE v.detector
-           WHEN 'slot_entropy' THEN coalesce('The annotations say ' || vo.said || '. ', '')
+           WHEN 'value_entropy' THEN coalesce('The annotations say ' || vo.said || '. ', '')
              || 'The score is the share of extra distinct values across the annotations, '
              || fmt_number(v.score) || ' against the threshold ' || coalesce(CAST(v.threshold AS VARCHAR), 'none')
              || '. A person''s word settles it.'
@@ -48,7 +48,7 @@ judged AS (
          coalesce(rd.metrics, '') AS reads,
          v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on ' || v.aspect
            || ' · measured ' || strftime(v.computed_at, '%d %b %Y %H:%M') AS meta,
-         '?check=' || v.test || '&kind=' || CASE v.detector WHEN 'slot_entropy' THEN 'voices' ELSE 'verdicts' END AS link,
+         '?check=' || v.test || '&kind=' || CASE v.detector WHEN 'value_entropy' THEN 'voices' ELSE 'verdicts' END AS link,
          'the check' AS link_text,
          CAST(v.sev AS DOUBLE) AS sev,
          CAST(v.score AS DOUBLE) AS size

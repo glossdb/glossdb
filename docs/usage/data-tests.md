@@ -62,16 +62,16 @@ turns red when the source drifts.
 
 ```glossql
 SELECT * FROM TESTS(orders.amount::additivity);
-SELECT subject, band FROM TESTS(fin.trial_balance) WHERE band = 'red';
+SELECT subject, state FROM TESTS(fin.trial_balance) WHERE state = 'red';
 ```
 
-`TESTS()` returns `(subject, aspect, test, band, score,
+`TESTS()` returns `(subject, aspect, test, state, score,
 computed_at, current, error)`:
 
-- `band`: `green`, `yellow`, `orange`, `red` or `error`;
+- `state`: `green`, `yellow`, `orange`, `red` or `error`;
 - `score`: the disagreement, 0 to 1;
 - `current`: whether every function result the score read is current;
-- `error`: why the detector could not answer, with band `error`. An
+- `error`: why the detector could not answer, with state `error`. An
   error is not a result: it never withholds a value, and every other
   test still answers.
 
@@ -83,12 +83,12 @@ use.
 | State | Meaning |
 |---|---|
 | `current` | the value holds |
-| `conflict` | the values differ and the score is above the threshold: the value is withheld, with band and score |
+| `conflict` | the values differ and the score is above the threshold: the value is withheld, with test state and score |
 | `stale` | the data changed after the value was written; it is still served, and marked |
 | `missing` | the property is required and nobody has annotated it; the row still appears |
 
 Only values that differ can be in conflict. A single value never
-contests itself: its band shows beside it, and the value is served.
+contests itself: its test state shows beside it, and the value is served.
 Precedence is fixed: a person's value over an agent's over a
 function's. The detector reports disagreement and never resolves it.
 
@@ -113,9 +113,9 @@ whose truth is known by construction ([functions](../reference/functions.md),
 - **`relationship_coherence`**: orphans and date order on every
   declared join ([relationships](relationships.md)).
 - **`detect_relationships`, `column_profile`, `outlier_profile`,
-  `temporal`, `detect_hierarchies`, `detect_grounding_collisions`**:
+  `temporal`, `detect_hierarchies`, `detect_definition_collisions`**:
   the structure and the shape of each column.
-- **The metrics kit's tests on every metric**, over the tables its
+- **The views kit's tests on every metric**, over the tables its
   definition scans: `fan_out_test`, join fan-out (two tables sharing a
   key that repeats on both sides, so the join multiplies rows; a side
   the definition reduces to one row per key before the join passes);
@@ -124,12 +124,12 @@ whose truth is known by construction ([functions](../reference/functions.md),
   its value column says how it adds up over time and members, and
   whether that agrees with how the value is computed (a ratio, an
   average or a distinct count marked additive is red).
-  `metric_tests()` lists every test on each metric and on what it
+  `view_tests()` lists every test on each metric and on what it
   reads, worst first, with the statement that runs it; a person
   accepts a result by recording a tolerance at or above it.
-- **Detectors**: `slot_entropy` scores agreement across a property's
+- **Detectors**: `value_entropy` scores agreement across a property's
   values; `rate_tolerance` scores a measured rate against its
-  tolerance; `band_breach` scores the expected ranges
+  tolerance; `range_breach` scores the expected ranges
   ([expected ranges](../preview/expected-ranges.md), preview).
 
 Measurements propose; they never decide. The agent reads them and

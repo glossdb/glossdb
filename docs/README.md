@@ -26,7 +26,7 @@ is also served to agents over MCP as a `doc://docs/…` resource.
 - [Loading data](usage/loading-data.md)
 - [Describing tables and columns](usage/describing-data.md)
 - [Relationships](usage/relationships.md)
-- [Metrics](usage/metrics.md)
+- [Metrics](usage/views.md)
 - [Measurements](usage/measurements.md)
 - [Data tests](usage/data-tests.md)
 - [The review queue](usage/review.md)

@@ -7,7 +7,7 @@ use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
 use serde_json::Value;
 
-use crate::AppDoor;
+use crate::AppInterface;
 
 pub(crate) const DATASETS: &str = "SELECT name, \
        coalesce(json_extract_string(settings, '$.purpose'), '') AS purpose \
@@ -24,12 +24,12 @@ pub(crate) const COUNTS: &str = "WITH latest AS ( \
        (SELECT count(*) FROM latest WHERE rn = 1) AS tables, \
        (SELECT coalesce(sum(CAST(rows AS BIGINT)), 0) FROM latest WHERE rn = 1) AS rows, \
        (SELECT coalesce(max(imported_at)::VARCHAR, '') FROM latest) AS landed, \
-       (SELECT count(*) FROM metric_surfaces WHERE grounded AND stopped = '') AS served, \
-       (SELECT count(*) FROM metric_surfaces WHERE stopped <> '') AS stopped, \
+       (SELECT count(*) FROM view_definitions WHERE defined AND stopped = '') AS served, \
+       (SELECT count(*) FROM view_definitions WHERE stopped <> '') AS stopped, \
        (SELECT count(*) FROM open_questions q \
         JOIN current_dataset d ON d.dataset = q.dataset) AS open";
 
-/// The reader: human standing like every frame.
+/// The reader: the human actor kind like every frame.
 fn reader() -> Actor {
     Actor {
         kind: ActorKind::Human,
@@ -39,14 +39,14 @@ fn reader() -> Actor {
 
 /// One read as JSON rows — every column by name, numbers as numbers.
 /// A read that fails answers with its text; the page prints it in the
-/// band it was for, the way a frame error is stored in its tile.
+/// section it was for, the way a frame error is stored in its tile.
 pub(crate) async fn rows(
-    door: &AppDoor,
+    interface: &AppInterface,
     dataset: Option<&str>,
     sql: &str,
     params: &[(&str, &str)],
 ) -> Result<Vec<Value>, String> {
-    let session = door
+    let session = interface
         .plane
         .channel(reader(), dataset)
         .await

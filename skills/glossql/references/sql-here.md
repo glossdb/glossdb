@@ -22,7 +22,7 @@ The schema in one read: `information_schema.tables` and
 `information_schema.columns` serve the bound dataset's tables and
 every column of them; `SHOW TABLES` lists the loaded tables and the
 metric definitions' views; `DESCRIBE <name>` describes any readable name, the
-shipped reads included — `DESCRIBE band_points()`.
+shipped reads included — `DESCRIBE range_points()`.
 
 What goes wrong without failing: an inner `ORDER BY` does not
 survive a derived relation, so order where you consume · `lag` and

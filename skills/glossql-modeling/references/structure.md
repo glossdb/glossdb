@@ -52,7 +52,7 @@ included, you are the precision. Per candidate, before declaring:
   anchor part alone.
 - **Base the judgment on evidence, not on a story.** Why the data looks this way
   is a hypothesis — verify it or label it. A correct rejection with a
-  wrong causal story misleads everyone reading the grounds later.
+  wrong causal story misleads everyone reading the basis later.
 
 ```glossql
 DECLARE RELATIONSHIP work_orders.site_id -> sites.id;
@@ -76,7 +76,7 @@ An axis is a served column you annotate `role` dimension and rank with a
 it is usable — how many rows name a bucket, how evenly — and
 **interest is yours**. A near-key is an identifier, not an axis, a
 constant resolves nothing, and a null-dominated column describes only a
-minority: annotate them `none` with the grounds.
+minority: annotate them `none` with the basis.
 
 `detect_hierarchies` screens within-table dependencies at high recall.
 Judge each:

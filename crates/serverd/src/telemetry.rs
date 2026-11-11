@@ -181,7 +181,7 @@ pub fn install() -> Result<Telemetry, String> {
 /// exporters over the transport named, with the SDK's own client and
 /// environment, batched, under this service's name. The W3C trace
 /// context becomes the propagator, so a `traceparent` a client sends
-/// is read at the door.
+/// is read at the interface.
 fn export(transport: Transport) -> Result<Option<Export>, opentelemetry_otlp::ExporterBuildError> {
     if std::env::var_os(ENDPOINT_VAR).is_none() {
         return Ok(None);

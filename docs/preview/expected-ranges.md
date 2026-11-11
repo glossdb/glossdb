@@ -4,17 +4,17 @@ Preview: expected ranges need a model service, named by
 `GLOSSDB_SERVICE_URL` ([configuration](../operations/configuration.md)),
 and may change.
 
-`metric_bands` backtests each metric's recent months. For every month it
-backtests, it computes the range that month should have landed in, given
+`metric_ranges` backtests each metric's recent months. For every month it
+backtests, it computes the range that month should have fallen in, given
 everything before it. It runs on a dataset
-(`SELECT metric_bands() FROM fin`) and reports, per point:
+(`SELECT metric_ranges() FROM fin`) and reports, per point:
 
 - the range's quantiles, p05 to p95;
-- the PIT: the quantile at which the actual value landed in the
+- the PIT: the quantile at which the actual value fell in the
   model's own distribution, from 0 to 1;
 - the service's result over the backtest.
 
-The test `bands_test` carries the result; the measurement reports.
+The test `range_test` carries the result; the measurement reports.
 
 ## Why a forecast model
 
@@ -31,14 +31,14 @@ included.
 
 The kit owns the calendar and sends complete months only.
 
-- `band_series()` reads every applicable metric's total by month. Where
+- `range_series()` reads every applicable metric's total by month. Where
   rows are dated finer than monthly, the month the data ends inside is
   left out: a short sum against a range fitted on whole months reads
   as a breach that is only the calendar.
-- `band_request()` says per metric whether it can be backtested: at least
+- `range_request()` says per metric whether it can be backtested: at least
   seven complete months, so that one origin has the six known values
   the service needs.
-- `band_body()` builds the request in the service's format: every
+- `range_body()` builds the request in the service's format: every
   metric's monthly series as one table (the metric as `member`, the
   month as `period`, one `value` column), with the specification
   `{"targets": ["value"], "origins": 6, "horizon": 1, "levels": [0.05,
@@ -62,7 +62,7 @@ The result is the service's:
 - **The score** is the worst displacement across the latest point of
   every metric backtested, raised to the number of metrics scored, so the
   edges' base rate holds at any number of metrics.
-- **The band** reads the score against the threshold.
+- **The state** reads the score against the threshold.
 
 The test's detector repeats the result over the measurement's own
 value, so `TESTS()` carries it and the checks goal acts on it.
@@ -71,13 +71,13 @@ value, so `TESTS()` carries it and the checks goal acts on it.
 
 Every backtest's PITs are stored with the measurement, one per metric and
 month, with the share of backtested points inside the 80% and the 90%
-range. `band_points()` returns them as rows, and `band_verdict()` the
+range. `range_points()` returns them as rows, and `range_result()` the
 newest result. How good past forecasts were is read from the catalog,
 never from the service.
 
 ## The model service
 
-The server carries no model. The backtest calls the model service's bands
+The server carries no model. The backtest calls the model service's ranges
 route, as JSON both ways. Without `GLOSSDB_SERVICE_URL` the backtest
 refuses, saying so. Every answer names the service and its version, and
 the measurement stores it as `served_by`.

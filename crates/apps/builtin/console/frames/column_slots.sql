@@ -16,8 +16,8 @@ authored AS (
   SELECT s.aspect, 'said' AS kind,
          CASE s.aspect
            WHEN 'unit' THEN json_extract_string(s.body, '$.value') || coalesce(', varying by ' || json_extract_string(s.body, '$.source_column'), '')
-           WHEN 'additivity' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
-           WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.grounds'), '')
+           WHEN 'additivity' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.basis'), '')
+           WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.basis'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            ELSE coalesce(json_extract_string(s.body, '$.value'), substr(s.body::VARCHAR, 1, 200)) END AS value,
          CASE s.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE s.actor_kind END AS voice,

@@ -22,10 +22,10 @@ SELECT a.subject,
        coalesce(e.outcome, 'no expectation written') AS outcome,
        coalesce('tolerance ' || CAST(e.tolerance AS VARCHAR), 'tolerance ' || coalesce(CAST(w.threshold AS VARCHAR), '0')) AS tolerance,
        coalesce('measured ' || CAST(m.rate AS VARCHAR), 'nothing measured yet') AS measured,
-       a.band,
-       CASE WHEN a.band = 'green' THEN 'ok' ELSE 'warn' END AS bcls
+       a.state AS band,
+       CASE WHEN a.state = 'green' THEN 'ok' ELSE 'warn' END AS bcls
 FROM TESTS() a
 JOIN w ON w.name = a.test
 LEFT JOIN expected e ON e.subject = a.subject AND e.aspect = a.aspect
 LEFT JOIN measured m ON m.subject = a.subject AND m.aspect = a.aspect
-ORDER BY CASE a.band WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'error' THEN 3 ELSE 4 END, a.subject
+ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'error' THEN 3 ELSE 4 END, a.subject

@@ -11,7 +11,7 @@ quarter and the year to go. Every run is kept at its origin.
 
 - `forecast_points()` returns the latest run, with the actuals joined
   as they arrive.
-- `forecast_coverage()` counts how often actuals landed inside the
+- `forecast_coverage()` counts how often actuals fell inside the
   ranges.
 
 ## Terms
@@ -22,7 +22,7 @@ quarter and the year to go. Every run is kept at its origin.
 - **Span:** the total of the first so many steps.
 - **Level:** a quantile the service returns. The range between two
   levels is where the actual should land that often.
-- **Coverage:** the share of actuals that landed inside a range.
+- **Coverage:** the share of actuals that fell inside a range.
 
 ## How it works
 
@@ -73,7 +73,7 @@ stored: neither is known at the origin.
 
 `forecast_points()` flattens the latest run, one row per metric and
 point. For every point whose actual the series now has, it joins the
-actual and says where it landed:
+actual and says where it fell:
 
 | Position | Meaning |
 |---|---|
@@ -92,7 +92,7 @@ Every point says how often such a range held: `held_80` and `held_90`,
 with `held_from` naming whose count it is:
 
 1. the metric's own history, where at least 30 of its points have
-   landed at that grain, step and span;
+   were loaded at that grain, step and span;
 2. else the dataset's history, where it reaches 30;
 3. else the service's held-out share.
 
@@ -101,7 +101,7 @@ handed to a person carries this number beside it.
 
 `forecast_coverage()` counts over every stored run: per metric and for
 the dataset (`''`), per grain, step, span and the span's name, the
-points whose actual has landed, the counts, and the shares inside the
+points whose actual has been loaded, the counts, and the shares inside the
 80% and the 90% range. A point's `held_80` and `held_90` come from these
 rows once they reach 30 points.
 
@@ -148,7 +148,7 @@ narrow beyond.
 
 ## Limits
 
-- The ranges are the model's own. Until 30 points have landed at a
+- The ranges are the model's own. Until 30 points have been loaded at a
   grain, step and span, the service's held-out share is the only
   measure, and `held_from` says so.
 - The metric is forecast as a whole, not per dimension member.

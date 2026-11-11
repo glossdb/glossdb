@@ -16,16 +16,16 @@ SELECT s.title,
          WHEN s.stopped <> '' THEN 'stopped'
          WHEN coalesce(q.n, 0) > 0 THEN CAST(q.n AS VARCHAR) || ' open'
          WHEN r.ruled_at IS NOT NULL THEN 'decided by a person ' || strftime(r.ruled_at, '%Y-%m-%d')
-         WHEN NOT s.grounded THEN 'nothing written'
+         WHEN NOT s.defined THEN 'nothing written'
          ELSE 'grounded' END AS status,
        CASE
          WHEN s.stopped <> '' THEN 'warn'
          WHEN coalesce(q.n, 0) > 0 THEN 'warn'
          WHEN r.ruled_at IS NOT NULL THEN 'ok'
-         WHEN NOT s.grounded THEN 'warn'
+         WHEN NOT s.defined THEN 'warn'
          ELSE 'ok' END AS scls,
        '?metric=' || s.name || '&kind=relation' AS link
-FROM metric_surfaces s
+FROM view_definitions s
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN ruled r ON r.aspect = s.name
 WHERE s.kind = 'relation'

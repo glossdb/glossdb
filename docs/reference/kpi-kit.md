@@ -2,7 +2,7 @@
 
 The semantic layer's vocabulary: the properties every workspace starts
 with. It ships with the glossql extension and loads at every open,
-before the quality kit (whose screens read `role`), the metrics kit
+before the quality kit (whose screens read `role`), the views kit
 (whose reads read these properties on a view's columns) and the
 outlook kit. The kit asks the questions — what a column means, how a
 number adds up, its unit, which columns slice, what a table is, where
@@ -25,9 +25,9 @@ for judgment only.
 | --- | --- | --- |
 | `meaning` | FACT ON TABLE, COLUMN, RELATIONSHIP | `value` (prose), optional `term` |
 | `role` | FACT ON COLUMN | `key` / `measure` / `dimension` / `timestamp` / `attribute` |
-| `additivity` | FACT ON COLUMN WHEN `role = 'measure'` | `additive` / `semi-additive` / `ratio` / `non-additive`, with `grounds`; a ratio names its halves, `numerator` and `denominator`. A flow sums, a stock keeps its last level, a ratio divides its summed halves; `none` does not combine |
+| `additivity` | FACT ON COLUMN WHEN `role = 'measure'` | `additive` / `semi-additive` / `ratio` / `non-additive`, with `basis`; a ratio names its halves, `numerator` and `denominator`. A flow sums, a stock keeps its last level, a ratio divides its summed halves; `none` does not combine |
 | `unit` | FACT ON COLUMN WHEN `role = 'measure'` | the unit, optional `source_column` |
-| `dimension` | FACT ON COLUMN WHEN `role = 'dimension'` | `primary` / `supporting` / `none`, with `grounds` |
+| `dimension` | FACT ON COLUMN WHEN `role = 'dimension'` | `primary` / `supporting` / `none`, with `basis` |
 | `entity` | FACT ON TABLE | what the table is: `value`, `role` (fact/dimension), `grain`, `time_axis`, `identity_columns` |
 | `conventions` | FACT ON SOURCE | fiscal calendar, sign conventions, what an export's nulls mean; shared by every dataset |
 | `definitions` | FACT ON DATASET | the business glossary, keyed by metric name: meaning, unit, owner, source, formula. The metric's own aspect keeps only `title` and `x-kind`; a field lives in exactly one place |
@@ -36,13 +36,13 @@ The other kits add theirs beside these: `time_grains` on a time column, the
 metrics kit's (the finest grain a series is served at and how many
 periods per grain, required where `role = 'timestamp'`, test
 `time_grains_test`); `lever` on a column, the outlook kit's (`value` true: a
-column someone sets, the input a scenario moves, with `grounds`; no
+column someone sets, the input a scenario moves, with `basis`; no
 test). The core kit declares `recipe_change`, `review_decision` and the app
 properties before any other kit.
 
 Names the server reads, shipped by this kit: `title` and `x-kind` on
 VIEW aspects and `unit` and `meaning` in `definitions` entries (the
-console's metric pages and `metric_surfaces`), and `none` as the
+console's metric pages and `view_definitions`), and `none` as the
 examined negative in the enum properties. "Examined, does not apply" is
 a different fact from an missing row, and the one that lets the
 open work reach zero.
@@ -53,13 +53,13 @@ open work reach zero.
 | --- | --- | --- | --- |
 | `meaning_test` | `meaning` | AGENT, HUMAN | — |
 | `entity_test` | `entity` | AGENT, HUMAN | — |
-| `role_test` | `role` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `additivity_test` | `additivity` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
-| `unit_test` | `unit` | AGENT, HUMAN | `slot_entropy`, threshold 0.7 |
+| `role_test` | `role` | AGENT, HUMAN | `value_entropy`, threshold 0.7 |
+| `additivity_test` | `additivity` | AGENT, HUMAN | `value_entropy`, threshold 0.7 |
+| `unit_test` | `unit` | AGENT, HUMAN | `value_entropy`, threshold 0.7 |
 | `dimension_test` | `dimension` | AGENT, HUMAN | — |
 
 A test (`DECLARE TEST`) says who may annotate a property and
-makes it required; its detector scores the values written, a band and
+makes it required; its detector scores the values written, a state and
 a score. The tests come last in the kit, since a test names a property
 and a detector that must already exist. The outlook kit adds its own:
-`bands_test`, `forecast_test`, `scenario_test`, `plan_test` ([functions](functions.md)).
+`range_test`, `forecast_test`, `scenario_test`, `plan_test` ([functions](functions.md)).

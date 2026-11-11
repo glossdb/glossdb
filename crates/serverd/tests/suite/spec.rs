@@ -1,5 +1,5 @@
-//! The language's record parses on the engine, the grammar on: every
-//! ```sql block of the SPEC.md the door serves as `doc://SPEC.md`,
+//! The language's document parses on the engine, the grammar on: every
+//! ```sql block of the SPEC.md the interface serves as `doc://SPEC.md`,
 //! read from the extension's share at the pin, and the corpus here —
 //! the two fixtures behind the server's kits — where a ```glossql
 //! block must parse and a ```glossql-gap block must not. The
@@ -83,7 +83,7 @@ async fn every_spec_sql_block_parses_on_the_engine() {
     );
 }
 
-/// The corpus here is the kits' record: a block tagged `glossql` is a
+/// The corpus here is the kits' own: a block tagged `glossql` is a
 /// transcription the language admits, one tagged `glossql-gap`
 /// documents what it does not, and the engine's parser is the judge
 /// of both.

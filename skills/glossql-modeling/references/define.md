@@ -64,7 +64,7 @@ row carries the right level and every sum is wrong. A running balance:
 GLOSS payables_outstanding ON fin AS $${
   "sql": "WITH daily AS (SELECT entry_date, sum(amount) AS delta FROM journal_lines GROUP BY entry_date) SELECT entry_date AS date, sum(delta) OVER (ORDER BY entry_date) AS value FROM daily",
   "time": "date",
-  "measure": {"column": "value", "additivity": "semi-additive", "grounds": "the running balance at the day's end"}
+  "measure": {"column": "value", "additivity": "semi-additive", "basis": "the running balance at the day's end"}
 }$$;
 ```
 
@@ -75,7 +75,7 @@ start, `-1` at the end, summed running:
 GLOSS headcount ON hr AS $${
   "sql": "WITH events AS (SELECT from_date AS date, 1 AS delta FROM stints UNION ALL SELECT to_date AS date, -1 AS delta FROM stints WHERE to_date IS NOT NULL), daily AS (SELECT date, sum(delta) AS delta FROM events GROUP BY date) SELECT date, CAST(sum(delta) OVER (ORDER BY date) AS DOUBLE) AS value FROM daily",
   "time": "date",
-  "measure": {"column": "value", "additivity": "semi-additive", "grounds": "open stints at the day's end"}
+  "measure": {"column": "value", "additivity": "semi-additive", "basis": "open stints at the day's end"}
 }$$;
 ```
 
@@ -130,7 +130,7 @@ GLOSS backlog_days ON ops AS $${
   beside its subledger. Look for one per metric; "no second path
   exists" is worth recording too.
 - After defining several metrics, run `SELECT
-  detect_grounding_collisions() FROM <dataset>`: two metrics with the
+  detect_definition_collisions() FROM <dataset>`: two metrics with the
   same definition make every ratio between them 1.0.
 
 ## Defaults where the brief is silent

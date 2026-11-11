@@ -48,7 +48,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="The workspace's datasets: what is loaded in each, what is served, and what waits for a person.">Datasets</span><span class="count">{{ datasets | length }}</span>
-      <code class="chip">datasets · imports · metric_surfaces · open_questions</code></header>
+      <code class="chip">datasets · imports · view_definitions · open_questions</code></header>
     {% if error %}<p class="frame-error">{{ error }}</p>{% endif %}
     {% if datasets | length == 0 and not error %}
     <p class="rows-empty">This workspace holds no dataset yet. An agent declares

@@ -6,18 +6,18 @@
 -- red past it); the result's score is the worst of them raised to
 -- their number. A point whose PIT is withheld carries the service's
 -- reason; a metric the walk found inapplicable carries its reason and
--- no numbers. `band_points()` is the recorded walk, no re-run. Rows
--- only for a test whose detector is band_breach, so another check's
+-- no numbers. `range_points()` is the recorded walk, no re-run. Rows
+-- only for a test whose detector is range_breach, so another check's
 -- page draws nothing here.
 WITH w AS (
   SELECT name, coalesce(threshold, 0.98) AS threshold
-  FROM tests WHERE name = $check AND detector = 'band_breach'
+  FROM tests WHERE name = $check AND detector = 'range_breach'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
 ),
 newest AS (
   SELECT metric, applicable, reason, period, actual, p10, p90, pit, displacement AS far, withheld,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
-  FROM band_points()
+  FROM range_points()
   WHERE NOT applicable OR period IS NOT NULL
 ),
 -- The axis that moved most between the previous and the newest walked

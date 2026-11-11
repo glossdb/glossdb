@@ -4,8 +4,8 @@
 -- its worst band as the chip — linked to the check's own page, where
 -- the evidence is listed by the detector's kind.
 WITH v AS (
-  SELECT a.test, a.band,
-         CASE a.band WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
+  SELECT a.test, a.state AS band,
+         CASE a.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
   FROM TESTS() a),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
 folded AS (
@@ -22,7 +22,7 @@ folded AS (
   GROUP BY w.name, w.aspect, w.detector, w.threshold)
 SELECT test,
        CASE detector
-         WHEN 'slot_entropy' THEN 'Do the annotations on ' || aspect || ' agree, column by column?'
+         WHEN 'value_entropy' THEN 'Do the annotations on ' || aspect || ' agree, column by column?'
          WHEN 'rate_tolerance' THEN 'Does the measured breach rate on ' || aspect || ' stay within the tolerance written for it?'
          ELSE 'Does ' || detector || ' pass on ' || aspect || '?' END AS asks,
        detector || coalesce(' @ ' || CAST(threshold AS VARCHAR), '') || ' on ' || aspect AS expectation,
@@ -36,7 +36,7 @@ SELECT test,
        CASE worst WHEN 4 THEN 'red' WHEN 3 THEN 'orange' WHEN 2 THEN 'yellow' WHEN 1 THEN 'error' WHEN 0 THEN 'green' ELSE 'none' END AS band,
        CASE WHEN worst = 0 THEN 'ok' WHEN worst < 0 THEN '' ELSE 'warn' END AS bcls,
        '?check=' || test || '&kind=' || CASE detector
-         WHEN 'slot_entropy' THEN 'voices'
+         WHEN 'value_entropy' THEN 'voices'
          WHEN 'rate_tolerance' THEN 'rate'
          ELSE 'verdicts' END AS link
 FROM folded

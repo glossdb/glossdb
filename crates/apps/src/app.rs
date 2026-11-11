@@ -153,9 +153,9 @@ impl AppDef {
     /// The app's definition, or why there is none: `Ok(None)` is "no
     /// such app" (a 404), `Err` is an app that exists but cannot serve.
     /// The catalog wins; a built-in answers for the name only when the
-    /// record carries nothing under it. `glossed` is every app part
+    /// catalog carries nothing under it. `glossed` is every app part
     /// the dataset carries, loaded once by the caller — apps are small
-    /// and one read serves the whole door.
+    /// and one read serves the whole interface.
     pub fn load(name: &str, glossed: &[crate::glossed::Part]) -> Result<Option<AppDef>, String> {
         if !safe_segment(name) {
             return Ok(None);
@@ -170,7 +170,7 @@ impl AppDef {
             return Err(format!(
                 "`{name}` ships in the binary and a glossed part shadows it whole — \
                  the built-in's other pages would stop serving. Author your app \
-                 under its own name; the door serves as many as the workspace writes"
+                 under its own name; the interface serves as many as the workspace writes"
             ));
         }
         if !files.is_empty() {

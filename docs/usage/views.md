@@ -54,7 +54,7 @@ ORDER BY month
 ```
 
 The write answers with the metric's summary row, in the
-`metric_summary()` shape: whether the SQL plans, the period and value
+`view_summary()` shape: whether the SQL plans, the period and value
 columns, the additivity, the cadence, the slices admitted, and every
 column still missing an annotation. Read it before the next write.
 
@@ -98,8 +98,8 @@ GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month"
 Check what the catalog says of each metric's columns:
 
 ```sql
-SELECT metric, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
-FROM metric_summary() ORDER BY metric
+SELECT view, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
+FROM view_summary() ORDER BY view
 ```
 
 ## Read the series
@@ -126,7 +126,7 @@ the metric's total.
 - A distinct count or a ratio serves no slices, since no column slices
   it whole.
 
-`metric_surfaces` lists every metric with its title, unit, meaning and
+`view_definitions` lists every metric with its title, unit, meaning and
 formula.
 
 ## Formulas

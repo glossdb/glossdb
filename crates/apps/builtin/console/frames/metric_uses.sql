@@ -7,5 +7,5 @@ SELECT coalesce(s.field, '(the whole view)') AS field,
        CASE WHEN s.source IS NOT NULL THEN '/' || d.dataset || '/app/console/p/glossary?column=' || s.source
             WHEN s.table_name IS NOT NULL THEN '/' || d.dataset || '/app/console/p/glossary?table=' || s.table_name
             ELSE '#' END AS link
-FROM metric_sources(for_metric := CAST($metric AS VARCHAR)) s CROSS JOIN d
+FROM view_sources(for_view := CAST($metric AS VARCHAR)) s CROSS JOIN d
 ORDER BY s.field NULLS FIRST

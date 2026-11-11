@@ -1,5 +1,5 @@
 ---
-name: glossql-metrics
+name: glossql-modeling
 description: Take a glossql workspace from loaded tables to metrics someone can trust — relationships, metric definitions, the tests on each metric, the questions a person must decide. Use for any substantive work in a workspace: loading a source, declaring relationships, defining a metric, writing a test or a page.
 ---
 
@@ -22,7 +22,7 @@ hold you back.
 List the tables and columns (`information_schema.columns`), read a few
 rows, profile what you will use (`SELECT column_profile() FROM
 orders.amount`). Load only what the question needs
-(`references/land.md`).
+(`references/load.md`).
 
 ## 2. Find the joins
 
@@ -79,7 +79,7 @@ GLOSS headcount ON hr AS $${
 
 A single value with no date is declared with `"x-kind": "scalar"`;
 SQL that other definitions build on with `"x-kind": "relation"`.
-Shapes written down, ratios and levels included: `references/ground.md`.
+Shapes written down, ratios and levels included: `references/define.md`.
 
 ## 4. Read the tests and fix what is red
 
@@ -109,7 +109,7 @@ gives, edited: fix the definition or the load. Where the number is
 right as it is, record a tolerance with the reason; a person can
 overrule it. `cause` says what the newest load changed: row counts and
 the columns whose values moved. Every test with its evidence:
-`SELECT * FROM metric_tests()`.
+`SELECT * FROM view_tests()`.
 
 Rows under `describe` name what is missing or outdated on the tables,
 columns and joins your metrics read: `references/vocabulary.md`.
@@ -128,12 +128,12 @@ assumption at confidence 1.0 (`skill://glossql/references/review.md`).
 
 | Page | When |
 |---|---|
-| `references/land.md` | loading: what to load, typing, dirty rows |
+| `references/load.md` | loading: what to load, typing, dirty rows |
 | `references/structure.md` | what each table is, relationships, hierarchies |
 | `references/vocabulary.md` | annotating a source column: meaning, role, unit |
-| `references/ground.md` | metric definitions in depth |
+| `references/define.md` | metric definitions in depth |
 | `references/read-sql.md` | querying a metric: `metric_series()`, levels and ratios, engine specifics |
 | `references/validate.md` | writing your own test |
 | `references/time-grains.md` | time grains, and the preview features: expected ranges, forecasts, plans, scenarios |
-| `references/doors.md`, `skill://glossql-apps/SKILL.md` | a function of your own, a page over the metrics |
+| `references/interfaces.md`, `skill://glossql-apps/SKILL.md` | a function of your own, a page over the metrics |
 | `references/close.md` | the summary you hand back |

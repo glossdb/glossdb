@@ -80,7 +80,7 @@ mode; this file is so nobody has to rediscover it.
 - **Measurements carry their provenance.** A measurement is current
   while its inputs — the data's snapshot and the catalog relations the
   function read — are unchanged, and is stale once one moved. A
-  measurement is no input of a pin: a next step that must compare two
+  measurement is no input of a data version: a next step that must compare two
   measurements compares them itself.
 - **A refusal is a value where the kit must hold.** The service
   call's soft form, `glossql.service_soft`, answers a refusal as

@@ -29,7 +29,7 @@ statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/metrics/kit.sql');
+FROM glossql_kit('{KITS}/views/kit.sql');
 
 statement ok
 FROM glossql_kit('{KITS}/outlook/kit.sql');

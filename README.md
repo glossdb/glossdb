@@ -101,7 +101,7 @@ works](docs/overview/how-it-works.md). Every word: [terms](docs/overview/terms.m
   slices by dimension, what moved;
 - built-in tests on every metric, over the tables its definition
   scans: join fan-out, referential integrity on its joins, the
-  additivity of its value; `metric_tests()` lists every test per
+  additivity of its value; `view_tests()` lists every test per
   metric, worst first;
 - the console: the review queue, metrics, quality, a page per table,
   column and property, lineage, export, and a query pane;
@@ -215,7 +215,7 @@ it.
   and a DuckLake, behind one API), `apps` (the console and the data
   apps), `serverd` (the binary and its interfaces).
 - `kits/` — the server's kits, loaded at open around the extension's
-  `kpi` and `quality`: `core`, `metrics`, `outlook` (preview), `goals`
+  `kpi` and `quality`: `core`, `views`, `outlook` (preview), `goals`
   (goals and next steps); each with its test suite
   ([kits](kits/README.md)).
 - `skills/` — the skills served to agents.

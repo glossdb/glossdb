@@ -45,10 +45,10 @@ derivations AS (
   FROM cands
   HAVING count(*) > 0),
 collisions AS (
-  SELECT 'grounding_collisions' AS aspect, 'the dataset' AS subjects,
-         json_extract_string(body, '$.groundings') || ' metric definitions, '
+  SELECT 'definition_collisions' AS aspect, 'the dataset' AS subjects,
+         json_extract_string(body, '$.definitions') || ' metric definitions, '
            || CAST(json_array_length(body, '$.collisions') AS VARCHAR) || ' serving one name differently.' AS found
-  FROM m WHERE aspect = 'grounding_collisions'),
+  FROM m WHERE aspect = 'definition_collisions'),
 candidates AS (
   SELECT 'relationship_candidates' AS aspect, 'the dataset' AS subjects,
          CAST(json_array_length(body, '$.candidates') AS VARCHAR) || ' candidate joins found in the data.' AS found
@@ -82,5 +82,5 @@ FROM every e
 LEFT JOIN backlog o ON o.aspect = e.aspect
 LEFT JOIN landed t ON t.aspect = e.aspect
 ORDER BY CASE e.aspect WHEN 'relationship_coherence' THEN 0 WHEN 'temporal_profile' THEN 1
-                       WHEN 'derivation_candidates' THEN 2 WHEN 'grounding_collisions' THEN 4
+                       WHEN 'derivation_candidates' THEN 2 WHEN 'definition_collisions' THEN 4
                        WHEN 'relationship_candidates' THEN 5 ELSE 8 END, e.aspect

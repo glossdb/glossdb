@@ -1,5 +1,5 @@
 //! The function surface per execution context, as pages the interface
-//! serves: `doc://functions/door.md`, `doc://functions/recipe.md`,
+//! serves: `doc://functions/interface.md`, `doc://functions/recipe.md`,
 //! `doc://functions/detector.md`. Three contexts register different
 //! functions, and nothing on the interface said which — an agent learned
 //! the surface by refusal. Each page lists what its context registers,
@@ -10,20 +10,20 @@
 use std::fmt::Write as _;
 
 use crate::engine::{Actor, ActorKind};
-use crate::engine::{DOORS, DoorPage, Plane, Registered, SessionError};
+use crate::engine::{INTERFACES, Plane, Registered, ServedPage, SessionError};
 
 use crate::wire;
 
 /// The three pages, built on the plane's own registries.
-pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
+pub async fn pages(plane: &Plane) -> Result<Vec<ServedPage>, SessionError> {
     let actor = Actor {
         kind: ActorKind::Human,
         id: crate::BOOTSTRAP.into(),
     };
     let session = plane.channel(actor, None).await?;
-    let mut door = session.registered_functions().await?;
-    door.extend(DOORS.iter().map(|(name, syntax)| Registered {
-        kind: "door",
+    let mut served = session.registered_functions().await?;
+    served.extend(INTERFACES.iter().map(|(name, syntax)| Registered {
+        kind: "interface",
         name: (*name).to_string(),
         syntax: Some((*syntax).to_string()),
     }));
@@ -39,7 +39,7 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
             .and_then(|o| o.get("rows"))
             .and_then(|r| r.as_array())
     {
-        door.extend(
+        served.extend(
             rows.iter()
                 .filter_map(|r| r.get("name")?.as_str())
                 .map(|name| Registered {
@@ -49,25 +49,25 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
                 }),
         );
     }
-    door.sort();
+    served.sort();
     Ok(vec![
         page(
-            "door",
-            "Functions on the door",
-            "What SQL sent through the door can call — a statement's SQL, a \
-             grounding's, an app frame's. The engine's functions, the JSON \
+            "interface",
+            "Functions on the interface",
+            "What SQL sent through the interface can call — a statement's SQL, a \
+             definition's, an app frame's. The engine's functions, the JSON \
              functions, the try-casts and the shipped aggregates plan here \
              (`scalar`, `aggregate`, `window`, `table`); the reads the planner \
-             answers by name are the doors over the record (`door`); a \
+             answers by name are the reads over the catalog (`interface`); a \
              declared function runs as an extraction, `SELECT <name>() FROM \
-             <subject>`, and `SELECT name FROM functions` lists what stands \
-             now (`extract`, as declared when the door opened); a \
-             grounding serves under its name.",
-            &door,
+             <subject>`, and `SELECT name FROM functions` lists what is current \
+             now (`extract`, as declared when the interface opened); a \
+             definition serves under its name.",
+            &served,
         ),
         page(
             "recipe",
-            "Functions in a recipe or a probe",
+            "Functions in a recipe or a preview",
             "What the SQL of `DECLARE RECIPE` and `PREVIEW` can call: the \
              engine's defaults, the try-casts, and the three readers over \
              the source's files. Nothing else — no JSON functions, no \
@@ -77,20 +77,20 @@ pub async fn pages(plane: &Plane) -> Result<Vec<DoorPage>, SessionError> {
         page(
             "detector",
             "Functions in a detector",
-            "What a test's detector query can call over its `slots` \
+            "What a test's detector query can call over its `annotations` \
              relation: the engine's defaults, nothing more.",
             &crate::engine::detector_functions(),
         ),
     ])
 }
 
-fn page(name: &str, title: &str, intro: &str, list: &[Registered]) -> DoorPage {
+fn page(name: &str, title: &str, intro: &str, list: &[Registered]) -> ServedPage {
     let mut body = format!("# {title}\n\n{intro}\n\n| function | kind | syntax |\n|---|---|---|\n");
     for f in list {
         let syntax = f.syntax.as_deref().unwrap_or("").replace('|', "\\|");
         let _ = writeln!(body, "| `{}` | {} | {} |", f.name, f.kind, syntax);
     }
-    DoorPage {
+    ServedPage {
         uri: format!("doc://functions/{name}.md"),
         name: format!("functions/{name}.md"),
         title: title.to_string(),

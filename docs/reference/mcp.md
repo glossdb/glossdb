@@ -50,7 +50,7 @@ The result is a JSON array, one outcome per statement:
   no rows, so `LIMIT 0` returns the schema.
 - **A write:** `{"done": "…"}` or `{"affected": n}`.
 - **An annotation of a metric definition** (`GLOSS` on a `VIEW`
-  aspect): the metric's summary row in the `metric_summary()` shape, at
+  aspect): the metric's summary row in the `view_summary()` shape, at
   the catalog version the write created: whether the SQL plans, its
   additivity and where that came from, the slicing columns admitted,
   and each served column not admitted with how to admit it
@@ -104,7 +104,7 @@ The server serves the pages an agent learns from:
 | `doc://docs/<section>/<page>.md` | these docs |
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
-| `doc://functions/door.md`, `doc://functions/recipe.md`, `doc://functions/detector.md` | every function each execution context has, read when the server opened |
+| `doc://functions/interface.md`, `doc://functions/recipe.md`, `doc://functions/detector.md` | every function each execution context has, read when the server opened |
 | `next://<dataset>/<step>` | a template: the open rows of one step (connect, describe, test, decide, serve), each with its cause and the statement that opens the work; `next://<dataset>` serves every step |
 
 The same pages are the rows of `pages()`, so a client without a
@@ -139,5 +139,5 @@ the queue works: [the review queue](../usage/review.md).
 The token's subject is the actor ([authentication](../operations/authentication.md)).
 Both MCP paths write as an agent. Without a token, under
 `GLOSSDB_INSECURE_OPEN`, a call writes as `insecure_dev_mode` with an
-agent's standing. The client's own `clientInfo` name is not used: a
+agent's actor kind. The client's own `clientInfo` name is not used: a
 caller can send any name, so it proves nothing.

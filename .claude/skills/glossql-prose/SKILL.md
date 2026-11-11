@@ -71,8 +71,8 @@ type it. Never a project word the reader cannot look up.
 | load query | recipe (in prose) | `RECIPE` |
 | the catalog | the record, the store | `glossql_*` tables |
 | value, annotation | slot, voice | |
-| provenance, inputs | pin, reads, legs | `pin`, `reads` columns |
-| confidence | band | `band` column |
+| provenance, inputs | pin, legs | `data_version`, `reads` columns |
+| test state | band | `state` column |
 | time grains | time_grains | |
 | is current, holds | stands | |
 | next steps | routes | `next` |
@@ -139,7 +139,7 @@ keyword as its own explanation: not "a test (`TEST`)".
 - Keep every H1 unless the change is a page move. The MCP interface
   serves each docs page as a resource titled by its H1.
 - `docs/reference/reads.md` keeps its path and the literal
-  `metric_summary()`: an interface test asserts both.
+  `view_summary()`: an interface test asserts both.
 - Workspace `cargo test` green after any docs change.
 
 ## Example

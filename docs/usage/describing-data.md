@@ -30,7 +30,7 @@ The kind says who provides the value:
 |---|---|---|
 | `FACT` | stated by an agent or a person, validated against the `WITH` schema | a unit, a convention, a constant, a formula |
 | `MEASUREMENT` | computed by a function from the data; never annotated by hand | `min_max`, outliers, relationship candidates |
-| `VIEW` | SQL, served as a view under the property's name | a metric, a single value, a derived relation ([metrics](metrics.md)) |
+| `VIEW` | SQL, served as a view under the property's name | a metric, a single value, a derived relation ([metrics](views.md)) |
 
 A measurement's value is the newest result of the function that
 returns it ([measurements](measurements.md)).
@@ -81,14 +81,14 @@ Good practice:
 - **Several values go in one body.** Use an array in the schema, not
   several statements.
 - **Say when a property does not apply.** Where a property can fail to
-  apply, annotate `none` with the grounds: a missing value and a value
+  apply, annotate `none` with the basis: a missing value and a value
   judged absent are different facts.
 - **Keep what changes in annotations.** A declaration cannot change
   once annotations exist under it, but an annotation can be replaced,
   with its author and time. So a property's `WITH` blob holds the
   schema, a display title and tooling flags; what the company revises,
   such as a metric's meaning, unit and owner, goes in the
-  `definitions` annotation ([metrics](metrics.md)).
+  `definitions` annotation ([metrics](views.md)).
 
 ## Change a property
 
