@@ -9,7 +9,7 @@ longer the headline.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| What a reader on plain DuckDB sees in a glossdb lake: descriptions as comments on tables, columns and views; the catalog's reads independent of the name the lake is attached under | High: the result of the whole evaluation depends on it; comments in DuckLake are not tried yet | the extension's store, `kits/core/kit.sql`, a suite that opens a lake without the extension | Next | |
+| The reader of a built lake uses DuckDB with the `ducklake` and glossql extensions and reads the glossary through glossql. DuckLake's own schema is not changed; our tables stay separate and reference it by key | Low | glossval's reader arm | With the stage | |
 | The two-stage run. Build: an agent builds tables, views and metrics over MCP; scored against the scenario's truth. Read: a second agent with plain DuckDB and no memory of the build answers questions the builder was not asked; scored against the same truth at other slices and grains | Medium: the harness has one stage today; the reader's arm exists as the bare arm | glossval `run.py`, `bare_run.py`, `bare/duck_mcp.py`, `score.py`, the scorecard schema | After the first row | |
 | The arms of the read stage: the raw lake, the built lake, and the built lake per way of presenting it (views only, views with comments, the glossary as a table, the semantic model export) | Low once the stage runs | glossval `ab_seats.py`, `ab_report.py` | With the stage | |
 | Data. Real data first: the corpora glossval holds (salt, avito, hm, f1, stack, trial, baton-rouge, eia-860m, mta-subway, biocase). Finance from `../glosstest` (`month-end-close`, `multi-system-recon`, `erp-migration`), named as generated in every result. No new generator | Medium: truth on real data is authored by us; a held-out question needs a truth value | glossval `evals/scenarios/`, `fetch_corpora.py` | With the stage | |
@@ -50,14 +50,3 @@ longer the headline.
 
 A result on generated data is labelled generated. The headline
 numbers come from real data.
-
-## Next issue (draft)
-
-**A glossdb lake read with plain DuckDB.** What it buys: the layer an
-agent built is usable by any tool that opens the DuckLake, and the
-evaluation's read stage has something to read. What is there: tables
-and metric views read; the glossary view is bound to the attach name
-`ws`; no comments are written. Done when: a suite opens a lake built
-by the server with DuckDB and the `ducklake` extension only, under
-another attach name, and finds each table's, column's and metric's
-meaning and unit as a comment, and reads the glossary's rows.
