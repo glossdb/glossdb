@@ -382,3 +382,15 @@ CREATE OR REPLACE MACRO main.fmt_change(p) AS
   CASE WHEN p IS NULL THEN NULL
        WHEN p::DOUBLE < 0 THEN '-' || main.fmt_number(abs(p::DOUBLE)) || '%'
        ELSE '+' || main.fmt_number(p::DOUBLE) || '%' END;
+
+-- The strings a CSV export writes where it has no value, for the CSV
+-- reader's `nullstr`: the common spellings, a spreadsheet's error
+-- cells, dashes of two or more, and the words for missing. A single
+-- `-`, `.` or `*`, a number such as -999 and a date such as 1900-01-01
+-- are left out: they can be real values, and the column profile shows
+-- them.
+CREATE OR REPLACE MACRO main.null_markers() AS
+  ['', 'NULL', 'null', 'None', 'NaN', 'NA', 'N/A', 'n/a', '\N',
+   '#N/A', '#NULL!', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?',
+   '--', '---',
+   'MISSING', 'UNKNOWN', 'UNDEFINED', 'NOT SET', 'NOT PROVIDED', 'NO DATA', 'NO VALUE'];

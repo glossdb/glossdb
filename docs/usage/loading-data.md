@@ -80,6 +80,26 @@ no longer returns is not removed by the merge. A source that deletes
 rows exposes the deletes as rows with a flag, and the load query
 carries the flag as a column.
 
+### CSV files
+
+A Parquet file or a database table is typed and loads as it is. A CSV
+file has no types, so its load query gives DuckDB's CSV reader one
+standard configuration and casts in the SELECT:
+
+```glossql
+DECLARE RECIPE payments ON ops FROM erp_export AS $$
+  SELECT nullif(trim(payment_id), '') AS payment_id,
+         try_cast(amount AS DOUBLE) AS amount
+  FROM read_csv('payments.csv', all_varchar = true,
+                nullstr = null_markers(), store_rejects = true)$$;
+```
+
+`all_varchar` reads every cell as text. `null_markers()` is the list
+of strings an export writes for no value, such as `NA`, `N/A`, `#N/A`
+and `MISSING`; a file where one of them is a real value gets its own
+list. `store_rejects` keeps a line the reader cannot parse out of the
+table and counts it.
+
 ### Rows the reader rejects
 
 Each load records `dropped_rows_count`, in the statement's result and

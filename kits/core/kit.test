@@ -32,6 +32,12 @@ SELECT fmt_change(12.34), fmt_change(-0.04), fmt_change(NULL);
 ----
 +12.3%	-0.04%	NULL
 
+# the CSV reader takes the list of null markers as its nullstr
+query II
+SELECT list_contains(null_markers(), 'N/A'), list_contains(null_markers(), '-');
+----
+true	false
+
 query I
 SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'review_decision', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
 ----

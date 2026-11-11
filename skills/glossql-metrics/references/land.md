@@ -89,6 +89,34 @@ DECLARE RECIPE orders ON ops FROM erp_export AS $$
   FROM read_parquet('orders/*.parquet')$$;
 ```
 
+**A CSV file is read with the standard options.** A CSV has no types,
+so its reader gets one configuration, and the casts follow in the
+SELECT:
+
+```glossql
+DECLARE RECIPE payments ON ops FROM erp_export AS $$
+  SELECT nullif(trim(payment_id), '') AS payment_id,
+         try_cast(amount AS DOUBLE) AS amount,
+         try_strptime(paid, '%d.%m.%Y')::DATE AS paid
+  FROM read_csv('payments.csv', all_varchar = true,
+                nullstr = null_markers(), store_rejects = true)$$;
+```
+
+- `all_varchar` reads every cell as text, so a leading zero in an id
+  and a date's format reach your cast unchanged.
+- `null_markers()` is the list of strings an export writes for no
+  value (`NA`, `N/A`, `#N/A`, `--`, `MISSING` and the like). Read it
+  with `SELECT null_markers()`. Where one of them is a real value in
+  this file, pass your own list.
+- `store_rejects` keeps a line the reader cannot parse (wrong number
+  of columns, a broken quote, a bad encoding) out of the table and
+  counts it in the load's `dropped_rows_count`.
+- Trim text and ids in the SELECT: a padded ` n/a ` or `007 ` is not
+  matched by the reader.
+
+A Parquet file or a database table is typed already and needs none of
+this.
+
 **Dates past 2262-04-11 are not periods.** A year beyond that is a
 token the source wrote, not a date. `try_cast(x AS TIMESTAMP)` stores
 it as NULL and the cast report counts it. `try_strptime` keeps it, and
