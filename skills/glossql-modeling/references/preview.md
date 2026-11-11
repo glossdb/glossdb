@@ -1,106 +1,172 @@
 # Preview features: expected ranges, forecasts, plans, scenarios
 
-These features are in preview. They apply to metrics only and need a
-model service configured on the server; without one, each function
-refuses and says so. Label what you hand out from them as preview.
-Each is a function you run on the dataset. The result is stored and
-read back as rows. `next` lists a function when it is due and adds
-its findings.
+These features are in preview. Label what you hand out from them as
+preview. They apply to metrics only. Expected ranges, forecasts and
+scenarios are computed by a model service configured on the server.
+Each is a function you run on the dataset; the result is stored and
+read back as rows. The examples ran on a dataset of subway service:
+the metric `trains_run` per month, actuals loaded through August
+2025, and a timetable loaded a year further.
+
+## What `next` lists, and the order
+
+With a model service, `next` lists each function that is due, with
+its statement:
+
+| Row of `next` | Listed |
+|---|---|
+| `metric_ranges (preview)` | once a metric is served |
+| `metric_forecast (preview)` | once a plan has a definition |
+| `metric_scenario (preview)` | once a scenario is annotated |
+| `plan_test (preview)` | once per plan, and after each new forecast |
+
+The server does not run them for you. After each load, and after you
+change a definition, a plan or a scenario, `next` lists them again.
+Run them in this order: expected ranges, forecast, scenario, then
+each plan. A call took 2 to 6 seconds on one metric (measured).
+
+Each function reads the metric's series inside its window, 48 months
+by default (`time-grains.md`). Where a metric has too little history,
+the function still runs and stores a reason: read `applicable` and
+`reason` in the feature's read. Without a model service
+`metric_ranges()` and `metric_forecast()` are refused with `no
+service is named`, and `next` lists no preview row.
 
 ## Expected ranges
 
-`SELECT metric_ranges() FROM <dataset>` asks, per metric and recent
-month: given the months before, what range would this month fall in?
-It sends complete months only; a metric needs at least seven.
+For each of a metric's latest six months: given the months before,
+what range would this month fall in? A metric needs seven complete
+months.
 
-```sql
-SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM range_points()
-WHERE newest ORDER BY displacement DESC
+```glossql
+SELECT metric_ranges() FROM subway;
 ```
 
-`pit` says where the actual fell in the range: 0.5 is the middle,
-above 0.95 or below 0.05 is outside what the history explains.
-`range_result()` is the run in one row; the test `range_test` carries
-each metric's newest month. A shift in the business and a defect in
-the data look the same here. Fix a defect in the load or the
-definition. Tell a person about a shift: state it as an assumption
-with the key `range-<period>` in the metric's definition.
+```sql
+SELECT metric, period, actual, p05, p50, p95, pit, applicable, reason
+FROM range_points() WHERE newest
+```
+
+`pit` says where the actual fell in the range: 0.5 is the middle.
+August 2025 was 73,479 in a range of 69,225 to 78,245, `pit` 0.50.
+The test `range_test` is red where the newest month's `pit` is below
+0.01 or above 0.99; `range_result()` is the run in one row. `next`
+then names the value and the range. A change in the business and a
+defect in the data look the same here. Fix a defect in the load or
+the definition. Tell a person about a real change: add an assumption
+with the key `range-<period>` to the metric's definition, as the
+statement in `next` shows. The row then waits for the person.
 
 ## Forecasts
 
-`SELECT metric_forecast() FROM <dataset>` asks for the periods after
-the last one with a value: 31 days, 13 weeks, 12 months or 4
-quarters, by the metric's floor. Minutes, hours and years are not
-forecast. An additive metric also gets the totals to the end of the
-month, the quarter and the year. It is due again after each load.
+The periods after the last one with a value: 31 days, 13 weeks, 12
+months or 4 quarters, by the metric's finest grain. A metric needs
+six periods. Minutes, hours and years are not forecast.
 
-```sql
-SELECT metric, step, period, p10, p50, p90, actual, held_80, held_from FROM forecast_points()
+```glossql
+SELECT metric_forecast() FROM subway;
 ```
 
-`actual` fills in as the periods arrive. `held_80` says how often
-such a range held, and `held_from` whose count that is: this metric's
-own once 30 of its points have arrived at that step, otherwise the
-dataset's, otherwise the service's share on held-out data. Hand a
-range out with it. `metric_series(world := 'forecast')` serves the
-medians beside the actuals; `forecast_coverage()` counts how often
-actuals fell inside the ranges.
+```sql
+SELECT metric, step, span, to_go, period, p10, p50, p90, actual, actuals, held_80, held_from
+FROM forecast_points()
+```
+
+A row without `span` is one period. A row with `span` is a total
+over that many periods, to the end of `to_go`: an additive monthly
+metric gets the total to the end of the quarter and of the year.
+September 2025 was forecast at 71,802, between 68,274 and 74,583.
+`held_80` says how often such a range held, and `held_from` whose
+count that is: the service's share on held-out data (0.75 here),
+until 30 forecast points of the metric or the dataset have their
+actuals. Hand a range out with it. After the next load `actual`
+fills in and `actuals` says `inside`, `low`, `high`, `below` or
+`above`. `metric_series(world := 'forecast')` serves the medians;
+`forecast_coverage()` counts how often actuals fell inside.
 
 ## Plans
 
-A plan (a budget, a target) is a loaded table. Declare one view per
-plan, and per edition of it, with `x-kind: plan` and `x-plan-of`, the
-metric it plans:
+A plan (a budget, a target, a timetable) is a loaded table. Load and
+describe it like any table. Declare one view per plan, and per
+edition of it, with `x-kind: plan` and `x-plan-of`, the metric it
+plans. Then run the forecast and the comparison:
 
 ```glossql
-DECLARE ASPECT parcels_target WITH $${"title": "Parcels target 2026", "x-kind": "plan", "x-plan-of": "parcels_delivered"}$$ AS VIEW;
-GLOSS parcels_target ON logistics AS $${"sql": "SELECT month AS period, target AS value FROM targets"}$$;
+DECLARE ASPECT timetable WITH $${"title": "Timetable", "x-kind": "plan", "x-plan-of": "trains_run"}$$ AS VIEW;
+GLOSS timetable ON subway AS $${"sql": "SELECT month, num_sched_trains AS value FROM timetable_months"}$$;
+SELECT metric_forecast() FROM subway;
+SELECT metric_plan() FROM subway.timetable;
 ```
 
 The plan's period and value columns carry the names of the metric's,
-or `period` and `value`. Its additivity is the metric's, and its
-columns are not annotated. A row covers its own period; where one row
-holds the whole year, add `"x-covers": "year"` to the declaration.
-`metric_series(world := 'plan', plan := 'parcels_target')` serves the
-plan under its metric's name, at the plan's grain or coarser; a
-variance is a join of that read and the actuals on `metric` and
-`period`.
+or `period` and `value`. Its additivity is the metric's. A row covers
+its own period; where one row holds the whole year, add `"x-covers":
+"year"` to the declaration. `next` asks for `entity` and `meaning` on
+the plan, and for the annotations on the table it reads.
 
 ```sql
-SELECT plan, grain, period, value, actual, variance, low, expected, high, planned FROM plan_points()
+SELECT plan, grain, label, value, actual, variance, low, expected, high, planned, held_80
+FROM plan_points()
 ```
 
-`plan_points()` compares each plan with the actual and the newest
-forecast, per period and at the year. `planned` is `complete`,
-`inside`, `below` or `above` the forecast's 80% range, `partial`,
-`open` or `ahead`. `SELECT metric_plan() FROM <dataset>.<plan>`
-stores the comparison; the test `plan_test` reads it. For a year
-outside the range, state the gap as an assumption with the key
-`plan-<year>` in the plan's definition.
+One row per plan and period, and one per year. `planned` is
+`complete` (the period is over; `variance` is actual minus plan),
+`inside`, `below` or `above` the forecast's 80% range, `partial` (a
+year the rows cover in part), `open` or `ahead` (no forecast covers
+it). The 2025 timetable was 911,197 against a range of 859,630 to
+879,368 for the year: `above`. The test `plan_test` is red where a
+period lies outside the range. For a year outside it, `next` gives
+the statement: add an assumption with the key `plan-<year>` to the
+plan's definition.
+
+`metric_series(world := 'plan', plan := 'timetable')` serves the plan
+under its metric's name, at the plan's grain or coarser. The plan
+reads work without a model service.
 
 ## Scenarios
 
 A lever is a column of a metric's view that someone sets, such as a
-price. A scenario changes levers by a factor per period (`YYYY-MM`
-or `YYYY-MM-DD`; a period not named keeps 1) and asks what the
-metrics would do.
+price or a timetable. The view must serve the column; `next` asks
+for the annotations on its source column. A scenario changes levers
+by a factor per period (`YYYY-MM` or `YYYY-MM-DD`; a period not named
+keeps 1) and asks what the metric would do.
 
 ```glossql
-GLOSS lever ON parcel_revenue.price_per_parcel AS $${"value": true, "basis": "the tariff, set each January"}$$;
-DECLARE ASPECT tariff_up WITH $${"title": "Tariff +5% from March", "x-kind": "scenario", "type": "object",
+GLOSS lever ON trains_run.scheduled AS $${"value": true, "basis": "the timetable, set by the operator for each month"}$$;
+DECLARE ASPECT timetable_cut WITH $${"title": "Timetable cut by 5% from October 2025", "x-kind": "scenario", "type": "object",
   "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
-GLOSS tariff_up ON logistics AS $${"levers": [{"column": "parcel_revenue.price_per_parcel", "factor": {"2027-03": 1.05}, "basis": "the tariff proposal"}]}$$;
-SELECT metric_scenario() FROM logistics;
+GLOSS timetable_cut ON subway AS $${"levers": [{"column": "trains_run.scheduled", "factor": {"2025-10": 0.95, "2025-11": 0.95, "2025-12": 0.95}, "basis": "a proposal to schedule 5% fewer trains in the last quarter"}]}$$;
+SELECT metric_forecast() FROM subway;
+SELECT metric_scenario() FROM subway;
+```
+
+The metric needs 26 periods of history. The scenario must name a
+period after the metric's last actual and a factor other than 1.
+After a load that covers its periods it returns a reason and no
+estimate: give it later periods. `scenarios()` checks each scenario
+before you run it.
+
+```sql
+SELECT metric, period, low, value, high, held_80, held_from, sign, confidence, applicable, reason
+FROM scenario_points('timetable_cut')
 ```
 
 ```sql
-SELECT metric, period, low, value, high, held_80, held_from, sign, confidence FROM scenario_points('tariff_up')
+SELECT lever, planned_from, history_shift, history_low, history_high
+FROM scenario_levers('timetable_cut')
 ```
 
-`scenarios()` checks each scenario. The estimate needs 26 periods of
-history and a lever the scenario moves. No definition is run again
-over changed data: the result is an estimate for the periods ahead.
-`metric_series(world := 'scenario', scenario := 'tariff_up')` serves
-the medians; `scenario_levers('tariff_up')` gives each lever's part.
-Interactions between levers are not estimated. Hand an estimate out
-with its range and `held_80`.
+`scenario_points()` is the metric under the scenario, from the first
+period after the last actual to the last period named: 70,966 in
+October 2025, between 69,269 and 72,470, `sign` `-`.
+`scenario_levers()` is what each lever does alone: `history_shift`
+is the mean change per period, here 2,939 fewer trains. Report the
+effect from there, not from the difference to the forecast: the two
+come from different models. `planned_from` says what the lever does
+without the change: its own `forecast`, or its last value held.
+`held_80` comes from the newest forecast, so run the forecast first.
+No definition is run again over changed data, and interactions
+between levers are not estimated. Hand an estimate out with its
+range and `held_80`.
+`metric_series(world := 'scenario', scenario := 'timetable_cut')`
+serves the medians.
