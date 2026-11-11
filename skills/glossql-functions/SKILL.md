@@ -58,6 +58,12 @@ $$ RETURNS late_deliveries;
   value; one row is an object of its columns; several rows are an
   array of objects. A null field is left out. Keep it small: a result
   that is a table belongs in a view.
+- A result that read the catalog is computed again after any write to
+  the catalog table it read. `DEPENDS ON $$query$$` after `RETURNS`
+  narrows that: the query returns one value, such as a digest of the
+  annotations the result uses, and the stored result is current while
+  the query returns the same value and the tables and views the body
+  read are unchanged.
 - The body cannot contain `$$`.
 - The name is the key in the workspace. Declaring a name again
   replaces the function, and its next run computes anew. One property

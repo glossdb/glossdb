@@ -122,7 +122,7 @@ statement ok
 SET GLOBAL glossql_service_url = 'http://model.test';
 
 statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"walk":{"score":0.4,"band":"green","threshold":0.98,"members":[{"member":"orders","column":"value","walked":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.7,"displacement":0.4,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
+CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"backtest":{"score":0.4,"state":"green","threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.7,"displacement":0.4,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
 
 statement ok
 CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"error": "refused"}'::JSON;
@@ -141,8 +141,8 @@ SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_
 ----
 0
 
-# a plan is declared and defined, and a column the metric does not read is annotated: the catalog moved, so the
-# stale rule marks the stored ranges, and nothing they read changed, so they are not due; the plan makes the forecast due
+# a plan is declared and defined, and a column the metric does not read is annotated: nothing the stored ranges
+# depend on changed, so their result stays current and they are not due; the plan makes the forecast due
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
@@ -155,7 +155,7 @@ GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
 query T
 SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
-false
+true
 
 query TTT
 SELECT name, stored, due FROM outlook_measurements() ORDER BY name;

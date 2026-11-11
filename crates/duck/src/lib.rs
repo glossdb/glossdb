@@ -1598,8 +1598,11 @@ impl Session {
     /// dataset that loaded before the last change runs again over its
     /// subject; every measurement a metric's fact row wants and nobody
     /// ran, and every tested measurement on the dataset nobody ran
-    /// (the expected ranges), runs for the first time, in the functions' name order,
-    /// which runs the forecast before the plan judgement that reads it.
+    /// (the expected ranges), runs for the first time. A function that
+    /// declares what its result depends on (`DEPENDS ON`) runs after the
+    /// others, so that it reads what they stored; within each group the
+    /// order is the functions' names, which runs the forecast before
+    /// the plan judgement that reads it.
     /// Returns how many ran. A
     /// function that refuses — the expected ranges with no service named — is
     /// logged and stays required, where the banner and the goal's next act
@@ -1608,7 +1611,8 @@ impl Session {
         let acts = self
             .batches(
                 &format!(
-                    "SELECT DISTINCT m.function, m.subject \
+                    "SELECT a.function, a.subject FROM (\
+                     SELECT DISTINCT m.function, m.subject \
                      FROM glossql_glossary(current_schema(), NULL, true) r \
                      JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
                      WHERE r.actor = 'function' AND NOT r.current \
@@ -1618,8 +1622,9 @@ impl Session {
                      UNION \
                      SELECT o.subject, split_part(o.what, ' over ', 2) \
                      FROM {LAKE}.main.open_items o \
-                     WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
-                     ORDER BY 1, 2"
+                     WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema()) a \
+                     ORDER BY EXISTS (SELECT 1 FROM {LAKE}.main.functions f \
+                                      WHERE f.name = a.function AND f.depends_on IS NOT NULL), 1, 2"
                 ),
                 &[],
             )

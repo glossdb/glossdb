@@ -126,7 +126,7 @@ service_not_configured
 # --- the service stood in for: two backtested months, the newest outside its range, the older one withheld
 
 statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "walk": {"score": 1.0, "band": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "walked": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "backtest": {"score": 1.0, "state": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "backtested": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
 
 statement ok
 SELECT metric_ranges() FROM fin;
@@ -292,11 +292,29 @@ SELECT count(*) FROM forecast_coverage();
 ----
 0
 
-# --- run again from the same origin (an annotation elsewhere moved the catalog), the forecast is a second run
-# and still one point per metric, origin, step and span
+# --- an annotation elsewhere in the catalog leaves the forecast current: a repeat is served
 
 statement ok
 GLOSS meaning ON fin.ledger AS $${"value": "one booking"}$$;
+
+statement ok
+SELECT metric_forecast() FROM fin;
+
+query IT
+SELECT (SELECT count(*) FROM measurements WHERE function = 'metric_forecast'), current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
+----
+1	true
+
+# --- run again from the same origin (a table of the dataset took a row that changes no series), the forecast
+# is a second run and still one point per metric, origin, step and span
+
+statement ok
+INSERT INTO fin.recent VALUES (DATE '2024-10-01', 0.0);
+
+query T
+SELECT current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
+----
+false
 
 statement ok
 SELECT metric_forecast() FROM fin;

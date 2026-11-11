@@ -57,20 +57,18 @@ WHERE NOT (s.period = s.last
 -- view; scenarios() lists every scenario declared, judged (both described
 -- with the scenario, below). view_inputs(): one row per view of the bound
 -- dataset — view, kind, plan_of, inputs (a digest of what a read of it
--- depends on: its definition without the assumptions, the columns and
--- grain its summary row names, the newest load of each table it scans)
--- and tracked (false where a table it scans was never loaded through a
--- load query, so its data has no version here). outlook_inputs(): the
--- digest each preview measurement stores as `inputs` — the metrics' for
--- the expected ranges (with the test's threshold) and the forecast, the
+-- depends on in the catalog: its definition without the assumptions, the
+-- columns and grain its summary row names). outlook_inputs(): the digest
+-- each preview function names in its DEPENDS ON — the metrics' for the
+-- expected ranges (with the test's threshold) and the forecast, the
 -- scenarios with their levers and factors and the metrics they reach for
 -- the estimate — and needed, whether the dataset needs the measurement
--- (outlook_measurements()). outlook_due(): per measurement, stored (a
--- result exists), due (none exists, or the catalog's stale rule says its
--- inputs moved and the digest differs) and needed. A change elsewhere in
--- the catalog —
--- another view, a plan, an assumption, an annotation the series does not
--- read — leaves the digest and the result as they are.
+-- (outlook_measurements()). The catalog stores the digest with each
+-- result and keeps the result current while the digest and the
+-- dataset's tables and views are unchanged. outlook_due(): per
+-- measurement, stored (a result exists), due (none exists, or the
+-- catalog says it is not current) and needed. An assumption or an
+-- annotation the series does not read leaves the result as it is.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT lever WITH $${
@@ -121,33 +119,24 @@ WITH ds AS (SELECT current_schema() AS d),
 defs AS (
   SELECT g.aspect AS view, md5(json_merge_patch(g.body::JSON, '{"assumptions": null}')::VARCHAR) AS definition
   FROM main.glossary g, ds WHERE g.dataset = ds.d AND g.subject = ds.d
-  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
-loads AS (
-  SELECT s.view, string_agg(s.table_name || '@' || coalesce(i.seq::VARCHAR, '?'), ',' ORDER BY s.table_name) AS loads,
-         bool_and(i.seq IS NOT NULL) AS tracked
-  FROM (SELECT DISTINCT view, table_name FROM glossql_views_scans(current_schema())) s
-  LEFT JOIN (SELECT dataset || '.' || table_name AS tbl, max(seq) AS seq FROM main.imports GROUP BY ALL) i ON i.tbl = s.table_name
-  GROUP BY s.view)
+  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1)
 SELECT m.view, m.kind, m.plan_of, m.stopped, m.applicable,
        md5(concat_ws('|', m.view, coalesce(d.definition, ''), m.applicable::VARCHAR, coalesce(m.period_column, ''), coalesce(m.value_column, ''),
                      coalesce(m.numerator, ''), coalesce(m.denominator, ''), coalesce(m.floor, ''), coalesce(m.window_periods::VARCHAR, ''),
-                     coalesce(m.additivity, ''), coalesce(l.loads, ''))) AS inputs,
-       coalesce(l.tracked, true) AS tracked
-FROM main.view_summary() m LEFT JOIN defs d USING (view) LEFT JOIN loads l USING (view);
+                     coalesce(m.additivity, ''))) AS inputs
+FROM main.view_summary() m LEFT JOIN defs d USING (view);
 
 CREATE OR REPLACE MACRO main.outlook_inputs() AS TABLE
 WITH v AS MATERIALIZED (SELECT * FROM main.view_inputs()),
 metrics AS (SELECT * FROM v WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan')),
-series AS (
-  SELECT coalesce(string_agg(inputs, ',' ORDER BY view), '') AS digest, coalesce(bool_and(tracked), true) AS tracked FROM metrics),
+series AS (SELECT coalesce(string_agg(inputs, ',' ORDER BY view), '') AS digest FROM metrics),
 threshold AS (
   SELECT coalesce((SELECT threshold::VARCHAR FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY seq DESC LIMIT 1), '') AS t),
 sc AS MATERIALIZED (SELECT * FROM main.scenarios()),
 reached AS (SELECT DISTINCT u.l.metric AS view FROM sc, unnest(sc.levers) AS u(l)),
 scen AS (
   SELECT coalesce((SELECT string_agg(scenario || ':' || glossed::VARCHAR || ':' || coalesce(reason, '') || ':' || levers::VARCHAR, ';' ORDER BY scenario) FROM sc), '')
-           || '/' || coalesce((SELECT string_agg(m.inputs, ',' ORDER BY m.view) FROM metrics m JOIN reached r USING (view)), '') AS digest,
-         coalesce((SELECT bool_and(m.tracked) FROM metrics m JOIN reached r USING (view)), true) AS tracked),
+           || '/' || coalesce((SELECT string_agg(m.inputs, ',' ORDER BY m.view) FROM metrics m JOIN reached r USING (view)), '') AS digest),
 -- what the dataset needs, where a model service is named and a metric is served
 live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
 has AS (
@@ -155,23 +144,16 @@ has AS (
          EXISTS (SELECT 1 FROM v WHERE kind = 'plan' AND applicable) AS plan,
          EXISTS (SELECT 1 FROM sc WHERE applicable) AS scenario
   FROM live)
-SELECT 'metric_ranges' AS name, md5(series.digest || '/' || threshold.t) AS inputs, series.tracked, has.metric AS needed FROM series, threshold, has
-UNION ALL SELECT 'metric_forecast', md5(digest), tracked, has.metric AND (has.plan OR has.scenario) FROM series, has
-UNION ALL SELECT 'metric_scenario', md5(digest), tracked, has.metric AND has.scenario FROM scen, has;
+SELECT 'metric_ranges' AS name, md5(series.digest || '/' || threshold.t) AS inputs, has.metric AS needed FROM series, threshold, has
+UNION ALL SELECT 'metric_forecast', md5(digest), has.metric AND (has.plan OR has.scenario) FROM series, has
+UNION ALL SELECT 'metric_scenario', md5(digest), has.metric AND has.scenario FROM scen, has;
 
 CREATE OR REPLACE MACRO main.outlook_due() AS TABLE
-WITH now_ AS (SELECT * FROM main.outlook_inputs()),
-stored AS (
-  SELECT function AS name, json_extract_string(value, '$.inputs') AS inputs FROM main.measurements
-  WHERE dataset = current_schema() AND function IN ('metric_ranges', 'metric_forecast', 'metric_scenario')
-  QUALIFY row_number() OVER (PARTITION BY function ORDER BY seq DESC) = 1),
-held AS (
+WITH stored AS (
   SELECT aspect AS name, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
   WHERE actor = 'function' AND aspect IN ('metric_ranges', 'metric_forecast', 'metric_scenario') GROUP BY aspect)
-SELECT n.name, s.name IS NOT NULL AS stored,
-       s.name IS NULL OR (NOT coalesce(h.current, true) AND (s.inputs IS NULL OR NOT n.tracked OR s.inputs <> n.inputs)) AS due,
-       n.needed
-FROM now_ n LEFT JOIN stored s USING (name) LEFT JOIN held h USING (name);
+SELECT n.name, s.name IS NOT NULL AS stored, NOT coalesce(s.current, false) AS due, n.needed
+FROM main.outlook_inputs() n LEFT JOIN stored s USING (name);
 
 --===------------------------------------------------------------------===--
 -- The backtest. range_series(): every applicable metric's total at month
@@ -228,8 +210,7 @@ GROUP BY t.threshold;
 --===------------------------------------------------------------------===--
 -- metric_ranges: the backtest as a measurement on the dataset. served_by
 -- names the service and its version; score, state and threshold are the
--- service's result over every metric backtested; inputs is the digest of
--- what the request read (outlook_inputs()); metrics holds one row per
+-- service's result over every metric backtested; metrics holds one row per
 -- metric — applicable and reason, additivity, backtested (how many months
 -- were predicted from the months before them), held_80 and held_90 (the
 -- share of those months inside the 10-90 and the 5-95 range), newest (the
@@ -247,7 +228,6 @@ DECLARE ASPECT metric_ranges WITH $${
     "score": {"type": ["number", "null"]},
     "state": {"type": ["string", "null"]},
     "threshold": {"type": ["number", "null"]},
-    "inputs": {"type": ["string", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -274,9 +254,9 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
            any_value(pit) AS pit, any_value(withheld) AS withheld
     FROM rows_ WHERE period IS NOT NULL GROUP BY metric, period),
   results AS (
-    SELECT v.member AS metric, v.walked AS backtested, v.held_80, v.held_90, v.newest
-    FROM (SELECT unnest(from_json(json_extract(a, '$.answer.walk.members'),
-            '[{"member": "VARCHAR", "column": "VARCHAR", "walked": "BIGINT", "held_80": "DOUBLE", "held_90": "DOUBLE", "newest": {"origin": "VARCHAR", "period": "VARCHAR", "pit": "DOUBLE", "displacement": "DOUBLE", "withheld": "VARCHAR"}}]')) AS v
+    SELECT v.member AS metric, v.backtested, v.held_80, v.held_90, v.newest
+    FROM (SELECT unnest(from_json(json_extract(a, '$.answer.backtest.members'),
+            '[{"member": "VARCHAR", "column": "VARCHAR", "backtested": "BIGINT", "held_80": "DOUBLE", "held_90": "DOUBLE", "newest": {"origin": "VARCHAR", "period": "VARCHAR", "pit": "DOUBLE", "displacement": "DOUBLE", "withheld": "VARCHAR"}}]')) AS v
           FROM a WHERE a IS NOT NULL)),
   failures AS (
     SELECT e.member AS metric, list(e.error ORDER BY e.origin) AS errors
@@ -296,15 +276,15 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
     FROM req r LEFT JOIN results v USING (metric) LEFT JOIN failures f USING (metric))
   SELECT (SELECT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version') FROM a) AS served_by,
          'month' AS grain,
-         (SELECT json_extract(a, '$.answer.walk.score')::DOUBLE FROM a) AS score,
-         (SELECT json_extract_string(a, '$.answer.walk.band') FROM a) AS state,
+         (SELECT json_extract(a, '$.answer.backtest.score')::DOUBLE FROM a) AS score,
+         (SELECT json_extract_string(a, '$.answer.backtest.state') FROM a) AS state,
          (SELECT threshold FROM b) AS threshold,
-         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_ranges') AS inputs,
          (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity,
                                 'backtested': backtested, 'held_80': held_80, 'held_90': held_90, 'newest': newest,
                                 'errors': errors, 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
-$$ RETURNS metric_ranges;
+$$ RETURNS metric_ranges
+DEPENDS ON $$SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_ranges'$$;
 
 -- The breach is the service's result, repeated by the test's detector
 -- over the measurement's own result, so that TESTS() carries it and the
@@ -451,8 +431,7 @@ FROM rows_ GROUP BY grain, totals, horizon;
 -- the first so many steps, to_go naming the month, the quarter or the year
 -- it runs to) with its period, p05 to p95, and service_80 and service_90,
 -- the service's held-out share of actuals inside the 80% and the 90% range
--- at that grain, step and span; inputs is the digest of what the request
--- read (outlook_inputs()). No actual and no PIT land here: neither is
+-- at that grain, step and span. No actual and no PIT land here: neither is
 -- known at the origin; forecast_points() joins the actual at read.
 --===------------------------------------------------------------------===--
 
@@ -461,7 +440,6 @@ DECLARE ASPECT metric_forecast WITH $${
   "type": "object", "x-used-by": ["plan", "scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
-    "inputs": {"type": ["string", "null"]},
     "metrics": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -512,11 +490,11 @@ DECLARE FUNCTION metric_forecast FOR GLOBAL AS $$
             WHERE n.metric = r.metric) AS points
     FROM req r LEFT JOIN failures f USING (metric))
   SELECT (SELECT string_agg(DISTINCT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version'), ', ') FROM b) AS served_by,
-         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_forecast') AS inputs,
          (SELECT coalesce(list({'metric': metric, 'applicable': applicable, 'reason': reason, 'additivity': additivity, 'grain': grain,
                                 'origin': strftime(origin, '%Y-%m-%d'), 'points': points} ORDER BY metric), [])
           FROM per_metric) AS metrics
-$$ RETURNS metric_forecast;
+$$ RETURNS metric_forecast
+DEPENDS ON $$SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_forecast'$$;
 
 -- The forecast's test says a forecast exists: green once a stored run
 -- holds a point for some metric. A run that forecast nothing — every
@@ -843,8 +821,7 @@ ORDER BY r.scenario, r.metric;
 -- at the 10, 50 and 90 levels; baseline, the same estimate's median with
 -- every lever as planned; the history's own reading with its 90%
 -- interval) and the parts (per lever, what it alone does by the
--- history); inputs is the digest of what the request read
--- (outlook_inputs()). Due again once the scenarios, their levers or the
+-- history). Due again once the scenarios, their levers or the
 -- metrics they reach change. scenario_points(s): the newest estimate, one
 -- row per scenario (or every one, NULL), metric and period ahead, with
 -- baseline and effect (value minus baseline: what the scenario changes)
@@ -858,7 +835,6 @@ DECLARE ASPECT metric_scenario WITH $${
   "type": "object", "x-used-by": ["scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
-    "inputs": {"type": ["string", "null"]},
     "scenarios": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON DATASET;
@@ -960,10 +936,10 @@ DECLARE FUNCTION metric_scenario FOR GLOBAL AS $$
             FROM per_metric m WHERE m.scenario = sc.scenario) AS metrics
     FROM sc)
   SELECT (SELECT string_agg(DISTINCT json_extract_string(a, '$.answer.service') || ' ' || json_extract_string(a, '$.answer.version'), ', ') FROM b) AS served_by,
-         (SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_scenario') AS inputs,
          (SELECT coalesce(list({'scenario': scenario, 'applicable': applicable, 'reason': reason, 'levers': levers, 'metrics': metrics} ORDER BY scenario), [])
           FROM per_scenario) AS scenarios
-$$ RETURNS metric_scenario;
+$$ RETURNS metric_scenario
+DEPENDS ON $$SELECT inputs FROM main.outlook_inputs() WHERE name = 'metric_scenario'$$;
 
 -- The estimate's test says an estimate exists: green once a stored run
 -- holds a point for some scenario and metric. A run that estimated
@@ -1284,10 +1260,10 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- metric_plan: the plan judged, as a measurement on the plan — the rows
 -- plan_points() serves for it as of the data, with the forecast run they
 -- were judged against (forecast_run, the newest metric_forecast
--- measurement's seq, and its origin) and inputs, the digest of the plan
--- (view_inputs()). Refused on a view that is not a plan, or a plan that
--- is not served, by name. Wanted on the plan's row until one exists; due
--- again once a newer forecast exists or the plan's digest differs.
+-- measurement's seq, and its origin). Refused on a view that is not a
+-- plan, or a plan that is not served, by name. Wanted on the plan's row
+-- until one exists; due again once a newer forecast exists, the plan's
+-- digest (view_inputs()) differs or the dataset's tables changed.
 -- plan_stored(): the newest judgement per plan from the measurements
 -- alone, one row per point, the read an arm of the `next` read takes;
 -- plan_points() stays the live read.
@@ -1302,7 +1278,6 @@ DECLARE ASPECT metric_plan WITH $${
     "grain": {"type": ["string", "null"]},
     "forecast_run": {"type": ["integer", "null"]},
     "forecast_origin": {"type": ["string", "null"]},
-    "inputs": {"type": ["string", "null"]},
     "points": {"type": "array", "items": {"type": "object"}}
   }
 }$$ AS MEASUREMENT ON TABLE;
@@ -1322,13 +1297,16 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
          (SELECT any_value(grain) FROM own) AS grain,
          (SELECT seq FROM run) AS forecast_run,
          (SELECT any_value(origin) FROM pts WHERE origin IS NOT NULL) AS forecast_origin,
-         (SELECT inputs FROM main.view_inputs() WHERE view = split_part($subject, '.', 2)) AS inputs,
          (SELECT coalesce(list({'grain': grain, 'period': strftime(period, '%Y-%m-%d'), 'label': label, 'value': value,
                                 'actual': actual, 'variance': variance, 'low': low, 'expected': expected, 'high': high,
                                 'planned': planned, 'covers': covers, 'held_80': held_80, 'held_from': held_from}
                                ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period), [])
           FROM pts) AS points
-$$ RETURNS metric_plan;
+$$ RETURNS metric_plan
+DEPENDS ON $$
+  SELECT concat_ws('/', coalesce((SELECT inputs FROM main.view_inputs() WHERE view = split_part($subject, '.', 2)), ''),
+                   coalesce((SELECT max(seq)::VARCHAR FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'), ''))
+$$;
 
 -- The gap is read by the test's detector over the judgement's own
 -- result: red where a ranged period lies below or above the forecast's
@@ -1394,8 +1372,8 @@ SELECT name, stored, due FROM main.outlook_due() WHERE needed;
 -- dataset, as rows for `next`: step (test or serve), asset, state,
 -- open (the finding), for_view, statement (the fix), test (the test the
 -- finding belongs to). A value outside its expected range, a plan
--- outside the forecast's range, a plan whose comparison predates the
--- newest forecast or the plan's own change, a plan without a
+-- outside the forecast's range, a plan whose comparison is not current
+-- (a newer forecast, the plan's own change, a load), a plan without a
 -- definition, a scenario that cannot be estimated for a reason its
 -- author can settle. A reason nobody can settle (too little history) is
 -- no row. A finding a person was asked about or decided on is closed.
@@ -1408,21 +1386,20 @@ live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS na
 asked AS (
   SELECT aspect, key FROM main.review_decisions r, ds WHERE r.dataset = ds.d
   UNION SELECT aspect, key FROM main.open_questions q, ds WHERE q.dataset = ds.d),
--- every view of the dataset once, with the digest of what a read of it depends on
-views AS MATERIALIZED (SELECT view, kind, stopped, applicable, inputs FROM main.view_inputs()),
+-- every view of the dataset once
+views AS MATERIALIZED (SELECT view, kind, stopped, applicable FROM main.view_summary()),
 plans AS (
-  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.stopped, x.inputs
+  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.stopped
   FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
   LEFT JOIN views x ON x.view = a.name
   WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
 forecast AS (
   SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
 compared AS (
-  SELECT subject, json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run,
-         json_extract_string(value, '$.inputs') AS inputs
+  SELECT subject, json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run
   FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
   QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
--- the catalog's stale rule on each stored comparison
+-- whether the catalog holds each stored comparison current
 held AS (
   SELECT subject, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
   WHERE actor = 'function' AND aspect = 'metric_plan' GROUP BY subject),
@@ -1470,12 +1447,11 @@ UNION ALL
 SELECT 'test', ds.d || '.' || p.plan, 'not_run',
        'plan_test (preview): ' || p.plan || CASE WHEN c.plan IS NULL THEN ' is not compared with the actual and the forecast yet'
                                                 WHEN c.forecast_run IS DISTINCT FROM f.run THEN ' was compared before the newest forecast'
-                                                ELSE ' was compared before the plan changed' END,
+                                                ELSE ' was compared before the plan or the data changed' END,
        p.metric, 'SELECT metric_plan() FROM ' || ds.d || '.' || p.plan || ';', 'plan_test'
 FROM plans p LEFT JOIN compared c USING (plan) LEFT JOIN held h ON h.subject = c.subject, forecast f, ds, live
 WHERE live.named AND p.applicable
-  AND (c.plan IS NULL OR c.forecast_run IS DISTINCT FROM f.run
-       OR (NOT coalesce(h.current, true) AND c.inputs IS NOT NULL AND c.inputs <> p.inputs))
+  AND (c.plan IS NULL OR NOT coalesce(h.current, false))
 UNION ALL
 SELECT 'serve', ds.d || '.' || p.plan, 'missing',
        p.plan || ' (preview) plans ' || p.metric || ' and has no definition', p.metric,

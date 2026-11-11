@@ -70,7 +70,10 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
   `subject_column($subject)` is that column as a relation with one
   column `v`. The result is validated against the property's schema
   and stored. It is served again while the tables and catalog tables
-  it read are unchanged.
+  it read are unchanged. With `DEPENDS ON $$query$$` after `RETURNS`,
+  the query's one value stands for the catalog: the result is served
+  again while the query returns the same value and the tables and
+  views the body read are unchanged.
 - **A detector** is a function without `RETURNS`. It reads the test's
   `annotations` and returns `subject`, `state`, `score`. `$threshold`
   is the test's.
