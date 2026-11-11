@@ -1,184 +1,134 @@
-# Loading — read before the first PREVIEW or DECLARE RECIPE
+# Loading: sources, load queries, CSV files, dropped rows
 
-## Agree the topic first
+Read before the first `PREVIEW` or `DECLARE RECIPE`.
 
-A dataset has a topic: on-time delivery, capacity, cost control. The
-topic decides which tables to load, which metrics to propose and which
-questions matter. Propose one from what you can see, let the person
-shape it, then declare it:
+## Source and dataset
+
+A dataset is the working set for one topic. Its `purpose` is the only
+setting:
 
 ```glossql
-DECLARE DATASET ops SET (purpose: 'service delivery — what gets done, how fast, and where it stalls');
+DECLARE DATASET fleet SET (purpose: 'sensor readings per vehicle, for maintenance planning');
 ```
 
-Then propose the metrics the topic implies, the hard ones included (an
-end-to-end cycle time, real utilization). The person prunes and adds.
-Scope questions are cheap here: "cycle time from which timestamp?"
-costs one sentence now and a wrong dashboard later. A metric the data
-cannot serve is a finding: name what is missing and which tables would
-close it.
-
-Do this in chat. The topic, the metric list and how much to load are
-conversation. The review queue only asks about assumptions that
-already exist.
-
-## Load what the topic needs
-
-A dataset is a working set for its topic, not a copy of the export.
-Load the tables the metrics need, select only the columns you will
-use, and filter wide tables in the load query's WHERE. Leaving
-something out costs one more `DECLARE RECIPE` later. Loading
-everything costs on every read: more columns to annotate, more
-required annotations, slower relationship searches (they scale with
-the number of column pairs).
-
-**Read the source's conventions before you preview.** Annotations on a
-source are served in every dataset, so what was learned earlier about
-this system (placeholder dates, formats, key spellings) is already
-there:
+A source is a root: a directory on the server's machine, an
+object-store URL, or a database. `type` is `csv`, `parquet`, `json`
+or `relational_db`. File paths in a load query resolve under the
+root, and the reader function in the SQL picks the format. A database
+source takes `via`, the name of a secret the engine holds;
+credentials do not go in statements, and it runs the load query's SQL
+itself, in its own dialect.
 
 ```glossql
-SELECT value FROM GLOSSARY(erp_export) WHERE aspect = 'conventions';
+DECLARE SOURCE workshop SET (type: relational_db, location: 'postgres://workshop.internal/prod', via: workshop_prod);
 ```
 
-Write back what you learn:
+What you learn about a source system (a placeholder date, how ids
+are written) is annotated on the source as `conventions`, a free JSON
+object, and is read in every dataset that loads from it: `GLOSS
+conventions ON telemetry AS $${"placeholder_date": "1900-01-01 means
+not set"}$$`.
+
+## Look before you load
+
+List the files (`glob('**')` includes subdirectories), then check the
+schema with `LIMIT 0`. A preview of rows leaves null fields out, so a
+column that is null in the sample does not show there.
 
 ```glossql
-GLOSS conventions ON erp_export AS $${
-  "placeholder_date": "1900-01-01 stands for unset",
-  "timestamp_format": "%b %e %Y %I:%M%p, month names mixed-language"
-}$$;
+PREVIEW telemetry AS $$SELECT file FROM glob('*') ORDER BY file$$;
+PREVIEW telemetry AS $$SELECT * FROM read_parquet('readings/*.parquet') LIMIT 0$$;
 ```
 
-Only what the next export from that system will also carry goes on the
-source. What is true of this load goes on the dataset's tables and
-columns.
+## The load query
 
-**List the files before naming one.** `glob('**')` lists
-subdirectories too:
+A load query (`DECLARE RECIPE`) is the SQL that produces the table.
+Declaring it loads the table, typed as the SQL types it.
+
+- **Name the columns.** With `SELECT *` a schema change in the source
+  shows up later, somewhere downstream. With named columns it fails at
+  the next load.
+- **Load what the job needs.** Each loaded column that a view reads
+  asks for annotations.
+- **Typing goes in the load query; decisions do not.** A cast, a
+  trim, a null marker, a date format is typing. Leaving rows out,
+  recoding a value or dropping a duplicate is a decision: put it in a
+  table view and state it as an assumption, so a person sees it.
+- **A key merges.** `SET (key: reading_id)` names the table's key (one
+  column, or a comma-separated list). Each load then merges by it. The
+  result must carry each key once, or the load is refused and names a
+  key. Without a key each load replaces the table.
+- **Declared again with other SQL**, the load query replaces the old
+  one and loads the table again. The annotations stay; those on a
+  column the new load changed read `stale`.
+- `IMPORT readings;` loads the table again from the source as it is
+  now. `DROP TABLE` is refused while the table holds data or
+  annotations.
 
 ```glossql
-PREVIEW erp_export AS $$SELECT file FROM glob('*') ORDER BY file$$;
+DECLARE RECIPE readings ON fleet FROM telemetry SET (key: reading_id) AS $$
+  SELECT reading_id, vehicle_id, measured_at, engine_temp_c, odometer_km
+  FROM read_parquet('readings/*.parquet')$$;
 ```
 
-**Check the schema with `LIMIT 0`, per file, before writing a load
-query.** A zero-row preview returns every column name and type. A
-preview of rows omits null fields, so a column that is null in your
-sample is missing, and a missed join key is a missed relationship.
+The acknowledgement says what happened: `loaded fleet.readings: 48210
+rows, 0 dropped (new)`. The `imports` table keeps each load:
 
-```glossql
-PREVIEW erp_export AS $$SELECT order_id,
-       try_cast(amount AS DOUBLE) AS amount,
-       try_strptime(order_date, '%d.%m.%Y')::DATE AS order_date
-FROM read_parquet('orders/*.parquet') LIMIT 0$$;
+```sql
+SELECT table_name, mode, rows, dropped_rows_count, imported_at FROM imports ORDER BY seq DESC
 ```
 
-**Name the columns; never `SELECT *`.** With named columns, a schema
-change in the source fails at the next load, where you can fix it.
-With a star it fails later, somewhere downstream.
+## CSV files
 
-**You write the casts.** The load query carries the casts and the
-column choice; nothing types the data for you. A failed `try_*` cast
-stores NULL in a kept row.
+A CSV has no types. Give its reader the standard options, and write
+the casts in the SELECT:
 
 ```glossql
-DECLARE RECIPE orders ON ops FROM erp_export AS $$
-  SELECT order_id,
-         try_cast(amount AS DOUBLE) AS amount,
-         try_strptime(order_date, '%d.%m.%Y')::DATE AS order_date
-  FROM read_parquet('orders/*.parquet')$$;
-```
-
-**A CSV file is read with the standard options.** A CSV has no types,
-so its reader gets one configuration, and the casts follow in the
-SELECT:
-
-```glossql
-DECLARE RECIPE payments ON ops FROM erp_export AS $$
-  SELECT nullif(trim(payment_id), '') AS payment_id,
-         try_cast(amount AS DOUBLE) AS amount,
-         try_strptime(paid, '%d.%m.%Y')::DATE AS paid
-  FROM read_csv('payments.csv', all_varchar = true,
+DECLARE RECIPE bookings ON fleet FROM workshop_files AS $$
+  SELECT nullif(trim(booking_id), '') AS booking_id,
+         trim(vehicle_id) AS vehicle_id,
+         try_strptime(trim(booked_for), '%d.%m.%Y')::DATE AS booked_for,
+         try_cast(trim(hours) AS DOUBLE) AS hours
+  FROM read_csv('bookings.csv', all_varchar = true,
                 nullstr = null_markers(), store_rejects = true)$$;
 ```
 
-- `all_varchar` reads every cell as text, so a leading zero in an id
-  and a date's format reach your cast unchanged.
-- `null_markers()` is the list of strings an export writes for no
-  value (`NA`, `N/A`, `#N/A`, `--`, `MISSING` and the like). Read it
-  with `SELECT null_markers()`. Where one of them is a real value in
-  this file, pass your own list.
-- `store_rejects` keeps a line the reader cannot parse (wrong number
-  of columns, a broken quote, a bad encoding) out of the table and
-  counts it in the load's `dropped_rows_count`.
-- Trim text and ids in the SELECT: a padded ` n/a ` or `007 ` is not
-  matched by the reader.
+- `all_varchar = true` reads every cell as text. A leading zero in an
+  id and a date's format reach your cast unchanged.
+- `nullstr = null_markers()` reads the strings an export writes for
+  no value as NULL: `NA`, `N/A`, `n/a`, `NULL`, `--`, `MISSING`,
+  `#N/A` and others. `SELECT null_markers()` lists them. Where one of
+  them is a real value in this file, pass your own list.
+- `store_rejects = true` keeps a line the reader cannot parse out of
+  the table and counts it in `dropped`.
+- **Wrap the column before you cast it.** A cast written directly on
+  a CSV column, `try_cast(hours AS DOUBLE)`, is applied by the reader:
+  a cell that does not convert drops the whole row, counted in
+  `dropped`. A cast over an expression, `try_cast(trim(hours) AS
+  DOUBLE)`, keeps the row and stores NULL. Use the second form unless
+  the row should go.
+- The reader does not trim. A padded ` 007` is another value than
+  `007`, and ` n/a ` is not a null marker. Trim ids and text in the
+  SELECT.
+- `try_strptime(x, ['%Y-%m-%d', '%d/%m/%Y'])` takes a list and uses
+  the first format that parses. The order decides ambiguous rows:
+  `02/03/2025` is March 2nd under `%d/%m/%Y`. Where two formats both
+  parse and it matters, count the rows and state the reading as an
+  assumption.
 
-A Parquet file or a database table is typed already and needs none of
-this.
-
-**Dates past 2262-04-11 are not periods.** A year beyond that is a
-token the source wrote, not a date. `try_cast(x AS TIMESTAMP)` stores
-it as NULL and the cast report counts it. `try_strptime` keeps it, and
-the expected-ranges run then skips every metric on that column, with
-the reason.
-
-**One date column may hold several formats.** `try_strptime` takes a
-list and uses the first format that parses:
+**When rows are dropped**, find them at the source before you go on.
+Read the column as text and look at what does not convert:
 
 ```glossql
-PREVIEW erp_export AS $$SELECT
-  try_strptime(paid, ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%b-%y'])::DATE AS paid
-FROM read_csv('payments.csv') LIMIT 5$$;
+PREVIEW workshop_files AS $$SELECT hours, count(*) AS n
+  FROM read_csv('bookings.csv', all_varchar = true)
+  WHERE try_cast(trim(hours) AS DOUBLE) IS NULL GROUP BY 1 ORDER BY n DESC$$;
 ```
 
-The order decides ambiguous rows: `02/03/2025` is March 2nd under
-`%d/%m/%Y` and February 3rd under `%m/%d/%Y`. Put the unambiguous
-formats first. Where two readings both parse and the count matters,
-measure it (count the rows impossible under each) and disclose the
-rest as a keyed assumption, with the number of rows no evidence could
-decide.
+## After the load
 
-**Read the cast report.** The load's result lists, for every `try_*`,
-how many cells the cast set to NULL and their most frequent values.
-A repeated `\N` or `n/a` is a null marker: add `NULLIF` before the
-cast and declare the load query again; it replaces the old one and
-loads again. A scattered tail may be bad data worth a `meaning`
-annotation. A reload keeps the annotations. Run the measurements again
-for the columns the new load query changed.
-
-**A relational source runs your SQL itself**, in its own dialect.
-SQLite has no date type: `CAST(date(x) AS DATE)` stores `2010` for
-`'2010-12-27'`. Load such a column as text, cast it when you read, and
-say so in the column's `meaning`. Run `DESCRIBE <table>` right after a
-load: a number loaded as text shows there.
-
-## Measure the defects
-
-Nobody gives you a list of the data's defects. You find them. Measure
-first, decide second, and write the decision where the next reader
-looks.
-
-- **Measure.** Which table or column, what share of rows, since when.
-  The cast report at load; `column_profile()` for nulls, distinct
-  counts and top values; `temporal()` for gaps;
-  `relationship_coherence()` for orphans and children dated before
-  their parent; `detect_derivations()` for an identity that breaks. A
-  finding is a number.
-- **Only typing goes in the load query.** A null marker, a cast, a
-  date format is typing. Excluding a row, recoding a value, turning a
-  sentinel to NULL or dropping a duplicate is a decision, and inside a
-  load query nobody sees it. Put it in one derived relation the
-  metrics read (`x-kind: "relation"`), and disclose it on each metric
-  as a keyed `scope` or `convention` assumption below 1.0, so the
-  review asks it.
-- **Write it down.** What the next export will also carry: in
-  `conventions` on the source. What is true of this load: in `meaning`
-  on the column or table. What must stay watched: a test, with the
-  expectation set at the rate you measured today. `TESTS()` is green
-  now and turns red when the source drifts
-  (`references/validate.md`). A person sees the test; a finding
-  without one is known only to you.
-
-Whether a metric is served on that data or stopped is decided in its
-definition: `references/define.md`.
+Measure what you loaded: `SELECT column_profile() FROM bookings.hours`
+gives the share of nulls, distinct values, minimum and maximum;
+`temporal()` on a date column its grain, span and gaps. Write what is
+true of this load into `meaning` on the table or column. What must
+stay true is a test (`tests.md`).

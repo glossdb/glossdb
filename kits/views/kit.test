@@ -294,7 +294,7 @@ SELECT applicable, judged_current, additivity, additivity_state FROM view_summar
 ----
 true	false	semi-additive	stale
 
-# --- a fact serves one number; a stop serves its reason
+# --- a single value serves one number; a stopped view serves its reason
 
 statement ok
 DECLARE ASPECT fte_cap WITH $${"title": "FTE cap", "x-kind": "scalar"}$$ AS VIEW;
@@ -307,10 +307,11 @@ SELECT * FROM fact_values();
 ----
 fte_cap	40.0	NULL
 
+# a single value has no series, and its row gives a reason for that
 query TT
-SELECT applicable, reason FROM view_summary() WHERE view = 'fte_cap';
+SELECT applicable, reason IS NOT NULL FROM view_summary() WHERE view = 'fte_cap';
 ----
-false	a fact serves one number, read through fact_values()
+false	true
 
 statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;

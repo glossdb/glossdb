@@ -1,139 +1,148 @@
 ---
 name: glossql-modeling
-description: Take a glossql workspace from loaded tables to metrics someone can trust — relationships, metric definitions, the tests on each metric, the questions a person must decide. Use for any substantive work in a workspace: loading a source, declaring relationships, defining a metric, writing a test or a page.
+description: The judgment inside each step of building a glossdb dataset — which kind of view fits the request, what a table is, which joins hold, how a measure adds up, what the data can settle before a person is asked, and what to hand back. Use with the glossql skill for any substantive work in a workspace; its references cover loading, defining views, tests, time grains, the preview features and the other interfaces.
 ---
 
-# From tables to metrics someone trusts
+# Modeling: the judgment in each step
 
-The `glossql` skill teaches the statements. This page is the work, in
-order: connect the sources, describe the tables and metrics, test
-what you stated against the data, and leave open questions to a
-person. The result is the workspace's data intelligence layer, which
-people, agents and BI tools answer from. Do what the person asked;
-this is how each part is done well.
+`skill://glossql/SKILL.md` walks the five steps and their statements.
+This page says how to decide inside them. The references go deeper.
 
-**You are done when the `next:` line shows nothing open for you:**
-no row under connect, describe, test, decide or serve for what the
-person asked. Rows waiting for a person are counted apart and do not
-hold you back.
+## Start from the request
 
-## 1. Look at the data
+Agree in chat what the dataset is for and what it should serve,
+before you load. Then pick the kind of view per item:
 
-List the tables and columns (`information_schema.columns`), read a few
-rows, profile what you will use (`SELECT column_profile() FROM
-orders.amount`). Load only what the question needs
-(`references/load.md`).
-
-## 2. Find the joins
-
-```glossql
-SELECT detect_relationships() FROM ops;
-```
-
-Read the candidates, check the ones you will use against the data, and
-declare those: `DECLARE RELATIONSHIP orders.customer_id ->
-customers.id;`. Then `SELECT relationship_coherence() FROM ops;` so
-orphaned keys are measured. A table whose rows are valid from one date
-to another (prices, titles, assignments: one key, many versions) is
-effective-dated. Say so once:
-
-```glossql
-GLOSS validity ON titles AS $${"valid_from": "from_date", "valid_to": "to_date"}$$;
-```
-
-Details: `references/structure.md`.
-
-## 3. Define each metric in one statement
-
-A metric is SQL with one row per period and slice. Say which column is
-the time, which the measure and how it adds up, and which columns
-slice it:
-
-```glossql
-DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS VIEW;
-GLOSS headcount ON hr AS $${
-  "sql": "SELECT p.period, de.dept_no, count(*) AS value FROM periods p JOIN dept_emp de ON de.from_date <= p.period AND de.to_date > p.period GROUP BY 1, 2",
-  "time": "period",
-  "measure": {"column": "value", "additivity": "semi-additive", "unit": "people"},
-  "dimensions": ["dept_no"],
-  "assumptions": [{"dimension": "definition", "key": "as-of", "assumption": "headcount counts people with an open assignment at month end", "basis": "dept_emp from_date and to_date", "confidence": 0.8}]
-}$$;
-```
-
-- **Additivity.** `additive` sums over time and members (revenue,
-  orders). `semi-additive` is a level: it sums over members, never
-  over time (headcount, a balance, stock on hand); serve one row per
-  entity per period. `ratio` names its `numerator` and `denominator`
-  columns and is re-divided. A distinct count or a median adds up from
-  nothing: serve it without dimension columns.
-- **Assumptions.** Every judgment call you made goes in `assumptions`
-  with a stable `key` and a `confidence` below 1: which rows count,
-  which date, which status. That is how a person sees and decides it.
-  Never guess silently, and never ask a person for something the data
-  can tell you (`skill://glossql/references/settled.md`).
-- **No number is better than a wrong one.** Where the data cannot
-  serve the metric, record `{"stopped": "<what is missing>"}` in place
-  of `sql`.
-- The statement answers with the metric's summary row. Read it:
-  `applicable` false comes with the `reason`.
-
-A single value with no date is declared with `"x-kind": "scalar"`;
-SQL that other definitions build on with `"x-kind": "relation"`.
-Shapes written down, ratios and levels included: `references/define.md`.
-
-## 4. Read the tests and fix what is red
-
-The server runs these on every metric after you define it, annotate
-it, or load a table it reads:
-
-| Test | Red when |
+| The person asks for | Define |
 |---|---|
-| `fan_out_test` | the join repeats rows: two tables share a key that repeats on both sides |
-| `validity_test` | an effective-dated table is read without bounding both of its dates |
-| `orphan_test` | rows on a declared relationship find no parent |
-| `measure_additivity_test` | the measure does not say how it adds up, or says additive where the value is a ratio, an average or a distinct count |
+| a cleaned, joined or reshaped table; a table in a given format (a data contract); a harmonised list across source systems | a table (`x-kind: relation`) |
+| one number with no date: a count, a balance today, a threshold | a single value (`x-kind: scalar`) |
+| a number over time, by region, product or team | a metric |
 
-After every call the result ends with what is open on the dataset:
-a count per step, then the first row of the list.
+Build shared logic once: a table view that cleans a source can feed
+several metrics and single values, and a decision on it reaches all
+of them. Load only what the request needs. Something the data cannot
+serve is a finding: say what is missing, and stop the view
+(`references/define.md`).
 
-```text
-next: describe 4 · test 1 · waiting for a person 1
-first: test hr.staff_by_title (red): validity_test: staff_by_title reads titles (from_date, to_date) without bounding both validity dates, so a row counts once per version (next://hr/test)
+## Tables: say what one row is
+
+Judge from the data, not from the name.
+
+- **`entity`**: what one row is, in the business's words; `role` is
+  `fact` (events, carrying numbers) or `dimension` (things other
+  tables refer to).
+- **`grain`**: the columns that identify one row. Check it: the row
+  count must equal the count of distinct grain values. A table with
+  no key has no grain; say so in `meaning`.
+- **`time_axis`**: the column that records when the row's event
+  happened. A due date or a hire date is an attribute, not the axis.
+
+```sql
+SELECT count(*) AS n, (SELECT count(*) FROM (SELECT DISTINCT delivery_id FROM deliveries)) AS keys FROM deliveries
 ```
 
-The list is context, not an order: work on what the person asked
-for. A red test comes first, then what a load changed or a person
-decided, then what is missing. Read `SELECT asset, state, open, cause,
-statement FROM next WHERE step = 'test'` and send the statement it
-gives, edited: fix the definition or the load. Where the number is
-right as it is, record a tolerance with the reason; a person can
-overrule it. `cause` says what the newest load changed: row counts and
-the columns whose values moved. Every test with its evidence:
-`SELECT * FROM view_tests()`.
+## Columns: role first
 
-Rows under `describe` name what is missing or outdated on the tables,
-columns and joins your metrics read: `references/vocabulary.md`.
+- **`meaning`**: one sentence on what the column holds, specific to
+  this business. `term` is the name a report would print.
+- **`role`**: `key`, `measure`, `dimension`, `timestamp` or
+  `attribute`, judged from this table alone. A reference to another
+  table is a relationship, not a role.
+- **`additivity`**, on a measure. `additive`: rows of one period add
+  up (parcels, hours). `semi-additive`: a level at a point in time
+  that must not be summed over periods (stock, headcount). `ratio`:
+  re-divided from its halves. `non-additive`: does not combine (a
+  distinct count, a median). Read the column's meaning and the
+  table's grain. A name can mislead: a column called `total` may
+  hold a movement per period. Give the `basis`.
+- **`unit`**: the unit as text; `source_column` names the column that
+  holds it when it sits beside the value.
+- **`dimension`**: `primary`, `supporting` or `none`. An id with
+  nearly one value per row, a constant, or a column most rows leave
+  empty is `none`.
 
-A check of your own (a total that must tie out, a rate that must stay
-under a bound) is a test too: `references/validate.md`.
+Where the meaning does not settle a property, do not guess. A missing
+annotation shows in `next`; a wrong one does not.
 
-## 5. Questions and decisions
+## Relationships: check before you declare
 
-Assumptions below full confidence become questions for a person. Their
-answers arrive as review decisions; `next` lists each under `decide`
-while it waits. Apply it by recording the definition again with the decided
-assumption at confidence 1.0 (`skill://glossql/references/review.md`).
+`detect_relationships()` proposes joins and includes false ones.
 
-## More
+- Join both ways and read the rows that find no partner. Orphans that
+  are one business population (cancelled orders, records before a
+  migration) confirm the join. Scattered misses argue against it.
+- Two id columns of integers can overlap by coincidence. The names,
+  the values and the business meaning must agree.
+- A composite key is declared whole, `a.(x, y) -> b.(x, y)`. Its
+  first part alone repeats rows.
+- A column that points at different tables by a type column is not a
+  relationship. Say so in its `meaning`.
+- Check a join before you build on it: the row count before and
+  after must be equal, or the join repeats rows.
+
+After `DECLARE RELATIONSHIP`, annotate its `meaning`, with what the
+orphans are. `relationship_coherence()` measures each declared
+relationship's orphan rate; the server runs it for the built-in
+tests. A table with one row per key and period of validity (prices,
+assignments) is effective-dated: mark it with `validity`
+(`references/tests.md`).
+
+## Measure before you ask
+
+A person decides definitions, conventions and business meaning. The
+data settles the rest. Run the function; do not ask.
+
+| Question | Function |
+|---|---|
+| what a column holds: nulls, distinct values, range | `SELECT column_profile() FROM t.c` |
+| outliers in a numeric column | `SELECT outlier_profile() FROM t.c` |
+| a date column's grain, span and gaps | `SELECT temporal() FROM t.c` |
+| which columns join, and how well | `SELECT detect_relationships() FROM <dataset>`, then `relationship_coherence()` |
+| whether a column is computed from others (a = b × c) | `SELECT detect_derivations() FROM t` |
+| hierarchies among a table's columns | `SELECT detect_hierarchies() FROM t` |
+| a level or a movement, where an event table exists | `SELECT additivity_evidence() FROM t.c` |
+| two views with the same definition | `SELECT detect_definition_collisions() FROM <dataset>` |
+
+A measurement is called in the SELECT list with its asset in FROM.
+`SELECT * FROM column_profile()` is refused. Its result is stored and
+served again while the data is unchanged. Every function:
+
+```sql
+SELECT name, scope, returns FROM functions ORDER BY name
+```
+
+## The engine
+
+The engine is DuckDB; look a function up in its SQL guide,
+`doc://vendor/duckdb/sql/…`. `SET`, `ATTACH`, `INSTALL`, `LOAD`,
+`CALL`, `CREATE VIEW` and other DDL are closed. Names are
+case-insensitive; quote a reserved word (`"order"`). A column loaded
+as text sorts as text (`'99' > '100'`) and does not sum: the cast
+belongs in the load query. `CAST` fails the statement on a value that
+does not convert; `try_cast` gives NULL.
+
+## What you hand back
+
+When `next` shows nothing open for you, read back what you served and
+compare it with a figure the person already trusts: a table view's
+row count, a metric's total. Then report in three lists:
+
+1. **Choices**: each assumption whose basis is your judgment, with
+   its alternative. They are in the review queue.
+2. **Findings**: a defect and its size, rows a load dropped, a test
+   you accepted with a tolerance, a view you stopped.
+3. **Missing material**: what only something from outside settles: a
+   code table, a prior-year file, the policy that names a convention.
+
+## References
 
 | Page | When |
 |---|---|
-| `references/load.md` | loading: what to load, typing, dirty rows |
-| `references/structure.md` | what each table is, relationships, hierarchies |
-| `references/vocabulary.md` | annotating a source column: meaning, role, unit |
-| `references/define.md` | metric definitions in depth |
-| `references/read-sql.md` | querying a metric: `metric_series()`, levels and ratios, engine specifics |
-| `references/validate.md` | writing your own test |
-| `references/time-grains.md` | time grains, and the preview features: expected ranges, forecasts, plans, scenarios |
-| `references/interfaces.md`, `skill://glossql-apps/SKILL.md` | a function of your own, a page over the metrics |
-| `references/close.md` | the summary you hand back |
+| `references/load.md` | sources, load queries, CSV files, dropped rows |
+| `references/define.md` | the three kinds of view; a table to a data contract; metric shapes; stopping a view |
+| `references/tests.md` | the built-in tests, tests of your own, tolerances |
+| `references/time-grains.md` | reading a metric: grains, windows, dimensions |
+| `references/preview.md` | expected ranges, forecasts, plans, scenarios (preview) |
+| `references/interfaces.md` | the console, the query endpoint, exports |
+| `skill://glossql/references/review.md` | assumptions, review decisions, conflicts |

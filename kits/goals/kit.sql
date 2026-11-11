@@ -90,52 +90,86 @@ CREATE OR REPLACE VIEW main.open_items AS
   UNION ALL SELECT * FROM unwalked
   UNION ALL SELECT * FROM foldins;
 
+
 -- next: what is open on the bound dataset, by step of the data
 -- intelligence layer (connect, describe, test, decide, serve), read
--- from the states the catalog holds and narrowed to what the metrics
--- read. One row per asset and state: priority (1 a number is wrong or
--- withheld, 2 something changed or was decided, 3 not there yet, 9
--- waiting for a person), ord (the step's order), step, asset, state,
--- who (agent or person), open (the finding), for_view, cause (what
--- the newest load changed), statement (what opens the work; <...>
--- marks what only the author can fill). It serves building the layer
--- (missing, not run) and running it (outdated after a load, red,
--- conflict) alike. A test's finding and fix are the test's own
--- (`finding` and `fix` in its result); a kit adds rows through its
--- tests, and the outlook kit through outlook_findings().
+-- from the states the catalog holds and narrowed to what the views
+-- read and serve. One row per asset and state: priority (1 a number
+-- is wrong or withheld, 2 something changed or was decided, 3 not
+-- there yet, 9 waiting for a person), ord (the step's order), step,
+-- asset, state, who (agent or person), open (the finding), for_view,
+-- cause (what the newest load changed), statement (what opens the
+-- work; <...> marks what only the author can fill). It serves
+-- building the layer (missing, not run) and running it (outdated
+-- after a load, red, conflict) alike. A test's finding and fix are
+-- the test's own (`finding` and `fix` in its result); a kit adds rows
+-- through its tests, and the outlook kit through outlook_findings().
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
             FROM glossql_views_scans(current_schema())),
+  summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
+  vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
+  -- the assets a view reads, the view itself, and the columns of a
+  -- table view: a table is handed over with its columns described
   reach AS (
-    SELECT tbl AS asset, string_agg(DISTINCT view, ', ' ORDER BY view) AS views FROM scans GROUP BY 1
-    UNION ALL
-    SELECT tbl || '.' || col, string_agg(DISTINCT view, ', ' ORDER BY view) FROM scans GROUP BY 1
-    UNION ALL
-    SELECT r.left_side || ' -> ' || r.right_side, string_agg(DISTINCT s.view, ', ' ORDER BY s.view)
-    FROM main.relationships r JOIN scans s ON r.left_side = s.tbl || '.' || s.col, ds
-    WHERE r.dataset = ds.d GROUP BY 1
-    UNION ALL
-    SELECT ds.d || '.' || m.view, m.view FROM (SELECT DISTINCT view FROM scans) m, ds),
-  -- what an agent or a person states: not a measurement, not a check the server runs
+    SELECT asset, string_agg(DISTINCT view, ', ' ORDER BY view) AS views FROM (
+      SELECT tbl AS asset, view FROM scans
+      UNION ALL
+      SELECT tbl || '.' || col, view FROM scans
+      UNION ALL
+      SELECT r.left_side || ' -> ' || r.right_side, s.view
+      FROM main.relationships r JOIN scans s ON r.left_side = s.tbl || '.' || s.col, ds
+      WHERE r.dataset = ds.d
+      UNION ALL
+      SELECT ds.d || '.' || m.view, m.view FROM (SELECT DISTINCT view FROM scans) m, ds
+      UNION ALL
+      SELECT ds.d || '.' || c.table_name || '.' || c.column_name, c.table_name
+      FROM glossql_columns(current_schema()) c, ds
+      WHERE c.table_name IN (SELECT view FROM summary WHERE kind = 'relation' AND stopped IS NULL))
+    GROUP BY asset),
+  -- what an agent or a person states: not a measurement, not a check
+  -- the server runs; `shape` is the value to fill in where the
+  -- property's schema is a single `value`
   stated AS (
-    SELECT name FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
+    SELECT name,
+           CASE WHEN json_extract(schema, '$.properties.value.enum') IS NOT NULL
+                THEN '{"value": "<' || array_to_string(json_extract_string(schema, '$.properties.value.enum[*]'), '|') || '>"}'
+                WHEN json_extract(schema, '$.properties.value') IS NOT NULL
+                THEN '{"value": "<' || name || '>"}'
+                WHEN json_extract(schema, '$.properties.floor.enum') IS NOT NULL
+                THEN '{"floor": "<' || array_to_string(json_extract_string(schema, '$.properties.floor.enum[*]'), '|') || '>"}' END AS shape
+    FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
     WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
-  -- what the metrics read, and every value withheld as a conflict
+  -- the newest annotation on each asset: an outdated one is offered
+  -- back to be checked and recorded again
+  written AS (
+    SELECT w.subject, w.aspect, w.body::VARCHAR AS body FROM main.glossary w, ds
+    WHERE w.dataset = ds.d AND w.actor_kind IN ('agent', 'human')
+    QUALIFY row_number() OVER (PARTITION BY w.subject, w.aspect ORDER BY w.seq DESC) = 1),
+  -- what the views read, and every value withheld as a conflict; a
+  -- conflict a test reports is the test's row
   homed AS (
     SELECT g.subject, g.aspect, g.state, x.views,
            CASE WHEN g.subject LIKE '% -> %' THEN g.subject
-                ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home
+                ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home,
+           s.shape IS NULL AND g.state = 'missing' AS unshaped,
+           'GLOSS ' || g.aspect || ' ON ' || g.subject || ' AS $$'
+             || CASE WHEN g.state = 'stale' THEN coalesce(w.body, s.shape, '<value>') ELSE coalesce(s.shape, '<value>') END
+             || '$$;' AS gloss
     FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
-    WHERE x.asset IS NOT NULL OR g.state = 'conflict'),
+    LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
+    WHERE (x.asset IS NOT NULL OR g.state = 'conflict')
+      AND NOT (g.state = 'conflict' AND EXISTS (
+        SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))),
   -- the newest load of each table against the one before it
   loads AS (
     SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
            lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.seq) AS rows_before,
            row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) AS rn
     FROM main.imports i, ds WHERE i.dataset = ds.d),
-  -- what the newest load changed in a column a metric reads: its
+  -- what the newest load changed in a column a view reads: its
   -- stored profile against the one before
   profiles AS (
     SELECT m.subject, m.value,
@@ -172,13 +206,19 @@ CREATE OR REPLACE VIEW main.next AS
   s_connect AS (
     SELECT 3 AS priority, 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
-           'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' AS statement
+           '-- name where the data is, list what is there, then load each table with a load query' || chr(10)
+             || 'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
+             || 'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' || chr(10)
+             || '-- a typed file loads as it is; a CSV takes these reader options and its casts in the SELECT' || chr(10)
+             || 'DECLARE RECIPE <table> ON ' || ds.d || ' FROM <source> AS $$SELECT <columns> FROM read_parquet(''<file>'')$$;' || chr(10)
+             || 'DECLARE RECIPE <table> ON ' || ds.d || ' FROM <source> AS $$SELECT <columns and casts> FROM read_csv(''<file>'', all_varchar = true, nullstr = null_markers(), store_rejects = true)$$;' AS statement
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
     SELECT 2, 1, 'connect', ds.d || '.' || o.subject, 'decided', 'agent',
-           'a change to the load query of ' || o.subject || ' is approved and not declared yet', '', '',
-           'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
+           'a person approved a change to the load query of ' || o.subject || '; it is not declared yet', '', '',
+           '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'' ORDER BY seq DESC;' || chr(10)
+             || 'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
     FROM main.open_items o, ds WHERE o.kind = 'recipe-change'),
   s_describe AS (
     SELECT CASE h.state WHEN 'conflict' THEN 1 WHEN 'stale' THEN 2 ELSE 3 END, 2, 'describe', h.home, h.state, 'agent',
@@ -186,11 +226,17 @@ CREATE OR REPLACE VIEW main.next AS
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
            coalesce(max(h.views), ''),
            CASE WHEN h.state = 'stale' THEN coalesce(max(l.cause), '') ELSE '' END,
-           CASE WHEN h.state = 'conflict'
-                THEN 'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || h.home || ', all => true);'
-                ELSE '-- the shape of a property''s value: SELECT name, schema FROM aspects WHERE name = ''<property>'';' || chr(10)
-                     || string_agg(DISTINCT 'GLOSS ' || h.aspect || ' ON ' || h.subject || ' AS $$<value>$$;', chr(10)
-                                   ORDER BY 'GLOSS ' || h.aspect || ' ON ' || h.subject || ' AS $$<value>$$;') END
+           CASE h.state
+             WHEN 'conflict'
+             THEN '-- two values differ. Read both, check the data, and annotate again only if the data changed your mind:' || chr(10)
+                  || 'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || h.home || ', all => true);'
+             WHEN 'stale'
+             THEN '-- the data under these annotations changed. Check each value against the new data and record it again:' || chr(10)
+                  || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss)
+             ELSE CASE WHEN bool_or(h.unshaped)
+                       THEN '-- the shape of a value: SELECT name, schema FROM aspects WHERE name = ''<property>'';' || chr(10)
+                       ELSE '' END
+                  || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss) END
     FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state),
@@ -199,38 +245,62 @@ CREATE OR REPLACE VIEW main.next AS
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
            coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
                      FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.view = t.view)), ''),
-           coalesce(t.evidence->>'fix', t.run)
-    FROM main.view_tests() t WHERE t.state <> 'green'),
+           coalesce(t.evidence->>'fix',
+                    CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
+                         THEN '-- fix the load or the view''s definition, then run the test''s check again:' || chr(10) END
+                      || nullif(t.run, ''),
+                    nullif(t.run, ''),
+                    'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
+    FROM vt t WHERE t.state <> 'green'),
   s_decide AS (
     SELECT 2, 4, 'decide', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
              || '; the definition does not carry it yet', r.aspect, '',
-           '-- set the assumption under key "' || r.key || '" to confidence 1.0 with basis "decided-by-person". Then record the definition again:' || chr(10)
+           '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, r.aspect)
     FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
     SELECT 2, 4, 'decide', ds.d || '.' || o.subject, 'decided', 'agent',
            'a person''s formula for ' || o.subject || ' is newer than its definition', o.subject, '',
-           main.view_redefine(ds.d, o.subject)
+           '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.subject || '''; change the SQL to match it, then record the definition again:' || chr(10)
+             || main.view_redefine(ds.d, o.subject)
     FROM main.open_items o, ds WHERE o.kind = 'formula'
     UNION ALL
     SELECT 9, 4, 'decide', ds.d || '.' || q.aspect, 'waiting', 'person',
-           count(*) || ' waiting for a person', q.aspect, '',
+           count(*) || ' ' || CASE WHEN count(*) = 1 THEN 'assumption waits' ELSE 'assumptions wait' END || ' for a person''s decision', q.aspect, '',
            'SELECT key, assumption, basis FROM open_questions WHERE aspect = ''' || q.aspect || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d GROUP BY ds.d, q.aspect),
   s_serve AS (
-    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no view is defined (a metric, a single value or a table)', '', '',
-           'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
-             || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <slicing columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
-    FROM ds WHERE NOT EXISTS (SELECT 1 FROM main.view_summary() WHERE stopped IS NULL)
+    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
+           '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
+             || '-- a table:' || chr(10)
+             || 'DECLARE ASPECT <table_view> WITH $${"title": "<its name in the business''s words>", "x-kind": "relation"}$$ AS VIEW;' || chr(10)
+             || main.gloss_statement('<table_view>', ds.d, '{"sql": "SELECT <columns> FROM <table>"}') || chr(10)
+             || '-- a single value:' || chr(10)
+             || 'DECLARE ASPECT <single_value> WITH $${"title": "<its name in the business''s words>", "x-kind": "scalar"}$$ AS VIEW;' || chr(10)
+             || main.gloss_statement('<single_value>', ds.d, '{"sql": "SELECT <expression> AS value FROM <table>"}') || chr(10)
+             || '-- a metric, a value per period with its dimensions:' || chr(10)
+             || 'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
+             || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <dimension columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio|non-additive>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
+    FROM ds WHERE NOT EXISTS (SELECT 1 FROM summary WHERE stopped IS NULL)
       AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
-    SELECT 2, 5, 'serve', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'not served'), m.view, '',
-           main.view_redefine(ds.d, m.view)
-    FROM main.view_summary() m, ds
+    -- a metric with no series yet: the statement is the annotation or
+    -- the measurement its summary row names, else the definition again
+    SELECT 2, 5, 'serve', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
+           CASE WHEN m.period_column IS NULL
+                THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<period column> AS $${"value": "timestamp"}$$;'
+                WHEN m.value_column IS NULL
+                THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<value column> AS $${"value": "measure"}$$;'
+                WHEN m.floor IS NULL AND len(m.wanted) > 0
+                THEN 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
+                WHEN m.floor IS NULL
+                THEN 'GLOSS time_grains ON ' || ds.d || '.' || m.view || '.' || m.period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$;'
+                ELSE main.view_redefine(ds.d, m.view) END
+    FROM summary m, ds
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
-      AND NOT EXISTS (SELECT 1 FROM main.view_tests() t WHERE t.view = m.view AND t.state <> 'green')),
+      AND NOT EXISTS (SELECT 1 FROM vt t WHERE t.view = m.view AND t.state <> 'green')),
   -- the preview features: their findings, and their measurements that are due
   s_outlook AS (
     SELECT CASE f.state WHEN 'red' THEN 1 ELSE 3 END, CASE f.step WHEN 'test' THEN 3 ELSE 5 END,
@@ -238,7 +308,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM main.outlook_findings() f
     UNION ALL
     SELECT 3, 3, 'test', ds.d, 'not_run', 'agent',
-           o.subject || ' (preview): ' || CASE o.kind WHEN 're-measure' THEN 'its result predates a change' ELSE 'not run yet' END,
+           o.subject || ' (preview): ' || CASE o.kind WHEN 're-measure' THEN 'its result is older than the data or a definition' ELSE 'not run yet' END,
            '', '', 'SELECT ' || o.subject || '() FROM ' || ds.d || ';'
     FROM main.open_items o JOIN main.outlook_measurements() d ON d.name = o.subject, ds
     WHERE o.kind IN ('never measured', 're-measure'))

@@ -8,7 +8,7 @@ decides the statement type, and then adds access per table.
 
 Who is admin, and later who holds which grant, stays this
 repository's. The mechanism is the extension's, and the extension
-knows nothing of the server. `docs/reference/statements.md` says what
+knows nothing of the server. `docs/reference/interfaces.md` says what
 is refused.
 
 | Element | Risk | What it touches | When | Issue |
@@ -68,7 +68,7 @@ word scanner and its three call sites are deleted.
 
 What is there: `crates/duck/src/lib.rs` (`admitted`, `words`,
 `after_comments`, `Session::admit`, `Plane::channel`); the two suite
-cases that assert the refusals; `docs/reference/statements.md`.
+cases that assert the refusals; `docs/reference/interfaces.md`.
 
 Done when: the extension registers a per-connection state that, once
 switched, refuses the listed types at `OnFinalizePrepare` with a

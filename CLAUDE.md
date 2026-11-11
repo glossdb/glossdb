@@ -47,8 +47,7 @@ workspace version.
 - `crates/` — the server, a Cargo workspace: `duck` (the engine: the
   extension on DuckDB, compiled into every binary) · `apps` (the
   console and data apps) · `serverd` (the binary and its interfaces).
-  Packages are `glossdb-*`. Details: the crate headers and
-  `docs/internals/`.
+  Packages are `glossdb-*`. Details: the crate headers.
 - `kits/` — the server's kits: core, views, outlook, goals. SQL
   loaded at open around the extension's kpi and quality kits, each
   with a `kit.test` suite beside it. A kit whose words depend on the

@@ -303,18 +303,18 @@ CREATE OR REPLACE VIEW main.workspace_status AS
          CASE s.area WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
   FROM counts c
   CROSS JOIN (VALUES
-    ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
-    ('tables', 'write a load query (recipe) and load it — typing is the load query''s work, this is not ETL'),
-    ('relationships', 'DECLARE RELATIONSHIP between two endpoints — detect_relationships proposes, you judge'),
-    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
-    ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
-    ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('views', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, additivity and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
-    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
-    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied — `waiting` counts the questions waiting for a person, which the agent cannot close'),
-    ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so an app is written like anything else')
+    ('sources', 'DECLARE SOURCE names where the data is; PREVIEW runs SQL at the source and loads nothing, and LIMIT 0 shows every column and type'),
+    ('tables', 'DECLARE RECIPE declares a load query and loads its table; the casts are in its SELECT; IMPORT loads the table again from the source'),
+    ('relationships', 'DECLARE RELATIONSHIP between two columns; detect_relationships() proposes candidates and you check them against the data'),
+    ('aspects', 'the properties an asset can carry; DECLARE ASPECT adds one, AS FACT, MEASUREMENT or VIEW, with ON for the kind of asset'),
+    ('claims', 'annotations: GLOSS <property> ON <asset> writes one; a person''s annotation outranks the agent''s'),
+    ('functions', 'measurements over the data: SELECT <function>() FROM <asset> runs one; DECLARE FUNCTION adds your own'),
+    ('views', 'named SQL on a dataset, declared AS VIEW and defined with GLOSS: a table (x-kind relation), a single value (x-kind scalar) or a metric'),
+    ('validations', 'tests of your own: a property, a function that measures its breach_rate, and DECLARE TEST with DETECTOR rate_tolerance; TESTS() lists the results'),
+    ('scenarios', 'preview: a FACT aspect with x-kind scenario, annotated with its levers'),
+    ('plans', 'preview: a VIEW aspect with x-kind plan and x-plan-of the metric it plans, defined by SQL over the loaded plan table'),
+    ('review', 'a person confirms or corrects an assumption; the agent then records the definition again with the decision applied; `waiting` counts the assumptions that wait for a person'),
+    ('apps', 'data apps: GLOSS app, app_page, app_frame, app_spec, one annotation per part')
   ) AS s(area, how);
 
 -- A load-query change a person approved for a table: the summary counts it

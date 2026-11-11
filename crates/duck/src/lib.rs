@@ -1392,13 +1392,12 @@ impl Session {
             // What the call wrote decides which metrics' tests run now;
             // a failed sequence runs none, and the next call's write does.
             // A measurement the call ran may be the evidence a check reads,
-            // so the checks whose result predates it run again too.
+            // so the checks whose result predates it run again too; so
+            // does a load, which is what a declared test is checked at.
             let measured = pieces.iter().any(|p| measurement_call(p));
-            if (measured
-                || lines
-                    .iter()
-                    .any(|l| l.starts_with("glossed ") || loaded_table(l).is_some()))
-                && let Err(e) = built_in_tests(&conn, &lines, measured)
+            let loaded = lines.iter().any(|l| loaded_table(l).is_some());
+            if (measured || loaded || lines.iter().any(|l| l.starts_with("glossed ")))
+                && let Err(e) = built_in_tests(&conn, &lines, measured || loaded)
             {
                 tracing::debug!(error = %e, "built-in tests: not run");
             }
@@ -1744,14 +1743,15 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
             }
         }
     }
-    // The kits' checks whose result predates what they read, on the
-    // bound dataset: a call bound to none has no report to read.
+    // The checks whose result predates what they read, the kits' and
+    // the team's own on a view, on the bound dataset: a call bound to
+    // none has no report to read.
     if measured
         && let Ok((_, _, stale)) = arrow_batches(
             conn,
             &format!(
                 "SELECT run FROM {LAKE}.main.view_tests() \
-                 WHERE NOT current AND declared_by LIKE 'kit:%' AND run <> ''"
+                 WHERE NOT current AND run <> ''"
             ),
             &[],
         )

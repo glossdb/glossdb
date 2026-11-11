@@ -1,209 +1,86 @@
-# Time grains and the preview features — read when a metric's grain, window or dimensions are not what you expected
+# Reading a metric: time grains, windows, dimensions
+
+Read when a metric's series, grain or dimensions are not what you
+expected, or before you query a metric.
 
 ## How a metric is served
 
 A metric is a view. `metric_series()` reads it at query time; nothing
-is built or stored. The annotations on the view's columns say how:
+is stored. The annotations on the view's columns say how:
 
-- `role`: `timestamp` is the period column, `measure` the value (the
-  one named `value` where there are several), `dimension` a slice.
-- `additivity` on the value column: additive sums; semi-additive
-  keeps the period's last level; a ratio divides its summed
-  `numerator` by its summed `denominator`.
+- `role`: `timestamp` marks the period column, `measure` the value
+  (the column named `value` where several are measures; `period`
+  likewise for timestamps), `dimension` a column to slice by.
+- `additivity` on the value column: `additive` sums; `semi-additive`
+  keeps the last level of the period; `ratio` divides the summed
+  `numerator` by the summed `denominator`.
 - `time_grains` on the period column: `floor` is the finest grain
-  served, by default the cadence `temporal()` measured on that column.
-  `windows` is how many whole periods a read returns per grain,
-  counted back from the newest data.
+  the series is served at. By default it is the grain `temporal()`
+  measured on that column. Where the dates follow no regular grain,
+  set it. `windows` is how many whole periods a read returns per
+  grain, counted back from the newest data.
+- `dimension` ranks a dimension column: `primary` first, then
+  `supporting`; `none` leaves it out.
 
 ```glossql
-GLOSS time_grains ON throughput.date AS $${"floor": "month", "windows": {"month": 120}}$$;
+GLOSS time_grains ON parcels_delivered.delivered_on AS $${"floor": "month", "windows": {"month": 36}}$$;
 ```
 
-- `metric_series(grain := 'month')` serves every applicable metric at
-  that grain; a metric whose floor is coarser serves no rows. Without
-  a grain, each metric is served at its own floor. A window of `n` is
-  `n` whole periods, ending with the newest.
-- The newest data is the latest date any served metric reaches. An
-  additive metric's empty period is a zero up to that date, so a
-  metric whose rows stopped early shows zeros, not an older window. A
-  semi-additive metric's or a ratio's empty period is no row.
-- Where rows must be combined and the value column has no
-  `additivity`, the read refuses and names the missing annotation. It
-  defaults nothing. `unclaimed := 'skip'` serves the other metrics.
-- A dimension with more than 24 members serves its top 23 by weight
-  and `other`. `other` is never a business member. If that is too
-  coarse, serve a narrower column from the metric's own SQL.
-- The dimensions are the served columns with `role` dimension. A
-  `dimension` annotation ranks them: `primary` first, `none` hides
-  one. In `view_summary()`, `unranked` lists the dimensions without
-  a rank, `unadmitted` the served columns without a role, and
-  `missing` the annotation each needs.
+The grains are `minute`, `hour`, `day`, `week`, `month`, `quarter`
+and `year`. The default windows are 1440 minutes, 720 hours, 548
+days, 156 weeks, 48 months, 40 quarters and 20 years.
 
-Every metric with its business description:
-
-```sql
-SELECT name, title, unit, meaning, formula
-FROM view_definitions ORDER BY name
-```
-
-What each metric can be served from:
-
-```sql
-SELECT view, applicable, reason, additivity, cadence, floor, rung, dims, unadmitted, missing
-FROM view_summary() ORDER BY view
-```
-
-The numbers: one row per metric, dimension, member and period.
-`dimension = ''` is the metric's total. A ratio row carries `num` and
-`den`. `additivity` says how the row was combined. `world` says which
-set of numbers the row belongs to: `actual` unless you ask for
-another. A console page charts this:
+## The series
 
 ```sql
 SELECT metric, period, value FROM metric_series(grain := 'month')
 WHERE dimension = '' ORDER BY metric, period
 ```
 
-After applying a batch of review decisions, run `temporal()` over the
-period columns once; `view_summary().judged_current` is then true.
+One row per metric, dimension, member and period: `metric`, `world`,
+`dimension`, `member`, `period` (the start of the period), `value`,
+`num`, `den`, `additivity`.
 
-`fact_values()` serves each single value (`x-kind: scalar`). A derived
-relation (`x-kind: relation`) is read as its view.
+- `dimension = ''` is the metric's total. A dimension's rows carry
+  its column name and one `member` each.
+- With a grain, every metric whose floor is that grain or finer is
+  served at it; a metric with a coarser floor serves no rows. Without
+  a grain, each metric is served at its own floor.
+- The metric is a `WHERE` filter, not an argument.
+- An additive metric's empty period is a zero, up to the newest date
+  any served metric reaches. A semi-additive metric's or a ratio's
+  empty period is no row.
+- A dimension with more than 24 members serves its top 23 and
+  `other`.
+- Where rows must be combined and the value column has no
+  `additivity`, the read refuses and names the annotation to write.
+  `metric_series(unclaimed := 'skip')` serves the other metrics.
+- `world` is `actual` unless you ask for a preview feature's numbers
+  (`references/preview.md`).
 
-## Expected ranges (preview)
+What each metric is served from, and what it still needs:
 
-`metric_ranges` asks, per metric and recent month: given only the
-months before, what range would this month fall in? `PIT` says where
-the actual fell in that range: 0.5 is the middle; above 0.95 or below
-0.05 is outside what the metric's history explains. The test
-`range_test` carries the score of each metric's newest month.
-
-- `SELECT metric_ranges() FROM <dataset>` runs it. `next` lists it
-  under `test` when it is due. It is due
-  again when a metric definition or the data changes.
-- It sends complete months only, at least seven. Where rows arrive
-  finer than monthly, the month the newest data falls in is left out.
-- `range_points()` serves the stored run as rows and names the metric
-  and month of a red result. Nothing is run again.
-- You judge the result. A business shift and a data defect look the
-  same. Fix a defect in the metric definition. Tell a person about a
-  shift: record it as an assumption with the key `range-<period>` in
-  the metric definition, and the console asks.
-
-## Forecasts (preview)
-
-`metric_forecast` asks the model service, per metric, for the periods
-after the last one with a value: twelve months, thirteen weeks,
-thirty-one days or four quarters, by the metric's floor. For an
-additive metric it also returns the totals to the end of the month,
-the quarter and the year. `SELECT metric_forecast() FROM <dataset>`
-runs it. It is due again after every load.
-
-- `forecast_points()` is the newest forecast as rows. `actual` and
-  `actuals` fill in as the periods arrive. `held_80` and `held_90` say
-  how often such a range held. `held_from` says whose count that is:
-  this metric's once 30 of its points have arrived at that step,
-  otherwise the dataset's, otherwise the service's held-out share.
-  Give these with every range you hand out.
-- `metric_series(world := 'forecast')` serves the newest forecast's
-  medians beside the actuals, at the metric's floor.
-- `forecast_coverage()` counts, over every stored forecast, how often
-  the actual fell inside the 80% and 90% ranges per step.
-- A forecast has no PIT. It is written before the actual exists, and
-  five quantiles give the range the actual fell in, not its exact
-  place.
-
-## Scenarios (preview)
-
-A lever is a column of a metric's view that someone sets. Annotate it:
-
-```glossql
-GLOSS lever ON net_sales.unit_price AS $${"value": true, "basis": "the list price, set by sales"}$$;
+```sql
+SELECT view, applicable, reason, period_column, value_column, additivity, cadence, floor, rung, dims
+FROM view_summary() ORDER BY view
 ```
 
-A scenario is one FACT aspect with `x-kind: scenario`, annotated with
-`levers`: per lever the column as `metric.column`, a factor per period
-(`"2027-01": 1.15`; `YYYY-MM` is a month, `YYYY-MM-DD` a day) and the
-basis. `scenarios()` checks each scenario: it is annotated, each lever
-is an annotated lever on a served metric's column, the factor is a
-map.
+`applicable` says whether a series can be served, and `reason` what
+to change when it cannot.
 
-- `SELECT metric_scenario() FROM <dataset>` estimates every scenario.
-  Each lever is forecast on its own as the planned input, or held at
-  its last value where the forecast refuses. Then the service
-  estimates every metric the levers reach. It needs 26 periods of
-  history and a lever that moves. A scenario that moves nothing is
-  checked, not sent. The estimate is due again when the data or a
-  scenario annotation changes.
-- `metric_series(world := 'scenario', scenario := 'price_hike')`
-  serves the estimate's medians after the last actual. No metric
-  definition is run again over changed data.
-- `scenario_points('price_hike')` serves the estimate with the model's
-  range (`low`, `high`), how often such a range held (`held_80`,
-  `held_from`), and the service's `sign`, `confidence` and `basis`.
-  Give an estimate with its range and that share.
-- Several levers are read as one change. `scenario_levers('price_hike')`
-  serves each lever's part per metric, with `planned_from`. A
-  combination the history never saw together states no sign, and
-  interactions between levers are not estimated.
+## Querying a metric yourself
 
-## Plans (preview)
+`FROM <metric>` reads the view's rows. Combine them by the metric's
+additivity. Additive: sum, and fill a missing period with 0.
+Semi-additive: take the last period of each window, do not sum over
+time, and leave a missing period empty. Ratio: sum the numerator and
+the denominator at the new scope and divide; do not average ratios.
+Distinct count: count again at the scope asked.
 
-A plan (a budget, a reforecast, a target) is a loaded table. Declare
-one VIEW aspect per plan with `x-kind: plan` and `x-plan-of`, the
-metric it plans, and define it with SQL like a metric:
-
-```glossql
-DECLARE ASPECT revised_budget WITH $${"title": "Revised budget", "x-kind": "plan", "x-plan-of": "expense"}$$ AS VIEW;
-GLOSS revised_budget ON fin AS $${"sql": "SELECT month AS date, revised AS value FROM budget"}$$;
-```
-
-- The plan is read through its metric. Its period and value columns
-  carry the same names as the metric's, or `period` and `value`. Its
-  additivity is the metric's. Its own columns are not annotated.
-- `view_summary()` lists the plan; `plan_of` names its metric.
-- A row covers its own period. Where a row holds the whole year (the
-  adopted budget on the January row), add `x-covers: year` to the
-  declaration and the plan is read at the year.
-- One aspect per edition: the adopted budget and the amended one both
-  exist.
-- `metric_series(world := 'plan', plan := 'revised_budget')` serves
-  the plan under its metric's name, at the plan's grain or a coarser
-  one. The actual numbers never include it.
-- A variance is a join of the plan and the actuals on `metric` and
-  `period`, at the plan's grain or coarser. Forecast against plan is
-  the same join with `world := 'forecast'`. Two editions are a join of
-  two plan reads.
-- A yearly budget beside monthly actuals is compared at the year.
-  Nothing is spread over months; a phased budget is the planner's own
-  table. A budget loaded to the year's end does not extend any
-  metric's series.
-
-`plan_points()` compares every plan with the actual and the forecast:
-one row per plan and period, at the plan's grain and at the year. Each
-row has the plan's number, the actual once the period has begun, the
-variance once it is complete, and the forecast's median with its 80%
-range for the rest. At the year that is the actual to date plus the
-forecast to year end.
-
-- `planned` says where the plan lies: `complete`; `inside`, `below` or
-  `above` the range; `open` or `ahead`; `partial` where the plan's
-  rows cover part of the year. A `partial` year row carries `covers`
-  (`9 of 12 months`), its number and actual over those months, and no
-  range.
-- A range at a coarser grain exists for an additive metric where the
-  forecast returns a total to go, and for a semi-additive metric as
-  the range of the period's last month: a year-end headcount against
-  December's forecast. A ratio's plan is loaded at the metric's grain,
-  one row for the month it is due, and compared with that month's
-  range.
-
-`SELECT metric_plan() FROM <dataset>.<plan>` stores those rows as a
-measurement on the plan, with the forecast they were compared to. The
-test `plan_test` reads the gap from them. Declare a plan when a person
-asks for one or a loaded table is a budget. The rows of `next`
-then give the statements in order: define the
-plan, run the forecast while it is due, run `metric_plan()`. For a
-plan year outside the range: a scenario on a lever that closes the
-gap and its estimate, or the gap recorded as an assumption with the
-key `plan-<year>` in the plan's definition for a person to decide.
+`lag` and `ROWS` frames count rows, not periods: with a month missing,
+`lag(value, 12)` is thirteen months back. Fill the periods first with
+`generate_series` (it includes its upper bound), or use a `RANGE`
+frame with an interval. `date_trunc('week', d)` starts on Monday. `date_part('month', d)`
+folds years together: use it for seasonality, `date_trunc` for
+trends. An inner `ORDER BY` does not survive a subquery: order where
+you consume. The engine's SQL guide is `doc://vendor/duckdb/sql/…`.

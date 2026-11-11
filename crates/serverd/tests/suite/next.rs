@@ -172,6 +172,48 @@ async fn a_table_and_a_single_value_are_served_as_they_are() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
+    let (app, _dir) = fin().await;
+    // A table view with a test of the team's own. The check measures
+    // the share of rows outside the code table; one fund in three is
+    // outside it, so the test is red and the list carries a row under
+    // "test" for the view. The table's own columns are asked to be
+    // described, as a table is handed over with them.
+    say(
+        &app,
+        r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
+           DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS MEASUREMENT ON TABLE;
+           DECLARE FUNCTION fund_coded_check FOR fin AS $$SELECT count(*) FILTER (WHERE fund NOT IN ('general', 'water')) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) AS rows FROM fin.ledger_clean$$ RETURNS fund_coded;
+           DECLARE TEST fund_coded_test ON fund_coded DETECTOR rate_tolerance THRESHOLD 0.0;
+           SELECT fund_coded_check() FROM ledger_clean;"#,
+    )
+    .await;
+    let open = open_tests(&app).await;
+    let row = open
+        .iter()
+        .find(|r| text(r, "asset") == "fin.ledger_clean")
+        .unwrap_or_else(|| panic!("no test row for the table view: {open:?}"));
+    assert_eq!(text(row, "state"), "red", "{row}");
+    assert_eq!(text(row, "for_view"), "ledger_clean", "{row}");
+    assert!(
+        text(row, "statement").contains("fund_coded_check()"),
+        "{row}"
+    );
+    let described = rows(
+        &app,
+        "SELECT * FROM next WHERE step = 'describe' AND asset = 'fin.ledger_clean'",
+    )
+    .await;
+    assert!(
+        described
+            .iter()
+            .any(|r| text(r, "statement").contains("fin.ledger_clean.fund")),
+        "{described:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     let (app, _dir) = fin().await;
 

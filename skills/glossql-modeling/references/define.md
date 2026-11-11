@@ -1,169 +1,163 @@
-# Metric definitions — read before writing a metric's SQL
+# Defining views: tables, single values, metrics, and a table to a data contract
 
-## Declare, describe, define
+Read before writing a view's SQL.
 
-One metric is one name on the dataset. Declare it with a title only:
+## Declare, then define
+
+A view is one name on the dataset. Declare it with a title and its
+kind, then define it. The definition is one annotation on the
+dataset; writing it again replaces it.
+
+| Kind | Declared with | Serves | Read with |
+|---|---|---|---|
+| a table | `"x-kind": "relation"` | rows | `FROM <view>` |
+| a single value | `"x-kind": "scalar"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
+| a metric | no `x-kind` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+
+The definition's body holds:
+
+- `sql`, the query; or `stopped`, the reason no query is given.
+- `assumptions`: the judgment calls, each `{"dimension", "key",
+  "assumption", "basis", "confidence"}` and optionally
+  `"alternative"`. The review asks a person about each one with a
+  `key` and a confidence below 1
+  (`skill://glossql/references/review.md`).
+- for a metric: `time`, `measure` and `dimensions` (below).
+
+The statement answers with the view's row of `view_summary()`. A view
+can read another view by name, so a decision on one reaches every
+view built on it. Put the mechanics in SQL comments inside `sql`.
+Spell the `GROUP BY` out.
+
+The business glossary entry of a view is in `definitions` on the
+dataset, `{"definitions": {"<view>": {"meaning", "unit", "owner",
+"source", "formula"}}}`. It is one annotation for the dataset: read
+it, add your entry, write the whole map back. `view_definitions`
+reads it.
+
+## A table to a data contract
+
+The job: source files in, one cleaned table out, in a format someone
+else fixed. The contract names the table, its key, the columns with
+types and meanings, and the code tables.
+
+1. **Load the sources as they are.** Typing only: casts, trims, null
+   markers (`load.md`). No row is left out in a load query.
+2. **Build the table as a table view.** Select the contract's
+   columns, in its order, cast to its types.
+3. **State every rule you applied as an assumption**: a recoded
+   value, a duplicate resolved, rows left out. State also what you
+   kept as it is where the contract does not give the form of a text
+   or id column: letter case, padding, the format of an id. Without
+   that line nobody learns that a choice was made.
+4. **Describe the table**: `entity` and `meaning` on the view,
+   `meaning` and `role` on each column; `next` lists them.
+5. **Declare tests for the contract**: the key is unique, required
+   columns are filled, coded columns hold only values of their code
+   table.
 
 ```glossql
-DECLARE ASPECT throughput WITH $${"title": "Throughput"}$$ AS VIEW;
-```
-
-Its business description lives in the dataset's business glossary,
-`definitions`: meaning, unit, owner, source, and for a derived metric
-its `formula`. It is one annotation, so a write replaces the whole
-map. Read it first, add your entry, write it back:
-
-```sql
-SELECT g.body FROM glossary g JOIN current_dataset d ON d.dataset = g.dataset
-WHERE g.aspect = 'definitions' AND g.actor_kind = 'agent' ORDER BY g.written_at DESC LIMIT 1
-```
-
-```glossql
-GLOSS definitions ON ops AS $${"definitions": {
-  "throughput": {"meaning": "work completed and accepted; counted at completion date",
-                 "unit": "hours", "owner": "Operations", "source": "KPI handbook v3 §2"},
-  "backlog_days": {"meaning": "open work expressed in days of current throughput", "unit": "days",
-                   "formula": "backlog[end of w] / throughput[w] * days[w]"}
-}}$$;
-```
-
-A `formula` is documentation over other metrics' names, with the
-window `w` free: `[w]` a sum over the window, `[end of w]` a level at
-its end, `[w-1]` the previous window. Nothing computes it.
-
-Then define the metric in one statement: the SQL, which column is the
-time, which the measure and how it adds up, which columns slice it,
-and every judgment call you made:
-
-```glossql
-GLOSS throughput ON ops AS $${
-  "sql": "-- completed work: hours per closed order, at completion date\nSELECT w.completed_at AS date, w.duration_min / 60.0 AS value, w.region, s.service_line FROM work_orders w JOIN sites s ON w.site_id = s.id WHERE w.status = 'closed'",
-  "time": "date",
-  "measure": {"column": "value", "additivity": "additive", "unit": "hours"},
-  "dimensions": ["region", "service_line"],
+DECLARE ASPECT staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
+GLOSS staff ON hr AS $${
+  "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
   "assumptions": [
-    {"dimension": "scope", "key": "closed-only", "assumption": "closed orders only; cancelled and reopened excluded", "basis": "status values + judgment", "confidence": 0.7}
+    {"dimension": "scope", "key": "latest-export-row", "assumption": "where an employee_id repeats, the row of the newest export is kept", "basis": "14 ids repeat, each with one newer row", "confidence": 0.7},
+    {"dimension": "scope", "key": "no-id-left-out", "assumption": "rows without an employee_id are left out", "basis": "3 rows, all without a name", "confidence": 0.8},
+    {"dimension": "convention", "key": "department-upper-case", "assumption": "department codes are served in upper case", "basis": "the code table is upper case; 9 rows are lower case", "confidence": 0.9},
+    {"dimension": "convention", "key": "employee-id-as-exported", "assumption": "employee_id is kept as exported, with leading zeros and no prefix; the contract gives no format", "basis": "ids are 5 or 6 digits in the export", "confidence": 0.6}
   ]
 }$$;
 ```
 
-Put the mechanics in SQL comments; they cannot drift from the query.
-
-## The three shapes
-
-**Additive (a flow).** Events that sum over time and over members.
-Serve the rows as they are, no GROUP BY needed: the time column, the
-value, the slicing columns. The example above.
-
-**Semi-additive (a level, a stock).** A balance, a headcount, stock on
-hand: it sums over members and never over time. Serve one row per
-period, or one per entity and period. Served at event grain, every
-row carries the right level and every sum is wrong. A running balance:
+One check can cover the contract; its `finding` names the rule that
+breaks. One test per rule gives one row of `next` per rule
+(`tests.md`).
 
 ```glossql
-GLOSS payables_outstanding ON fin AS $${
-  "sql": "WITH daily AS (SELECT entry_date, sum(amount) AS delta FROM journal_lines GROUP BY entry_date) SELECT entry_date AS date, sum(delta) OVER (ORDER BY entry_date) AS value FROM daily",
-  "time": "date",
-  "measure": {"column": "value", "additivity": "semi-additive", "basis": "the running balance at the day's end"}
+DECLARE ASPECT staff_contract WITH $${"type": "object",
+  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON TABLE;
+DECLARE FUNCTION staff_contract_check FOR hr AS $$
+  WITH r AS (
+    SELECT count(*) AS n,
+           count(*) - count(DISTINCT employee_id) AS repeated,
+           count(*) FILTER (WHERE full_name IS NULL OR hired_on IS NULL) AS unfilled,
+           count(*) FILTER (WHERE department_code NOT IN ('ENG', 'OPS', 'FIN')) AS uncoded
+    FROM staff)
+  SELECT greatest(repeated, unfilled, uncoded) / greatest(n, 1)::DOUBLE AS breach_rate,
+         nullif(concat_ws('; ',
+           CASE WHEN repeated > 0 THEN repeated || ' rows repeat an employee_id' END,
+           CASE WHEN unfilled > 0 THEN unfilled || ' rows lack a name or a hire date' END,
+           CASE WHEN uncoded > 0 THEN uncoded || ' rows carry a department outside ENG, OPS, FIN' END), '') AS finding
+  FROM r
+$$ RETURNS staff_contract;
+DECLARE TEST staff_contract_test ON staff_contract DETECTOR rate_tolerance THRESHOLD 0.0;
+SELECT staff_contract_check() FROM staff;
+```
+
+## A metric
+
+A metric is SQL with a period column, a value column and the columns
+that slice it. Say which is which in the definition:
+
+- `time`: the period column.
+- `measure`: `{"column", "additivity", "unit"}`; a ratio adds
+  `"numerator"` and `"denominator"`, the columns that hold its halves.
+- `dimensions`: the slicing columns; the first is the primary one.
+
+The server writes these as annotations on the view's columns (`role`,
+`additivity`, `unit`, `dimension`) and profiles the period column. You
+can write the same annotations yourself, on `<view>.<column>`.
+
+- **Additive**: events that sum over time and over members (parcels,
+  hours). Serve the rows as they are; no `GROUP BY` is needed.
+- **Semi-additive**: a level, such as headcount or stock on hand. It
+  sums over members and not over time. Serve one row per period, or
+  one per member and period. From a table of intervals, add 1 at each
+  start and subtract 1 at each end, and take the running sum.
+- **Ratio**: serve the two halves beside the value and name them.
+  Totals and coarser grains are the summed numerator over the summed
+  denominator. A ratio can be sliced only by columns both halves
+  carry.
+- **Non-additive**: a distinct count or a median does not add up from
+  parts. Serve it without dimension columns and say so in an
+  assumption. A count per member is a metric of its own.
+
+```glossql
+DECLARE ASPECT on_time_rate WITH $${"title": "On-time delivery rate"}$$ AS VIEW;
+GLOSS on_time_rate ON logistics AS $${
+  "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
+  "time": "delivered_on",
+  "measure": {"column": "value", "additivity": "ratio", "numerator": "on_time", "denominator": "total", "unit": "share"},
+  "dimensions": ["depot_id"]
 }$$;
 ```
 
-A table of intervals (from and to dates) is a level too: `+1` at the
-start, `-1` at the end, summed running:
-
-```glossql
-GLOSS headcount ON hr AS $${
-  "sql": "WITH events AS (SELECT from_date AS date, 1 AS delta FROM stints UNION ALL SELECT to_date AS date, -1 AS delta FROM stints WHERE to_date IS NOT NULL), daily AS (SELECT date, sum(delta) AS delta FROM events GROUP BY date) SELECT date, CAST(sum(delta) OVER (ORDER BY date) AS DOUBLE) AS value FROM daily",
-  "time": "date",
-  "measure": {"column": "value", "additivity": "semi-additive", "basis": "open stints at the day's end"}
-}$$;
-```
-
-**Ratio.** Serve the two halves beside `value` and name them. Totals
-and coarser grains are then `sum(num) / sum(den)`, right for the
-headline and for every member. A ratio marked additive is summed: a
-dozen member ratios added into one wrong number.
-
-```glossql
-GLOSS backlog_days ON ops AS $${
-  "sql": "WITH bl AS (SELECT date_trunc('month', date) AS m, region, sum(value) AS bal FROM backlog GROUP BY 1, 2), th AS (SELECT date_trunc('month', date) AS m, region, sum(value) AS th FROM throughput GROUP BY 1, 2) SELECT CAST(bl.m AS DATE) AS date, bl.bal / nullif(th.th, 0) * 30.0 AS value, bl.bal AS num, th.th / 30.0 AS den, bl.region FROM bl JOIN th ON th.m = bl.m AND th.region = bl.region",
-  "time": "date",
-  "measure": {"column": "value", "additivity": "ratio", "numerator": "num", "denominator": "den", "unit": "days"},
-  "dimensions": ["region"]
-}$$;
-```
-
-- A ratio can only be sliced by columns both halves carry. Pick the
-  ones the question needs.
-- A slice of a ratio is recomputed per member from its own halves,
-  never averaged.
-- **A distinct count or a median** adds up from nothing: distinct
-  customers per region do not sum to distinct customers. Serve it with
-  no dimension columns and say so in an assumption; a per-member count
-  is its own metric.
-
-## Assumptions: what a person must be able to see
-
-- **Every judgment call is an assumption with a stable `key` and a
-  confidence below 1**: what counts, which date, which status, which
-  accounts. That is what the review asks a person. A defensible
-  default is still a judgment; 1.0 silences the question.
-- **What the data settles is yours, at 1.0**: a sign convention, a
-  grain, additive or not. Measure it; never ask a person for it.
-- **A basis that names a computation must be run.** "Ties to GL 4*
-  net" is a second route to the number: run it against your result
-  before you write it down. Keep it checked afterwards as
-  `alternative_sql` on the assumption, or as a test
-  (`references/validate.md`).
-- **Name the strongest alternative, as SQL that runs.**
-
-  ```json
-  {"dimension": "definition", "key": "cycle-time-basis",
-   "assumption": "cycle_time runs from dispatch to completion",
-   "alternative": "from order creation to completion",
-   "alternative_sql": "SELECT w.completed_at AS date, ... FROM ...",
-   "basis": "operations convention", "confidence": 0.7}
-  ```
-
-  Often the best alternative is a second path the data already
-  carries: a published total beside the lines, a control account
-  beside its subledger. Look for one per metric; "no second path
-  exists" is worth recording too.
-- After defining several metrics, run `SELECT
-  detect_definition_collisions() FROM <dataset>`: two metrics with the
-  same definition make every ratio between them 1.0.
-
-## Defaults where the brief is silent
-
-- Define on the row-level data; a pre-aggregated column beside it is
-  the second path, never the basis.
-- A ratio of sums takes each row whole: a null in either half drops
-  the row from both.
-- Metrics over the same rows use the same date column.
-- Exclude what is impossible (violates an identity); keep what is
-  merely unusual; disclose both.
-- A null key does not remove a row from a count unless the brief
-  names the entity counted. State the null share beside the number.
-- A plan or a schedule is no evidence that its events happened.
+Where rows have to be combined and the value column has no
+`additivity`, `metric_series()` refuses and names the annotation to
+write. Reading a metric: `time-grains.md`.
 
 ## Serve or stop
 
-**Serve with disclosure** when the dirt is bounded: you can say how
-many rows it touches and which way it moves the number. Carry it as an
-assumption below 1.0 with the count in the `basis`.
-
-**Stop** when it is not: the rows are missing, a join key cannot be
-trusted, the column was never loaded. Never serve a number from a
-proxy. Record why in place of the SQL:
+Serve with an assumption when the defect is bounded: you can say how
+many rows it touches and which way it moves the number. Put the count
+in the `basis`. Stop when it is not: rows are missing, a join key
+cannot be trusted, a column was not loaded. Do not serve a number
+from a stand-in. Record the reason in place of the SQL:
 
 ```glossql
-GLOSS utilization ON ops AS $${
-  "stopped": "capacity never loaded: the roster export carries no hours column, so hours worked / capacity cannot be served; closes when the export adds capacity_hours, or a person names contract hours as capacity",
-  "assumptions": [
-    {"dimension": "definition", "key": "capacity-source", "assumption": "capacity is the roster's planned hours, not contract hours", "basis": "operations convention", "confidence": 0.6}
-  ]
+GLOSS utilisation ON fleet AS $${
+  "stopped": "the workshop export has no capacity column, so hours booked over hours available cannot be computed; it can be defined when the export carries capacity_hours"
 }$$;
 ```
 
-A stopped metric is a finding, not a failure. Say the same in your
-summary. A person's definition with `sql` lifts the stop.
+A stopped view is a finding to report. A definition with `sql`, yours
+or a person's, lifts the stop.
+
+## Defaults where the request is silent
+
+- Define on row-level data. A pre-aggregated column beside it is a
+  second route to check against, not the basis.
+- Views over the same rows use the same date column.
+- Leave out what is impossible, keep what is unusual, and state both.
+- Two views with the same SQL are probably one: `SELECT
+  detect_definition_collisions() FROM <dataset>` finds them.

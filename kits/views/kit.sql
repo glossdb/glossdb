@@ -172,21 +172,21 @@ rows_ AS (
 judged AS (
   SELECT *,
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-         WHEN NOT served THEN 'the metric definition serves no view'
-         WHEN kind = 'scalar' THEN 'a fact serves one number, read through fact_values()'
-         WHEN kind = 'relation' THEN 'a relation serves rows, not a series'
+         WHEN NOT served THEN 'the definition serves no view'
+         WHEN kind = 'scalar' THEN 'served as a single value: read it with fact_values() or FROM ' || metric
+         WHEN kind = 'relation' THEN 'served as a table: read it FROM ' || metric
          WHEN period_column IS NULL AND len(period_cols) > 1 THEN
-              list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period — serve it so, or gloss role attribute on the others'
+              list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period: name it so in the SQL, or annotate role attribute on the others'
          WHEN period_column IS NULL THEN
               'no column carries role timestamp: annotate the period column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "timestamp"}$$'
          WHEN value_column IS NULL AND len(measure_cols) > 1 THEN
-              list_aggregate(measure_cols, 'string_agg', ' and ') || ' carry role measure; the value is the column named value — serve it so, or gloss role attribute on the others'
+              list_aggregate(measure_cols, 'string_agg', ' and ') || ' carry role measure; the value is the column named value: name it so in the SQL, or annotate role attribute on the others'
          WHEN value_column IS NULL THEN
               'no column carries role measure: annotate the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
          WHEN floor IS NULL AND NOT profiled THEN
-              'no cadence is known on ' || period_column || ': SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or gloss time_grains with a floor'
+              'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or annotate time_grains with a floor'
          WHEN floor IS NULL THEN
-              'the profile finds no cadence on ' || period_column || ': gloss time_grains with a floor, GLOSS time_grains ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<grain>"}$$'
+              'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
     END AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || metric || '.' || period_column] ELSE []::VARCHAR[] END AS wanted
@@ -717,9 +717,15 @@ DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tol
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
-WITH views AS (
-  SELECT view FROM main.view_summary()
+WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
+views AS (
+  SELECT view FROM summary
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+-- every served view: a table and a single value carry the tests on
+-- what they read and the tests declared on them
+all_views AS (
+  SELECT view FROM summary
+  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
 results AS (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
@@ -742,17 +748,37 @@ own AS (
   LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect),
 reads AS (
   SELECT m.view, current_schema() || '.' || r.table_name || '.' || r.column_name AS subject
-  FROM views m, main.view_reads_of(current_schema(), m.view) r
+  FROM all_views m, main.view_reads_of(current_schema(), m.view) r
   UNION
   SELECT m.view, current_schema() || '.' || s.table_name
-  FROM views m, main.view_scans_of(current_schema(), m.view) s),
+  FROM all_views m, main.view_scans_of(current_schema(), m.view) s),
 inputs AS (
   SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
          r.state AS state, r.current, r.score, NULL::JSON AS evidence, '' AS run
   FROM reads d JOIN results r ON r.subject = d.subject
+  WHERE r.test NOT IN (SELECT test FROM expected)),
+-- the view itself and its columns, for the tests the team declared
+-- on them: the check that measures the test's property is its `run`
+itself AS (
+  SELECT m.view, current_schema() || '.' || m.view AS subject FROM all_views m
+  UNION
+  SELECT m.view, current_schema() || '.' || c.table_name || '.' || c.column_name
+  FROM all_views m JOIN glossql_columns(current_schema()) c ON c.table_name = m.view),
+checks AS (
+  SELECT returns AS aspect, min(name) AS name
+  FROM (SELECT name, returns FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  WHERE returns IS NOT NULL GROUP BY returns),
+declared AS (
+  SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
+         r.state AS state, r.current, r.score, v.value::JSON AS evidence,
+         coalesce('SELECT ' || f.name || '() FROM ' || r.subject, '') AS run
+  FROM itself d JOIN results r ON r.subject = d.subject
+  JOIN authors w ON w.test = r.test AND w.declared_by NOT LIKE 'kit:%'
+  LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
+  LEFT JOIN checks f ON f.aspect = r.aspect
   WHERE r.test NOT IN (SELECT test FROM expected))
 SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
-FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
+FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared) t LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
          current, view, test, subject;
 

@@ -35,31 +35,26 @@ async fn summary_counts(plane: &Plane) -> Result<SummaryCounts, String> {
     plane.summary_counts().await.map_err(|e| e.to_string())
 }
 
-const INSTRUCTIONS: &str = "glossdb — the data harness for people and agents. Your work \
-here builds this workspace's data intelligence layer: what the data means, how its \
-sources map, whether it can be trusted, and who decides. The steps: connect the sources, \
-describe each table, column and metric, test what you stated against the data, leave open \
-questions to a person, and serve metrics others can rely on. One tool, `glossql`, \
-runs glossql statements and plain SQL over the workspace's data and its catalog; its \
-description is the contract for every call. Start here, in this order. \
-1. Read the two skills through the tool: `SELECT body FROM pages() WHERE uri IN \
-('skill://glossql/SKILL.md', 'skill://glossql-modeling/SKILL.md')` — the interface and the \
-language, then the work; each names its references (`skill://<name>/references/…`) \
-for when they matter, and every page this server serves is a row of `pages()`. \
-2. `SELECT * FROM datasets`, then what the summary below names. \
-The objects: a dataset holds tables, loaded from sources by load queries (recipes); an \
-aspect is a property the harness requires, with a JSON Schema; a gloss is an annotation: \
-an aspect's value on an asset (a table, a column, the dataset itself). A VIEW aspect's \
-gloss is SQL, served as a view under the aspect's name — a metric, a single value, or a \
-derived relation, which the modeling skill tells apart. Functions measure the data, and \
-their measurements are the evidence. Tests (TEST) score where measurements, agents and \
-people disagree. A person's review decision outranks every agent's annotation. Read live \
-state through the tool; never assume it. Every result ends with `next:`, the test report: \
-per served metric its worst test (join fan-out, orphaned keys, additivity, the team's own) \
-with the statement that settles it, and the review queue; the work is done when every \
-served metric's tests are green or accepted and nothing waits on you; a goal's link gives \
-the statement. The docs are `doc://docs/…`, the language `doc://SPEC.md` and \
-`doc://grammar.ebnf` — rows of `pages()` too.";
+const INSTRUCTIONS: &str = "glossdb is the data harness for people and agents. Here you \
+build this workspace's data intelligence layer in the lake, beside the data: source data in; \
+described and tested tables, single values and metrics out, readable by any tool that opens \
+the lake. The work has five steps. Connect: declare a source and load its tables with load \
+queries. Describe: annotate the dataset, its tables, columns and relationships. Serve: define \
+views, each a named SQL query on the dataset: a table, a single value, or a metric (a value \
+per period with dimensions). Test: the built-in tests run after each load, and you declare \
+your own. Decide: state each judgment call as an assumption with a key and a confidence; a \
+person confirms or corrects it, and their decision outranks your annotation. \
+One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
+body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It walks the five steps with one \
+working example each and names the references for depth. Every page this server serves is a \
+row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
+Every result ends with two lines. `status:` says whether the last statement ran or was \
+refused. `next:` counts what is open on the dataset per step and names the first open row. \
+`SELECT step, asset, state, open, statement FROM next` lists every open row with the \
+statement that closes it; `<...>` marks what you fill in. Work on a dataset is complete when \
+`next` shows nothing open for you. Rows that wait for a person are counted apart and do not \
+hold you back. The list is context: what the person asked for decides what you work on. Read \
+live state through the tool instead of assuming it.";
 
 /// What the summary is decided on: the store's counts plus the open
 /// question count. Movement is a comparison of these FACTS — never of
@@ -139,9 +134,8 @@ impl GlossqlMcp {
     fn instructions(&self, bound: Option<&str>) -> String {
         let opening = match bound {
             Some(dataset) => format!(
-                "Open with the summary the glossql skill teaches — human annotations, conflicts, red \
-                 tests, `open_items` on `{dataset}` — once, before the first write. It is a read, \
-                 not a gate: what it counts waits for the human while the work goes on."
+                "Every call on this interface opens on `{dataset}`. Begin with `SELECT step, \
+                 asset, state, open, statement FROM next`."
             ),
             None => self.summary.opening(),
         };
@@ -157,14 +151,12 @@ impl GlossqlMcp {
         // `open_items`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
         // the modeling skill's load page is where it starts.
         let opening = if datasets == 0 {
-            "No dataset exists yet, so there is nothing to summarize: `SELECT * FROM \
-             workspace_status` is the whole live state, and \
-             `skill://glossql-modeling/SKILL.md` is where to begin."
+            "No dataset exists yet. `SELECT * FROM workspace_status` shows what the \
+             workspace holds. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
+             '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
         } else {
-            "Open with the summary the glossql skill teaches — `USE` a dataset, then the \
-             human annotations, conflicts, red tests, `open_items` — once, before the \
-             first write. It is a read, not a gate: what waits for a person waits while \
-             the work goes on."
+            "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT step, asset, \
+             state, open, statement FROM next`."
         }
         .to_string();
         match summary_counts(plane).await {
@@ -177,8 +169,8 @@ impl GlossqlMcp {
                 let mut open = Vec::new();
                 if counts.decisions_open > 0 {
                     open.push(format!(
-                        "{} review decision{} wait{} to be applied — record each decided metric \
-                         definition again, citing its decision",
+                        "{} review decision{} wait{} to be applied: `next` lists each under `decide` \
+                         with the definition to record again",
                         counts.decisions_open,
                         if counts.decisions_open == 1 { "" } else { "s" },
                         if counts.decisions_open == 1 { "s" } else { "" },
@@ -186,7 +178,7 @@ impl GlossqlMcp {
                 }
                 if counts.approvals_pending > 0 {
                     open.push(format!(
-                        "{} approved load-query change{} wait{} to be declared again",
+                        "{} approved load-query change{} wait{} to be declared",
                         counts.approvals_pending,
                         if counts.approvals_pending == 1 {
                             ""
@@ -202,26 +194,23 @@ impl GlossqlMcp {
                 }
                 if questions > 0 {
                     open.push(format!(
-                        "{} judgment question{} wait{} for a person (assumptions below \
-                         full confidence — conventions and definitions, never \
-                         statistics): each is served once as a form on a catalog read \
-                         (glossary, GLOSSARY(), TESTS()), or relayed in chat where \
-                         forms are absent, and stays open until the person decides — \
-                         the work goes on meanwhile",
+                        "{} assumption{} wait{} for a person's decision. The person sees each as \
+                         a form on a catalog read or in the console; where the client shows \
+                         no forms, ask them in chat. The work goes on meanwhile",
                         questions,
                         if questions == 1 { "" } else { "s" },
                         if questions == 1 { "s" } else { "" },
                     ));
                 }
                 let mut line = if open.is_empty() {
-                    "Live now: nothing open, the review queue is empty".to_string()
+                    "Live now: no review decision to apply, no assumption waits for a person"
+                        .to_string()
                 } else {
                     format!("Live now: {}", open.join("; "))
                 };
                 line.push_str(&format!(
-                    ". Catalog: {} human annotation{}{}.",
+                    ". Annotations by a person: {}{}.",
                     counts.human_writings,
-                    if counts.human_writings == 1 { "" } else { "s" },
                     match &counts.latest_human_at {
                         Some(at) => format!(", latest {at}"),
                         None => String::new(),
@@ -551,11 +540,11 @@ impl GlossqlMcp {
     fn tool(&self, bound: Option<&str>) -> Tool {
         let opens = match bound {
             Some(dataset) => format!(
-                "Every call opens on `{dataset}`: its tables and columns resolve unprefixed, \
-                 another dataset's with the dataset's name in front."
+                "Every call opens on `{dataset}`: its tables and columns resolve without a \
+                 prefix, another dataset's with the dataset's name in front."
             ),
-            None => "Every call opens unbound: begin any call that names a dataset's tables or \
-                     columns with `USE <dataset>;` — a call without one is workspace-scoped."
+            None => "A call opens on no dataset: begin a call that names a dataset's tables, \
+                     columns or views with `USE <dataset>;`. It holds for that call."
                 .to_string(),
         };
         let serde_json::Value::Object(schema) = serde_json::json!({
@@ -573,21 +562,23 @@ impl GlossqlMcp {
         Tool::new(
             "glossql",
             format!(
-                "Execute glossql statements against the workspace; one outcome per statement. \
-                 Statements only: the skill and doc pages are rows of `pages()` — `SELECT \
-                 body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'` — and resources \
-                 for a client that reads those. \
+                "Run glossql statements and SQL on the workspace: load sources, annotate, define \
+                 views, declare tests, read data and the catalog. One outcome per statement, \
+                 `;`-separated. \
                  {opens} \
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
-                 {} (GLOSSARY(), TESTS() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
-                 VIEW aspect — a metric definition — answers with the metric's summary row in \
-                 the `view_summary()` shape: whether the SQL plans, its additivity and where \
-                 that came from, the axes admitted, and every served column not admitted with \
-                 how to admit it — read it before the next write. A refused statement is an \
-                 error naming its place; what was stored before it stays stored \
-                 (`{{completed}}`). While the workspace holds open questions, a call that only \
-                 reads the catalog (glossary, GLOSSARY(), TESTS(), the catalog tables) \
-                 carries the person's question forms; loads and data reads never do.",
+                 {} (`GLOSSARY()`, `TESTS()` and the catalog tables are not capped; a null \
+                 field is left out of its row); a write is `{{done}}` or `{{affected}}`; a view \
+                 definition (`GLOSS <view> ON <dataset>`) answers with the view's row of \
+                 `view_summary()`. A refused statement is an error that names what was wrong \
+                 and its place in the call; the statements before it stay stored \
+                 (`{{completed}}`). Every result ends with `status:` (the last statement) and \
+                 `next:` (what is open on the dataset per step, and the first open row); \
+                 `SELECT step, asset, state, open, statement FROM next` gives each row's \
+                 statement. Start with `SELECT body FROM pages() WHERE uri = \
+                 'skill://glossql/SKILL.md'`. While assumptions wait for a person, a call that \
+                 only reads the catalog may carry the person's question forms; loads and \
+                 data reads do not.",
                 self.plane.row_cap()
             ),
             schema,

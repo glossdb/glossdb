@@ -1,228 +1,274 @@
 ---
 name: glossql
-description: Use glossql through the server's MCP interface — the statements, the shipped reads, the shape of each result, and the engine's sharp edges. Use when reading or writing anything in a glossql workspace (datasets, sources, load queries, annotations, functions, tests).
+description: Build a company's data intelligence layer in a glossdb workspace over the MCP interface — connect sources, describe the data, define views (a table, a single value, a metric), test them, and leave decisions to a person. The entry skill — the five steps with a working example each, how to read `next`, the statements and the reads. Use for any work in a glossdb workspace.
 ---
 
-# Speaking glossql
+# Building the data intelligence layer
 
-glossql is one SQL-shaped language for a workspace's data and what is
-known about it. With it you build the workspace's data intelligence
-layer: what the data means, how its sources map, whether it can be
-trusted, and who decides. What you state is stored in the glossary
-beside the data and tested against it. Data is loaded into tables. What is known is JSON
-attached to assets (`table` or `table.column`) under declared aspects:
-the properties the harness asks for. The language is `doc://SPEC.md`
-and `doc://grammar.ebnf` — read them, don't reconstruct them. Every
-`skill://` and `doc://` name is a row of `pages()` — `SELECT body FROM
-pages() WHERE uri = '…'` reads one — and a resource for a client that
-reads resources. Everything live — the vocabulary, the tables, the
-catalog — is read through the language, never assumed. The work
-itself — the goals and the judgment inside each — is
-`skill://glossql-modeling/SKILL.md`.
+glossdb is the data harness for people and agents. You build the
+workspace's data intelligence layer in the lake, beside the data:
+what the data means, how its sources map, whether it can be trusted,
+and who decides. Source data goes in. Described and tested tables,
+single values and metrics come out, as views any tool that opens the
+lake can read. What you state is stored with the data and tested
+against it after each load. A person reviews and decides.
 
-## The MCP interface
+The work has five steps: connect, describe, serve, test, decide. This
+page walks them on a dataset of parcel deliveries.
 
-One tool, `glossql`. Its `statements` argument takes a statement or a
-semicolon-separated sequence; the result is a JSON array, one outcome
-per statement:
+## The interface and `next`
 
-- a read — `{"columns": [{"name", "type"}, …], "rows": [...],
-  "row_count": n, "truncated": bool}`. `columns` is present even with
-  zero rows — a `LIMIT 0` dry run returns the schema. `truncated:
-  true` means the result held more than the cap: refine, never read a
-  capped result as complete. `GLOSSARY()`, `TESTS()` and the catalog
-  tables are uncapped.
-- a write — `{"affected": n}` or `{"done": "…"}`. One write answers
-  with rows: a `GLOSS` on a VIEW aspect returns the metric's summary
-  row in the `view_summary()` shape — read it before the next write.
-- a refused statement — a tool error whose text is the refusal. It
-  names what was wrong and, in a sequence, its place: `statement 2 of
-  7 refused: … — statement 1 ran; 3–7 not run`, with a
-  `{"completed": [...]}` block for what was stored. What was stored stays
-  stored.
-- two closing lines on every result. `status:` says whether your
-  last statement was done or refused, and for a metric definition
-  what its summary row said. `next:` counts what is open on the
-  dataset per step (connect, describe, test, decide, serve), and
-  `first:` gives the first open row: a red test first, then what a
-  load changed or a person decided, then what is missing. Rows that
-  wait for a person are counted apart. The server runs the built-in
-  tests itself after a call that defines a metric, annotates its
-  columns or loads a table it scans, with the measurements they read,
-  so the lines report results. To work on a row, read its link
-  (`next://<dataset>/<step>` as a resource, or `SELECT * FROM next
-  WHERE step = '<step>'` through the tool) and send the statement it
-  gives you, edited to your judgment; `<…>` marks what only you can
-  fill. The list is context: what the person asked for decides what
-  you work on. A red test is settled by a fix to the definition
-  or the load, or accepted by a tolerance a person records. None of it
-  is an order: the goal is what the person asked for.
+One tool, `glossql`, takes statements separated by `;` and returns
+one outcome per statement: rows for a read (a null field is left out
+of its row; `truncated: true` means the row cap cut the result),
+`done` for a write, an error that names what was wrong for a refused
+statement. The statements before a refused one stay stored. On the
+workspace endpoint (`/mcp`), begin a call that names a dataset's
+tables or views with `USE <dataset>;`. On `/<dataset>/mcp` every call
+opens on that dataset.
 
-Who you are — agent or person — comes with the connection; there is
-no BY clause. The dataset comes with the endpoint: on a dataset's
-endpoint (`/<dataset>/mcp`) every call opens on it, and its tables and
-columns resolve unprefixed. On the workspace endpoint (`/mcp`) a call
-opens unbound — **there, open every call that touches a dataset's
-names with `USE <dataset>;`** — it binds the statements after it and
-expires with the call. A call naming none is workspace-scoped, which
-is what `SELECT * FROM datasets` wants; a qualified
-`dataset.table.column` reads across datasets from anywhere.
+Every result ends with two lines:
 
-## The statements
-
-| statement | does |
-|---|---|
-| `USE ops;` | bind the statements after it in this call to a dataset — the way in on the workspace endpoint; a dataset's endpoint opens bound |
-| `DECLARE DATASET ops SET (…);` | create a dataset |
-| `DECLARE SOURCE erp SET (type: parquet, location: 'root');` | register a source; the location is a root — a directory on the server's machine, or an object-store URL it may read — and globs belong in the load query's SQL; `type` describes the export, the load query's `read_parquet`/`read_csv`/`read_json` picks the reader |
-| `PREVIEW erp AS $$sql$$;` | a dry run: run load-query-shaped SQL at the source, loading nothing |
-| `DECLARE RECIPE work_orders ON ops FROM erp [SET (key: id)] AS $$sql$$;` | declare a load query: the table the SQL produces is loaded, typed as the SQL types it; a key, a column of the result, makes every import merge by it, and the result carries each key once or the load refuses by name |
-| `IMPORT work_orders;` | a data update: the table becomes its load query's result as the source is now, in one commit — new files appended where that is the result, the table replaced whole otherwise, the rows merged by the key where the load query names one; `unchanged` when there is nothing new |
-| `DROP TABLE work_orders;` | remove a table — refused while it holds data |
-| `DECLARE RELATIONSHIP a.col -> b.col;` | declare a join edge (`<->` both ways); a composite endpoint is a tuple, `a.(x, y) -> b.(x, y)`; both endpoints must be loaded columns |
-| `DECLARE ASPECT name WITH $$json-schema$$ AS MEASUREMENT\|FACT\|VIEW [ON TABLE, COLUMN, … [WHEN aspect = 'value']];` | add a property to the vocabulary; the schema is the contract every value is validated against; `ON` is the grain — the asset classes it applies to, absent = all; `WHEN` narrows it to assets whose sibling aspect carries the value |
-| `GLOSS aspect ON subject AS $$json$$;` | annotate: write your value for the aspect on the asset; an aspect ON TABLE or ON COLUMN takes only a loaded one; a VIEW aspect is annotated on the dataset (`GLOSS revenue ON fin AS …`), the outcome is the metric's summary row, and the metric definition is then served as a view under the aspect's name (`FROM revenue`) |
-| `SELECT … FROM GLOSSARY(subject);` | the collapsed view of what is known, one row per aspect |
-| `SELECT … FROM GLOSSARY(subject, all => true);` | every value from every author, raw; `all => true` is the call's second argument, never a WHERE condition |
-| `DECLARE FUNCTION f FOR ops\|GLOBAL AS $$body$$ [RETURNS aspect];` | register a function — with `RETURNS` one SQL query the engine plans, without it a detector script; `SELECT script FROM functions` reads the shipped library back as worked examples (`glossql-functions` teaches writing one) |
-| `SELECT f() FROM work_orders.duration_min;` | run a measurement — it computes at the read's data version (the versions it reads) and stores a `measurements` row; the same data version serves the row back, `computed` says which happened; a body with a `summary` serves the summary alone, the full body reads back via `GLOSSARY(subject::aspect)` |
-| `DECLARE TEST w ON aspect [BY (AGENT, HUMAN)] [DETECTOR f THRESHOLD x];` | declare a test: who may annotate the aspect, and which detector scores their agreement |
-| `SELECT … FROM TESTS(subject \| ops::aspect);` | test results: states and scores; sweeps are WHERE clauses |
-
-There is no ordering statement: send statements in the order you need
-them. Schema-altering engine DDL — `CREATE VIEW` included — is
-closed: tables come from load queries, and a composite edge is a
-tuple. A body is written inside `$$…$$` as is — plain double quotes
-inside, nothing escaped — and closes as `}$$;`.
-
-## Reading live state
-
-A fresh workspace is not empty: the kits — the KPI kit's `meaning`,
-`role`, `additivity`, `unit`, `dimension`, `entity` and the rest with
-their tests, the quality kit's measurements, the views kit's
-`time_grains`, the outlook kit's worlds — are declared at open; read them
-back before declaring anything.
-
-- The catalog tables, as plain tables — these columns and no others;
-  a guessed column costs a refusal, and `DESCRIBE <name>` serves the
-  columns of any readable name, the shipped reads included:
-  `glossary (seq, dataset, subject, aspect, actor_kind, actor_id, body,
-  snapshot_id, written_at)` · `aspects (seq, name, kind, grains,
-  condition, schema, declared_at)` · `tests (seq, name, aspect,
-  actors, detector, threshold, declared_at)` · `functions (seq,
-  name, scope, script, returns, declared_at)` · `measurements (seq,
-  dataset, function, subject, aspect, data_version, value, computed_at, reads)`
-  · `imports (seq, dataset, table_name, mode, rows, dropped_rows_count,
-  lineage, snapshot_id, imported_at)` · `recipes (seq, dataset,
-  table_name, source, settings, sql, declared_at)` · `relationships`
-  · `sources (seq, name, settings, declared_at)` · `datasets (seq,
-  name, settings, declared_at)`. The ones with a `dataset` column
-  serve the whole workspace — the binding does not narrow them, so say
-  which dataset you mean.
-- `GLOSSARY(subject)` — the collapsed read, `(subject, aspect, value,
-  test_state, score, state)`, `state` in `current | stale | conflict |
-  missing`; a conflicting value is withheld, and a missing value is a
-  visible row. A subject is a bare path, never a string:
-  `GLOSSARY(orders)`, `GLOSSARY(orders.amount)`, `GLOSSARY(fin::revenue)`
-  for one aspect; `TESTS(fin::revenue)` likewise.
-  **`GLOSSARY(subject, all => true)` is a different shape**: one row
-  per author's value, raw, `(subject, aspect, kind, test, actor,
-  body, written_at, current)` — no `value`, no `state`; `current` is
-  false for a function's value computed before the last write. `value`
-  belongs to the collapsed read, `body` to the raw one.
-- `TESTS(…)` — `(subject, aspect, test, state, score, computed_at,
-  current, error)`, state in green/yellow/orange/red; `error` carries
-  a detector's own failure, nothing withheld.
-- the loaded schema: `SELECT table_name, column_name, data_type FROM
-  information_schema.columns WHERE table_name NOT LIKE '%$%'` serves
-  every column of the bound dataset; `DESCRIBE <name>` serves one
-  name.
-- ordinary SELECT over tables for the data itself.
-- names: an unquoted name folds to lowercase, a double-quoted one keeps
-  its case. A column keeps the export's spelling and is reached by it
-  either way — `joinedAt`, `PATIENT` and `users."joinedAt"` all reach
-  the column, in a read and in a subject alike; only two columns that
-  differ by case alone need the quotes. A table is reached as declared:
-  `"SearchStream"` if it was declared quoted.
-
-**Shipped reads** — derived relations you select from like any table,
-filters in WHERE. `DESCRIBE <read>` serves the columns of any of
-them — `DESCRIBE range_points()`, `DESCRIBE metric_series(grain := 'month')` —
-and every column's meaning is `doc://docs/reference/reads.md`; a
-guessed column costs a refusal. A named argument spells `:=`.
-
-| read | serves |
-|---|---|
-| `workspace_status` | every area the workspace can grow along: what exists, what is open, what waits for a person |
-| `view_tests()` | every test on each metric of the bound dataset and on what it reads — `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `score`, `evidence`, `run` — worst first; the rows behind the `next:` line |
-| `open_questions` | the review queue: what is open for a person to decide — the rows the MCP interface asks as forms |
-| `review_decisions` | the person's review decisions in force, with `folded_in` |
-| `open_items` | what waits on an action: a load-query approval, a formula answer, a conflicting value, a measurement stale or never made, a review decision not yet applied |
-| `agent_assumptions` | every assumption you currently disclose |
-| `view_definitions` | every metric of the bound dataset — `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `defined`, `stopped` — what the catalog says; the numbers are `metric_series()` and `view_summary()` |
-| `metric_series(grain := 'month')` | the cells — `metric`, `world` (`actual` unless asked; `world := 'forecast'` serves the newest forecast's medians ahead; `world := 'scenario', scenario := '<name>'` the named scenario's estimate; `world := 'plan', plan := '<name>'` the named plan's cells under the metric it plans — a plan is a VIEW aspect declared with `x-kind: plan` and `x-plan-of: <metric>`, defined by SQL over the loaded budget table, one aspect per edition, read at its own grain or coarser), `dimension` (`''` the total), `member`, `period`, `value`, `num`, `den`, `additivity`; the arguments are the grain, the world and the scenario's or the plan's name, a metric is a WHERE filter — never `metric_series('name')`; a variance is a join of two worlds on metric and period; a metric whose value column carries no `additivity` refuses to combine rows, and `unclaimed := 'skip'` lists the rest |
-| `view_summary()` | one row per metric: `view`, `kind`, `plan_of`, `covers`, `stopped`, `applicable`, `reason`, `period_column`, `value_column`, `numerator`, `denominator`, `cadence`, `floor`, `rung`, `additivity`, `additivity_state`, `dims`, `unranked`, `unadmitted`, `missing` (the annotation each unadmitted column needs), `wanted` (the measurement the row reads and nobody ran), `judged_current`; takes no argument |
-| `range_points()` | the stored `metric_ranges` walk, one row per metric and walked month — `metric`, `applicable`, `reason`, `additivity`, `walked`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at`; a red is `WHERE newest ORDER BY displacement DESC`, and `range_result()` is the walk's result in one row |
-| `forecast_points()` | the stored `metric_forecast`, one row per metric and point — `seq`, `metric`, `applicable`, `reason`, `grain`, `origin`, `served_by`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `computed_at`, `current`, `held_80`, `held_90`, `held_from`; `actual` and `actuals` fill as the periods arrive in the data; `held_80` is how often such a range held — this metric's own history once 30 of its points have arrived at that step, else the dataset's, else the service's held-out share — and `held_from` says which; hand a range out with it |
-| `forecast_coverage()` | over every stored forecast where a point has arrived: `metric` (`''` the dataset as a whole), `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90` (the counts), `held_80`, `held_90` (the shares) — the rows `held_80` comes from once one reaches 30 points |
-| `scenario_points('name')` | the newest estimate cell by cell, `scenario_points(NULL)` every scenario — `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass` (`estimated`), `step`, `period`, `low`, `value`, `high`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at`; a lever is declared on a metric's column, `GLOSS lever ON metric.column AS $${"value": true, "basis": "…"}$$`, a scenario is a FACT aspect with `x-kind: scenario` annotated with `levers` — per lever the column as `metric.column`, a factor per period (`"2027-01": 1.15`) and a basis; `SELECT metric_scenario() FROM <dataset>` runs the estimate; hand an estimate out with its range and `held_80` |
-| `scenario_levers('name')` | what each lever does alone — `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from` (`forecast`, or `held: <why>`), `history_shift`, `history_low`, `history_high` (the lever's own effect over the periods ahead and its 90% interval), `computed_at`; the parts add up to the joint estimate, so read them beside `scenario_points()` when a scenario moves several levers — two that cancel show as two parts of opposite sign |
-| `plan_points()` | every plan against the actual and the forecast, one row per plan and period at the plan's own grain and at the year — `plan`, `metric`, `grain`, `period`, `label`, `value` (the plan's), `actual` (where the period has begun; the actual to date for the current one), `variance` (actual minus plan, on a complete period), `low`, `expected`, `high` (the forecast's 80% range and median: the step's at the metric's grain, at the year the actual to date plus the year to go), `planned` (`complete`, `inside`, `below`, `above`, `open`, `ahead`), `held_80`, `held_from`, `origin`; `SELECT metric_plan() FROM <dataset>.<plan>` stores the same rows as the plan's judgement, which the plan goal reads — a `below` or `above` year is the gap to record under `plan-<year>` on the plan's body |
-| `semantic_model()` | the bound dataset as one Apache Ossie document (`document`, JSON): tables and metrics as datasets with fields, time and dimensions, metric expressions, relationships — the hand-over to a BI tool or a catalog |
-| `lineage_events()` | the bound dataset's lineage as OpenLineage run events (`event`, JSON): one per load and one per view, with column lineage |
-| `view_sources()` | what feeds each metric definition — `view`, `field`, `source` (`table.column`), `table_name`, `reason`: per served field the column it descends from, and every table it scans |
-| `PREVIEW erp AS $$SELECT file FROM glob('*')$$` | every file under a source's location, listed at the source; `glob('**')` the subdirectories too |
-| `app_parts` | apps written as annotations, one row per file (`glossql-apps`) |
-| `current_dataset` | the dataset the call is bound to, one row — join it to narrow a workspace-wide read |
-| `pages()` | every page this server serves — `uri`, `title`, `body`; needs no dataset |
-
-A shipped name is reserved: it shadows a table and a CTE of the same
-name. `open_questions`, `review_decisions` and `agent_assumptions` carry
-a `dataset` column, so narrow them yourself; `open_items` and
-`view_definitions` narrow themselves.
-
-```sql
-SELECT r.aspect, r.key, r.stance, r.folded_in FROM review_decisions r
-JOIN current_dataset d ON d.dataset = r.dataset ORDER BY r.written_at DESC
+```text
+status: done
+next: describe 2 · test 1 · waiting for a person 1
+first: test logistics.parcels_delivered (red): orphan_test: 10.0% of rows … find no parent (next://logistics/test)
 ```
 
-## The review: questions and decisions
+`status:` is the last statement. `next:` counts what is open on the
+dataset per step, and `first:` is the first open row. Read the list
+after each step, in a call of its own:
 
-A person's answers arrive while you are away, as **review decisions**
-(`review_decision` in the catalog) in the person's own annotation — the
-judgment alone, naming your claim by its `key`, never a copy of your
-body. The `decide` step of `next` carries every action
-that waits on you — a decision to apply, an approved load-query
-change, a formula answer, a conflicting value — and gives you the
-statement. A question is served once, through the MCP interface's
-forms, and waits; the work goes on and the metric definition stays
-yours. A client without forms gets none: read `open_questions` and
-relay it in chat, multiple choice with your basis, then run the
-statement the answer names. What a review decision is, what each kind
-asks of you, and what the confidence number means:
-`references/review.md` — open it before disclosing your first
-assumption.
+```sql
+SELECT step, asset, state, open, cause, statement FROM next
+```
 
-## Measure, then judge — never ask a person for a statistic
+Each row has a statement that closes it; `<…>` marks what you fill
+in. `cause` says what the newest load changed. A red test comes
+first, then what a load changed or a person decided, then what is
+missing. The list covers what your views read and serve. The work on
+a dataset is complete when no row has `who = 'agent'`; rows that wait
+for a person do not hold you back. The list is context: what the
+person asked for decides what you work on.
 
-Functions over-produce: candidates with evidence, never conclusions.
-Verify each against the data and declare only the ones that hold; the
-rejects stay in the measurement, visible and undeclared. A question
-the functions settle — what a column holds, a date's grain, stock or
-flow, which columns join, which axes matter — is your work, and
-asking the person for it is asking them to do statistics by hand.
-`references/settled.md` maps each question to the function that
-settles it; walk it before any question leaves the workspace. A
-measurement is called in the SELECT list with its subject in FROM —
-`SELECT column_profile() FROM orders.amount` — never as a table function.
+## 1. Connect: declare a source, load tables
 
-What remains askable is judgment: definitions, conventions, business
-meaning, a choice between readings, held below full confidence. Prose
-shapes the work — the topic, which metrics to build, whether to widen
-the import — and forms settle the catalog: assumptions in force to
-confirm or correct.
+```glossql
+DECLARE DATASET logistics SET (purpose: 'parcel deliveries by depot');
+DECLARE SOURCE carrier SET (type: csv, location: '/data/carrier');
+PREVIEW carrier AS $$SELECT file FROM glob('*')$$;
+```
 
-The engine's refusals are exact and name what was wrong. Its SQL
-guide at this pin is `doc://vendor/duckdb/sql/…` — a function's name
-or signature is a lookup there, never a guess — and what the guide
-cannot say about this server is `references/sql-here.md`.
+A source is a directory, an object-store URL or a database. `PREVIEW`
+runs SQL at the source and loads nothing; with `LIMIT 0` it returns
+every column and type. A load query (`DECLARE RECIPE`) is the SQL that
+produces a table, and declaring it loads the table. A typed source
+loads as it is:
+
+```glossql
+DECLARE RECIPE depots ON logistics FROM carrier AS $$
+  SELECT depot_id, city, opened FROM read_parquet('depots.parquet')$$;
+```
+
+A CSV has no types. Read it with these options and write the casts
+in the SELECT, each over `trim(…)`:
+
+```glossql
+DECLARE RECIPE deliveries ON logistics FROM carrier SET (key: delivery_id) AS $$
+  SELECT delivery_id, trim(depot_id) AS depot_id,
+         try_cast(trim(delivered_on) AS DATE) AS delivered_on,
+         try_cast(trim(parcels) AS INTEGER) AS parcels,
+         try_cast(trim(weight_kg) AS DOUBLE) AS weight_kg, status
+  FROM read_csv('deliveries.csv', all_varchar = true,
+                nullstr = null_markers(), store_rejects = true)$$;
+```
+
+The acknowledgement counts: `loaded logistics.deliveries: 10 rows, 0
+dropped`. Look into every dropped row. `IMPORT deliveries;` loads the
+table again. More: `skill://glossql-modeling/references/load.md`.
+
+## 2. Describe: annotate what the data means
+
+An annotation (`GLOSS`) writes one property of one asset: a table, a
+column (`table.column`), a relationship or the dataset.
+
+| Property | On | Value |
+|---|---|---|
+| `entity` | a table | `{"value": "<what one row is>", "role": "fact"` or `"dimension", "grain": ["<key column>"], "time_axis": "<date column>"}` |
+| `meaning` | a table, a column, a relationship | `{"value": "<one sentence>"}` |
+| `role` | a column | `key`, `measure`, `dimension`, `timestamp` or `attribute` |
+| `additivity`, `unit` | a column with role `measure` | `additive`, `semi-additive`, `ratio` or `non-additive`; the unit as text |
+| `dimension` | a column with role `dimension` | `primary`, `supporting` or `none` |
+| `time_grains` | a column with role `timestamp` | `{"floor": "day"}`, the finest grain it is read at |
+
+```glossql
+GLOSS entity ON deliveries AS $${"value": "one delivery run from a depot", "role": "fact",
+  "grain": ["delivery_id"], "time_axis": "delivered_on"}$$;
+GLOSS meaning ON deliveries.parcels AS $${"value": "parcels handed over on the delivery"}$$;
+GLOSS role ON deliveries.parcels AS $${"value": "measure"}$$;
+GLOSS additivity ON deliveries.parcels AS $${"value": "additive"}$$;
+GLOSS unit ON deliveries.parcels AS $${"value": "parcels"}$$;
+```
+
+Annotate `role` first: it decides which other properties a column
+needs. Look before you write: `SELECT column_profile() FROM
+deliveries.parcels`. A join between two tables is a relationship;
+check a proposed one against the data before you declare it:
+
+```glossql
+SELECT detect_relationships() FROM logistics;
+DECLARE RELATIONSHIP deliveries.depot_id -> depots.depot_id;
+GLOSS meaning ON deliveries.depot_id -> depots.depot_id AS $${"value": "each delivery leaves from one depot"}$$;
+```
+
+`next` asks for the annotations on what your views read, so its
+`describe` rows appear once a view exists. After a load changes a
+column, its annotations read `stale`; `next` hands each back with its
+value to check and record again.
+
+## 3. Serve: define views
+
+A view is named SQL on the dataset: declare the name, then define it.
+There are three kinds, each read as `FROM <view>`.
+
+**A table** (`x-kind: relation`): cleaned, joined or reshaped rows.
+
+```glossql
+DECLARE ASPECT clean_deliveries WITH $${"title": "Deliveries, cleaned", "x-kind": "relation"}$$ AS VIEW;
+GLOSS clean_deliveries ON logistics AS $${
+  "sql": "SELECT delivery_id, depot_id, delivered_on, parcels, weight_kg, lower(status) AS status FROM deliveries",
+  "assumptions": [{"dimension": "convention", "key": "status-lower-case", "assumption": "status is served in lower case; DELIVERED and delivered are one status", "basis": "1 of 10 rows is upper case", "confidence": 0.8}]
+}$$;
+```
+
+**A single value** (`x-kind: scalar`): one row with a column `value`.
+
+```glossql
+DECLARE ASPECT depots_in_service WITH $${"title": "Depots in service", "x-kind": "scalar"}$$ AS VIEW;
+GLOSS depots_in_service ON logistics AS $${"sql": "SELECT count(*) AS value FROM depots"}$$;
+```
+
+**A metric**: a value per period, with dimensions. Name the time
+column, the measure with its additivity, and the dimension columns:
+
+```glossql
+DECLARE ASPECT parcels_delivered WITH $${"title": "Parcels delivered"}$$ AS VIEW;
+GLOSS parcels_delivered ON logistics AS $${
+  "sql": "SELECT d.delivered_on, d.parcels AS value, d.depot_id, p.city FROM clean_deliveries d JOIN depots p ON p.depot_id = d.depot_id WHERE d.status = 'delivered'",
+  "time": "delivered_on",
+  "measure": {"column": "value", "additivity": "additive", "unit": "parcels"},
+  "dimensions": ["depot_id", "city"],
+  "assumptions": [{"dimension": "scope", "key": "delivered-only", "assumption": "only deliveries with status delivered count; returned and lost are left out", "basis": "the status values", "confidence": 0.7}]
+}$$;
+```
+
+A table and a single value are served as they are. A metric also
+needs a grain for its series. Where its dates follow no regular
+grain, `next` gives the statement:
+
+```glossql
+GLOSS time_grains ON logistics.parcels_delivered.delivered_on AS $${"floor": "month"}$$;
+```
+
+`next` then asks for `entity` and `meaning` on each view, and for
+`meaning` and `role` on the columns of a table view. A table in a
+given target format (a data contract), metric shapes, stopping a
+view: `skill://glossql-modeling/references/define.md`.
+
+## 4. Test: check what you stated
+
+The server runs the built-in tests on each metric after you define
+it or load a table it reads: join fan-out, referential integrity on
+declared relationships, effective-dated tables, additivity. A test
+that is not green is a row of `next` with its finding and a fix. Fix
+the load or the definition. Where the number is right as it is,
+accept the rate with a reason; a person can overrule it:
+
+```glossql
+GLOSS orphan_check ON logistics.parcels_delivered AS $${"tolerance": 0.1, "basis": "depot 099 closed in 2025 and is not in the depot list"}$$;
+```
+
+A test of your own is a property, a function that measures it, and
+the test. The function returns `breach_rate`, the share of rows that
+break the rule; 0 is green:
+
+```glossql
+DECLARE ASPECT delivery_key_unique WITH $${"type": "object",
+  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON TABLE;
+DECLARE FUNCTION delivery_key_check FOR logistics AS $$
+  SELECT (count(*) - count(DISTINCT delivery_id)) / greatest(count(*), 1)::DOUBLE AS breach_rate,
+         CASE WHEN count(*) > count(DISTINCT delivery_id)
+              THEN (count(*) - count(DISTINCT delivery_id)) || ' rows repeat a delivery_id' END AS finding
+  FROM clean_deliveries
+$$ RETURNS delivery_key_unique;
+DECLARE TEST delivery_key_test ON delivery_key_unique DETECTOR rate_tolerance THRESHOLD 0.0;
+SELECT delivery_key_check() FROM clean_deliveries;
+```
+
+Run the function once. After a later load the server runs it again,
+and a red result is a row of `next`. More:
+`skill://glossql-modeling/references/tests.md`.
+
+## 5. Decide: leave judgment to a person
+
+A judgment call is a choice the data cannot settle: which rows count,
+which date, how a text column is written. State each as an assumption
+in the view's definition, with a `key` you choose and a `confidence`
+below 1, as in the examples above. Each is a question in the review
+queue:
+
+```sql
+SELECT aspect, key, assumption, basis, conf FROM open_questions
+```
+
+A person confirms or corrects it in the console, or in a form the
+interface sends with your calls. Where the client shows no forms, ask
+in chat. The decision then appears in `next` under `decide`, with the
+definition to record again. Do not ask a person for something the
+data can tell you: measure it. More: `references/review.md`.
+
+## The other statements
+
+| Statement | Does |
+|---|---|
+| `IMPORT t;` | loads the table again from the source |
+| `DROP TABLE t;` | removes a table; refused while it holds data or annotations |
+| `DECLARE RELATIONSHIP a.(x, y) -> b.(x, y);` | a join on a composite key |
+| `DECLARE ASPECT p WITH $$json schema$$ AS FACT ON TABLE, COLUMN;` | adds a property that agents and people annotate; `AS MEASUREMENT` for one a function fills |
+| `DECLARE TEST t ON p BY (AGENT, HUMAN) DETECTOR f THRESHOLD x;` | a test; `BY` names who may annotate the property |
+
+A body goes inside `$$…$$` as it is, with plain double quotes. `CREATE
+VIEW` and other DDL are closed: tables come from load queries, views
+from definitions. A named argument to a read is written `:=`. The
+language is `doc://SPEC.md` and `doc://grammar.ebnf`; the engine is
+DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
+
+## The reads
+
+| Read | Gives |
+|---|---|
+| `next` | what is open on the dataset, by step |
+| `view_summary()` | one row per view: `kind`, `stopped`, `applicable` and `reason`, period and value columns, `additivity`, `floor`, `dims` |
+| `view_definitions` | every view: `name`, `title`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
+| `view_tests()` | the tests on each view and on what it reads, worst first |
+| `view_sources()` | lineage: per view and field the source `table.column` |
+| `fact_values()` | each single value |
+| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total |
+| `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
+| `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
+| `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |
+| `open_items`, `workspace_status` | what waits on an action; what the workspace holds |
+| `datasets`, `sources`, `recipes`, `imports`, `relationships`, `aspects`, `functions`, `tests`, `glossary`, `measurements` | the catalog tables |
+| `pages()` | every page this server serves: `uri`, `title`, `body` |
+
+`DESCRIBE <read>` gives the columns of any of them. The loaded schema
+is `information_schema.columns`.
+
+## More
+
+| Page | When |
+|---|---|
+| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each step; its references: `load.md`, `define.md`, `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
+| `references/review.md` | assumptions, review decisions, conflicts |
+| `skill://glossql-apps/SKILL.md` | a data app over the views |
+| `skill://glossql-functions/SKILL.md` | a function of your own |

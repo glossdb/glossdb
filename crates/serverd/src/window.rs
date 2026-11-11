@@ -87,7 +87,14 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     } else {
         let reason = fact.get("reason").and_then(Value::as_str).unwrap_or("");
         let first = reason.split(". ").next().unwrap_or(reason);
-        line.push_str(&format!("not served yet — {first}"));
+        // A table and a single value are served as they are, and their
+        // row says how to read them; only a metric has a series to wait for.
+        let kind = fact.get("kind").and_then(Value::as_str).unwrap_or("");
+        if matches!(kind, "relation" | "scalar") {
+            line.push_str(first);
+        } else {
+            line.push_str(&format!("no series yet — {first}"));
+        }
     }
     line
 }
