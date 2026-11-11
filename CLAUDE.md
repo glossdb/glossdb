@@ -92,6 +92,13 @@ workspace version.
   every single read binds, the interface suites hold, the corpus
   behaves as tagged, and the kits' suites pass. A change that breaks
   it does not land.
+- **Tests assert code, always; text case by case.** A test compares
+  served text where the text is context an agent acts on, a decided
+  process or offering, a named entity or an industry term. Other
+  text is free to change, synonyms included. A test's name and body
+  say what it protects, in plain words. A test that blocks a text
+  change without protecting one of these is changed or deleted on
+  the way.
 - **Lint before pushing**: `cargo fmt`, `cargo clippy`, `cargo test`
   here; `make lint` in the extension.
 
