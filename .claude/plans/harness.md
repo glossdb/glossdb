@@ -6,7 +6,8 @@ first the data intelligence direction, then the backlog by step. The
 plans beside it: `platform.md` (dbt, semantic models, lakes, the
 workspace as code), `sources.md` (spreadsheets, documents, search),
 `gate.md` (access per user), `clients.md` and `chat.md` (the hosted
-trial).
+trial), `evaluation.md` (what glossval measures), `next.md` (the
+`next` rework and what is left of it).
 
 ## First: the data intelligence direction
 
@@ -15,12 +16,12 @@ Finished before anything new is picked.
 | # | What | State |
 |---|---|---|
 | 1 | Text: `CLAUDE.md`, the prose skill, `README.md`, the docs overview, the extension's README | on the branch `data-intelligence` in both repositories |
-| 2 | The extension's pages tell how a data harness works and why it is needed; glossdb's pages tell data intelligence | open |
-| 3 | What an agent reads on connecting (`INSTRUCTIONS` in `crates/serverd/src/mcp.rs`) and the opening of each skill name the job: building the layer | open; walked through the MCP interface before and after |
+| 2 | The extension's pages tell how a data harness works and why it is needed; glossdb's pages tell data intelligence | on the branch |
+| 3 | What an agent reads on connecting (`INSTRUCTIONS` in `crates/serverd/src/mcp.rs`) and the opening of each skill name the job: building the layer | on the branch |
 | 4 | `next` derived from the states the catalog already holds (missing, outdated, conflict, a red or not-run test, a decision waiting), walked along the lineage of what the person asked for: source, table, column, join, metric. An ordered list as context; the calling agent decides. One generic query and one text per state replace the hand-written blocks per kit. Tests on wording are changed or deleted on the way | built in the server (`next.md`); glossval reads it next |
 | 4b | A decision model that ranks the steps: of interest only for small models; frontier models decide well from an ordered list | parked |
-| 5 | The console: a second pass against the five questions (which sources map, what does this mean, can we trust it, who decides, where does it come from) | after 4 |
-| 6 | glossval with a brief on evaluating data intelligence: the layer an agent builds, not one answer; then the eight seats rerun and the Monday test | after 4 |
+| 5 | The console: a second pass against the five questions (which sources map, what does this mean, can we trust it, who decides, where does it come from), with the issues the project lead found in the UI; its tests that pin labels are changed or deleted on the way | after 6 runs |
+| 6 | glossval measures the layer: an agent builds it, a second agent reads the lake with plain DuckDB; real data first (`evaluation.md`) | next |
 | 7 | Results page and websites | after 6 |
 
 ## The backlog, by step
@@ -42,6 +43,19 @@ Finished before anything new is picked.
 Housekeeping, outside the steps: #214 (the image hangs on opening a
 seeded workspace), #60 (an infrastructure error's text reaches the
 client), #56 (Tera 2 for the app pages).
+
+## Loose ends of this round
+
+Closed before the pull requests open, or moved to a row above.
+
+| What | Where | When |
+|---|---|---|
+| The extension still acknowledges a load as `landed` and refuses with `grounding`; its description reads "the context language over DuckDB" | the extension's runner, store and grammar, about 90 rows of its tests, then the pin here | before the pull requests |
+| About 40 test names here use door, round, ruling, record, stands | `crates/*/tests/suite/` | before the pull requests |
+| The console's tests pin about 110 labels | `crates/apps/tests/suite/door.rs` | with row 5 |
+| A workspace opened before the switch keeps a dead `next_steps` view and three `routes_*` macros | the demo workspace is rebuilt | with row 6 |
+| A test's result reads as not current after a load of a table the metric does not read | `metric_tests()`, the extension's pin of what a result read | after row 6 |
+| One pull request per repository for the branch `data-intelligence` | both repositories, glossval on its own | when rows 1 to 6 are done |
 
 ## Measured
 
