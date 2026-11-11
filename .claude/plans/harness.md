@@ -6,7 +6,8 @@ first the data intelligence direction, then the backlog by step. The
 plans beside it: `platform.md` (dbt, semantic models, lakes, the
 workspace as code), `sources.md` (spreadsheets, documents, search),
 `gate.md` (access per user), `clients.md` and `chat.md` (the hosted
-trial), `evaluation.md` (what glossval measures).
+trial), `evaluation.md` (what glossval measures), `dependencies.md`
+(how a result becomes outdated and when it is computed again).
 
 ## First: the data intelligence direction
 
@@ -51,7 +52,7 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| A test result's `current` flag turns false on any write to a catalog table the result read. The outlook kit works around it with a digest. The fix is the extension's: a function declares what it reads; a grammar change, so a corpus test with the competing forms goes to the project lead | the extension, `SPEC.md`; `kits/outlook/kit.sql` | before the pull requests, as a proposal |
+| How a result becomes outdated and when it is computed again: one concept in place of the exceptions; `DEPENDS ON` is built and provisional | `dependencies.md` | after the open items of this round |
 | A kit cannot change a property that has values, not even to add a description, so an existing workspace cannot take a kit update | the extension | before a workspace lives longer than a release |
 | The spec says data-changing SQL is refused; the server allows it. It follows access control | `gate.md` | with `gate.md` |
 | The demo workspace is rebuilt on the new names | the demo server | before the pull requests |
