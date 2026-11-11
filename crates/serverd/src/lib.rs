@@ -60,7 +60,7 @@ pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};
 pub use glossdb_apps::ipc::ARROW_STREAM;
 pub use login::Login;
-pub use mcp::{GlossqlMcp, SUMMARY_META};
+pub use mcp::{GlossqlMcp, REFUSAL_META, SUMMARY_META};
 pub use wire::DEFAULT_ROW_CAP;
 
 use std::sync::Arc;

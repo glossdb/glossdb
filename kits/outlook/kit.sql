@@ -1071,17 +1071,17 @@ CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 WITH named AS (
   SELECT a.view AS plan, a.applicable, a.reason FROM main.view_summary() a WHERE a.kind = 'plan' AND a.view = p),
 refusal AS (
-  SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
-              WHEN w = 'scenario' AND s IS NULL THEN error('metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
+  SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
+              WHEN w = 'scenario' AND s IS NULL THEN error('scenario_not_named: metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
               WHEN w = 'scenario' AND NOT EXISTS (SELECT 1 FROM main.scenarios() WHERE scenario = s) THEN error(
-                'metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario')
-              WHEN w = 'plan' AND p IS NULL THEN error('metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>')
+                'unknown_scenario: metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario')
+              WHEN w = 'plan' AND p IS NULL THEN error('plan_not_named: metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>')
               WHEN w = 'plan' AND NOT EXISTS (SELECT 1 FROM named) THEN error(
                 CASE WHEN NOT EXISTS (SELECT 1 FROM main.aspects WHERE name = p)
-                     THEN 'metric_series(plan := ''' || p || '''): no aspect of that name is declared — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>'
-                     ELSE 'metric_series(plan := ''' || p || '''): ' || p || ' is no plan — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>' END)
+                     THEN 'unknown_plan: metric_series(plan := ''' || p || '''): no aspect of that name is declared — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>'
+                     ELSE 'not_a_plan: metric_series(plan := ''' || p || '''): ' || p || ' is no plan — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>' END)
               WHEN w = 'plan' AND EXISTS (SELECT 1 FROM named WHERE NOT applicable) THEN error(
-                'metric_series(plan := ''' || p || '''): ' || (SELECT reason FROM named))
+                'plan_not_served: metric_series(plan := ''' || p || '''): ' || (SELECT reason FROM named))
          END AS r),
 plan_world AS (
   SELECT c.metric, 'plan' AS world, '' AS dimension, '' AS member, c.period, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.additivity
@@ -1295,9 +1295,9 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
   WITH named AS (SELECT kind, applicable, reason FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
   refusal AS (
     SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM named WHERE kind = 'plan')
-                THEN error($subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')
+                THEN error('not_a_plan: ' || $subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')
                 WHEN EXISTS (SELECT 1 FROM named WHERE NOT applicable)
-                THEN error($subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
+                THEN error('plan_not_served: ' || $subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
   pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
   own AS (SELECT metric, grain FROM main.plan_grains() WHERE plan = split_part($subject, '.', 2)),
   run AS (SELECT max(seq) AS seq FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')

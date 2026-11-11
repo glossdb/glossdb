@@ -17,8 +17,10 @@ same text runs nothing.
 | `goals` | `open_items` and `next`, the open work of a dataset by step | `goals/kit.test` |
 
 Each suite is in DuckDB's sqllogictest form and runs with `cargo test
--p glossdb-duck` (`crates/duck/src/sqllogic.rs`). `views` and
-`outlook` carry a `SKILL.md` that teaches them to an agent.
+-p glossdb-duck` (`crates/duck/src/sqllogic.rs`). A refusal is
+asserted by its code, the word after `----`
+(`docs/reference/interfaces.md`). What an agent learns about the
+kits is in the skills under `skills/`, served over MCP.
 
 How to write and load a kit: `docs/extending/kits.md`. Each read and
 its columns: `docs/reference/reads.md`.

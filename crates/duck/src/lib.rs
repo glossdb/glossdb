@@ -18,6 +18,7 @@
 )]
 
 pub mod decisions;
+#[cfg(any(test, feature = "testing"))]
 pub mod sqllogic;
 
 use std::path::{Path, PathBuf};
@@ -121,18 +122,71 @@ pub enum SessionError {
 
 impl SessionError {
     /// The engine's refusal, classed where its text says what it is: a
-    /// name the catalog does not hold reads as an unknown name.
+    /// name the catalog does not hold reads as an unknown name. The
+    /// reason is carried once, without the wrappers before it
+    /// ([`unwrapped`]); a refusal a kit raised under a code stays the
+    /// statement's own fault, whatever its words.
     fn engine(e: impl std::fmt::Display) -> Self {
         let text = e.to_string();
-        if let Some(refusal) = service_refusal(&text) {
+        let text = unwrapped(&text);
+        if let Some(refusal) = service_refusal(text) {
             return refusal;
         }
         let lower = text.to_lowercase();
-        if lower.contains("does not exist") || lower.contains("not found") {
-            return SessionError::UnknownName { detail: text };
+        if refusal_code(text).is_none()
+            && (lower.contains("does not exist") || lower.contains("not found"))
+        {
+            return SessionError::UnknownName {
+                detail: text.to_string(),
+            };
         }
-        SessionError::Engine(text)
+        SessionError::Engine(text.to_string())
     }
+
+    /// The refusal's code, where it has one: its class, for the
+    /// classes the interfaces answer apart, or the code a kit raised
+    /// it under (`error('not_a_plan: …')`). The code is what a client
+    /// or a suite compares; the reason after it is free text.
+    pub fn code(&self) -> Option<&str> {
+        match self.cause() {
+            SessionError::UnknownName { .. } => Some("unknown_name"),
+            SessionError::NotServed { .. } => Some("service_not_configured"),
+            SessionError::Service(_) => Some("service_failed"),
+            SessionError::Engine(text) => refusal_code(unwrapped(text)),
+            _ => None,
+        }
+    }
+}
+
+/// The engine's text from where the refusal begins. The Arrow stream
+/// names itself before every error it carries, and the engine names
+/// the error class before a refusal the extension or a kit raised; a
+/// reader needs neither. An error of another class keeps its name:
+/// `Binder Error` and `Catalog Error` say what kind of mistake it was.
+fn unwrapped(text: &str) -> &str {
+    let text = text
+        .strip_prefix("C Data interface error: ")
+        .unwrap_or(text);
+    match text.strip_prefix("Invalid Input Error: ") {
+        Some(rest) if rest.starts_with(EXTENSION_PREFIX) || refusal_code(rest).is_some() => rest,
+        _ => text,
+    }
+}
+
+/// What the extension puts before a refusal of its own.
+const EXTENSION_PREFIX: &str = "glossql: ";
+
+/// The code a kit's refusal leads with: a lower-case word in snake
+/// case, then `: ` and the reason. The extension's prefix may stand
+/// before it, where the refusal came out of a function body.
+fn refusal_code(text: &str) -> Option<&str> {
+    let text = text.strip_prefix(EXTENSION_PREFIX).unwrap_or(text);
+    let (code, _) = text.split_once(": ")?;
+    let snake = code.starts_with(|c: char| c.is_ascii_lowercase())
+        && code
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    snake.then_some(code)
 }
 
 /// The extension's refusals of a model service call, classed: no
@@ -178,7 +232,7 @@ impl From<duckdb_neo::Error> for SessionError {
 
 impl From<arrow::error::ArrowError> for SessionError {
     fn from(e: arrow::error::ArrowError) -> Self {
-        SessionError::Engine(e.to_string())
+        SessionError::engine(e)
     }
 }
 
@@ -788,7 +842,12 @@ impl std::fmt::Debug for Plane {
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
     conn.query(sql, Parameters::None)
         .map_err(|e| {
-            SessionError::Engine(format!("{e}\n  in: {}", sql.lines().next().unwrap_or("")))
+            let e = e.to_string();
+            SessionError::Engine(format!(
+                "{}\n  in: {}",
+                unwrapped(&e),
+                sql.lines().next().unwrap_or("")
+            ))
         })?
         .drain()?;
     Ok(())
@@ -2122,6 +2181,34 @@ fn split_statements(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// A refusal out of a function body is classed by the code its kit
+    /// raised it under and begins at the extension's prefix; an error
+    /// of another class keeps its class's name and has no code.
+    #[test]
+    fn a_kits_refusal_keeps_its_code_and_loses_the_engines_wrappers() {
+        let raised = SessionError::engine(
+            "C Data interface error: Invalid Input Error: glossql: not_a_plan: fin.spend",
+        );
+        assert_eq!(raised.code(), Some("not_a_plan"));
+        assert!(
+            matches!(&raised, SessionError::Engine(reason) if reason.starts_with("glossql: not_a_plan: ")),
+            "{raised}"
+        );
+        let from_a_macro =
+            SessionError::engine("Invalid Input Error: unknown_world: a world not found");
+        assert_eq!(from_a_macro.code(), Some("unknown_world"));
+        let bound = SessionError::engine("C Data interface error: Binder Error: no column: x");
+        assert_eq!(bound.code(), None);
+        assert!(
+            matches!(&bound, SessionError::Engine(reason) if reason.starts_with("Binder Error: ")),
+            "{bound}"
+        );
+        assert_eq!(
+            SessionError::engine("Catalog Error: Table with name nope does not exist!").code(),
+            Some("unknown_name")
+        );
+    }
+
     #[test]
     fn statements_split_outside_quotes_and_dollar_bodies() {
         let pieces = split_statements(
@@ -2318,6 +2405,7 @@ mod tests {
 /// directory. A build that loses the race to another process yields to
 /// the one that loaded: the rename is atomic, so a copy sees a whole
 /// workspace or none.
+#[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::{Config, Plane, SessionError};
     use std::hash::{Hash, Hasher};

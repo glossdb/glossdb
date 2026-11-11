@@ -106,5 +106,6 @@ in DuckDB's sqllogictest form. `cargo test -p glossdb-duck` runs them.
 ## Teach the kit
 
 An agent needs to know what the kit's words mean and in what order to
-work. The server's kits carry a `SKILL.md` beside the SQL; the skills
-served to agents are under `skills/`.
+work. That text is a skill under `skills/`, served to agents over
+MCP: the skill's `SKILL.md`, or a page under its `references/`. Its
+fenced examples are parsed and bound by the suite.

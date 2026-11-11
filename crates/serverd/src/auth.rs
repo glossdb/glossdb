@@ -176,6 +176,7 @@ impl Gate {
     }
 
     /// A fixed key set, for tests: whoever holds the private halves mints.
+    #[cfg(any(test, feature = "testing"))]
     pub fn with_keys(
         issuer: &str,
         resource: &str,

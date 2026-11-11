@@ -121,7 +121,7 @@ SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM range_body();
 statement error
 SELECT metric_ranges() FROM fin;
 ----
-GLOSSDB_SERVICE_URL
+service_not_configured
 
 # --- the service stood in for: two backtested months, the newest outside its range, the older one withheld
 
@@ -366,22 +366,22 @@ SELECT count(*) FROM metric_series(world := 'plan', plan := 'sales_budget', grai
 statement error
 SELECT * FROM metric_series(world := 'plan', grain := 'month');
 ----
-names the plan it serves
+plan_not_named
 
 statement error
 SELECT * FROM metric_series(world := 'plan', plan := 'nothing');
 ----
-no aspect of that name is declared
+unknown_plan
 
 statement error
 SELECT * FROM metric_series(world := 'plan', plan := 'sales');
 ----
-sales is no plan
+not_a_plan
 
 statement error
 SELECT * FROM metric_series(world := 'dream');
 ----
-the worlds are actual, plan, forecast and scenario
+unknown_world
 
 # plan_points(): the year first — whole, begun, not complete: the actual to date plus the year to go gives its range; then the months,
 # loaded through the origin with their variance, the rest against their own step's range
@@ -604,12 +604,12 @@ priced	scenario	3	15.3
 statement error
 SELECT * FROM metric_series(world := 'scenario');
 ----
-names the scenario it serves
+scenario_not_named
 
 statement error
 SELECT * FROM metric_series(world := 'scenario', scenario := 'nothing');
 ----
-no scenario of that name is declared
+unknown_scenario
 
 query TTTT
 SELECT subject, test, state, current FROM TESTS() WHERE test = 'scenario_test';
@@ -704,7 +704,7 @@ not_applicable	true
 statement error
 SELECT metric_plan() FROM fin.sales;
 ----
-fin.sales
+not_a_plan
 
 query I
 SELECT count(*) FROM measurements WHERE function = 'metric_plan' AND subject = 'fin.sales';

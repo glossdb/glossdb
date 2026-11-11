@@ -70,6 +70,32 @@ pub struct SummaryFacts {
 /// The `_meta` key a tool result carries its moved summary under.
 pub const SUMMARY_META: &str = "glossdb/summary";
 
+/// The `_meta` key a refused call carries its refusal's code under,
+/// as `{"code": …}`, where the refusal has one.
+pub const REFUSAL_META: &str = "glossdb/refusal";
+
+/// A refused call: the reason the agent reads, and the refusal's code
+/// where it has one (`SessionError::code`).
+struct Refusal {
+    reason: String,
+    code: Option<String>,
+}
+
+impl Refusal {
+    fn of(e: &SessionError) -> Refusal {
+        Refusal {
+            reason: e.to_string(),
+            code: e.code().map(str::to_string),
+        }
+    }
+}
+
+impl From<String> for Refusal {
+    fn from(reason: String) -> Refusal {
+        Refusal { reason, code: None }
+    }
+}
+
 /// The summary a call moved: the line, as the `summary:` block carries
 /// it, and the counts it renders, as the result's `_meta` carries them.
 struct SummaryMoved {
@@ -620,7 +646,9 @@ impl GlossqlMcp {
 /// the session exactly as frames do.
 async fn read_rows(session: &Session, sql: &str) -> Result<Vec<serde_json::Value>, String> {
     let query = session.query_stream(sql).await.map_err(|e| e.to_string())?;
-    let out = wire::stream_json(query, usize::MAX).await?;
+    let out = wire::stream_json(query, usize::MAX)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(out["rows"].as_array().cloned().unwrap_or_default())
 }
 
@@ -1240,7 +1268,10 @@ impl GlossqlMcp {
         actor: &Actor,
         bound: Option<&str>,
         statements: &str,
-    ) -> (Result<serde_json::Value, String>, Option<serde_json::Value>) {
+    ) -> (
+        Result<serde_json::Value, Refusal>,
+        Option<serde_json::Value>,
+    ) {
         let mut completed_json: Option<serde_json::Value> = None;
         let rendered = match session.query_page(statements).await {
             Ok(query) => {
@@ -1248,24 +1279,25 @@ impl GlossqlMcp {
                 wire::stream_json(query, cap)
                     .await
                     .map(|rows| serde_json::Value::Array(vec![rows]))
+                    .map_err(|e| Refusal::of(&e))
             }
             // Statement sequences run at the plane: `USE` moves the
             // statements after it onto another channel for the rest of
             // this call, and never rebinds a session.
             Err(SessionError::NotOneRead) => {
                 match self.plane.execute(actor.clone(), bound, statements).await {
-                    Ok(outcomes) => wire::outcomes_json(&outcomes),
+                    Ok(outcomes) => wire::outcomes_json(&outcomes).map_err(Refusal::from),
                     Err(e) => {
                         if let SessionError::Sequence { loaded, .. } = &e
                             && !loaded.is_empty()
                         {
                             completed_json = wire::outcomes_json(loaded).ok();
                         }
-                        Err(e.to_string())
+                        Err(Refusal::of(&e))
                     }
                 }
             }
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(Refusal::of(&e)),
         };
         (rendered, completed_json)
     }
@@ -1308,13 +1340,24 @@ impl GlossqlMcp {
 /// have loaded even when the statement then refused.
 fn call_result(
     id: &str,
-    rendered: Result<serde_json::Value, String>,
+    rendered: Result<serde_json::Value, Refusal>,
     reviewed: Option<String>,
     completed: Option<serde_json::Value>,
     window: String,
     summary_moved: Option<SummaryMoved>,
 ) -> CallToolResult {
-    let meta = summary_moved.as_ref().map(SummaryMoved::meta);
+    let mut meta = summary_moved.as_ref().map(SummaryMoved::meta);
+    if let Err(Refusal {
+        code: Some(code), ..
+    }) = &rendered
+    {
+        meta.get_or_insert_with(rmcp::model::MetaObject::new)
+            .0
+            .insert(
+                REFUSAL_META.to_string(),
+                serde_json::json!({ "code": code }),
+            );
+    }
     let summary_moved = summary_moved.map(|moved| format!("summary: {}", moved.line));
     let mut result = match rendered {
         Ok(body) => {
@@ -1328,9 +1371,9 @@ fn call_result(
             }
             CallToolResult::success(blocks)
         }
-        Err(e) => {
-            tracing::warn!(subject = %id, error = %e, "refused");
-            let mut blocks = vec![ContentBlock::text(e)];
+        Err(Refusal { reason, .. }) => {
+            tracing::warn!(subject = %id, error = %reason, "refused");
+            let mut blocks = vec![ContentBlock::text(reason)];
             if let Some(completed) = completed {
                 blocks.push(ContentBlock::text(
                     serde_json::json!({ "completed": completed }).to_string(),
@@ -1355,7 +1398,7 @@ impl GlossqlMcp {
         &self,
         actor: &Actor,
         dataset: Option<&str>,
-        rendered: &Result<serde_json::Value, String>,
+        rendered: &Result<serde_json::Value, Refusal>,
     ) -> String {
         // The last statement's one row, where it served one — a
         // metric definition's fact row. The wire renders an outcome as
@@ -1371,7 +1414,7 @@ impl GlossqlMcp {
             .filter(|r| r.len() == 1)
             .and_then(|r| r.first())
             .cloned();
-        let refusal = rendered.as_ref().err().map(String::as_str);
+        let refusal = rendered.as_ref().err().map(|r| r.reason.as_str());
         let mut lines = vec![window::situation(refusal, last_row.as_ref())];
         if let Some(dataset) = dataset {
             match self.next_rows(actor, dataset, None).await {

@@ -1646,6 +1646,110 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
     );
 }
 
+/// An assumption that names an alternative offers it as an answer of
+/// its own. A person who takes it has corrected the assumption: the
+/// decision is stored under the assumption's key as the person's, with
+/// the alternative as what is right instead, and the agent is asked to
+/// apply it to the view's definition.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_the_agent() {
+    let (app, _dir) = app().await;
+    let setup = r#"
+        DECLARE DATASET fin SET (purpose: 'alternative test');
+        USE fin;
+        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
+          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
+        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
+          "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line",
+            "basis": "judgment", "alternative": "per order", "confidence": 0.7}]}$$;
+    "#;
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 80, setup, None)).await).await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+
+    let review = "SELECT subject, aspect FROM glossary LIMIT 5";
+    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 81, review, None)).await).await;
+    assert_eq!(
+        body["result"]["resultType"],
+        json!("input_required"),
+        "{body}"
+    );
+    let fields = &body["result"]["inputRequests"]["loose:fin:dso:per-line"]["params"]["requestedSchema"]
+        ["properties"];
+    assert!(
+        fields["2_rather"].is_object(),
+        "the alternative is a field of the form: {body}"
+    );
+
+    let answer = json!({"action": "accept", "content": {"2_rather": true}});
+    let body = expect_ok(
+        mcp(
+            app.clone(),
+            call_with(
+                meta_elicit(),
+                82,
+                review,
+                Some(("loose:fin:dso:per-line", answer)),
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
+
+    // The decision: the person's, a correction under the assumption's
+    // key, whose note is the alternative the agent had named; the one
+    // annotation a person wrote is that decision.
+    let stored = "USE fin; \
+        SELECT aspect, key, stance, note, folded_in FROM review_decisions; \
+        SELECT aspect, actor_kind FROM glossary WHERE actor_kind = 'human'; \
+        SELECT kind, subject FROM open_items WHERE kind = 'apply-decision'; \
+        SELECT step, asset, state, who, for_view FROM next WHERE step = 'decide';";
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 83, stored, None)).await).await;
+    let outcomes = outcomes_of(&body);
+    assert_eq!(
+        outcomes[1]["rows"],
+        json!([{"aspect": "dso", "key": "per-line", "stance": "corrected",
+                "note": "per order", "folded_in": false}]),
+        "{outcomes}"
+    );
+    assert_eq!(
+        outcomes[2]["rows"],
+        json!([{"aspect": "review_decision", "actor_kind": "human"}]),
+        "{outcomes}"
+    );
+    // What the agent is asked to do: apply the decision to the view.
+    assert_eq!(
+        outcomes[3]["rows"],
+        json!([{"kind": "apply-decision", "subject": "dso"}]),
+        "{outcomes}"
+    );
+    assert_eq!(
+        outcomes[4]["rows"],
+        json!([{"step": "decide", "asset": "fin.dso", "state": "decided",
+                "who": "agent", "for_view": "dso"}]),
+        "{outcomes}"
+    );
+
+    // The question is closed: the next review asks nothing.
+    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 84, review, None)).await).await;
+    assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
+
+    // Without an alternative the form has no such field.
+    let plain = r#"USE fin; DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS VIEW;
+        GLOSS dpo ON fin AS $${"sql": "SELECT 1 AS v",
+          "assumptions": [{"dimension": "definition", "key": "goods-only", "assumption": "goods only",
+            "basis": "judgment", "confidence": 0.7}]}$$;"#;
+    let body = expect_ok(mcp(app.clone(), call_with(meta(), 85, plain, None)).await).await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    let body = expect_ok(mcp(app, call_with(meta_elicit(), 86, review, None)).await).await;
+    let fields = &body["result"]["inputRequests"]["loose:fin:dpo:goods-only"]["params"]["requestedSchema"]
+        ["properties"];
+    assert!(fields["1_correct"].is_object(), "{body}");
+    assert!(fields["2_rather"].is_null(), "{body}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again() {
     // The dialog has two outcomes. Accepting with something said is
@@ -2517,4 +2621,80 @@ async fn a_call_that_moves_the_summary_carries_its_counts() {
         blocks.len() - 1,
         "{read}"
     );
+}
+
+/// A refusal raised inside a function body reaches both interfaces
+/// with its reason once: the code the kit raised it under is a field
+/// of its own, and the reason begins at the refusal, without the
+/// engine's error-class wrappers before it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refusal_from_a_function_body_carries_its_code_and_its_reason_once() {
+    let (app, _dir) = app_on_fin().await;
+    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
+                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
+                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
+    let body = expect_ok(
+        common::mcp_on(
+            app.clone(),
+            "/fin/mcp",
+            "127.0.0.1",
+            call_with(meta(), 1, setup, None),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+
+    // A measurement the extension runs, and a read whose macro refuses.
+    for (id, statement, code) in [
+        (2, "SELECT metric_plan() FROM fin.spend", "not_a_plan"),
+        (
+            3,
+            "SELECT * FROM metric_series(world := 'dream')",
+            "unknown_world",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/fin/query")
+                    .header(header::AUTHORIZATION, common::bearer("dev-human"))
+                    .body(Body::from(statement))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let answered = body_json(response).await;
+        assert_eq!(answered["code"], json!(code), "{answered}");
+        let reason = answered["error"].as_str().unwrap().to_string();
+        let after_prefix = reason.strip_prefix("glossql: ").unwrap_or(&reason);
+        assert!(
+            after_prefix.starts_with(&format!("{code}: ")),
+            "the reason begins at the refusal: {reason}"
+        );
+
+        let body = expect_ok(
+            common::mcp_on(
+                app.clone(),
+                "/fin/mcp",
+                "127.0.0.1",
+                call_with(meta(), id, statement, None),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(body["result"]["isError"], json!(true), "{body}");
+        assert_eq!(
+            body["result"]["_meta"][glossdb_serverd::REFUSAL_META]["code"],
+            json!(code),
+            "{body}"
+        );
+        assert_eq!(
+            body["result"]["content"][0]["text"],
+            json!(reason),
+            "{body}"
+        );
+    }
 }

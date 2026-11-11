@@ -52,7 +52,13 @@ oauth2 = { version = "5", default-features = false, features = ["reqwest", "rust
 base64 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
+# `testing`: a gate on a fixed key set and the engine's test seams.
+# The dev-dependencies enable it; a release build does not compile them.
+[features]
+testing = ["glossdb-duck/testing"]
+
 [dev-dependencies]
+glossdb-serverd = { path = ".", features = ["testing"] }
 # The docs and skills suites parse every fenced example.
 arrow-ipc = { workspace = true }
 tower.workspace = true

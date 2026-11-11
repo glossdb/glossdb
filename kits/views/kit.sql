@@ -2,8 +2,8 @@
 -- and the reads are SQL over the collapsed annotations and the view. Loaded after
 -- the KPI kit, whose words the columns carry (role, additivity, dimension),
 -- and the quality kit, whose temporal profile measures a time column's
--- cadence. What an actor must learn about these words is SKILL.md beside
--- this file.
+-- cadence. What an actor must learn about these words is the
+-- glossql-modeling skill (skills/glossql-modeling/references/).
 --
 --   FROM glossql_kit('kits/kpi/kit.sql');
 --   FROM glossql_kit('kits/quality/kit.sql');

@@ -43,7 +43,7 @@ The result is a JSON array with one outcome per statement:
 | a read | `{"columns": [{"name", "type"}], "rows": […], "row_count": n, "truncated": bool}`; `columns` is present with zero rows |
 | a write | `{"done": "…"}` or `{"affected": n}` |
 | a view definition (`GLOSS` on a `VIEW` name) | the view's row of `view_summary()` |
-| a refusal | a tool error with the reason. In a sequence it names its place (`statement 2 of 7 refused: …`), and `{"completed": […]}` carries the outcomes of the statements that ran |
+| a refusal | a tool error with the reason. In a sequence it names its place (`statement 2 of 7 refused: …`), and `{"completed": […]}` carries the outcomes of the statements that ran. Where the refusal has a code, `_meta` carries it under `glossdb/refusal` as `{"code": "…"}` ([refusal codes](#refusal-codes)) |
 
 A data read returns at most `--row-cap` rows (default 200).
 `GLOSSARY()`, `TESTS()` and the catalog tables are not capped.
@@ -117,6 +117,30 @@ leaves the question open ([review and decide](../usage/review.md)).
   503 with the reason; where none is named the reason names
   `GLOSSDB_SERVICE_URL`. The MCP tool reports the same reason as a
   refusal.
+- A refusal's body is `{"error": "<reason>"}`, with `"code"` beside
+  it where the refusal has one.
+
+## Refusal codes
+
+A refusal carries a code where the server can class it or a kit
+raised it under one. The code is stable; the reason after it is free
+text. A kit raises a refusal with a code by starting the message with
+it: `error('not_a_plan: …')`, a lower-case word in snake case, then a
+colon and a space. The reason begins with the code, after `glossql: `
+where the refusal came out of a function.
+
+| Code | Raised by | When |
+|---|---|---|
+| `unknown_name` | the server | a statement names something the catalog does not hold |
+| `service_not_configured` | the server | a preview measurement needs the model service and none is named |
+| `service_failed` | the server | the model service refused or did not answer |
+| `unknown_world` | `metric_series()` | `world` is not `actual`, `plan`, `forecast` or `scenario` |
+| `plan_not_named` | `metric_series()` | `world := 'plan'` without `plan` |
+| `unknown_plan` | `metric_series()` | `plan` names no declared property |
+| `not_a_plan` | `metric_series()`, `metric_plan()` | the view named is not a plan |
+| `plan_not_served` | `metric_series()`, `metric_plan()` | the plan's definition cannot be served; the reason says what to change |
+| `scenario_not_named` | `metric_series()` | `world := 'scenario'` without `scenario` |
+| `unknown_scenario` | `metric_series()` | `scenario` names no declared scenario |
 
 ## The app paths
 

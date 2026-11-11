@@ -43,7 +43,7 @@ pub async fn query(
         // stream. Nothing is on the wire yet, so the status is still
         // ours to set.
         Ok(mut query) => match query.stream.next().await {
-            Some(Err(e)) => fail(status_of_ran(&e), e.to_string()),
+            Some(Err(e)) => refused(status_of_ran(&e), &e),
             first => (
                 [(header::CONTENT_TYPE, glossdb_apps::ipc::ARROW_STREAM)],
                 glossdb_apps::ipc::body(query.schema, query.stream, first),
@@ -68,7 +68,7 @@ pub async fn query(
                         }
                         _ => None,
                     };
-                    let mut body = serde_json::json!({ "error": e.to_string() });
+                    let mut body = refusal_json(&e);
                     if let Some(completed) = completed {
                         body["completed"] = completed;
                     }
@@ -76,7 +76,7 @@ pub async fn query(
                 }
             }
         }
-        Err(e) => fail(status_of(&e), e.to_string()),
+        Err(e) => refused(status_of(&e), &e),
     }
 }
 
@@ -105,6 +105,20 @@ fn status_of(e: &SessionError) -> StatusCode {
         }
         _ => StatusCode::UNPROCESSABLE_ENTITY,
     }
+}
+
+/// A refusal's body: the reason, and its code where it has one
+/// ([`SessionError::code`]).
+fn refusal_json(e: &SessionError) -> serde_json::Value {
+    let mut body = serde_json::json!({ "error": e.to_string() });
+    if let Some(code) = e.code() {
+        body["code"] = code.into();
+    }
+    body
+}
+
+fn refused(status: StatusCode, e: &SessionError) -> Response {
+    (status, Json(refusal_json(e))).into_response()
 }
 
 fn fail(status: StatusCode, error: String) -> Response {
