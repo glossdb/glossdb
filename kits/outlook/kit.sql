@@ -226,6 +226,7 @@ GROUP BY t.threshold;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_ranges WITH $${
+  "description": "Preview. The newest complete period of each metric against the range its own history predicted.",
   "type": "object",
   "properties": {
     "served_by": {"type": ["string", "null"]},
@@ -444,6 +445,7 @@ FROM rows_ GROUP BY grain, totals, horizon;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_forecast WITH $${
+  "description": "Preview. A forecast is stored for every metric a plan or a scenario needs.",
   "type": "object", "x-used-by": ["plan", "scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
@@ -840,6 +842,7 @@ ORDER BY r.scenario, r.metric;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_scenario WITH $${
+  "description": "Preview. An estimate is stored for every declared scenario.",
   "type": "object", "x-used-by": ["scenario"],
   "properties": {
     "served_by": {"type": ["string", "null"]},
@@ -1279,6 +1282,7 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_plan WITH $${
+  "description": "Preview. Each plan against the forecast of the metric it plans.",
   "type": "object", "x-used-by": ["plan"],
   "properties": {
     "plan": {"type": "string"},

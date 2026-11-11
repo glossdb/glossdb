@@ -504,8 +504,8 @@ async fn every_page_renders_and_passes_the_shells_policy() {
         "/perf/app/console/p/views?view=cleaned&kind=relation",
         "/perf/app/console/p/views?view=payables&kind=scalar",
         "/perf/app/console/p/quality",
-        "/perf/app/console/p/quality?test=role_test&kind=values",
-        "/perf/app/console/p/quality?test=role_test&kind=results&tab=measurements",
+        "/perf/app/console/p/quality?test=role_test",
+        "/perf/app/console/p/quality?test=range_test&kind=range",
         "/perf/app/console/p/review",
         "/perf/app/console/p/export",
         "/perf/app/console/p/query",
@@ -843,8 +843,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("view_fields", "catalog"),
         ("tests", "catalog"),
         ("test", "catalog"),
-        ("test_values", "catalog"),
-        ("test_rates", "catalog"),
         ("test_results", "catalog"),
         ("axes", "catalog"),
         ("remeasure", "catalog"),
@@ -1251,29 +1249,25 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
     }
     let tests = body_text(tests).await;
     assert_eq!(
-        tests.matches("dso_test\n").count(),
+        tests.matches("?test=dso_test\n").count(),
         1,
-        "one test row for the detector, and the meaning annotation is not a test:\n{tests}"
-    );
-    assert!(
-        tests.contains("?test=dso_test&kind=results\n"),
-        "the row opens the test, with the detector's kind:\n{tests}"
+        "one row for the test with a scoring function, linked to its page; the test without one is not listed:\n{tests}"
     );
 
-    // The test's own frames: the declaration with its detector and
-    // threshold, then every result.
+    // The test's own frames: how it scores (the function and the
+    // threshold), then every result.
     let test = body_text(get(&app, "/perf/app/console/frames/test?test=dso_test").await).await;
-    assert!(test.contains("fixed_check\n"), "{test}");
-    assert!(test.contains("0.9\n"), "the threshold:\n{test}");
+    assert!(test.contains("fixed_check"), "{test}");
+    assert!(test.contains("0.9"), "the threshold:\n{test}");
     let results =
         body_text(get(&app, "/perf/app/console/frames/test_results?test=dso_test").await).await;
-    assert!(results.contains("perf\n"), "the subject:\n{results}");
+    assert!(results.contains("the dataset\n"), "the asset:\n{results}");
     assert!(results.contains("orange\n"), "{results}");
     assert!(results.contains("0.42\n"), "the score:\n{results}");
 
     // A value test: the kit's detector over a value two actors
-    // disagree on. The evidence lists that column with both values,
-    // the human's first; the agreeing columns are counted, not listed.
+    // disagree on. Its results list every column with its
+    // annotations, a person's first.
     agent
         .execute(
             r#"USE perf;
@@ -1295,30 +1289,27 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash"}$$;"#)
         .await
         .unwrap();
-    let tests = body_text(get(&app, "/perf/app/console/frames/tests").await).await;
+    let values = body_text(
+        get(
+            &app,
+            "/perf/app/console/frames/test_results?test=value_test",
+        )
+        .await,
+    )
+    .await;
     assert!(
-        tests.contains("?test=value_test&kind=values\n"),
-        "a value test opens to its values:\n{tests}"
-    );
-    let values =
-        body_text(get(&app, "/perf/app/console/frames/test_values?test=value_test").await).await;
-    assert!(
-        values.contains("ledger.value\n"),
-        "the column whose annotations differ:\n{values}"
+        values.contains("ledger.value\n") && values.contains("ledger.month\n"),
+        "one result per annotated column:\n{values}"
     );
     assert!(
         values.find("the cash").unwrap() < values.find("the money").unwrap(),
-        "both values, the human's first:\n{values}"
-    );
-    assert!(
-        !values.contains("ledger.month"),
-        "an agreeing column is not listed:\n{values}"
+        "both values of the column that differs, the person's first:\n{values}"
     );
     let points = get(&app, "/perf/app/console/frames/test_points?test=value_test").await;
     assert_eq!(
         row_count(points).await,
         0,
-        "a value test has no corridor points"
+        "a value test has no expected-range points"
     );
 }
 
@@ -1863,12 +1854,11 @@ async fn a_download_refuses_what_it_should() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_lineage_page_serves_tables_keys_and_reads() {
-    // The graph's two frames are the catalog as rows: every column of
-    // every loaded table, every declared key edge, and for every
-    // metric definition the columns its served fields descend from. A second
-    // table and an edge between them give the key half something to
-    // say; the seeded metric definitions give the reads half.
+async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
+    // The lineage's frames are the catalog as rows: every source a
+    // load query reads, every column of every loaded table, and for
+    // every view the columns its served fields descend from. The
+    // declared relationships are the model's edges.
     let (app, plane, dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -1945,7 +1935,14 @@ async fn the_lineage_page_serves_tables_keys_and_reads() {
         "a metadata table leaked into the nodes:\n{rows:?}"
     );
 
-    // Edges: the declared key edge and the metric definition's three reads.
+    // The model's edges are the declared relationships.
+    let keys = body_text(get(&app, "/perf/app/console/frames/model_edges").await).await;
+    assert!(
+        keys.contains("ledger.cohort") && keys.contains("cohorts.cohort") && keys.contains("m2o"),
+        "{keys}"
+    );
+
+    // The lineage's edges: a load from its source, and the view's reads.
     let edges = get(&app, "/perf/app/console/frames/lineage_edges").await;
     assert_eq!(edges.status(), StatusCode::OK);
     let bytes = to_bytes(edges.into_body(), usize::MAX).await.unwrap();
@@ -1973,11 +1970,7 @@ async fn the_lineage_page_serves_tables_keys_and_reads() {
         }
     }
     assert!(
-        edges.contains(&(
-            "ledger.cohort".into(),
-            "cohorts.cohort".into(),
-            "m2o".into()
-        )),
+        edges.contains(&("erp2".into(), "cohorts".into(), "loads".into())),
         "{edges:?}"
     );
     assert!(
@@ -2453,7 +2446,7 @@ async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
         ),
         ("/perf/app/console/p/quality", "/perf/app/console/p/quality"),
         (
-            "/perf/app/console/p/quality?test=role_test&kind=values",
+            "/perf/app/console/p/quality?test=role_test",
             "/perf/app/console/p/quality",
         ),
         ("/perf/app/console/p/query", "/perf/app/console/p/export"),

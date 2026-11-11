@@ -750,11 +750,10 @@ details.fold[open] summary { color: var(--muted); }
 
 /* ---- the lineage graph (gl-graph) --------------------------------- */
 
-/* Tables as column boxes placed by dagre, views as a stack on the
-   right, the catalog's edges between them: a key edge solid, a
-   metric definition's read dashed. Amber lights the edges a hovered or
-   focused column touches — the one thing on the page asking for the
-   eye. A graph wider than the column scrolls inside its section. */
+/* Boxes with their columns, placed by dagre along the edges: a key
+   solid, a view's read dashed, a load dotted. Amber lights the edges
+   a hovered or focused column touches. A graph wider than the page
+   scrolls inside its section. */
 .graph-wrap { overflow-x: auto; overflow-y: hidden; margin-top: 1rem; }
 .graph-wrap.overflows { box-shadow: inset -28px 0 18px -18px rgba(0, 0, 0, 0.55); }
 .graph-wrap:not(.overflows) + .scroll-hint { display: none; }
@@ -762,6 +761,7 @@ gl-graph { display: block; min-height: 5rem; }
 gl-graph svg { display: block; font-family: var(--mono); }
 .n-box { fill: var(--panel); stroke: var(--rule); }
 .n-box.view { fill: var(--raised); }
+.n-box.source { fill: transparent; stroke-dasharray: 3 3; }
 .n-head { fill: var(--ink); font-size: 12px; font-weight: 600; }
 a:hover > .n-head { text-decoration: underline; }
 .n-sub { fill: var(--faint); font-size: 10px; }
@@ -777,6 +777,7 @@ a:hover > .n-head { text-decoration: underline; }
 .fold:hover text { fill: var(--muted); }
 .e { fill: none; stroke: var(--faint); stroke-width: 1.2; opacity: 0.7; }
 .e.reads { stroke-dasharray: 4 3; }
+.e.loads { stroke-dasharray: 1 3; stroke-width: 1.6; }
 .e.lit { stroke: var(--open); opacity: 1; stroke-width: 1.6; }
 .e.dim { opacity: 0.18; }
 .e-tip { fill: var(--faint); font-size: 9px; }
@@ -794,6 +795,7 @@ a:hover > .n-head { text-decoration: underline; }
 .legend svg { vertical-align: middle; margin-right: 0.35rem; }
 .legend .lg-key { stroke: var(--muted); stroke-width: 1.2; fill: none; }
 .legend .lg-reads { stroke: var(--muted); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+.legend .lg-loads { stroke: var(--muted); stroke-width: 1.6; fill: none; stroke-dasharray: 1 3; }
 .legend .role-measure { color: var(--settled); }
 .focus-line { font-size: var(--step); color: var(--faint); margin: 0.4rem 0 0; min-height: 1.4em; }
 .focus-line b { color: var(--open); font-weight: 500; }
@@ -958,3 +960,10 @@ gl-query .wgroup { display: flex; gap: 0.5rem; align-items: baseline; margin-bot
 gl-query a.wbtn { text-decoration: none; }
 /* The footer's steps sit on the footer's own line, after the range. */
 gl-query .table-foot .wbtn { margin-left: 0.4rem; }
+
+/* ---- one test's page ---------------------------------------------- */
+.t-asks { font-size: 1rem; line-height: 1.5; color: var(--ink); max-width: 52rem; margin: 0.9rem 0 1rem; }
+dl.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem 2rem; margin: 0; }
+dl.facts dt { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
+dl.facts dd { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+.preview { font-family: var(--mono); font-size: 0.68rem; color: var(--open); border: 1px solid currentColor; border-radius: 2px; padding: 0 0.3rem; margin-left: 0.4rem; letter-spacing: 0.04em; text-transform: lowercase; }

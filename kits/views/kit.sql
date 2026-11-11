@@ -481,6 +481,7 @@ CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
 -- them, or the latest row per value by row_number() = 1) does not repeat,
 -- whatever its table holds. A metric that joins nothing cannot fan out.
 DECLARE ASPECT fan_out_check WITH $${
+  "description": "A join in the view must not multiply rows. Fails where the view joins two tables on columns whose values repeat on both sides.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
@@ -549,6 +550,7 @@ DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_toler
 -- and that agrees with how the column is computed: the lineage's shape says
 -- a ratio, an average or a distinct count, none of which may be summed.
 DECLARE ASPECT additivity_check WITH $${
+  "description": "The view adds its value up the way the value allows. Fails where a ratio, an average or a distinct count is summed.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
@@ -605,6 +607,7 @@ DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETEC
 -- them, an outer join counts them under no member. Where no edge is
 -- declared between the tables a metric scans there is nothing to check.
 DECLARE ASPECT orphan_check WITH $${
+  "description": "Referential integrity on the relationships the view joins over: the share of rows whose key finds no parent row.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
@@ -669,6 +672,7 @@ DECLARE ASPECT validity WITH $${
 -- scan that reads neither or one joins every version of a key, and the
 -- number counts a row once per version.
 DECLARE ASPECT validity_check WITH $${
+  "description": "A view that reads a table with validity dates reads both dates. Fails where it reads one or none, so a key counts once per version.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},

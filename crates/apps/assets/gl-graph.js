@@ -1,28 +1,24 @@
-// <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges"
-//           empty="…"> — column lineage over two stored frames. The
-// nodes frame is one row per column: `node` (a table, or a view by
-// its name), `kind` (`table` | `view`), `col`, `ord`, `role`.
-// The edges frame is one row per edge: `src`, `dst` (column paths,
-// `table.col` or `view.field`, a composite endpoint as
-// `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
+// <gl-graph nodes="frames/…" edges="frames/…" empty="…"> draws a graph
+// of boxes with their columns over two stored frames.
 //
-// Optional, for the model page: a node row may carry `sub` (a line
-// under the node's name) and `link` (the node's page); a column row
-// may carry `detail` (shown in place of the bare role, and enough to
-// keep the column unfolded). `node-width` on the element widens the
-// boxes. A frame without them draws as lineage always has.
+// The nodes frame is one row per column: `node`, `kind` (`source` |
+// `table` | `view`), `col` (empty for a node with no columns), `ord`,
+// and optionally `role`, `detail` (shown at the column's right, and
+// enough to keep the column unfolded), `sub` (a line under the node's
+// name) and `link` (the node's page).
 //
-// dagre places the tables, reading left to right along the keys — a
-// parent holds left of the table that points at it. The views are
-// not ranked with them: they are the right-hand column, one stack
-// ordered by where their sources sit, so the graph is as wide as its
-// longest key chain and no wider. The element draws the rest as SVG
-// in the page's own classes; nothing here is a chart.
+// The edges frame is one row per edge: `src`, `dst`, `kind`.
+//   `m2o` | `o2o`: a declared key between two columns (`table.col`, a
+//     composite endpoint as `table.(a, b)`); the parent is placed left
+//     of the table that points at it.
+//   `reads`: a column to the view column that descends from it.
+//   `loads`: a source to the table its load query produces, node to
+//     node.
 //
-// A column an edge touches, or one with a judged role, shows; the
-// rest fold under a count and open on click — a disclosure, not
-// state. Hover follows a column through its edges. Click puts it in
-// the URL as `focus`, so the view is a link; the page renders it lit.
+// dagre places the nodes left to right along the edges. A column an
+// edge touches, or one with a detail, shows; the rest fold under a
+// count and open on click. Hover follows a column through its edges.
+// Click puts it in the URL as `focus`, so the picture is a link.
 (function () {
   'use strict';
 
@@ -114,13 +110,17 @@
         if (!byNode.has(r.node)) {
           byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', link: r.link || '', columns: [] });
         }
-        byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
+        if (r.col) byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
       }
       const NODES = [...byNode.values()];
 
       const touched = new Set();
       const edges = [];
       for (const r of edgeRows) {
+        if (r.kind === 'loads') {
+          edges.push({ from: r.src, to: r.dst, kind: r.kind });
+          continue;
+        }
         const from = endpoints(r.src);
         const to = endpoints(r.dst);
         for (let i = 0; i < from.length; i++) {
@@ -147,44 +147,25 @@
       const g = new dagre.graphlib.Graph();
       g.setGraph({ rankdir: 'LR', nodesep: 22, ranksep: 70, marginx: 8, marginy: 8 });
       g.setDefaultEdgeLabel(() => ({}));
-      const tables = NODES.filter((n) => n.kind !== 'view');
-      const views = NODES.filter((n) => n.kind === 'view');
-      for (const n of tables) g.setNode(n.name, { width: W, height: height(n) });
+      for (const n of NODES) g.setNode(n.name, { width: W, height: height(n) });
       const seen = new Set();
       for (const e of edges) {
-        if (e.kind === 'reads') continue;
-        const child = nodeOf(e.from);
-        const parent = nodeOf(e.to);
-        const key = parent + '>' + child;
-        if (child !== parent && g.hasNode(parent) && g.hasNode(child) && !seen.has(key)) {
-          g.setEdge(parent, child);
-          seen.add(key);
+        // a key points from the child to its parent; the data flows
+        // from the parent, so the parent ranks first
+        const key = e.kind === 'm2o' || e.kind === 'o2o';
+        const first = e.kind === 'loads' ? e.from : nodeOf(key ? e.to : e.from);
+        const then = e.kind === 'loads' ? e.to : nodeOf(key ? e.from : e.to);
+        const pair = first + '>' + then;
+        if (first !== then && g.hasNode(first) && g.hasNode(then) && !seen.has(pair)) {
+          g.setEdge(first, then);
+          seen.add(pair);
         }
       }
       dagre.layout(g);
       const pos = new Map();
-      for (const n of tables) pos.set(n.name, g.node(n.name));
-
-      // The view column: past the widest rank, stacked in the order
-      // of their sources' mean y so the dashed edges cross least.
-      const tablesWidth = tables.length ? g.graph().width : 0;
-      const colX = tablesWidth + (tables.length ? 70 : 8) + W / 2;
-      const meanY = (m) => {
-        const ys = edges
-          .filter((e) => nodeOf(e.to) === m.name)
-          .map((e) => pos.get(nodeOf(e.from)))
-          .filter(Boolean)
-          .map((p) => p.y);
-        return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
-      };
-      let stackY = 8;
-      for (const m of views.slice().sort((a, b) => meanY(a) - meanY(b))) {
-        const h = height(m);
-        pos.set(m.name, { x: colX, y: stackY + h / 2, width: W, height: h });
-        stackY += h + 22;
-      }
-      const totalW = (views.length ? colX + W / 2 : tablesWidth) + 8;
-      const totalH = Math.max(tables.length ? g.graph().height : 0, stackY);
+      for (const n of NODES) pos.set(n.name, g.node(n.name));
+      const totalW = g.graph().width + 8;
+      const totalH = g.graph().height + 8;
 
       const svg = el('svg', {
         width: totalW,
@@ -232,7 +213,9 @@
           grp.append(t);
         }
         const top = head(n);
-        grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: top - 4, y2: top - 4 }));
+        if (s.cols.length || s.hidden) {
+          grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: top - 4, y2: top - 4 }));
+        }
         s.cols.forEach(([c, role, detail], i) => {
           const id = n.name + '.' + c;
           const cy = top + i * ROW;
@@ -245,6 +228,7 @@
           grp.append(col);
           anchors.set(id, { x0: x, x1: x + p.width, y: y + cy + ROW / 2 });
         });
+        anchors.set('node:' + n.name, { x0: x, x1: x + p.width, y: y + 15 });
         if (s.hidden) {
           const fold = el('g', { class: 'fold', 'data-node': n.name });
           fold.append(el('text', { x: 10, y: top + s.cols.length * ROW + 11 }, '+ ' + s.hidden + ' more'));
@@ -254,8 +238,9 @@
       }
 
       for (const e of edges) {
-        const a = anchors.get(e.from);
-        const b = anchors.get(e.to);
+        const whole = e.kind === 'loads';
+        const a = anchors.get(whole ? 'node:' + e.from : e.from);
+        const b = anchors.get(whole ? 'node:' + e.to : e.to);
         if (!a || !b) continue;
         const ltr = a.x1 <= b.x0;
         const x0 = ltr ? a.x1 : a.x0;
@@ -263,7 +248,7 @@
         const dx = Math.max(30, Math.abs(x1 - x0) / 2) * (ltr ? 1 : -1);
         const d = `M${x0},${a.y} C${x0 + dx},${a.y} ${x1 - dx},${b.y} ${x1},${b.y}`;
         layerE.append(el('path', { class: 'e ' + e.kind, d, 'data-from': e.from, 'data-to': e.to }));
-        if (e.kind !== 'reads') {
+        if (e.kind === 'm2o' || e.kind === 'o2o') {
           const tip = e.kind === 'o2o' ? '↔' : '→';
           layerE.append(
             el('text', {

@@ -68,11 +68,7 @@ FROM (
   FROM views WHERE kind = 'scalar'
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
-         (SELECT * FROM base) || 'quality?test=' || name || '&kind=' || CASE detector
-           WHEN 'range_breach' THEN 'corridor'
-           WHEN 'value_entropy' THEN 'values'
-           WHEN 'rate_tolerance' THEN 'rate'
-           ELSE 'results' END, 0
+         (SELECT * FROM base) || 'quality?test=' || name || CASE WHEN detector = 'range_breach' THEN '&kind=range' ELSE '' END, 0
   FROM test)
 ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Catalog' THEN 1 WHEN 'Views' THEN 2
                   WHEN 'Quality' THEN 3 WHEN 'Review' THEN 4 ELSE 5 END,

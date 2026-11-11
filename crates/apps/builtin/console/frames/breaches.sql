@@ -71,7 +71,7 @@ SELECT coalesce(t2.title, o.name) AS title,
                 'no test scores the expected range') AS meta,
        coalesce('measured ' || strftime(v.computed_at, '%d %b %Y %H:%M'), '') AS at,
        CASE WHEN coalesce(v.current, true) THEN '' ELSE ' · from before the last change' END AS stale,
-       coalesce('?test=' || v.test || '&kind=corridor', '') AS link_test,
+       coalesce('?test=' || v.test || '&kind=range', '') AS link_test,
        '/' || d.dataset || '/app/console/p/views?view=' || o.name || coalesce('&dim=' || t.axis, '') AS link_view,
        coalesce(t.axis, 'nothing') AS axis
 FROM outside o
