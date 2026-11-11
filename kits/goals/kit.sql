@@ -219,7 +219,7 @@ CREATE OR REPLACE VIEW main.next AS
            'SELECT key, assumption, basis FROM open_questions WHERE aspect = ''' || q.aspect || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d GROUP BY ds.d, q.aspect),
   s_serve AS (
-    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no metric is defined', '', '',
+    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no view is defined (a metric, a single value or a table)', '', '',
            'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
              || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <slicing columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM main.metric_summary() WHERE stopped IS NULL)
@@ -228,7 +228,8 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT 2, 5, 'serve', ds.d || '.' || m.metric, 'blocked', 'agent', coalesce(m.reason, 'not served'), m.metric, '',
            main.metric_redefine(ds.d, m.metric)
     FROM main.metric_summary() m, ds
-    WHERE NOT m.applicable AND m.stopped IS NULL
+    -- a single value and a table are served as they are; only a metric needs a series
+    WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
       AND NOT EXISTS (SELECT 1 FROM main.metric_tests() t WHERE t.metric = m.metric AND t.state <> 'green')),
   -- the preview features: their findings, and their measurements that are due
   s_outlook AS (

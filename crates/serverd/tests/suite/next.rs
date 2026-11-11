@@ -154,6 +154,23 @@ async fn a_dataset_with_a_table_and_no_metric_has_one_open_row() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_table_and_a_single_value_are_served_as_they_are() {
+    let (app, _dir) = fin().await;
+    // A view is a metric, a single value or a table. Only a metric needs
+    // a series; the other two leave nothing open under "serve".
+    say(
+        &app,
+        r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, upper(fund) AS fund FROM fin.ledger"}$$;
+           DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
+           GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
+    )
+    .await;
+    let serve = rows(&app, "SELECT * FROM next WHERE step = 'serve'").await;
+    assert!(serve.is_empty(), "{serve:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     let (app, _dir) = fin().await;
 

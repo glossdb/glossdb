@@ -13,7 +13,7 @@ agent, or the person reading it, decides what to do.
 | `describe` | a property the kits require is missing on a table, column, relationship or metric that a metric reads; a description is outdated; a value is in conflict |
 | `test` | a test on a metric is red, orange, yellow or has not run |
 | `decide` | a person decided an assumption and the definition does not carry it yet; a question waits for a person |
-| `serve` | no metric is defined; a metric cannot be served |
+| `serve` | no view is defined (a metric, a single value or a table); a metric cannot be served as a series |
 
 The same list serves two situations. While the layer is built, rows
 are `missing` or `not_run`. Once it runs, a load can open rows again:
