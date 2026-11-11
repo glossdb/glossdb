@@ -343,3 +343,67 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
     let row = goal(&app, "amount_per_booking").await;
     assert_eq!(text(&row, "state"), "done", "{row}");
 }
+
+/// The rows of `next_steps` under "describe" for the bookings table.
+async fn bookings_rows(app: &Router) -> Vec<Value> {
+    rows(
+        app,
+        "SELECT state, cause FROM next_steps WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
+    )
+    .await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_changed_load_is_named_with_what_it_changed() {
+    // After the layer is built, a load query that derives a column
+    // differently makes its description outdated. The row under
+    // "describe" gives the cause: the row counts of the two loads and
+    // the columns whose profile moved. The server profiles the columns
+    // a metric reads itself.
+    let (app, dir) = fin().await;
+    let file = dir.path().join("bookings.csv");
+    let head =
+        "booked,amount,fund\n2024-01-01,10,general\n2024-01-02,20,water\n2024-02-01,30,parks\n";
+    std::fs::write(&file, head).unwrap();
+    let load = "DECLARE RECIPE bookings ON fin FROM erp AS $$SELECT CAST(booked AS DATE) AS booked, \
+                CAST(amount AS DOUBLE) AS amount, fund FROM read_csv('bookings.csv')$$;";
+    say(
+        &app,
+        &format!(
+            "DECLARE SOURCE erp SET (type: csv, location: '{}'); {load}",
+            dir.path().display()
+        ),
+    )
+    .await;
+    say(
+        &app,
+        r#"DECLARE ASPECT booked_amount WITH $${"title": "Booked amount"}$$ AS VIEW;
+           GLOSS booked_amount ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, fund, sum(amount) AS value FROM fin.bookings GROUP BY 1, 2", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
+           GLOSS meaning ON fin.bookings.fund AS $${"value": "the fund a booking is charged to"}$$;"#,
+    )
+    .await;
+    let before = bookings_rows(&app).await;
+    assert!(
+        before.iter().all(|r| text(r, "state") != "stale"),
+        "{before:?}"
+    );
+    // One booking more, on a fund not seen before, and the fund now
+    // derived in upper case.
+    std::fs::write(&file, format!("{head}2024-03-01,40,roads\n")).unwrap();
+    say(
+        &app,
+        &load.replace(", fund FROM", ", upper(fund) AS fund FROM"),
+    )
+    .await;
+    let after = bookings_rows(&app).await;
+    let stale = after
+        .iter()
+        .find(|r| text(r, "state") == "stale")
+        .unwrap_or_else(|| panic!("no outdated description: {after:?}"));
+    let cause = text(stale, "cause");
+    assert!(cause.contains("4 rows, 3 before"), "{cause}");
+    assert!(
+        cause.contains("fund (4 distinct values, 3 before"),
+        "{cause}"
+    );
+}

@@ -1504,7 +1504,7 @@ impl Session {
             if (measured
                 || lines
                     .iter()
-                    .any(|l| l.starts_with("glossed ") || l.starts_with("imported ")))
+                    .any(|l| l.starts_with("glossed ") || loaded_table(l).is_some()))
                 && let Err(e) = built_in_tests(&conn, &lines, measured)
             {
                 tracing::debug!(error = %e, "built-in tests: not run");
@@ -1835,16 +1835,16 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
                     &mut metrics,
                 )?;
             }
-        } else if let Some(rest) = line.strip_prefix("imported ") {
-            let table = rest.split(':').next().unwrap_or("").trim();
+        } else if let Some(table) = loaded_table(line) {
             let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
                 continue;
             };
             scanning(conn, dataset, table, &is_metric, &mut metrics)?;
         }
     }
+    check_relationships(conn, &metrics);
     for (dataset, metric) in metrics {
-        profile_join_columns(conn, &dataset, &metric);
+        profile_columns(conn, &dataset, &metric);
         for check in &checks {
             if let Err(e) = run(conn, &format!("SELECT {check}() FROM {dataset}.{metric}")) {
                 tracing::debug!(error = %e, %dataset, %metric, %check, "built-in test: not run");
@@ -1874,14 +1874,41 @@ fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result
     Ok(())
 }
 
-/// The fan-out test reads whether a join column's values repeat from
-/// its profile: one aggregate per column of a metric's joins, stored
-/// and reused while the table holds.
-fn profile_join_columns(conn: &Connection, dataset: &str, metric: &str) {
-    let Ok((_, _, joined)) = arrow_batches(
+/// The measurements the tests read are the server's to run: the orphan
+/// test reads the relationship check of each dataset a metric is in.
+fn check_relationships(conn: &Connection, metrics: &std::collections::BTreeSet<(String, String)>) {
+    let datasets: std::collections::BTreeSet<&String> = metrics.iter().map(|(d, _)| d).collect();
+    for dataset in datasets {
+        if let Err(e) = run(
+            conn,
+            &format!("SELECT relationship_coherence() FROM {dataset}"),
+        ) {
+            tracing::debug!(error = %e, %dataset, "relationships: not checked");
+        }
+    }
+}
+
+/// The table a statement loaded, from its acknowledgement: a load
+/// query declared (`landed <table>: …`) or run again (`imported
+/// <table>: …`).
+fn loaded_table(line: &str) -> Option<&str> {
+    let rest = line
+        .strip_prefix("imported ")
+        .or_else(|| line.strip_prefix("landed "))?;
+    Some(rest.split(':').next().unwrap_or("").trim())
+}
+
+/// A profile of every column a metric reads: one aggregate per column,
+/// stored and reused while the table holds. The fan-out test reads
+/// from it whether a join column's values repeat, and the next steps
+/// read from it what a load changed.
+fn profile_columns(conn: &Connection, dataset: &str, metric: &str) {
+    let Ok((_, _, scanned)) = arrow_batches(
         conn,
         &format!(
-            "SELECT left_column FROM glossql_views_joins('{d}') WHERE view = '{m}' \
+            "SELECT DISTINCT table_name || '.' || unnest(columns) FROM glossql_views_scans('{d}') \
+             WHERE view = '{m}' \
+             UNION SELECT left_column FROM glossql_views_joins('{d}') WHERE view = '{m}' \
              UNION SELECT right_column FROM glossql_views_joins('{d}') WHERE view = '{m}'",
             d = dataset.replace('\'', "''"),
             m = metric.replace('\'', "''")
@@ -1890,11 +1917,11 @@ fn profile_join_columns(conn: &Connection, dataset: &str, metric: &str) {
     ) else {
         return;
     };
-    for row in rows_as_text(&joined) {
+    for row in rows_as_text(&scanned) {
         if let Some(Some(column)) = row.first()
             && let Err(e) = run(conn, &format!("SELECT column_profile() FROM {column}"))
         {
-            tracing::debug!(error = %e, %column, "join column: not profiled");
+            tracing::debug!(error = %e, %column, "column: not profiled");
         }
     }
 }

@@ -12,9 +12,9 @@ outdated, a test turned red, a value outside its expected range).
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
 | `next_steps`, the generic read, beside today's `next` | Low: prototyped on the employees data | `kits/goals/kit.sql`, its suite | Built | |
-| What changed, per row: the load that made a description outdated, with its row count against the load before; the profile before and after where one is stored | Medium: a profile is stored per data version, the comparison is new | `kits/goals/kit.sql`, the quality kit's profiles | Next | |
-| The fix advice per test moves from the hand-written blocks to the test's own declaration, so a kit that adds a test brings its advice | Medium: touches every built-in test; a declaration field may be the extension's | `kits/metrics/kit.sql`, `kits/outlook/kit.sql`, maybe SPEC | After | |
-| The server runs the measurements its own checks need | Low | `built_in_tests` in `crates/duck/src/lib.rs` | After | |
+| What changed, per row: an outdated description and a test that is not green carry the cause: the newest load's row count against the load before, and the columns whose profile moved (distinct values, share empty, lowest, highest) | Low: measured on the employees data | `kits/goals/kit.sql`, `routes.rs` | Built | |
+| The server runs the measurements its tests read: a profile of every column a metric reads and the relationship check, after a definition, an annotation or a load, a declared load included | Low | `built_in_tests` in `crates/duck/src/lib.rs` | Built | |
+| The fix advice per test moves from the hand-written blocks to the test's own declaration, so a kit that adds a test brings its advice | Medium: touches every built-in test; a declaration field may be the extension's | `kits/metrics/kit.sql`, `kits/outlook/kit.sql`, maybe SPEC | Next | |
 | Expected ranges, forecast and plan findings as rows under test (preview) | Low | `kits/outlook/kit.sql` | After | |
 | The switch: `next` is the new read; `routes_<kit>()` and their composition at open are deleted; the line after each call gives the count per step and the first open row | Medium: every `next` test and the skills' text change | `crates/duck/src/lib.rs` (`next_view`, `write_next`), `crates/serverd/src/window.rs`, `routes.rs`, the kits' suites, `docs/extending/next-steps.md`, the skills | Last | |
 | glossval reads the new `next`; its finish line is an empty list for the agent | Low, outside this repository | glossval's `next_state.py` | With the switch | |
@@ -37,6 +37,12 @@ outdated, a test turned red, a value outside its expected range).
   two metrics narrows them to 23, in six rows. After a changed load of
   one table, the read reports the two descriptions on the changed
   column as outdated and the tests whose results predate the load.
+
+- A description is outdated when its column's type or its derivation
+  in the load query changed (SPEC §5.2). A load of the same shape
+  with other values does not make it outdated. What such a load
+  changed is the cause on a row that is open for another reason: a
+  test that turned red, an expected range that was left.
 
 ## Tests
 

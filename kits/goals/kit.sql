@@ -163,6 +163,40 @@ CREATE OR REPLACE VIEW main.next_steps AS
            lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.seq) AS rows_before,
            row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) AS rn
     FROM main.imports i, ds WHERE i.dataset = ds.d),
+  -- what the newest load changed in a column a metric reads: its
+  -- stored profile against the one before
+  profiles AS (
+    SELECT m.subject, m.value,
+           lag(m.value) OVER (PARTITION BY m.subject ORDER BY m.seq) AS before,
+           row_number() OVER (PARTITION BY m.subject ORDER BY m.seq DESC) AS rn
+    FROM main.measurements m, ds WHERE m.dataset = ds.d AND m.function = 'column_profile'),
+  changed AS (
+    SELECT array_to_string(string_split(p.subject, '.')[1:2], '.') AS tbl,
+           string_agg(string_split(p.subject, '.')[3] || ' ('
+             || concat_ws(', ',
+                  CASE WHEN p.value->>'distinct' IS DISTINCT FROM p.before->>'distinct'
+                       THEN (p.value->>'distinct') || ' distinct values, ' || (p.before->>'distinct') || ' before' END,
+                  CASE WHEN p.value->>'null_ratio' IS DISTINCT FROM p.before->>'null_ratio'
+                       THEN round(CAST(p.value->>'null_ratio' AS DOUBLE) * 100, 1) || '% empty, '
+                            || round(CAST(p.before->>'null_ratio' AS DOUBLE) * 100, 1) || '% before' END,
+                  CASE WHEN p.value->>'min' IS DISTINCT FROM p.before->>'min'
+                       THEN 'lowest ' || coalesce(p.value->>'min', 'none') || ', ' || coalesce(p.before->>'min', 'none') || ' before' END,
+                  CASE WHEN p.value->>'max' IS DISTINCT FROM p.before->>'max'
+                       THEN 'highest ' || coalesce(p.value->>'max', 'none') || ', ' || coalesce(p.before->>'max', 'none') || ' before' END)
+             || ')', '; ' ORDER BY p.subject) AS what
+    FROM profiles p
+    WHERE p.rn = 1 AND p.before IS NOT NULL
+      AND (p.value->>'distinct' IS DISTINCT FROM p.before->>'distinct'
+        OR p.value->>'null_ratio' IS DISTINCT FROM p.before->>'null_ratio'
+        OR p.value->>'min' IS DISTINCT FROM p.before->>'min'
+        OR p.value->>'max' IS DISTINCT FROM p.before->>'max')
+    GROUP BY 1),
+  -- per table loaded more than once: the newest load against the one before
+  reloaded AS (
+    SELECT l.tbl, 'loaded again: ' || l.rows || ' rows, ' || l.rows_before || ' before'
+                  || coalesce('; ' || c.what, '') AS cause
+    FROM loads l LEFT JOIN changed c ON c.tbl = l.tbl
+    WHERE l.rn = 1 AND l.rows_before IS NOT NULL),
   s_connect AS (
     SELECT 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'no table is loaded' AS open,
            '' AS for_metric, '' AS cause,
@@ -173,16 +207,16 @@ CREATE OR REPLACE VIEW main.next_steps AS
            count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' ELSE h.state END || ': '
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
            max(h.metrics),
-           CASE WHEN h.state = 'stale' AND max(l.rows) IS NOT NULL
-                THEN 'loaded again: ' || max(l.rows) || ' rows'
-                     || coalesce(', ' || max(l.rows_before) || ' before', '')
-                ELSE '' END,
+           CASE WHEN h.state = 'stale' THEN coalesce(max(l.cause), '') ELSE '' END,
            'SELECT subject, aspect, state FROM GLOSSARY(' || h.home || ') WHERE state = ''' || h.state || ''';'
-    FROM homed h LEFT JOIN loads l ON l.tbl = h.home AND l.rn = 1
+    FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state),
   s_test AS (
-    SELECT 3, 'test', t.subject, t.state, t.test, t.metric, '', t.run
+    SELECT 3, 'test', t.subject, t.state, t.test, t.metric,
+           coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
+                     FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.metric = t.metric)), ''),
+           t.run
     FROM main.metric_tests() t WHERE t.state <> 'green'),
   s_decide AS (
     SELECT 4, 'decide', ds.d || '.' || r.aspect, 'decided',
