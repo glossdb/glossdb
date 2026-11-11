@@ -217,11 +217,11 @@ async fn the_query_door_closes_the_engine_to_a_standard_actor() {
     for (statement, word) in [
         (
             "SET VARIABLE glossql_actor = 'human'",
-            "`SET` is closed at this door",
+            "`SET` is not allowed on this interface",
         ),
         (
             "ATTACH ':memory:' AS other",
-            "`ATTACH` is closed at this door",
+            "`ATTACH` is not allowed on this interface",
         ),
     ] {
         let response = app

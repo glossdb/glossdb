@@ -109,7 +109,7 @@ pub enum SessionError {
     },
     #[error("{0}")]
     Engine(String),
-    #[error("`{statement}` is closed at this door: {why}. A root actor runs it.")]
+    #[error("`{statement}` is not allowed on this interface: {why}. A root actor runs it.")]
     Closed {
         statement: String,
         why: &'static str,

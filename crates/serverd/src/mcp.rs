@@ -132,7 +132,7 @@ impl GlossqlMcp {
     }
 
     /// What the handshake serves: the standing instructions, the
-    /// brief's line, and how to begin at this door. The workspace
+    /// brief's line, and how to begin on this interface. The workspace
     /// interface's opening is composed with the brief; a bound interface's
     /// caller already holds on its dataset, so the opening is the
     /// brief on it.

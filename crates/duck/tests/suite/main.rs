@@ -87,7 +87,7 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
         .unwrap_err()
         .to_string();
     assert!(
-        text.contains("`SET` is closed at this door: the engine's settings"),
+        text.contains("`SET` is not allowed on this interface: the engine's settings"),
         "{text}"
     );
     let csv = dir.path().join("t.csv").display().to_string();
