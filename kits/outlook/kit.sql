@@ -1189,7 +1189,7 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
 --===------------------------------------------------------------------===--
 -- outlook_findings(): what the preview features leave open on the bound
--- dataset, as rows for `next_steps`: step (test or serve), asset, state,
+-- dataset, as rows for `next`: step (test or serve), asset, state,
 -- open (the finding), for_metric, statement (the fix). A value outside
 -- its expected range, a plan outside the forecast's range, a plan whose
 -- comparison predates the newest forecast, a plan without a definition.
@@ -1251,114 +1251,25 @@ FROM plans p LEFT JOIN main.metric_surfaces s ON s.name = p.plan, ds, live
 WHERE live.named AND p.stopped IS NULL AND coalesce(s.stopped, '') = '' AND NOT coalesce(s.grounded, false);
 
 --===------------------------------------------------------------------===--
--- The two goals this kit answers for the `next` read. bands: the walk
--- exists and no band is red. plan: the plan served, the forecast at the
--- current origin, the plan judged against it, every gap judged by a
--- person — with a scenario's estimate where one is annotated. Served as
--- CTEs and arms over the relations the server reads once (ds, axes, open_items,
--- reds, bodies), served only where the deployment names a model service
--- (glossql_service_url), since every step here calls it; every CTE reads
--- the catalog, none the data:
--- futures_red is the metric whose newest point the red result scores,
--- futures_judged the plans' current judgements, futures_gaps the
--- plan years the forecast's band does not hold, futures_estimate what
--- the newest estimate says per scenario and metric.
+-- outlook_measurements(): the preview measurements the bound dataset
+-- needs, where a model service is named: the expected ranges, the
+-- forecast once a plan is served, the scenario estimate once a scenario
+-- is annotated. `next` lists the ones that are due.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.routes_outlook() AS TABLE
-SELECT CASE WHEN coalesce(current_setting('glossql_service_url'), '') <> '' THEN $ctes$
-futures_walk AS (SELECT * FROM main.band_verdict()),
-futures_red AS (
-  SELECT metric, period FROM main.band_points()
-  WHERE newest AND displacement > 0.9 AND EXISTS (SELECT 1 FROM futures_walk w WHERE w.band = 'red')),
-futures_plans AS (
-  SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.reason, x.stopped
-  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
-  LEFT JOIN axes x ON x.metric = a.name
-  WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
-futures_forecast AS (
-  SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
-futures_judged AS (
-  SELECT json_extract_string(m.value, '$.plan') AS plan, json_extract(m.value, '$.forecast_run')::BIGINT AS forecast_run,
-         coalesce(g.current, true) AS current
-  FROM (SELECT subject, value FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
-        QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1) m
-  LEFT JOIN (SELECT subject, current FROM glossql_glossary(current_schema(), NULL, true)
-             WHERE actor = 'function' AND aspect = 'metric_plan') g ON g.subject = m.subject),
-futures_gaps AS (
-  SELECT plan, metric, label, value, low, high, planned FROM main.plan_record()
-  WHERE grain = 'year' AND planned IN ('below', 'above')),
-futures_scenarios AS (
-  SELECT a.name FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
-  WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
-    AND EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g WHERE g.aspect = a.name AND g.state = 'current')),
-futures_levers AS (
-  SELECT string_agg(subject, ', ' ORDER BY subject) AS columns
-  FROM glossql_glossary(current_schema(), NULL, false) WHERE aspect = 'lever' AND state = 'current' AND (value->>'value') = 'true'),
-futures_estimate AS (
-  SELECT DISTINCT scenario, metric, applicable, reason, sign, confidence, basis FROM main.scenario_points(NULL))
-$ctes$ ELSE '' END AS ctes, CASE WHEN coalesce(current_setting('glossql_service_url'), '') <> '' THEN $arms$
-SELECT 'outlook' AS surface, 1 AS step, 'next' AS state, o.subject AS act,
-       'run ' || o.subject || CASE WHEN o.kind = 're-measure' THEN ' again' ELSE '' END AS say, o.why AS why,
-       'SELECT ' || o.subject || '() FROM ' || ds.dataset AS statement, '' AS "then"
-FROM open_items o CROSS JOIN ds
-WHERE o.kind IN ('never measured', 're-measure')
-  AND (o.subject = 'metric_bands'
-       OR (o.subject = 'metric_forecast' AND EXISTS (SELECT 1 FROM futures_plans WHERE applicable))
-       OR (o.subject = 'metric_scenario' AND EXISTS (SELECT 1 FROM futures_scenarios)))
+CREATE OR REPLACE MACRO main.outlook_measurements() AS TABLE
+WITH live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
+kinds AS (
+  SELECT a.name, a.kind, json_extract_string(a.schema, '$.x-kind') AS x_kind
+  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a)
+SELECT 'metric_bands' AS name FROM live WHERE live.named
 UNION ALL
-SELECT 'outlook', 2, 'next', 'metric_plan',
-       'compare ' || p.plan || ' with the actual and the forecast' || CASE WHEN j.plan IS NULL THEN '' ELSE ' again' END,
-       CASE WHEN j.plan IS NULL THEN p.plan || ' is served and not yet compared with the actual and the forecast''s range'
-            WHEN NOT j.current THEN 'the comparison of ' || p.plan || ' predates a change to what it read'
-            ELSE 'the comparison of ' || p.plan || ' predates the newest forecast' END,
-       'SELECT metric_plan() FROM ' || ds.dataset || '.' || p.plan, ''
-FROM futures_plans p LEFT JOIN futures_judged j USING (plan) CROSS JOIN ds CROSS JOIN futures_forecast f
-WHERE p.applicable AND (j.plan IS NULL OR NOT j.current OR j.forecast_run IS DISTINCT FROM f.run)
+SELECT 'metric_forecast' FROM live WHERE live.named
+  AND EXISTS (SELECT 1 FROM kinds k JOIN main.metric_summary() x ON x.metric = k.name
+              WHERE k.kind = 'VIEW' AND k.x_kind = 'plan' AND x.applicable)
 UNION ALL
-SELECT 'outlook', 9, 'done', '', '', 'the expected ranges, the forecast and the plan comparisons are current', '', ''
-FROM ds
-UNION ALL
-SELECT red.metric, 1, 'next', 'bands_test',
-       red.metric || ' is outside its expected range at ' || red.period,
-       'the newest point of ' || red.metric || ' sits outside the range its own history predicts at ' || red.period
-         || '. A data defect is the definition''s or the load''s to fix; a real shift is a person''s to hear: record it as an assumption under the key band-' || red.period || ', and the review queue asks',
-       'SELECT period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = ''' || red.metric || ''' ORDER BY point_seq',
-       '-- append to "assumptions" of the current body: {"dimension": "definition", "key": "band-' || red.period || '", "assumption": "<a shift at ' || red.period || ', in the business''s words — or the defect and its fix>", "basis": "<what it rests on>", "confidence": 0.7}' || chr(10)
-         || 'GLOSS ' || red.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-FROM futures_red red LEFT JOIN bodies b ON b.metric = red.metric CROSS JOIN ds
-WHERE NOT EXISTS (SELECT 1 FROM main.review_decisions r WHERE r.dataset = ds.dataset AND r.aspect = red.metric AND r.key = 'band-' || red.period)
-  AND NOT EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = red.metric AND q.key = 'band-' || red.period)
-UNION ALL
-SELECT p.metric, 3, 'next', 'GLOSS plan',
-       CASE WHEN coalesce(s.grounded, false) THEN 'record ' || p.plan || ' again' ELSE 'define ' || p.plan || ', or stop it' END,
-       CASE WHEN coalesce(s.grounded, false) THEN p.plan || ' is defined and cannot be served: ' || coalesce(p.reason, '')
-            ELSE p.plan || ' plans ' || p.metric || ' and has no definition: its SQL over the loaded budget table serves it' END,
-       CASE WHEN coalesce(s.grounded, false) THEN 'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-            ELSE 'GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}$$;' END,
-       '-- or, where no number should be served: GLOSS ' || p.plan || ' ON ' || ds.dataset || ' AS $${"stopped": "<what is missing, and why no number is served>"}$$;'
-FROM futures_plans p LEFT JOIN main.metric_surfaces s ON s.name = p.plan LEFT JOIN bodies b ON b.metric = p.plan CROSS JOIN ds
-WHERE coalesce(s.stopped, '') = '' AND p.stopped IS NULL
-  AND (NOT coalesce(s.grounded, false) OR (NOT p.applicable AND coalesce(p.reason, '') <> ''))
-UNION ALL
-SELECT g.metric, 1, 'next', 'plan_test',
-       g.plan || ' at ' || g.label || ' lies ' || g.planned || ' the forecast''s range',
-       g.plan || ' at ' || g.label || ' is ' || CAST(round(g.value, 2) AS VARCHAR)
-         || ' and the forecast''s 80% range for ' || g.metric || ' runs ' || CAST(round(g.low, 2) AS VARCHAR) || ' to ' || CAST(round(g.high, 2) AS VARCHAR)
-         || coalesce(' (levers: ' || l.columns || ')', '')
-         || CASE WHEN s.name IS NULL THEN '. A scenario on a lever says what closes the gap; without one, record the gap as the plan''s assumption under plan-' || g.label
-                 WHEN e.metric IS NULL THEN '. ' || s.name || ' does not reach ' || g.metric || ': record the gap as the plan''s assumption, or declare a scenario on a lever of ' || g.metric
-                 WHEN NOT e.applicable THEN '. ' || s.name || ' gives no estimate for ' || g.metric || ' (' || coalesce(e.reason, 'no reason') || '): record the gap as the plan''s assumption'
-                 ELSE '. ' || s.name || ' moves ' || g.metric || ' ' || coalesce(e.confidence, '?') || ' (' || coalesce(e.sign, '?') || ': ' || coalesce(e.basis, '') || '): read scenario_points(''' || s.name || ''') and record the gap with the scenario''s reading' END,
-       '-- append to "assumptions" of the plan''s current body: {"dimension": "definition", "key": "plan-' || g.label || '", "assumption": "<the gap at ' || g.label || ' and what closes it, in the business''s words>", "basis": "' || coalesce(s.name, '<what it rests on>') || '", "confidence": 0.7}' || chr(10)
-         || 'GLOSS ' || g.plan || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;',
-       CASE WHEN s.name IS NULL THEN
-         'GLOSS lever ON <table>.<column> AS $${"value": true, "grounds": "<who sets it>"}$$;' || chr(10)
-         || 'DECLARE ASPECT <scenario> WITH $${"title": "<what moves>", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;' || chr(10)
-         || 'GLOSS <scenario> ON ' || ds.dataset || ' AS $${"levers": [{"column": "<table>.<column>", "factor": {"<YYYY-MM>": <factor>}, "basis": "<what it rests on>"}]}$$;'
-       ELSE 'SELECT metric, period, value, low, high, sign, basis FROM scenario_points(''' || s.name || ''') WHERE metric = ''' || g.metric || '''' END
-FROM futures_gaps g LEFT JOIN futures_scenarios s ON true LEFT JOIN futures_estimate e ON e.scenario = s.name AND e.metric = g.metric
-LEFT JOIN bodies b ON b.metric = g.plan CROSS JOIN futures_levers l CROSS JOIN ds
-WHERE NOT EXISTS (SELECT 1 FROM main.review_decisions r WHERE r.dataset = ds.dataset AND r.aspect = g.plan AND r.key = 'plan-' || g.label)
-  AND NOT EXISTS (SELECT 1 FROM main.open_questions q WHERE q.dataset = ds.dataset AND q.aspect = g.plan AND q.key = 'plan-' || g.label)
-$arms$ ELSE '' END AS arms;
+SELECT 'metric_scenario' FROM live WHERE live.named
+  AND EXISTS (SELECT 1 FROM kinds k WHERE k.kind = 'FACT' AND k.x_kind = 'scenario'
+              AND EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
+                          WHERE g.aspect = k.name AND g.state = 'current'));
+

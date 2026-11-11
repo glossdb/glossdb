@@ -1,7 +1,9 @@
-//! The routes on the DuckDB engine: `next` answers from the catalog, one
-//! act per goal, read through the bound agent interface; a goal's act is a
-//! statement the catalog filled, and the `next://` page carries the
-//! forms.
+//! `next`, the work list of a dataset, read through the agent
+//! interface: what is open by step (connect, describe, test, decide,
+//! serve), each row with its asset, its state and the statement that
+//! opens the work. The tests check step, asset and state; they compare
+//! text only for the statement a row hands the agent and for the line
+//! that closes every result.
 
 use std::sync::Arc;
 
@@ -101,12 +103,9 @@ async fn rows(app: &Router, sql: &str) -> Vec<Value> {
     outcomes[0]["rows"].as_array().cloned().unwrap_or_default()
 }
 
-/// One goal's row of `next`, by surface.
-async fn goal(app: &Router, surface: &str) -> Value {
-    let all = rows(app, "SELECT * FROM next ORDER BY goal").await;
-    all.into_iter()
-        .find(|r| r["surface"] == json!(surface))
-        .unwrap_or_else(|| panic!("no {surface} goal"))
+/// The rows of `next` under "test", in the list's order.
+async fn open_tests(app: &Router) -> Vec<Value> {
+    rows(app, "SELECT * FROM next WHERE step = 'test'").await
 }
 
 fn text(row: &Value, key: &str) -> String {
@@ -137,22 +136,21 @@ async fn fin() -> (Router, tempfile::TempDir) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_fresh_dataset_is_told_once_that_no_metric_is_served() {
+async fn a_dataset_with_a_table_and_no_metric_has_one_open_row() {
     let (app, _dir) = fin().await;
-    let all = rows(&app, "SELECT * FROM next ORDER BY goal, surface").await;
-    let surfaces: Vec<String> = all.iter().map(|r| text(r, "surface")).collect();
-    // No metric is served: one row says so, and the review queue is
-    // empty. The outlook's preview goals stay out while no model
+    let all = rows(&app, "SELECT * FROM next").await;
+    // A table is there and no metric: one row under "serve", with the
+    // statements that define one. Nothing is asked about a table no
+    // metric reads, and the preview rows stay out while no model
     // service is named.
-    assert_eq!(surfaces, ["metrics", "review"], "{all:?}");
-    let metrics = goal(&app, "metrics").await;
-    assert_eq!(text(&metrics, "state"), "next", "{metrics}");
-    assert_eq!(
-        text(&metrics, "say"),
-        "define the first metric",
-        "{metrics}"
-    );
-    assert_eq!(text(&goal(&app, "review").await, "state"), "done");
+    let open: Vec<(String, String)> = all
+        .iter()
+        .map(|r| (text(r, "step"), text(r, "state")))
+        .collect();
+    assert_eq!(open, [("serve".into(), "missing".into())], "{all:?}");
+    let statement = text(&all[0], "statement");
+    assert!(statement.contains("DECLARE ASPECT <metric>"), "{statement}");
+    assert!(statement.contains("GLOSS <metric> ON fin"), "{statement}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -190,17 +188,17 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
         ],
         "{tests:?}"
     );
-    let row = goal(&app, "spend").await;
-    assert_eq!(text(&row, "state"), "next", "{row}");
-    assert_eq!(text(&row, "act"), "measure_additivity_test", "{row}");
-    assert_eq!(text(&row, "say"), "annotate the columns of spend", "{row}");
+    let open = open_tests(&app).await;
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(text(&open[0], "asset"), "fin.spend", "{open:?}");
+    assert_eq!(text(&open[0], "state"), "yellow", "{open:?}");
     assert!(
-        text(&row, "statement").contains("GLOSS role ON fin.spend.period"),
-        "{row}"
+        text(&open[0], "statement").contains("GLOSS role ON fin.spend.period"),
+        "{open:?}"
     );
 
-    // The roles stand and the period is profiled: the server ran the
-    // tests again after each call, and the additivity is the act.
+    // The roles are annotated and the period is profiled: the server
+    // ran the tests again after each call, and the additivity is open.
     say(
         &app,
         r#"GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
@@ -209,11 +207,12 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
            SELECT temporal() FROM fin.spend.period;"#,
     )
     .await;
-    let row = goal(&app, "spend").await;
-    assert_eq!(text(&row, "say"), "say how spend adds up", "{row}");
+    let open = open_tests(&app).await;
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(text(&open[0], "state"), "red", "{open:?}");
     assert!(
-        text(&row, "statement").contains("GLOSS additivity ON fin.spend.value"),
-        "{row}"
+        text(&open[0], "statement").contains("GLOSS additivity ON fin.spend.value"),
+        "{open:?}"
     );
     let refusal = refused(
         &app,
@@ -225,28 +224,29 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
         "{refusal}"
     );
 
-    // Said: every test is green and the metric's goal is done; the
-    // series serves at its floor and coarser.
+    // Annotated: every test is green and nothing is open under
+    // "test"; the series serves at its finest grain and coarser.
     say(
         &app,
         r#"GLOSS additivity ON spend.value AS $${"value": "additive"}$$;"#,
     )
     .await;
-    let row = goal(&app, "spend").await;
-    assert_eq!(text(&row, "state"), "done", "{row}");
-    assert!(text(&row, "why").contains("green or accepted"), "{row}");
+    let open = open_tests(&app).await;
+    assert!(open.is_empty(), "{open:?}");
     let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
 
-    // A stop ends the view and its goal with it.
+    // A stopped metric is no longer served, and the list says that no
+    // metric is defined.
     say(
         &app,
         r#"GLOSS spend ON fin AS $${"stopped": "the ledger is not booked before 2024"}$$;"#,
     )
     .await;
-    let all = rows(&app, "SELECT surface FROM next ORDER BY goal, surface").await;
-    let surfaces: Vec<String> = all.iter().map(|r| text(r, "surface")).collect();
-    assert_eq!(surfaces, ["metrics", "review"], "{all:?}");
+    let serve = rows(&app, "SELECT asset, state FROM next WHERE step = 'serve'").await;
+    assert_eq!(serve.len(), 1, "{serve:?}");
+    assert_eq!(text(&serve[0], "asset"), "fin", "{serve:?}");
+    assert_eq!(text(&serve[0], "state"), "missing", "{serve:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -263,7 +263,7 @@ async fn the_next_page_carries_the_test_and_its_statement() {
             app.clone(),
             "/fin/mcp",
             json!({"jsonrpc": "2.0", "id": 5, "method": "resources/read",
-                   "params": {"_meta": meta(), "uri": "next://fin/spend"}}),
+                   "params": {"_meta": meta(), "uri": "next://fin/test"}}),
         )
         .await,
     )
@@ -272,21 +272,23 @@ async fn the_next_page_carries_the_test_and_its_statement() {
         .as_str()
         .unwrap_or_else(|| panic!("{body}"));
     assert!(page.starts_with("# next on fin"), "{page}");
-    assert!(page.contains("## spend: next"), "{page}");
+    assert!(page.contains("## test"), "{page}");
+    assert!(page.contains("**fin.spend** (yellow)"), "{page}");
     assert!(page.contains("measure_additivity_test"), "{page}");
     assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
     assert!(!page.contains("```glossql\n\n```"), "no empty form: {page}");
 
-    // Every result on the dataset's interface closes with the line: the
-    // metric with its test to settle, the done goals folded at the end.
+    // Every result on the dataset's interface closes with the count of
+    // open rows per step and the first row, with the link to its page.
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(6, "SELECT 1 AS one")).await).await;
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
-    assert!(window.contains("next:"), "{window}");
+    assert!(window.contains("\nnext: "), "{window}");
+    assert!(window.contains("describe 2 · test 1"), "{window}");
     assert!(
-        window.contains("spend → annotate the columns of spend (next://fin/spend)"),
+        window.contains("\nfirst: describe fin.ledger (missing): "),
         "{window}"
     );
-    assert!(window.contains("done: review"), "{window}");
+    assert!(window.ends_with("(next://fin/describe)"), "{window}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -304,8 +306,23 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     let written = &outcomes[1]["rows"][0];
     assert_eq!(written["applicable"], json!(true), "{outcomes}");
     assert_eq!(written["additivity"], json!("additive"), "{outcomes}");
-    let row = goal(&app, "spend").await;
-    assert_eq!(text(&row, "state"), "done", "{row}");
+    let open = open_tests(&app).await;
+    assert!(open.is_empty(), "{open:?}");
+    // What is left is the description of the table the metric reads:
+    // the row hands over one statement per missing property, and names
+    // no column the metric does not read.
+    let describe = rows(
+        &app,
+        "SELECT state, statement FROM next WHERE step = 'describe' AND asset = 'fin.ledger'",
+    )
+    .await;
+    assert_eq!(describe.len(), 1, "{describe:?}");
+    assert_eq!(text(&describe[0], "state"), "missing", "{describe:?}");
+    let statement = text(&describe[0], "statement");
+    assert!(
+        statement.contains("GLOSS meaning ON fin.ledger.amount AS $$<value>$$;"),
+        "{statement}"
+    );
     let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
@@ -324,21 +341,11 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
            GLOSS amount_per_booking_month ON fin AS $${"sql": "SELECT date_trunc('month', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_booking GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;"#,
     )
     .await;
-    for metric in ["amount_per_booking", "amount_per_booking_month"] {
-        let row = goal(&app, metric).await;
-        assert_eq!(text(&row, "state"), "next", "{row}");
-        assert_eq!(text(&row, "act"), "measure_additivity_test", "{row}");
-        assert_eq!(
-            text(&row, "say"),
-            format!("{metric} is a ratio marked additive"),
-            "{row}"
-        );
-    }
-    // The same finding in `next_steps`, with the fix the test itself
-    // returns: the metric's current definition, to edit and record.
+    // Both are red under "test", with the fix the test itself returns:
+    // the metric's current definition, to edit and record.
     let open = rows(
         &app,
-        "SELECT asset, state, statement FROM next_steps WHERE step = 'test' ORDER BY asset",
+        "SELECT asset, state, statement FROM next WHERE step = 'test' ORDER BY asset",
     )
     .await;
     let assets: Vec<String> = open.iter().map(|r| text(r, "asset")).collect();
@@ -361,15 +368,16 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
         r#"GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "ratio", "numerator": "num", "denominator": "den"}}$$;"#,
     )
     .await;
-    let row = goal(&app, "amount_per_booking").await;
-    assert_eq!(text(&row, "state"), "done", "{row}");
+    let open = open_tests(&app).await;
+    let assets: Vec<String> = open.iter().map(|r| text(r, "asset")).collect();
+    assert_eq!(assets, ["fin.amount_per_booking_month"], "{open:?}");
 }
 
-/// The rows of `next_steps` under "describe" for the bookings table.
+/// The rows of `next` under "describe" for the bookings table.
 async fn bookings_rows(app: &Router) -> Vec<Value> {
     rows(
         app,
-        "SELECT state, cause FROM next_steps WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
+        "SELECT state, cause FROM next WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
     )
     .await
 }

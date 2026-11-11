@@ -66,7 +66,6 @@ WHERE dimension = '' ORDER BY metric, period
 
 After applying a batch of review decisions, run `temporal()` over the
 period columns once; `metric_summary().judged_current` is then true.
-The `next:` line names this step.
 
 `fact_values()` serves each single value (`x-kind: scalar`). A derived
 relation (`x-kind: relation`) is read as its view.
@@ -79,8 +78,8 @@ the actual fell in that range: 0.5 is the middle; above 0.95 or below
 0.05 is outside what the metric's history explains. The test
 `bands_test` carries the score of each metric's newest month.
 
-- `SELECT metric_bands() FROM <dataset>` runs it. It is a step of the
-  `outlook` goal: the `next:` line says when it is due. It is due
+- `SELECT metric_bands() FROM <dataset>` runs it. `next` lists it
+  under `test` when it is due. It is due
   again when a metric definition or the data changes.
 - It sends complete months only, at least seven. Where rows arrive
   finer than monthly, the month the newest data falls in is left out.
@@ -202,8 +201,8 @@ forecast to year end.
 `SELECT metric_plan() FROM <dataset>.<plan>` stores those rows as a
 measurement on the plan, with the forecast they were compared to. The
 test `plan_test` reads the gap from them. Declare a plan when a person
-asks for one or a loaded table is a budget. The planned metric's steps
-on the `next:` line then give the statements in order: define the
+asks for one or a loaded table is a budget. The rows of `next`
+then give the statements in order: define the
 plan, run the forecast while it is due, run `metric_plan()`. For a
 plan year outside the range: a scenario on a lever that closes the
 gap and its estimate, or the gap recorded as an assumption with the

@@ -61,8 +61,7 @@ definition carries that key at 1.0. Keep the key; reword freely.
 
 **Then measure again.** Every definition you wrote changes what the
 measurements were computed on, so their results are out of date;
-`open_items` counts them as `re-measure` rows. The `next:` line gives
-the order: apply the decisions, run `temporal()` once, run the
+`open_items` counts them as `re-measure` rows. The order: apply the decisions, run `temporal()` once, run the
 expected-ranges step once.
 
 - Read the results on the metrics you touched: `TESTS()` on their

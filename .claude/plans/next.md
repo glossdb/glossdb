@@ -11,13 +11,14 @@ outdated, a test turned red, a value outside its expected range).
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| `next_steps`, the generic read, beside today's `next` | Low: prototyped on the employees data | `kits/goals/kit.sql`, its suite | Built | |
+| `next`, the generic read: one row per asset and state, by step, in the order of priority | Low: measured on the employees data | `kits/goals/kit.sql`, its suite | Built | |
 | What changed, per row: an outdated description and a test that is not green carry the cause: the newest load's row count against the load before, and the columns whose profile moved (distinct values, share empty, lowest, highest) | Low: measured on the employees data | `kits/goals/kit.sql`, `routes.rs` | Built | |
 | The server runs the measurements its tests read: a profile of every column a metric reads and the relationship check, after a definition, an annotation or a load, a declared load included | Low | `built_in_tests` in `crates/duck/src/lib.rs` | Built | |
 | A test brings its advice: each built-in check returns `finding` and `fix` in its result, and `next_steps` serves them, so a kit that adds a test adds no branch elsewhere | Low: no change to the language | `kits/metrics/kit.sql`, `kits/goals/kit.sql`, `routes.rs` | Built | |
 | The preview features' findings as rows: a value outside its expected range, a plan outside the forecast's range, a plan not compared, a plan without a definition (`outlook_findings()`); running the range and forecast measurements again moves at the switch | Low | `kits/outlook/kit.sql`, its suite | Built | |
-| The switch: `next` is the new read; `routes_<kit>()` and their composition at open are deleted; the line after each call gives the count per step and the first open row | Medium: every `next` test and the skills' text change | `crates/duck/src/lib.rs` (`next_view`, `write_next`), `crates/serverd/src/window.rs`, `routes.rs`, the kits' suites, `docs/extending/next-steps.md`, the skills | Next | |
-| glossval reads the new `next`; its finish line is an empty list for the agent | Low, outside this repository | glossval's `next_state.py` | With the switch | |
+| The switch: `next` is the new read; the hand-written blocks per kit and their composition at open are deleted; every result ends with the count per step and the first open row; `next://<dataset>/<step>`; docs and skills say so | Medium: every `next` test and the skills' text changed | `crates/duck/src/lib.rs`, `crates/serverd/src/window.rs`, `mcp.rs`, `routes.rs`, the kits' suites, `docs/extending/next-steps.md`, the skills | Built | |
+| glossval reads the new `next`: its finish line is no open row for the agent; eight of its tools read the old columns | Medium, outside this repository: the seats cannot run until it is done | glossval's `next_state.py`, `run.py`, `plan_lane.py`, `ab_seats.py`, `chat_agent.py`, `joint_report.py`, `mining/next_table.py`, `graph/graph.py` | Next | |
+| The wording the extension still serves in acknowledgements (`landed`, `grounding`) and the server's refusal `closed at this door` | Low | the extension's runner and store, `crates/duck/src/lib.rs` | After | |
 
 ## What is there
 
@@ -28,10 +29,9 @@ outdated, a test turned red, a value outside its expected range).
   decided. `imports` holds every load with its row count.
   `glossql_views_scans()` gives the tables and columns each metric
   reads.
-- Today's `next` is written at open from each kit's `routes_<kit>()`:
-  SQL text with one hand-written branch per test and state. It covers
-  tests and review. It does not cover sources, descriptions or what a
-  load changed.
+- `next` is a view in the goals kit over these states. The line after
+  each call and the `next://` page are rendered from its rows in
+  `crates/serverd/src/window.rs`.
 - Measured on the employees data (three tables, 331,603 rows, two
   metrics): the glossary holds 57 missing entries; the lineage of the
   two metrics narrows them to 23, in six rows. After a changed load of

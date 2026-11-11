@@ -1,10 +1,8 @@
-//! The two lines on every result: where the call left the agent, on
-//! its last outcome (`status:`), and one act per goal the catalog
-//! affords from there (`next:`), each a link into `next://` and the
-//! `next` read. The representation carries the links; the client
-//! holds the goal. Nothing rides the instructions or the stable
-//! prefix, and nothing is an order: the skills say how, the catalog
-//! says what is admissible now.
+//! The lines on every result: where the call left the agent, on its
+//! last outcome (`status:`), and what is open on the dataset (`next:`),
+//! a count per step and the first open row with a link into `next://`
+//! and the `next` read. The lines are context: the skills say how, the
+//! catalog says what is open, and the agent decides.
 
 use serde_json::Value;
 
@@ -124,57 +122,78 @@ fn field(row: &Value, name: &str) -> String {
         .to_string()
 }
 
-/// The `next:` line: one act per goal that is open — a served metric
-/// with a test to settle, the review queue — with the link beside it; a
-/// blocked goal says what blocks it; the goals that are done close the
-/// line as one list.
+/// The steps of the work, in order.
+const STEPS: [&str; 5] = ["connect", "describe", "test", "decide", "serve"];
+
+/// The `next:` line: how many rows are open for the agent per step,
+/// then the first row of the list (the view orders by priority), with
+/// the link to its step's page. What waits for a person closes the
+/// line and never counts as the agent's.
 pub fn next_line(dataset: &str, rows: &[Value]) -> String {
-    let mut open = Vec::new();
-    let mut done = Vec::new();
-    for row in rows {
-        let surface = field(row, "surface");
-        match field(row, "state").as_str() {
-            "next" => open.push(format!(
-                "{surface} → {} (next://{dataset}/{surface})",
-                field(row, "say")
-            )),
-            "blocked" => open.push(format!("{surface} → blocked: {}", field(row, "why"))),
-            _ => done.push(surface),
-        }
+    let mine: Vec<&Value> = rows
+        .iter()
+        .filter(|r| field(r, "who") != "person")
+        .collect();
+    let waiting = rows.len() - mine.len();
+    let mut parts: Vec<String> = STEPS
+        .iter()
+        .filter_map(|step| {
+            let n = mine.iter().filter(|r| field(r, "step") == *step).count();
+            (n > 0).then(|| format!("{step} {n}"))
+        })
+        .collect();
+    if parts.is_empty() {
+        parts.push("nothing open".to_string());
     }
-    if !done.is_empty() {
-        open.push(format!("done: {}", done.join(", ")));
+    if waiting > 0 {
+        parts.push(format!("waiting for a person {waiting}"));
     }
-    format!("next: {}", open.join(" · "))
+    let mut line = format!("next: {}", parts.join(" · "));
+    if let Some(first) = mine.first() {
+        let step = field(first, "step");
+        line.push_str(&format!(
+            "\nfirst: {step} {} ({}): {} (next://{dataset}/{step})",
+            field(first, "asset"),
+            field(first, "state"),
+            field(first, "open")
+        ));
+    }
+    line
 }
 
-/// The `next://<dataset>[/<surface>]` page: every answer with its form.
+/// The `next://<dataset>[/<step>]` page: every open row with its
+/// cause and the statement that opens the work.
 pub fn next_page(dataset: &str, rows: &[Value]) -> String {
     let mut out = format!("# next on {dataset}\n\n");
-    for row in rows {
-        let surface = field(row, "surface");
-        let state = field(row, "state");
-        out.push_str(&format!("## {surface}: {state}\n\n"));
-        if state == "next" {
+    if rows.is_empty() {
+        out.push_str("Nothing is open.\n");
+    }
+    for step in STEPS {
+        let of_step: Vec<&Value> = rows.iter().filter(|r| field(r, "step") == step).collect();
+        if of_step.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("## {step}\n\n"));
+        for row in of_step {
             out.push_str(&format!(
-                "**action:** {} — {}\n\n**why:** {}\n",
-                field(row, "act"),
-                field(row, "say"),
-                field(row, "why"),
+                "**{}** ({}): {}\n",
+                field(row, "asset"),
+                field(row, "state"),
+                field(row, "open")
             ));
-            // A step the catalog cannot fill hands no statement — the
-            // names are the author's.
+            let metrics = field(row, "for_metric");
+            if !metrics.is_empty() {
+                out.push_str(&format!("\nread by: {metrics}\n"));
+            }
+            let cause = field(row, "cause");
+            if !cause.is_empty() {
+                out.push_str(&format!("\ncause: {cause}\n"));
+            }
             let statement = field(row, "statement");
             if !statement.is_empty() {
                 out.push_str(&format!("\n```glossql\n{statement}\n```\n"));
             }
-            let then = field(row, "then");
-            if !then.is_empty() {
-                out.push_str(&format!("\nthen:\n\n```glossql\n{then}\n```\n"));
-            }
             out.push('\n');
-        } else {
-            out.push_str(&format!("{}\n\n", field(row, "why")));
         }
     }
     out

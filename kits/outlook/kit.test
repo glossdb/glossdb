@@ -436,23 +436,16 @@ SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.functi
 ----
 2	true
 
-# the routes judge the plan from the catalog: the judgement asked for, asked again, then the gap; served only where a model service is named
+# the preview features' findings are served only where a model service is named
 query I
-SELECT count(*) FILTER (WHERE arms <> '') FROM routes_outlook();
+SELECT count(*) FROM outlook_findings();
 ----
 0
 
 statement ok
 SET GLOBAL glossql_service_url = 'http://model.test';
 
-query II
-SELECT count(*) FILTER (WHERE arms LIKE '%''outlook'', 2, ''next'', ''metric_plan''%'),
-       count(*) FILTER (WHERE arms LIKE '%''plan_test''%')
-FROM routes_outlook();
-----
-1	1
-
-# what the preview features leave open, as rows for next_steps: a plan year outside the forecast's range, a value outside its expected range
+# what they leave open, as rows for next: a plan year outside the forecast's range, a value outside its expected range
 query TTT
 SELECT step, asset, state FROM outlook_findings() ORDER BY step, asset, state;
 ----
@@ -644,10 +637,10 @@ SELECT scenario, metric, applicable, reason FROM scenario_points('promo_on');
 ----
 promo_on	priced	false	the scenario moves no input of priced: priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
 
-# the routes: the estimate asked for, asked again, and the gap judged under the scenario
-query II
-SELECT count(*) FILTER (WHERE arms LIKE '%metric_scenario%'),
-       count(*) FILTER (WHERE arms LIKE '%scenario_points(%')
-FROM routes_outlook();
+# the preview measurements this dataset needs: a plan is served and a scenario annotated
+query T
+SELECT name FROM outlook_measurements() ORDER BY name;
 ----
-1	1
+metric_bands
+metric_forecast
+metric_scenario

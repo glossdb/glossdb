@@ -69,8 +69,7 @@ again, with the decided assumption under the same key at full
 confidence and citing the decision, or rewritten as the correction
 says. Until then the decision keeps the question closed for both
 sides. `review_decisions` shows each decision and whether it has been
-applied; the `review` goal on the `next:` line points to the ones
-that wait.
+applied; the `decide` step of `next` lists the ones that wait.
 
 ## Keys
 

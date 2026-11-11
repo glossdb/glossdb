@@ -381,7 +381,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
             .execute(
                 agent(),
                 None,
-                "SELECT length(comment) FROM duckdb_views() WHERE database_name = 'ws' \
+                "SELECT count(*) FROM duckdb_views() WHERE database_name = 'ws' \
                  AND schema_name = 'main' AND view_name = 'next'",
             )
             .await
@@ -389,8 +389,8 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     );
     assert_eq!(
         next,
-        vec![vec![Some("32".to_string())]],
-        "the next view carries its text's hash"
+        vec![vec![Some("1".to_string())]],
+        "the goals kit declared the next view"
     );
     let unbound = text(
         &second

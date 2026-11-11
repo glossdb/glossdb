@@ -927,14 +927,13 @@ impl ServerHandler for GlossqlMcp {
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
             resource_templates: vec![
-                ResourceTemplate::new("next://{dataset}/{surface}", "next")
+                ResourceTemplate::new("next://{dataset}/{step}", "next")
                     .with_description(
-                        "Where one goal stands on a dataset — a served metric, named by \
-                         the metric, with its worst test and the statement that settles it; \
-                         `review`, what a person decided and the agent has not applied; \
-                         `outlook`, the forecast runs due, where a model service is named. \
-                         `next://{dataset}` serves every goal; the same rows through the tool \
-                         are `SELECT * FROM next WHERE surface = '<surface>'`.",
+                        "What is open on a dataset under one step (connect, describe, \
+                         test, decide, serve): each row with its asset, its state, what \
+                         the newest load changed and the statement that opens the work. \
+                         `next://{dataset}` serves every step; the same rows through the \
+                         tool are `SELECT * FROM next WHERE step = '<step>'`.",
                     )
                     .with_mime_type("text/markdown"),
             ],
@@ -1333,8 +1332,7 @@ impl GlossqlMcp {
         let mut lines = vec![window::situation(refusal, last_row.as_ref())];
         if let Some(dataset) = dataset {
             match self.next_rows(actor, dataset, None).await {
-                Ok(rows) if !rows.is_empty() => lines.push(window::next_line(dataset, &rows)),
-                Ok(_) => {}
+                Ok(rows) => lines.push(window::next_line(dataset, &rows)),
                 Err(e) => tracing::debug!(error = %e, "next: not served"),
             }
         }
@@ -1346,24 +1344,24 @@ impl GlossqlMcp {
         &self,
         actor: &Actor,
         dataset: &str,
-        surface: Option<&str>,
+        step: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, String> {
         let session = self
             .plane
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        let sql = match surface {
+        let sql = match step {
             Some(s) => format!(
-                "SELECT * FROM next WHERE surface = '{}'",
+                "SELECT * FROM next WHERE step = '{}'",
                 s.replace('\'', "''")
             ),
-            None => "SELECT * FROM next ORDER BY goal, surface".to_string(),
+            None => "SELECT * FROM next".to_string(),
         };
         read_rows(&session, &sql).await
     }
 
-    /// `next://<dataset>[/<surface>]` as a page: every answer with its
+    /// `next://<dataset>[/<step>]` as a page: every open row with its
     /// statement, for the caller the gate stamped.
     async fn next_resource(
         &self,
@@ -1372,12 +1370,12 @@ impl GlossqlMcp {
         context: &RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
         let actor = caller(context)?;
-        let (dataset, surface) = match rest.split_once('/') {
+        let (dataset, step) = match rest.split_once('/') {
             Some((d, s)) => (d, Some(s)),
             None => (rest, None),
         };
         let rows = self
-            .next_rows(&actor, dataset, surface)
+            .next_rows(&actor, dataset, step)
             .await
             .map_err(|e| McpError::resource_not_found(format!("`{uri}`: {e}"), None))?;
         let body = window::next_page(dataset, &rows);

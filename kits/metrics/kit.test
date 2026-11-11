@@ -438,11 +438,12 @@ SELECT metric, state FROM metric_tests() WHERE metric LIKE 'noted_spend_%' AND t
 noted_spend_grouped	green
 noted_spend_latest	green
 
-# the test report: one goal per metric, the worst test first, with the statement that settles it
+# a built-in test that is red brings its finding and its fix
 query I
-SELECT count(*) FROM routes_metrics() WHERE arms LIKE '%fan_out_test%' AND arms LIKE '%every test on%';
+SELECT count(*) FROM metric_tests() WHERE state = 'red' AND declared_by = 'kit:metrics'
+  AND (evidence->>'finding' IS NULL OR evidence->>'fix' IS NULL);
 ----
-1
+0
 
 # --- an effective-dated table read without its validity dates: the scan's columns are the evidence
 

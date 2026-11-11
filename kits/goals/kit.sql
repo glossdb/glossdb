@@ -1,8 +1,6 @@
--- The interfaces' reads that build on the kits' — declared at every open
--- after the kits, where core.sql comes before them. The `next` read
--- itself is written by the engine at open: the union of every
--- routes_<kit>() macro the kits and this file declare, in the goals'
--- order, the lowest step deciding each.
+-- The interfaces' reads that build on the kits', declared at every open
+-- after the kits, where core.sql comes before them: `open_items` and
+-- `next`, the work list of the bound dataset.
 
 -- What waits on an action in the bound dataset, from the data
 -- alone: `recipe-change`, an approved load-query change with no load since;
@@ -92,48 +90,20 @@ CREATE OR REPLACE VIEW main.open_items AS
   UNION ALL SELECT * FROM unwalked
   UNION ALL SELECT * FROM foldins;
 
--- The review goal, the core's one goal for the `next` read: what a
--- person decided or approved and the agent has not applied yet, and a
--- value withheld as conflict. Served as the arms' SQL text, like a
--- kit's next steps, over the relations the engine's next read takes
--- once: ds, open_items, bodies. The metrics kit answers one goal per
--- served metric, its test report; the outlook kit bands and plan where
--- a model service is named.
-CREATE OR REPLACE MACRO main.routes_core() AS TABLE
-SELECT '' AS ctes, $arms$
-SELECT 'review' AS surface, 1 AS step, 'next' AS state, 'GLOSS view' AS act,
-       'apply the review decision on ' || r.aspect || ' (' || r.key || ': ' || r.stance || ')' AS say,
-       coalesce(r.note, '') AS why,
-       '-- the assumption under key "' || r.key || '" at confidence 1.0 with basis "decided-by-person"; an unclear answer means rewording the question under a new key' || chr(10)
-         || 'GLOSS ' || r.aspect || ' ON ' || r.subject || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;' AS statement,
-       '' AS "then"
-FROM main.review_decisions r LEFT JOIN bodies b ON b.metric = r.aspect, ds
-WHERE r.dataset = ds.dataset AND NOT r.folded_in
-UNION ALL
-SELECT 'review', 2, 'next', 'DECLARE RECIPE', 'declare ' || o.subject || ' again as approved', o.why,
-       'DECLARE RECIPE ' || o.subject || ' ON ' || ds.dataset || ' FROM <source> AS $$<the approved sql>$$;',
-       ''
-FROM open_items o, ds
-WHERE o.kind = 'recipe-change'
-UNION ALL
-SELECT 'review', 3, 'next', 'GLOSSARY', 'read the conflicting value on ' || o.subject, o.why,
-       'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || o.subject || ', all => true)',
-       ''
-FROM open_items o, ds
-WHERE o.kind = 'conflict'
-UNION ALL
-SELECT 'review', 4, 'done', '', '', 'nothing open', '', ''
-FROM ds
-$arms$ AS arms;
-
--- next_steps: what is open on the bound dataset, by step of the data
+-- next: what is open on the bound dataset, by step of the data
 -- intelligence layer (connect, describe, test, decide, serve), read
 -- from the states the catalog holds and narrowed to what the metrics
--- read. One row per asset and state, with the statement that opens
--- the work. It serves building the layer (missing, not run) and
--- running it (outdated after a load, red, conflict) alike. Built
--- beside `next` until it replaces it (.claude/plans/next.md).
-CREATE OR REPLACE VIEW main.next_steps AS
+-- read. One row per asset and state: priority (1 a number is wrong or
+-- withheld, 2 something changed or was decided, 3 not there yet, 9
+-- waiting for a person), ord (the step's order), step, asset, state,
+-- who (agent or person), open (the finding), for_metric, cause (what
+-- the newest load changed), statement (what opens the work; <...>
+-- marks what only the author can fill). It serves building the layer
+-- (missing, not run) and running it (outdated after a load, red,
+-- conflict) alike. A test's finding and fix are the test's own
+-- (`finding` and `fix` in its result); a kit adds rows through its
+-- tests, and the outlook kit through outlook_findings().
+CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view AS metric, table_name AS tbl, unnest(columns) AS col
             FROM glossql_views_scans(current_schema())),
@@ -152,11 +122,13 @@ CREATE OR REPLACE VIEW main.next_steps AS
     SELECT name FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
     WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
+  -- what the metrics read, and every value withheld as a conflict
   homed AS (
     SELECT g.subject, g.aspect, g.state, x.metrics,
            CASE WHEN g.subject LIKE '% -> %' THEN g.subject
                 ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home
-    FROM g JOIN stated s ON s.name = g.aspect JOIN reach x ON x.asset = g.subject),
+    FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
+    WHERE x.asset IS NOT NULL OR g.state = 'conflict'),
   -- the newest load of each table against the one before it
   loads AS (
     SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
@@ -198,47 +170,78 @@ CREATE OR REPLACE VIEW main.next_steps AS
     FROM loads l LEFT JOIN changed c ON c.tbl = l.tbl
     WHERE l.rn = 1 AND l.rows_before IS NOT NULL),
   s_connect AS (
-    SELECT 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'no table is loaded' AS open,
-           '' AS for_metric, '' AS cause,
+    SELECT 3 AS priority, 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
+           'no table is loaded' AS open, '' AS for_metric, '' AS cause,
            'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' AS statement
-    FROM ds WHERE NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.d)),
+    FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
+                              WHERE t.database_name = current_database() AND t.schema_name = ds.d)
+    UNION ALL
+    SELECT 2, 1, 'connect', ds.d || '.' || o.subject, 'decided', 'agent',
+           'a change to the load query of ' || o.subject || ' is approved and not declared yet', '', '',
+           'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
+    FROM main.open_items o, ds WHERE o.kind = 'recipe-change'),
   s_describe AS (
-    SELECT 2, 'describe', h.home, h.state,
-           count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' ELSE h.state END || ': '
+    SELECT CASE h.state WHEN 'conflict' THEN 1 WHEN 'stale' THEN 2 ELSE 3 END, 2, 'describe', h.home, h.state, 'agent',
+           count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' WHEN 'conflict' THEN 'in conflict' ELSE h.state END || ': '
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
-           max(h.metrics),
+           coalesce(max(h.metrics), ''),
            CASE WHEN h.state = 'stale' THEN coalesce(max(l.cause), '') ELSE '' END,
-           'SELECT subject, aspect, state FROM GLOSSARY(' || h.home || ') WHERE state = ''' || h.state || ''';'
+           CASE WHEN h.state = 'conflict'
+                THEN 'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || h.home || ', all => true);'
+                ELSE '-- the shape of a property''s value: SELECT name, schema FROM aspects WHERE name = ''<property>'';' || chr(10)
+                     || string_agg(DISTINCT 'GLOSS ' || h.aspect || ' ON ' || h.subject || ' AS $$<value>$$;', chr(10)
+                                   ORDER BY 'GLOSS ' || h.aspect || ' ON ' || h.subject || ' AS $$<value>$$;') END
     FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state),
   s_test AS (
-    SELECT 3, 'test', t.subject, t.state,
+    SELECT CASE t.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 ELSE 3 END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.metric,
            coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
                      FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.metric = t.metric)), ''),
            coalesce(t.evidence->>'fix', t.run)
     FROM main.metric_tests() t WHERE t.state <> 'green'),
   s_decide AS (
-    SELECT 4, 'decide', ds.d || '.' || r.aspect, 'decided',
-           'a review decision (' || r.stance || ') is not applied to the definition', r.aspect, '',
-           'SELECT * FROM review_decisions WHERE aspect = ''' || r.aspect || ''' AND NOT folded_in;'
+    SELECT 2, 4, 'decide', ds.d || '.' || r.aspect, 'decided', 'agent',
+           'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
+             || '; the definition does not carry it yet', r.aspect, '',
+           '-- set the assumption under key "' || r.key || '" to confidence 1.0 with basis "decided-by-person". Then record the definition again:' || chr(10)
+             || main.metric_redefine(ds.d, r.aspect)
     FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
-    SELECT 4, 'decide', ds.d || '.' || q.aspect, 'waiting',
+    SELECT 2, 4, 'decide', ds.d || '.' || o.subject, 'decided', 'agent',
+           'a person''s formula for ' || o.subject || ' is newer than its definition', o.subject, '',
+           main.metric_redefine(ds.d, o.subject)
+    FROM main.open_items o, ds WHERE o.kind = 'formula'
+    UNION ALL
+    SELECT 9, 4, 'decide', ds.d || '.' || q.aspect, 'waiting', 'person',
            count(*) || ' waiting for a person', q.aspect, '',
            'SELECT key, assumption, basis FROM open_questions WHERE aspect = ''' || q.aspect || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d GROUP BY ds.d, q.aspect),
   s_serve AS (
-    SELECT 5, 'serve', ds.d, 'missing', 'no metric is defined', '', '',
-           'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;'
-    FROM ds WHERE NOT EXISTS (SELECT 1 FROM scans)
+    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no metric is defined', '', '',
+           'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
+             || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <slicing columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
+    FROM ds WHERE NOT EXISTS (SELECT 1 FROM main.metric_summary() WHERE stopped IS NULL)
+      AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
-    SELECT 5, 'serve', ds.d || '.' || m.metric, 'blocked', coalesce(m.reason, 'not served'), m.metric, '', ''
-    FROM main.metric_summary() m, ds WHERE NOT m.applicable),
-  -- the preview features' findings, from the outlook kit
+    SELECT 2, 5, 'serve', ds.d || '.' || m.metric, 'blocked', 'agent', coalesce(m.reason, 'not served'), m.metric, '',
+           main.metric_redefine(ds.d, m.metric)
+    FROM main.metric_summary() m, ds
+    WHERE NOT m.applicable AND m.stopped IS NULL
+      AND NOT EXISTS (SELECT 1 FROM main.metric_tests() t WHERE t.metric = m.metric AND t.state <> 'green')),
+  -- the preview features: their findings, and their measurements that are due
   s_outlook AS (
-    SELECT CASE f.step WHEN 'test' THEN 3 ELSE 5 END, f.step, f.asset, f.state, f.open, f.for_metric, '', f.statement
-    FROM main.outlook_findings() f)
-  SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
-  UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve UNION ALL SELECT * FROM s_outlook;
+    SELECT CASE f.state WHEN 'red' THEN 1 ELSE 3 END, CASE f.step WHEN 'test' THEN 3 ELSE 5 END,
+           f.step, f.asset, f.state, 'agent', f.open, f.for_metric, '', f.statement
+    FROM main.outlook_findings() f
+    UNION ALL
+    SELECT 3, 3, 'test', ds.d, 'not_run', 'agent',
+           o.subject || ' (preview): ' || CASE o.kind WHEN 're-measure' THEN 'its result predates a change' ELSE 'not run yet' END,
+           '', '', 'SELECT ' || o.subject || '() FROM ' || ds.d || ';'
+    FROM main.open_items o JOIN main.outlook_measurements() d ON d.name = o.subject, ds
+    WHERE o.kind IN ('never measured', 're-measure'))
+  SELECT * FROM (
+    SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
+    UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve UNION ALL SELECT * FROM s_outlook)
+  ORDER BY priority, ord, asset, state;

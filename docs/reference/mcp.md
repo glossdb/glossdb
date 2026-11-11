@@ -76,13 +76,12 @@ Every result ends with two lines:
   or was refused, with the refusal's first line. For a metric
   definition it adds the summary row: the slicing columns admitted, the
   columns not admitted, the measurements wanted.
-- `next:` is the test report: per served metric its worst test with a
-  link, `next://<dataset>/<metric>`, then `review` where a person's
-  decision waits to be applied, and `outlook` where a model service is
-  named. A blocked goal says what blocks it;
-  the finished ones close the line as `done: …`. The goal is the
-  caller's choice, never stored. How the goals work:
-  [next steps](../extending/next-steps.md).
+- `next:` counts the open rows of the dataset per step (connect,
+  describe, test, decide, serve); rows that wait for a person are
+  counted apart. `first:` is the first row of the list, with its
+  asset, state and finding and a link, `next://<dataset>/<step>`.
+  The lines are context: the agent decides what to do. How the list
+  is built: [next steps](../extending/next-steps.md).
 
 ### The summary line
 
@@ -106,7 +105,7 @@ The server serves the pages an agent learns from:
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
 | `doc://functions/door.md`, `doc://functions/recipe.md`, `doc://functions/detector.md` | every function each execution context has, read when the server opened |
-| `next://<dataset>/<goal>` | a template: where one goal stands — a metric's tests, the review queue — and the statement that moves it |
+| `next://<dataset>/<step>` | a template: the open rows of one step (connect, describe, test, decide, serve), each with its cause and the statement that opens the work; `next://<dataset>` serves every step |
 
 The same pages are the rows of `pages()`, so a client without a
 resource reader reads them through the tool. Everything is embedded at

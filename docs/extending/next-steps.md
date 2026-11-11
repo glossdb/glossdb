@@ -1,107 +1,128 @@
 # Next steps
 
-After every call, the agent is told where each served metric stands:
-its worst test, the evidence, and the statement that settles it. Then
-what a person decided and the agent has not applied. This is the `next`
-view, built from the kits. Kits add goals the same way.
+`next` is the work list of a dataset: what is open, by step of the
+data intelligence layer. It is read from the states the catalog
+already holds, so nothing is stored about it. It is context: the
+agent, or the person reading it, decides what to do.
 
-## The goals
+## The steps
 
-| Goal | Done when | From |
-|---|---|---|
-| one per served metric, named by the metric | every test on the metric is green or accepted: no red, none not run | `metrics` kit |
-| `review` | nothing waits: review decisions applied, approved load queries declared again, conflicts read | `goals` kit |
-| `outlook` | the expected ranges, the forecast and the plan comparisons are current (preview; only where a model service is named). A metric outside its expected range, and a plan outside the forecast's range, are steps on the metric's own goal | `outlook` kit |
+| Step | A row is open when |
+|---|---|
+| `connect` | the dataset has no table; a person approved a change to a load query and it is not declared yet |
+| `describe` | a property the kits require is missing on a table, column, relationship or metric that a metric reads; a description is outdated; a value is in conflict |
+| `test` | a test on a metric is red, orange, yellow or has not run |
+| `decide` | a person decided an assumption and the definition does not carry it yet; a question waits for a person |
+| `serve` | no metric is defined; a metric cannot be served |
 
-A dataset with no served metric gets one row, `metrics`, saying so.
-The goal is the caller's: what the person asked for decides which
-metric the agent works on. Nothing is stored about it, and no step is
-an order.
+The same list serves two situations. While the layer is built, rows
+are `missing` or `not_run`. Once it runs, a load can open rows again:
+a description is `stale` when the type of its column or its derivation
+in the load query changed, a test turns red, a value leaves its
+expected range (preview, where a model service is named).
 
-## The tests behind a metric's goal
-
-The metrics kit ships three tests on every metric, over the tables its
-definition scans: `fan_out_test`, join fan-out; `orphan_test`,
-referential integrity on the declared joins; `measure_additivity_test`,
-whether the value column says how it combines. Each reads the evidence
-the quality kit stored and never the data again. The server runs them
-after a call that defines a metric, glosses its columns or imports a
-table it scans, and again the ones whose result predates a measurement
-the call made, so the line reads results. `metric_tests()` lists every
-test on each metric and on what it reads, a team's own tests included
-([views and table functions](../reference/reads.md#metric_tests)).
-
-The step is the worst state: red, then orange, yellow (a check whose
-evidence is not stored yet, or a definition whose columns carry no
-role), not run. A result that predates a change to what it read
-keeps its band and says so; the server runs it again at the next touch.
-The statement settles it: a fix to the definition or the load, the
-measurement to run, or, where the number is right as it is, a tolerance
-a person records on the metric.
+The list is narrowed to what the metrics read. A table no metric
+reads opens no row under `describe`.
 
 ## Reading it
 
 ```sql
-SELECT surface, step, state, say, statement FROM next ORDER BY goal, surface
+SELECT priority, step, asset, state, who, open, cause, statement FROM next
 ```
 
-One row per goal: `state` is `next`, `blocked` or `done`; `say` is the
-action in a clause; `why` is what in the catalog decided; `statement`
-is the action as a statement, filled from the catalog, with `<…>` where
-only the author can fill in; `then` is what follows it
-([views and table functions](../reference/reads.md#next)).
+One row per asset and state, in this order:
 
-Over MCP, every tool result ends with the same rows as one line:
+- `priority`: 1 a number is wrong or withheld (a red test, a
+  conflict); 2 something changed or was decided (an outdated
+  description, a decision to apply); 3 not there yet (missing, not
+  run); 9 waiting for a person.
+- `ord` and `step`: the step and its order.
+- `asset`: the dataset, table, relationship or metric.
+- `state`: `missing`, `stale`, `conflict`, a test's state, `decided`,
+  `waiting`, `blocked`.
+- `who`: `agent`, or `person` for a question in the review queue.
+- `open`: the finding in one sentence.
+- `for_metric`: the metrics that read the asset.
+- `cause`: on an outdated description and on a test that is not
+  green, what the newest load changed: its row count against the load
+  before, and the columns whose profile moved (distinct values, share
+  empty, lowest, highest).
+- `statement`: the statement that opens the work, filled from the
+  catalog, with `<…>` where only the author can fill in
+  ([views and table functions](../reference/reads.md#next)).
+
+Over MCP, every tool result on a dataset ends with the count of open
+rows per step and the first row of the list:
 
 ```text
-next: staff_by_title → the join in staff_by_title fans out on dept_emp.emp_no ~ titles.emp_no (next://hr/staff_by_title) · done: headcount, review
+next: describe 7 · test 1 · waiting for a person 1
+first: test hr.headcount (red): validity_test: headcount reads dept_emp (from_date, to_date) without bounding both validity dates, so a row counts once per version (next://hr/test)
 ```
 
-Each link is a resource, `next://<dataset>/<goal>`, which serves the
-action, why, the statement and what follows, as markdown
+Rows that wait for a person are counted apart and are not the
+agent's. Each link is a resource, `next://<dataset>/<step>`, which
+serves the step's rows with cause and statement as markdown;
+`next://<dataset>` serves every step
 ([MCP interface](../reference/mcp.md)).
 
-## How a goal is built
+## The tests behind a metric
 
-Each kit declares a table macro `routes_<kit>()` that returns two
-columns of SQL text:
+The metrics kit ships four tests on every metric, over the tables its
+definition scans: `fan_out_test`, join fan-out; `orphan_test`,
+referential integrity on the declared joins; `validity_test`, an
+effective-dated table read without both of its dates;
+`measure_additivity_test`, whether the value column says how it adds
+up. The server runs them after a call that defines a metric,
+annotates its columns or loads a table it scans. It also runs the
+measurements they read: a profile of every column the metric reads
+and the relationship check of the dataset. `metric_tests()` lists
+every test on each metric and on what it reads, a team's own tests
+included ([views and table functions](../reference/reads.md#metric_tests)).
 
-- `ctes`: common table expressions the kit's steps need, or `''`;
-- `arms`: its steps, one `SELECT` per step, joined by `UNION ALL`.
+A result that predates a change to what it read keeps its state, and
+the server runs it again at the next call that touches the metric.
 
-Each step returns the columns `surface` (the goal), `step`, `state`,
-`act`, `say`, `why`, `statement` and `"then"`, and returns a row only
-when its condition holds. For each goal, the lowest step that returns a
-row decides. The last step of a goal is an unconditional `done`.
+## A test brings its advice
 
-At every open the server writes `next` from every `routes_<name>()`
-macro in the lake's `main` schema. The steps read the catalog, never
-the data, through relations the server computes once: `ds` (the bound
-dataset), `axes` (`metric_summary()`), `open_items`, `reds` (red test
-results) and `bodies` (the current metric definition per metric). The
-metrics' goals sort first, `review` next, `outlook` after; a goal
-the server does not know sorts with the metrics.
+A test's check returns two fields beside its rate:
 
-## Adding a goal
+- `finding`: one sentence on what is wrong and what it does to the
+  number;
+- `fix`: the statement that settles it: a fix to the definition or
+  the load, or, where the number is right as it is, a tolerance a
+  person can overrule.
 
-A kit adds a goal by declaring its own `routes_<kit>()`:
+`next` serves both as they are. A kit that adds a test on a metric
+adds its rows to `next` with it and changes nothing else.
 
-```sql
-CREATE OR REPLACE MACRO main.routes_contracts() AS TABLE
-SELECT '' AS ctes, $arms$
-SELECT 'contracts' AS surface, 1 AS step, 'next' AS state, 'GLOSS contract' AS act,
-       'write the contract for ' || t.table_name AS say,
-       t.table_name || ' has no contract' AS why,
-       'GLOSS contract ON ' || t.table_name || ' AS $${"owner": "<team>"}$$;' AS statement,
-       '' AS "then"
-FROM (SELECT DISTINCT table_name FROM glossql_columns(current_schema(), false)) t, ds
-WHERE NOT EXISTS (SELECT 1 FROM main.glossary g
-                  WHERE g.dataset = ds.dataset AND g.aspect = 'contract' AND g.subject = t.table_name)
-UNION ALL
-SELECT 'contracts', 2, 'done', '', '', 'every table has a contract', '', ''
-FROM ds
-$arms$ AS arms;
+```glossql
+DECLARE ASPECT currency_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"breach_rate": {"type": ["number", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "grounds": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION currency_check FOR GLOBAL AS $$
+  SELECT 1.0 AS breach_rate,
+         'the value sums amounts in more than one currency' AS finding,
+         main.metric_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) AS fix
+$$ RETURNS currency_check;
+
+DECLARE TEST currency_test ON currency_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 
-The goal joins `next` at the next open. Test its steps in the kit's
-suite, as the shipped kits do.
+`x-subject: metric` marks a test the server runs on every metric.
+`metric_redefine(dataset, metric)` returns the statement that records
+the metric's current definition again, to edit and send.
+
+## What a kit adds
+
+- **A required property** (`DECLARE ASPECT` with a condition for when
+  it is required) opens a `describe` row where it is missing on an
+  asset a metric reads.
+- **A test on a metric** opens a `test` row while it is not green,
+  with its own finding and fix.
+
+Test both in the kit's suite, as the shipped kits do: check the step,
+the asset and the state of the row, and the statement it hands over.

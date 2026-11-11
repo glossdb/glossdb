@@ -54,8 +54,9 @@ workspace version.
   with a `kit.test` suite beside it. A kit whose words depend on the
   server lives here; `kits/README.md` says what they add: vocabulary
   and reads, never grammar.
-- **Next steps**: each kit's `routes_<kit>()`, the core's in
-  `kits/goals/kit.sql`; the two lines every result closes with,
+- **Next steps**: the `next` view in `kits/goals/kit.sql`, read from
+  the states the catalog holds; a test brings its own finding and
+  fix. The lines every result closes with:
   `crates/serverd/src/window.rs`.
 - `skills/` — the product skills served to agents over MCP.
   `.claude/skills/` — the skills for building the server: substrate,

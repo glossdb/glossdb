@@ -158,11 +158,12 @@ the gap.
 
 ## The goals
 
-`routes_outlook()` answers two goals for the server's `next` read.
-Bands: a current walk exists and no band is red. Plan: the plan served,
-the forecast at the current origin, the plan judged against it, every
-gap judged by a person, with a scenario's estimate where one is
-annotated. Every step reads the catalog, none the data.
+`outlook_findings()` adds this kit's rows to the server's `next` read,
+where a model service is named: a value outside its expected range, a
+plan outside the forecast's range, a plan not yet compared with the
+newest forecast, a plan without a definition. `outlook_measurements()`
+names the measurements the dataset needs, and `next` lists the ones
+that are due. Every row reads the catalog, none the data.
 
 ## What is not here
 

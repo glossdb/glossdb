@@ -12,9 +12,10 @@ person. The result is the workspace's data intelligence layer, which
 people, agents and BI tools answer from. Do what the person asked;
 this is how each part is done well.
 
-**You are done when the `next:` line shows every metric under `done:`
-and nothing under `review` waits on you.** Questions waiting for a
-person do not hold you back.
+**You are done when the `next:` line shows nothing open for you:**
+no row under connect, describe, test, decide or serve for what the
+person asked. Rows waiting for a person are counted apart and do not
+hold you back.
 
 ## 1. Look at the data
 
@@ -92,17 +93,26 @@ it, or load a table it reads:
 | `orphan_test` | rows on a declared relationship find no parent |
 | `measure_additivity_test` | the measure does not say how it adds up, or says additive where the value is a ratio, an average or a distinct count |
 
-The `next:` line after every call names the worst one per metric:
+After every call the result ends with what is open on the dataset:
+a count per step, then the first row of the list.
 
 ```text
-next: staff_by_title → staff_by_title reads titles (from_date, to_date) without its validity dates (next://hr/staff_by_title) · done: headcount, review
+next: describe 4 · test 1 · waiting for a person 1
+first: test hr.staff_by_title (red): validity_test: staff_by_title reads titles (from_date, to_date) without bounding both validity dates, so a row counts once per version (next://hr/test)
 ```
 
-Read `SELECT say, why, statement FROM next WHERE surface =
-'staff_by_title'` and send the statement it gives, edited: fix the
-definition or the load. Where the number is right as it is, record a
-tolerance with the reason; a person can overrule it. Every test with
-its evidence: `SELECT * FROM metric_tests()`.
+The list is context, not an order: work on what the person asked
+for. A red test comes first, then what a load changed or a person
+decided, then what is missing. Read `SELECT asset, state, open, cause,
+statement FROM next WHERE step = 'test'` and send the statement it
+gives, edited: fix the definition or the load. Where the number is
+right as it is, record a tolerance with the reason; a person can
+overrule it. `cause` says what the newest load changed: row counts and
+the columns whose values moved. Every test with its evidence:
+`SELECT * FROM metric_tests()`.
+
+Rows under `describe` name what is missing or outdated on the tables,
+columns and joins your metrics read: `references/vocabulary.md`.
 
 A check of your own (a total that must tie out, a rate that must stay
 under a bound) is a test too: `references/validate.md`.
@@ -110,8 +120,8 @@ under a bound) is a test too: `references/validate.md`.
 ## 5. Questions and decisions
 
 Assumptions below full confidence become questions for a person. Their
-answers arrive as review decisions; `next:` shows `review → …` when
-one waits. Apply it by recording the definition again with the decided
+answers arrive as review decisions; `next` lists each under `decide`
+while it waits. Apply it by recording the definition again with the decided
 assumption at confidence 1.0 (`skill://glossql/references/review.md`).
 
 ## More

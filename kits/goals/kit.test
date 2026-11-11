@@ -1,5 +1,5 @@
 # name: kits/goals/kit.test
-# description: the goals kit — what waits on an action (`open_items`) and the core next steps of `next`, on the kits before it; run again, it holds
+# description: the goals kit — what waits on an action (`open_items`) and the work list `next`, on the kits before it; run again, it holds
 # group: [sql]
 
 require glossql
@@ -42,16 +42,11 @@ SELECT count(*) FROM open_items;
 ----
 0
 
-query I
-SELECT count(*) > 0 FROM routes_core();
+# with no table in the dataset, the list has one row: connect
+query TTT
+SELECT step, state, who FROM next;
 ----
-true
-
-# with nothing loaded, the list opens with connect
-query TT
-SELECT step, state FROM next_steps ORDER BY ord LIMIT 1;
-----
-connect	missing
+connect	missing	agent
 
 query TT
 FROM glossql_kit('{KITS}/goals/kit.sql');

@@ -42,17 +42,19 @@ per statement:
   stored.
 - two closing lines on every result. `status:` says whether your
   last statement was done or refused, and for a metric definition
-  what its summary row said. `next:` is the test report: per served
-  metric its worst test — join fan-out, orphaned keys, additivity, a
-  test of the team's own — with a link, then `review`, what a person
-  decided and you have not applied; the goals that are done close the
-  line. The server runs the built-in tests itself after a call that
-  defines a metric, glosses its columns or imports a table it scans,
-  so the line reads results, never chores. To settle one, read its
-  link — `next://<dataset>/<metric>` as a resource, or `SELECT * FROM
-  next WHERE surface = '<metric>'` through the tool — and send the
-  statement it gives you, edited to your judgment; `<…>` marks what
-  only you can fill. A red test is settled by a fix to the definition
+  what its summary row said. `next:` counts what is open on the
+  dataset per step (connect, describe, test, decide, serve), and
+  `first:` gives the first open row: a red test first, then what a
+  load changed or a person decided, then what is missing. Rows that
+  wait for a person are counted apart. The server runs the built-in
+  tests itself after a call that defines a metric, annotates its
+  columns or loads a table it scans, with the measurements they read,
+  so the lines report results. To work on a row, read its link
+  (`next://<dataset>/<step>` as a resource, or `SELECT * FROM next
+  WHERE step = '<step>'` through the tool) and send the statement it
+  gives you, edited to your judgment; `<…>` marks what only you can
+  fill. The list is context: what the person asked for decides what
+  you work on. A red test is settled by a fix to the definition
   or the load, or accepted by a tolerance a person records. None of it
   is an order: the goal is what the person asked for.
 
@@ -189,7 +191,7 @@ JOIN current_dataset d ON d.dataset = r.dataset ORDER BY r.written_at DESC
 A person's answers arrive while you are away, as **review decisions**
 (`review_decision` in the catalog) in the person's own annotation — the
 judgment alone, naming your claim by its `key`, never a copy of your
-body. The `review` goal on the `next:` line carries every action
+body. The `decide` step of `next` carries every action
 that waits on you — a decision to apply, an approved load-query
 change, a formula answer, a conflicting value — and gives you the
 statement. A question is served once, through the MCP interface's

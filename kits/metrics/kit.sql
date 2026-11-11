@@ -576,7 +576,10 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
               WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
                 THEN value_column || ' of ' || metric || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
                      || ' marked ' || additivity || ': its rows are summed, so a total and a coarser time grain are wrong' END FROM a) END AS finding,
-         CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
+         CASE WHEN NOT ok.applicable
+              THEN (SELECT CASE WHEN len(coalesce(missing, [])) > 0 THEN list_aggregate(missing, 'string_agg', chr(10))
+                                ELSE main.metric_redefine(split_part($subject, '.', 1), metric) END FROM a)
+              ELSE (SELECT CASE
               WHEN additivity IS NULL OR additivity_state <> 'current'
                 THEN main.gloss_statement('additivity', $subject || '.' || value_column,
                        '{"value": "<additive|semi-additive|ratio|non-additive>", "grounds": "<why, in the business''s words>"}')
@@ -752,97 +755,6 @@ SELECT t.metric, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current,
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs) t LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
          current, metric, test, subject;
-
---===------------------------------------------------------------------===--
--- The test report this kit answers for the `next` read: one goal per
--- served metric, named by the metric, whose step is the worst test on
--- it — red, then orange, yellow (a check whose evidence is not stored
--- yet, or a definition whose columns carry no role), not run — with
--- the statement that settles it, filled from the catalog; a result that
--- predates a change to what it read keeps its band and says so; `done`
--- when every test on the metric is green or accepted. A dataset with no
--- metric is told so once. The server composes one next read from every
--- routes_<kit>() macro: this one serves its CTEs and its arms as SQL
--- text over the relations the server reads once — ds (the bound
--- dataset), axes (the fact rows), bodies (the current metric definition
--- per metric). Columns of an arm: surface, step, state (next, blocked,
--- done), act, say, why, statement (<...> marks what only the author can
--- fill), "then".
---===------------------------------------------------------------------===--
-
-CREATE OR REPLACE MACRO main.routes_metrics() AS TABLE
-SELECT $ctes$
-report AS (
-  SELECT r.*,
-         CASE r.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 WHEN 'yellow' THEN 3 WHEN 'not_run' THEN 4 END AS rank,
-         json_extract_string(r.evidence, '$.reason') AS reason,
-         CASE WHEN json_extract_string(r.evidence, '$.additivity') IS NOT NULL THEN json_extract_string(r.evidence, '$.shape') END AS shape,
-         json_extract_string(r.evidence, '$.additivity') AS marked,
-         coalesce(list_aggregate(from_json(json_extract(r.evidence, '$.pairs'), '["VARCHAR"]'), 'string_agg', ', '), '') AS pairs,
-         coalesce(list_aggregate(from_json(json_extract(r.evidence, '$.tables'), '["VARCHAR"]'), 'string_agg', ', '), '') AS undated,
-         coalesce((SELECT string_agg(round(try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) * 100, 1) || '% of rows on ' || json_extract_string(e, '$.relationship'), ', ')
-                   FROM unnest(coalesce(json_extract(r.evidence, '$.edges')::JSON[], [])) t(e)
-                   WHERE try_cast(json_extract(e, '$.orphan_rate') AS DOUBLE) > 0), '') AS orphans
-  FROM main.metric_tests() r)
-$ctes$ AS ctes, $arms$
-SELECT r.metric AS surface, r.rank AS step, 'next' AS state, r.test AS act,
-       CASE
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape IS NOT NULL THEN r.metric || ' is ' || CASE r.shape WHEN 'ratio' THEN 'a ratio' WHEN 'average' THEN 'an average' ELSE 'a distinct count' END || ' marked ' || r.marked
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'say how ' || r.metric || ' adds up'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN 'annotate the columns of ' || r.metric
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' THEN 'record ' || r.metric || ' again: ' || coalesce(a.reason, r.reason, 'it serves no value column')
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN r.metric || ' joins many-to-many on ' || r.pairs
-         WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN 'profile the join columns of ' || r.metric
-         WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.metric || ' reads ' || r.undated || ' without its validity dates'
-         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN r.orphans || ' find no parent in ' || r.metric
-         WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'run the coherence check for ' || r.metric
-         WHEN r.state = 'not_run' THEN 'run ' || r.test || ' on ' || r.metric
-         ELSE r.test || ' ' || r.state || ' on ' || r.subject
-       END AS say,
-       CASE
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape = 'distinct' THEN coalesce(a.value_column, 'the value') || ' of ' || r.metric || ' is a distinct count, and it is marked additive: distinct counts do not add up, so every total and every coarser grain is wrong. Mark it non-additive and serve one row per period; a count per member is its own metric'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape IS NOT NULL THEN coalesce(a.value_column, 'the value') || ' of ' || r.metric || ' is computed as ' || CASE r.shape WHEN 'ratio' THEN 'a division by an aggregate' ELSE 'an average' END || ', and it is marked ' || r.marked || ': its rows are summed, so every total and every coarser grain is wrong. Serve the numerator and the denominator beside the value and mark it ratio; where it reads another metric''s ratio, read that metric''s numerator and denominator instead of its value'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'no additivity is annotated on ' || coalesce(a.value_column, 'the value') || ' of ' || r.metric || ': a coarser grain than ' || coalesce(a.floor, 'the floor') || ' and a total over its members need it — additive sums, semi-additive keeps the period''s last level, a ratio divides its summed numerator by its summed denominator'
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN r.metric || ' joins on ' || r.pairs || ', and the values repeat on both sides: every match multiplies rows. Join through the table where the key is unique, or reduce one side to one row per key inside the definition before the join: the latest row per key where the source sends a key again to correct it, an aggregate only where every row of a key says the same; where the join is meant as it is, a tolerance on the metric says so'
-         WHEN r.test = 'validity_test' AND r.state = 'red' THEN r.undated || ' is effective-dated: a key repeats once per version, and a join or a filter that does not bound both validity columns counts a row once per version'
-         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN 'rows on a declared join between tables ' || r.metric || ' scans find no parent: an inner join drops them, an outer join counts them under no member; fix the load, or record the rate as the tolerance'
-         WHEN r.state = 'yellow' THEN coalesce(a.reason, r.reason, r.test || ' has no rate yet')
-         WHEN r.state = 'not_run' THEN r.test || ' has not run on ' || r.metric
-         ELSE coalesce(r.reason, r.test || ' scored ' || coalesce(CAST(r.score AS VARCHAR), '?') || ' on ' || r.subject)
-       END || CASE WHEN r.state <> 'not_run' AND NOT r.current THEN '; the result predates a change to what it read, and runs again at the next touch' ELSE '' END AS why,
-       CASE
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape = 'distinct' THEN 'GLOSS additivity ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "non-additive", "grounds": "a distinct count"}$$;'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape IS NOT NULL THEN '-- serve the two halves beside the value and say so in "measure": {"column": "' || coalesce(a.value_column, 'value') || '", "additivity": "ratio", "numerator": "<column>", "denominator": "<column>"}, then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'GLOSS additivity ON ' || ds.dataset || '.' || r.metric || '.' || coalesce(a.value_column, '<value column>') || ' AS $${"value": "<additive|semi-additive|ratio|non-additive>", "grounds": "<why, in the business''s words>"}$$;'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' AND len(coalesce(a.missing, [])) > 0 THEN list_aggregate(a.missing, 'string_agg', chr(10))
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'yellow' THEN 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- make one side of ' || r.pairs || ' unique (join through the table that holds the key once, or keep one row per key in a subquery: QUALIFY row_number() OVER (PARTITION BY <key> ORDER BY <load or change time> DESC) = 1, or GROUP BY <key>), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-         WHEN r.test = 'fan_out_test' AND r.state = 'yellow' THEN (SELECT string_agg('SELECT column_profile() FROM ' || trim(c) || ';', chr(10)) FROM unnest(string_split(regexp_replace(coalesce(r.reason, ''), '^.*over ', ''), ',')) u(c))
-         WHEN r.test = 'validity_test' AND r.state = 'red' THEN '-- bound the validity columns of ' || r.undated || ' by the period (valid_from <= period AND valid_to > period), then record the definition again:' || chr(10) || 'GLOSS ' || r.metric || ' ON ' || ds.dataset || ' AS $$' || coalesce(b.body, '<the current body>') || '$$;'
-         WHEN r.test = 'orphan_test' AND r.state = 'red' THEN '-- fix the load that leaves rows without a parent, or accept the rate:' || chr(10) || 'GLOSS orphan_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": ' || coalesce(CAST(r.score AS VARCHAR), '<the rate>') || ', "grounds": "<why these rows have no parent>"}$$;'
-         WHEN r.test = 'orphan_test' AND r.state = 'yellow' THEN 'SELECT relationship_coherence() FROM ' || ds.dataset
-         ELSE r.run
-       END AS statement,
-       CASE
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' AND r.shape IS NOT NULL THEN '-- or, where the number is right as it is: GLOSS additivity_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why it may be summed>"}$$;'
-         WHEN r.test = 'measure_additivity_test' AND r.state = 'red' THEN 'SELECT * FROM metric_series(grain := ''' || coalesce(a.floor, 'month') || ''') WHERE metric = ''' || r.metric || ''''
-         WHEN r.test = 'fan_out_test' AND r.state = 'red' THEN '-- where one of the tables is effective-dated, say so and the validity test names the fix: GLOSS validity ON <table> AS $${"valid_from": "<column>", "valid_to": "<column>"}$$;' || chr(10) || '-- or, where the join is right as it is: GLOSS fan_out_check ON ' || ds.dataset || '.' || r.metric || ' AS $${"tolerance": 1.0, "grounds": "<why the fan-out is meant>"}$$;'
-         WHEN r.state = 'yellow' AND r.test IN ('fan_out_test', 'orphan_test') THEN r.run
-         ELSE ''
-       END AS "then"
-FROM report r LEFT JOIN axes a ON a.metric = r.metric LEFT JOIN bodies b ON b.metric = r.metric, ds
-WHERE r.rank IS NOT NULL
-UNION ALL
-SELECT m.metric, 9, 'done', '', '', 'every test on ' || m.metric || ' is green or accepted', '', ''
-FROM (SELECT DISTINCT metric FROM report) m, ds
-UNION ALL
-SELECT 'metrics', 1, 'next', 'GLOSS view', 'define the first metric',
-       'no metric is served on ' || ds.dataset || ': the person''s question names it. A definition is SQL with one row per period and slice, and says which column is the time, which the measure and how it adds up (additive, semi-additive for a level such as a balance or a headcount, ratio), and which columns slice it',
-       'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
-         || 'GLOSS <metric> ON ' || ds.dataset || ' AS $${"sql": "SELECT <period>, <value>, <slicing columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio>", "unit": "<unit>"}, "dimensions": ["<column>"]}$$;',
-       ''
-FROM ds WHERE NOT EXISTS (SELECT 1 FROM report)
-$arms$ AS arms;
 
 --===------------------------------------------------------------------===--
 -- semantic_model(): the bound dataset as one Apache Ossie document

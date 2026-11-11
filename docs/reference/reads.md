@@ -451,22 +451,25 @@ reads one. Needs no dataset.
 
 ### next
 
-Where the bound dataset stands on each goal, and the one action that
-moves it. One row per goal — a served metric, named by the metric,
-whose step is its worst test; `review`; `outlook` where a model
-service is named — or the one `WHERE surface =
-'…'` names. Columns: `goal` (the goal's order), `surface`, `step`, `state`
-(`next`, `blocked`, `done`), `act` (the statement kind, function or
-view), `say` (the action in a clause), `why` (what in the catalog
-decided), `statement` (the action as a statement, filled from the
-catalog; `<…>` marks what only the author can fill) and `then` (what
-follows it). How the goals are built and how a kit adds one:
-[next steps](../extending/next-steps.md).
+What is open on the bound dataset, by step of the data intelligence
+layer: `connect`, `describe`, `test`, `decide`, `serve`. One row per
+asset and state, read from the states the catalog holds and narrowed
+to what the metrics read. Columns: `priority` (1 a number is wrong or
+withheld, 2 something changed or was decided, 3 not there yet, 9
+waiting for a person), `ord` (the step's order), `step`, `asset`,
+`state` (`missing`, `stale`, `conflict`, a test's state, `decided`,
+`waiting`, `blocked`), `who` (`agent` or `person`), `open` (the
+finding), `for_metric` (the metrics that read the asset), `cause`
+(what the newest load changed: row counts and the columns whose
+profile moved) and `statement` (what opens the work, filled from the
+catalog; `<…>` marks what only the author can fill). The rows come in
+the order of `priority`, then `ord`. How the list is built and how a
+kit adds rows: [next steps](../extending/next-steps.md).
 
 ```sql
-SELECT surface, step, state, say FROM next ORDER BY goal, surface
+SELECT step, asset, state, open FROM next
 ```
 
 The MCP interface serves the same rows as the resource
-`next://<dataset>/<surface>`, and ends every tool result with a
-one-line `next:` ([MCP interface](mcp.md)).
+`next://<dataset>/<step>`, and ends every tool result with the count
+per step and the first row ([MCP interface](mcp.md)).

@@ -778,112 +778,6 @@ impl std::fmt::Debug for Plane {
 }
 
 /// Run one statement for its effect on a connection.
-/// The `next` read, written at open from every `routes_<kit>()` macro
-/// the kits and the interface declare: each serves its goals' CTEs and arms
-/// as SQL text over the reads this query takes once — `ds`, `axes`,
-/// `open_items`, `reds`, `bodies` — so one `next` reads the record once
-/// per relation, and the lowest step decides each goal. The goals' order:
-/// one per served metric, named by the metric, then review, then the
-/// outlook's preview goals.
-fn next_view(conn: &Connection) -> Result<String, SessionError> {
-    let (_, _, batches) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT function_name FROM duckdb_functions() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'main' AND function_name LIKE 'routes\\_%' ESCAPE '\\' \
-             AND function_type = 'table_macro' ORDER BY function_name"
-        ),
-        &[],
-    )?;
-    let routes: Vec<String> = rows_as_text(&batches)
-        .into_iter()
-        .filter_map(|row| row.into_iter().next().flatten())
-        .collect();
-    let mut ctes = Vec::new();
-    let mut arms = Vec::new();
-    for route in &routes {
-        let (_, _, batches) = arrow_batches(
-            conn,
-            &format!("SELECT ctes, arms FROM {LAKE}.main.{route}()"),
-            &[],
-        )?;
-        for row in rows_as_text(&batches) {
-            if let Some(Some(c)) = row.first()
-                && !c.trim().is_empty()
-            {
-                ctes.push(c.trim().trim_end_matches(',').to_string());
-            }
-            if let Some(Some(a)) = row.get(1)
-                && !a.trim().is_empty()
-            {
-                arms.push(a.trim().to_string());
-            }
-        }
-    }
-    let steps = if arms.is_empty() {
-        "SELECT NULL::VARCHAR AS surface, NULL::INTEGER AS step, NULL::VARCHAR AS state, \
-         NULL::VARCHAR AS act, NULL::VARCHAR AS say, NULL::VARCHAR AS why, \
-         NULL::VARCHAR AS statement, NULL::VARCHAR AS \"then\" WHERE false"
-            .to_string()
-    } else {
-        arms.join("\nUNION ALL\n")
-    };
-    let shared = format!(
-        "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
-         axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_summary()), \
-         open_items AS MATERIALIZED (SELECT * FROM {LAKE}.main.open_items), \
-         reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
-         bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
-           SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
-           FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1)"
-    );
-    let kit_ctes = if ctes.is_empty() {
-        String::new()
-    } else {
-        format!(", {}", ctes.join(", "))
-    };
-    Ok(format!(
-        "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
-         steps AS ({steps}), \
-         first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
-         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'outlook' THEN 3 ELSE 1 END AS goal, \
-                surface, step, state, act, say, why, statement, \"then\" \
-         FROM first WHERE rn = 1"
-    ))
-}
-
-/// The `next` view, written when its text is new. The hash of the
-/// composed text rides the view as its comment, which a replace
-/// clears; a view whose comment is the hash holds, and the open
-/// skips the bind of the whole text. A kit that changed changes the
-/// text through its routes.
-fn write_next(conn: &Connection) -> Result<(), SessionError> {
-    let view = next_view(conn)?;
-    let (_, _, hashed) = arrow_batches(
-        conn,
-        &format!("SELECT md5('{}')", view.replace('\'', "''")),
-        &[],
-    )?;
-    let hash = one_cell(&hashed).unwrap_or_default();
-    let (_, _, standing) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT comment FROM duckdb_views() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'main' AND view_name = 'next'"
-        ),
-        &[],
-    )?;
-    if one_cell(&standing).as_deref() == Some(hash.as_str()) {
-        return Ok(());
-    }
-    run(conn, &view)?;
-    run(
-        conn,
-        &format!("COMMENT ON VIEW {LAKE}.main.next IS '{hash}'"),
-    )?;
-    Ok(())
-}
-
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
     conn.query(sql, Parameters::None)
         .map_err(|e| {
@@ -1125,7 +1019,6 @@ impl Plane {
                     run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
-                write_next(&conn)?;
                 Ok((environment, instance))
             }
         })

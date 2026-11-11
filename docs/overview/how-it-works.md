@@ -107,11 +107,12 @@ with a skill that teaches an agent its words. The `kpi` kit is the
 semantic layer's vocabulary; the `quality` kit holds the screens. See
 [the KPI kit](../reference/kpi-kit.md) and [kits](../extending/kits.md).
 
-**Next steps.** Every result over MCP ends with a `next:` line, the
-test report: per served metric its worst test with the statement that
-settles it, filled from the catalog, then what a person decided and
-the agent has not applied. The server runs the built-in tests after a
-definition is written and after a load, so the line reads results.
+**Next steps.** Every result over MCP ends with what is open on the
+dataset: a count per step and the first open row, with the statement
+that opens the work, filled from the catalog. The list is read from
+the states the catalog holds: what is missing, what a load made
+outdated, which test is red, what a person decided. The server runs
+the built-in tests after a definition is written and after a load.
 The agent does not need the chat history to know what is left. See
 [reads](../reference/reads.md).
 
