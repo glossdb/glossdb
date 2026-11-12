@@ -281,6 +281,62 @@ pub struct QueryStream {
     pub catalog: bool,
 }
 
+/// A read's result as kept: its shape and its rows.
+#[derive(Clone)]
+struct KeptRead {
+    schema: SchemaRef,
+    batches: Arc<[RecordBatch]>,
+}
+
+/// What identifies a kept read: who reads, where, the statement with
+/// its parameters, and the version of everything it can see. A write
+/// moves the version, so the read after it is a different key; the
+/// entries of older versions are never asked for again and leave by
+/// the cache's own eviction.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct KeptKey {
+    dataset: Option<String>,
+    actor: String,
+    sql: String,
+    params: Vec<(String, String)>,
+    version: String,
+}
+
+/// The kept reads of a workspace, shared by its channels.
+type Kept = moka::sync::Cache<KeptKey, KeptRead>;
+
+/// A read larger than this is served and not kept.
+const KEPT_READ_BYTES: usize = 2 << 20;
+/// The memory the kept reads may hold together.
+const KEPT_BYTES: u64 = 128 << 20;
+/// A read may depend on something outside the lake (the model service,
+/// the clock within a day): a kept read is served this long at most.
+const KEPT_FOR: std::time::Duration = std::time::Duration::from_secs(600);
+
+fn kept_reads() -> Kept {
+    moka::sync::Cache::builder()
+        .max_capacity(KEPT_BYTES)
+        .weigher(|_, read: &KeptRead| {
+            let bytes: usize = read.batches.iter().map(|b| b.get_array_memory_size()).sum();
+            u32::try_from(bytes).unwrap_or(u32::MAX)
+        })
+        .time_to_live(KEPT_FOR)
+        .build()
+}
+
+/// The version of everything a read can see: the store's version,
+/// which every load and every write to the catalog moves, and the
+/// day, which a read over "the newest complete month" turns on.
+fn store_version(conn: &Connection) -> Option<String> {
+    let (_, _, batches) = arrow_batches(
+        conn,
+        "SELECT version || ' ' || current_date::VARCHAR FROM glossql_store_version()",
+        &[],
+    )
+    .ok()?;
+    one_cell(&batches)
+}
+
 /// A file the engine writes a read into, for the app interface's downloads:
 /// the engine's own CSV and parquet writers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -827,6 +883,7 @@ pub struct Plane {
     instance: Arc<Instance>,
     config: Config,
     pages: Arc<[ServedPage]>,
+    kept: Kept,
 }
 
 impl std::fmt::Debug for Plane {
@@ -1096,6 +1153,7 @@ impl Plane {
             instance: Arc::new(instance),
             config,
             pages: Arc::from(Vec::new()),
+            kept: kept_reads(),
         })
     }
 
@@ -1222,6 +1280,7 @@ impl Plane {
             dataset,
             root,
             row_cap: self.config.row_cap,
+            kept: self.kept.clone(),
         }))
     }
 
@@ -1363,6 +1422,7 @@ pub struct Session {
     /// Whether the actor is one of [`Config::root`]: the engine's knobs
     /// are theirs; else [`admitted`] judges each statement first.
     root: bool,
+    kept: Kept,
 }
 
 impl std::fmt::Debug for Session {
@@ -1584,14 +1644,58 @@ impl Session {
         } else {
             format!("SELECT * FROM ({one}) LIMIT {}", cap + 1)
         };
-        let (schema, batches) = self.batches_with_schema(&text, params).await?;
+        // A function called over a subject stores its result: it runs.
+        // Every other read is served as kept while the store's version
+        // holds.
+        let key = if is_extraction(&text) {
+            None
+        } else {
+            self.store_version().await.map(|version| KeptKey {
+                dataset: self.dataset.clone(),
+                actor: self.actor.kind.to_string(),
+                sql: text.clone(),
+                params: params.to_vec(),
+                version,
+            })
+        };
+        let read = match key.as_ref().and_then(|k| self.kept.get(k)) {
+            Some(read) => read,
+            None => {
+                let (schema, batches) = self.batches_with_schema(&text, params).await?;
+                let read = KeptRead {
+                    schema,
+                    batches: batches.into(),
+                };
+                let bytes: usize = read.batches.iter().map(|b| b.get_array_memory_size()).sum();
+                // A read that wrote, or ran across another's write,
+                // belongs to no one version.
+                if let Some(key) = key
+                    && bytes <= KEPT_READ_BYTES
+                    && self.store_version().await.as_ref() == Some(&key.version)
+                {
+                    self.kept.insert(key, read.clone());
+                }
+                read
+            }
+        };
+        let batches = read.batches.to_vec();
         let stream: BatchStream = Box::pin(futures::stream::iter(batches.into_iter().map(Ok)));
         Ok(QueryStream {
-            schema,
+            schema: read.schema,
             stream,
             cap,
             catalog,
         })
+    }
+
+    async fn store_version(&self) -> Option<String> {
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || {
+            let conn = conn.lock().ok()?;
+            store_version(&conn)
+        })
+        .await
+        .ok()?
     }
 
     /// The console's re-measure: every function's value of the bound
