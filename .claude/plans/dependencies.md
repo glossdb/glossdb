@@ -8,9 +8,8 @@ new clause. `DEPENDS ON` is built and provisional.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The server keeps a read's result (moka), keyed by dataset, actor kind, SQL, parameters and the store's version; filled on read, evicted by size and age, no invalidation code | — | `crates/duck/src/lib.rs` (`KeptKey`, `Session::stream`), the extension's `glossql_store_version()` | Done: a call that changes nothing 0.51 s to 0.06 s; `next` again 0.46 s to 0.01 s | |
-| The kept reads in the extension are keyed by the store relations they read, not by the one joined version, so a stored result leaves the kept annotations in place | Medium: the read cache's key is the centre of the extension's read path | the extension (`glossql_store.cpp`, `Cached`, `StoreVersionSQL`) | Next: it is what a write's 6 s wait for | |
-| The checks of one call run on separate connections, after a test in which several results that are due are stored at once | Medium | `crates/duck/src/lib.rs` (`built_in_tests`) | After the row above | |
+| The project lead chooses from "The choices" below | — | this file | Next | |
+| Checks run once per call against one fill of the reads; storing a result does not empty the reads of other datasets or of readers that did not read it | Medium: the read cache's key is the centre of the extension's read path | the extension (`glossql_store.cpp:1636-1906`), `crates/duck/src/lib.rs:1742-1865` | First: it removes most of a write's 6 s without changing what counts as outdated | |
 | The extension's own table functions report what they read (`GLOSSARY()`, `dataset_cells`), so a body that reads the catalog through them no longer records "everything" | Medium | the extension (`glossql_runner.cpp:961-1071`) | Second | |
 | Catalog dependencies at the grain the matrix names | High: it changes `SPEC.md` §5 and §6 | the extension, the spec, the kits | Third | |
 | A content version for a table, so a reload of the same rows outdates nothing | Low: DuckLake's change feed gives it | the extension (`PartsSQL`) | With the third | |
