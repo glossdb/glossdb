@@ -79,6 +79,28 @@ the one store version, so the next check fills the glossary read
 again: about 12 fills of 0.4 s. The time is planning (binding and
 optimizing), not execution. A warm read of the glossary is 0.011 s.
 
+Concurrency, measured on the same workspace (15 cores, debug build):
+
+| Read | Alone | 8 at once (wall) |
+|---|---|---|
+| `next` | 0.46 s | 0.80 s |
+| `next LIMIT 0` (planning only) | 0.29 s | |
+| `GLOSSARY()`, kept | 0.011 s | 0.02 s |
+
+- Each channel is its own connection; reads on different connections
+  run at the same time. Nothing serialises the whole system.
+- Within one call the checks run one after another on the call's
+  connection (`built_in_tests`). That loop is ours, not the engine's.
+- The engine parses, binds and optimizes one query on one thread. It
+  runs a plan in parallel over row groups. The catalog's relations are
+  a few hundred rows, so there is nothing to split: `next` reads about
+  85 scans (55 of the lake's metadata tables, 16 of `glossql_columns`,
+  10 kept reads) and 0.29 s of its 0.46 s is planning.
+- A kept read is filled inside the bind of the query that asks for
+  it, on a second connection.
+- The object cache works. Its entries are keyed by lake, kind of read
+  and dataset, and compared against the one store version.
+
 ## Prior art
 
 - **Build systems** ("Build systems à la carte"): a system is a
