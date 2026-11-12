@@ -23,7 +23,7 @@ pushed.
 | # | What | State |
 |---|---|---|
 | 1 | Names, text, tests, `next`, the console: the data intelligence direction | built |
-| 2 | Dependencies: the catalog's rows carry begin and end snapshots, a stored result records its inputs as rows, and one read, `results_due()`, says what the server computes after a write (`dependencies.md`) | built, committed; two rows of that plan are open against the release candidate: a catalog write reports a real error as a lost race, and a load in place may outdate every lineage result |
+| 2 | Dependencies: the catalog's rows carry begin and end snapshots, a stored result records its inputs as rows, and one read, `results_due()`, says what the server computes after a write (`dependencies.md`) | built, committed |
 | 3 | glossval follows the catalog: its two reads of the old columns are changed; a run can replay an earlier run's statements with no model (`--replay`) | built |
 | 4 | The recorded `ferc-steam` build replayed on this server: the same score as the run it replays, no refusal, the review step stores its decisions | measured, on the host |
 | 5 | The goldens' baseline, accepted at these commits: rel-f1, the import path, the cube, rel-event, booksql | in work |

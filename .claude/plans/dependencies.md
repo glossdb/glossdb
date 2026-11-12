@@ -27,9 +27,7 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A catalog write treats every SQL error as a lost race: a real error is tried 60 times with waits and reported as 60 lost races | High: a bug; every write path | the extension (`CatalogWrite::Run`, `glossql_runner.cpp:215-280`) | Next | drafted below |
-| A replace load is `CREATE OR REPLACE TABLE`. If that moves the lake's shape, every lineage result, column listing and glossary read is outdated after each load. Read from the code, not tested | High until tested | the extension: a test first (`glossql_store.cpp:433`, `glossql_runner.cpp:565`) | With the row above | |
-| A result that read results is outdated when one of them is (rule 3, applied through). Today a glossary read of a property a function fills names the whole glossary, six catalog relations and the lake's shape instead, so any declaration or load anywhere outdates every such reader; `additivity_check` runs again on every annotation (4 results, 0.4 s) | Medium: it replaces the branch in `NameRead` and its fixed inputs; `results_due()` already runs inputs first | the extension (`glossql_store.cpp:1797-1816`), `kits/views/kit.sql` | After the two rows above | |
+| A result that read results is outdated when one of them is (rule 3, applied through). Today a glossary read of a property a function fills names the whole glossary, six catalog relations and the lake's shape instead, so any declaration or load anywhere outdates every such reader; `additivity_check` runs again on every annotation (4 results, 0.4 s) | Medium: it replaces the branch in `NameRead` and its fixed inputs; `results_due()` already runs inputs first | the extension (`glossql_store.cpp:1797-1816`), `kits/views/kit.sql` | Next | drafted below |
 | A computation that fails is a result too: stored with its inputs and its error, served as the error while current. Today nothing is stored, so a check that fails every time is due after every write | Medium: a column on `measurements`; a workspace is rebuilt | the extension (`glossql_runner.cpp:1328-1361`) | After | |
 | Snapshot expiry. A table's version comes from the snapshot that last changed it, so expiry recomputes once. If expiry removes ended column or view rows, an outdated annotation reads as current | Medium: not tested | the extension: a test first; a missing earlier row counts as outdated (`glossql_store.cpp:1258-1318`) | Before a workspace expires snapshots | |
 | `SPEC.md` says "data version" in seven places (§5.2, §6, §7, §7.2); §6 lists six of the nine input forms and does not say that a function declared again outdates its results | Low; the project lead reviews | the extension: `SPEC.md`, `grammar.ebnf` comments, `docs/inputs.md`, README | With the rule above, one diff | |
@@ -45,11 +43,16 @@ computed: no second list, no flag.
   takes the lake's next snapshot id with its rows. A new row ends the
   row it replaces (`end_snapshot`); no row is deleted. `<name>` serves
   the current rows, `<name>_history` every row. A view's DuckLake row
-  is in the transaction of its glossary row.
+  is in the transaction of its glossary row. A write is tried again
+  only when another writer took its snapshot id; any other error is
+  refused on the first try (5.3 s and "lost 60 races" before, 0.005 s
+  and the error itself now; the Postgres case is read, not run).
 - **Inputs are rows**, written with the result, their versions read
   before the result is computed. Forms: a table or view, a catalog
   relation, one function's results, one property of the glossary,
-  `<dataset>.*`, `<dataset>.**`, `lake.shape`.
+  `<dataset>.*`, `<dataset>.**`, `lake.shape`. The lake's shape is a
+  digest of its datasets, columns and views as they are, so a load in
+  place of a table with the same columns leaves every result current.
 - **`results_due()`** is in `kits/goals/kit.sql`. What a metric
   wants: the profile of each column it reads or joins on, the
   relationship check of its dataset, the measurement its row names as
@@ -63,8 +66,8 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `dfcc513`: 116 tests pass (126 before the suites were cut to one layer per behaviour, 7,398 to 6,017 lines). Extension at `96b34b7`: 19 test
-files, 2128 assertions. On the server with the Formula 1 data (9
+Server at `dfcc513`: 116 tests pass (126 before the suites were cut to one layer per behaviour, 7,398 to 6,017 lines). Extension at `89ec6e5`: 21 test
+files, 2185 assertions, lint clean; the server's suite passes on it. On the server with the Formula 1 data (9
 tables, 4 metrics):
 
 | What | At the start | Now |
@@ -88,13 +91,19 @@ per row (98 ms).
 
 ## Next issue (draft)
 
-**A catalog write reports a real error as itself.** What it buys: a
-write that fails for a reason other than a lost race fails at once
-with its own error, where today it waits through 60 tries and names
-the wrong cause. What is there: `CatalogWrite::Run`
-(`src/glossql_runner.cpp:215-219`) maps every error to `LostRace`;
-the retry loop is at `:247-280`. Done when: only a conflict on the
-snapshot row is retried; a test writes a row that breaks a constraint
-and gets that refusal on the first try; a second test loads a table
-again in place and asserts whether `lake.shape` moved, which settles
-the second row of this plan.
+**A result that read an outdated result is outdated.** What it buys:
+an annotation or a load outdates only the results that read it,
+directly or through another result; `additivity_check` no longer runs
+on every annotation (4 results, 0.4 s of each writing call), and a
+declaration in one dataset no longer outdates the glossary readers of
+every other. What is there: `NameRead`
+(`src/glossql_store.cpp:1797-1816`) names the whole glossary, six
+catalog relations and the lake's shape for a read of a property that
+a function fills; `IsCurrentSQL` (`:471-482`) compares one level of
+inputs; `results_due()` already orders an input before what reads it.
+Done when: such a read records the property and the function's
+results as inputs and nothing else; `current` follows the inputs
+through; the extension's test that fixes `main.glossary` as an input
+(`test/sql/glossql_kit_quality.test:557`) asserts the behaviour
+instead; on the Formula 1 workspace an annotation on a column no
+metric scans computes no result.
