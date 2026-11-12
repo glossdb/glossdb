@@ -4,94 +4,124 @@ How glossdb decides that something is outdated, and when it computes
 it again. Today this is one base rule with exceptions added case by
 case. This plan replaces that with one concept, agreed before any
 further code. Until then the topic is frozen: no new exception, no
-new clause.
+new clause. `DEPENDS ON` is built and provisional.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The facts: every rule in the code today, the grain of each dependency, what the engine can tell about what SQL reads, the cost of a read and a write on a release build | Low: reading and measuring | this file, "What is there" and "Measured" | In work | |
-| The matrix: everything that can be outdated against everything that can change, with the grain in each cell, agreed with the project lead | Medium: the cells where the engine cannot see what was read decide the design | this file | Next | |
-| One rule for validity and one for when to compute again, chosen from the matrix; what of today's code goes | High: it changes the extension's core read and the server's behaviour after a write | the extension (`src/glossql_store.cpp`, `SPEC.md` §5 and §6), `crates/duck/src/lib.rs`, the kits | After the matrix | |
-| The change itself, in steps that each pass both suites | High | both repositories | After the rules | |
+| The project lead chooses from "The choices" below | — | this file | Next | |
+| Checks run once per call against one fill of the reads; storing a result does not empty the reads of other datasets or of readers that did not read it | Medium: the read cache's key is the centre of the extension's read path | the extension (`glossql_store.cpp:1636-1906`), `crates/duck/src/lib.rs:1742-1865` | First: it removes most of a write's 6 s without changing what counts as outdated | |
+| The extension's own table functions report what they read (`GLOSSARY()`, `dataset_cells`), so a body that reads the catalog through them no longer records "everything" | Medium | the extension (`glossql_runner.cpp:961-1071`) | Second | |
+| Catalog dependencies at the grain the matrix names | High: it changes `SPEC.md` §5 and §6 | the extension, the spec, the kits | Third | |
+| A content version for a table, so a reload of the same rows outdates nothing | Low: DuckLake's change feed gives it | the extension (`PartsSQL`) | With the third | |
+| The 13 places where spec, docs or comments contradict the code are corrected with each step | Low | both repositories | With each step | |
 
-## The three questions
+## The matrix: what is outdated by what, today
 
-Every system of this kind answers three questions. They were answered
-here one case at a time.
+Rows are what can be outdated; columns are what changed. "all" means
+every result of that kind in the workspace or dataset.
 
-1. **What can change?** A load, a table's shape, a view's definition,
-   an annotation, a relationship, a declaration, a stored result, a
-   review decision.
-2. **What can be outdated, on what does it depend, at which grain?**
-   An annotation, a stored result of a function, a test result, a
-   preview result, a row of `next`.
-3. **When is it computed again?** After a write, at a read, once per
-   call, or when someone asks.
+| | Load of a table it read | Load of another table | Annotation it read | Annotation elsewhere | Another function's result | Declaration |
+|---|---|---|---|---|---|---|
+| Annotation | only if the column was retyped, dropped or derived differently | no | — | no | no | no |
+| Result of a function over data only (profiles) | yes | no | — | no | no | its own, newer |
+| Result of a built-in check (reads the catalog) | yes | **yes** (all tables of the dataset) | yes | **yes** (any write to that catalog table, any dataset) | yes, per function, **any dataset** | its own, newer |
+| Preview result (with `DEPENDS ON`) | yes | **yes** (all tables of the dataset) | yes | no | no | its own, newer |
+| Test result | follows the results it scores | | | | | |
+| The kept reads (glossary, tests, view rows) | **all emptied by any write, any dataset** | | | | | |
+
+The bold cells are wrong against the spec's own sentence, "a write
+the body never reads is not its staleness". A reload of identical
+rows counts as a load in every cell.
 
 ## What is there
 
-Established; the rest follows with the facts.
-
-- **Data** is versioned per table by the lake's snapshots. A result
-  that read a table is outdated after a load of that table. This part
-  is precise.
-- **The catalog** is versioned per whole relation. A result that read
-  the glossary is outdated after any write to the glossary, by anyone,
-  on anything.
-- **Why catalog writes count at all:** the built-in checks compute
-  from the catalog. `additivity_check` reads the additivity
-  annotation; `orphan_check` reads the relationships and a stored
-  result. A corrected annotation must make them run again.
-- **Exceptions on top**, each added for one case: `*` and `**` in a
-  result's reads; functions that read other functions' results;
-  the declaration-newer rule; the outlook kit's own digest (deleted);
-  `DEPENDS ON` (built, provisional).
-- **What `DEPENDS ON` showed.** It is precise for the catalog. But a
-  function whose reads the engine cannot list is taken to read every
-  table of the dataset, so any load makes it outdated. The old digest
-  was more precise there.
-- **When things run again today.** After each catalog write the
-  server runs about ten built-in checks before it answers. Test
-  results are computed at each read. Preview results run when an
-  agent asks.
+- **Data** is versioned per table by the lake's snapshots.
+- **The catalog** is versioned per whole relation, with no dataset
+  filter. Other functions' results are versioned per function, with
+  no dataset or subject.
+- **Why "all tables" appears.** A body's reads are taken from its
+  plan. The extension's own table functions (`GLOSSARY()`,
+  `dataset_cells`) appear in the plan as opaque scans, so the body is
+  recorded as reading everything. All four view checks and all four
+  preview functions are in this state. It is our own functions that
+  hide the reads, not the engine.
+- **What the engine can tell.** The bound plan names tables and
+  columns through views and macros. After the optimizer it also gives
+  the constant filters on each scan, for example `subject = '…' AND
+  aspect = 'meaning'` on the glossary. It cannot tell rows selected
+  through a join. `json_serialize_sql` gives the text's parse tree
+  only: no views, no macros.
+- **When things run.** After a call that annotates, defines or loads,
+  the server runs the built-in checks for every metric that scans the
+  touched table: 12 results for three metrics. Once per call, not per
+  statement. Test results and `next` are computed at read.
+- **The exceptions on top of the base rule:** nine in the extension
+  and five in the server, each added for one case within two weeks.
 
 ## Measured
 
-- Debug build, Formula 1 workspace (9 tables, 5 views): a read of
-  `next` 0.9 s; an annotation 5 to 6 s, of which most is the built-in
-  checks running again.
-- Release build: to be measured.
+Release build, Formula 1 workspace (9 tables, 5 views, 3 metrics).
+The build mode of the server does not change these numbers.
+
+| Call | Time |
+|---|---|
+| Any call (of which the closing read of `next`: 0.47 s) | 0.47 s |
+| A read of `next` | 0.92 s |
+| An annotation on a table no view scans | 1.3 s |
+| An annotation on a table a view scans | 6.0 s |
+| A reload of one table, same file | 5.5 to 7.8 s |
+| 104 annotations in one call | 7.6 s |
+
+Where the 6.0 s go: 0.8 s the write and the first check; 3.9 s the
+other 11 checks; 1.3 s the closing `next`. Each stored result moves
+the one store version, so the next check fills the glossary read
+again: about 12 fills of 0.4 s. The time is planning (binding and
+optimizing), not execution. A warm read of the glossary is 0.011 s.
 
 ## Prior art
 
-- **Build systems** ("Build systems à la carte", Mokhov, Mitchell,
-  Peyton Jones): a system is one choice of when to rebuild and one
-  choice of how to know a result is valid. Ours is a verifying trace:
-  each result stores the versions of what it read. The method is
-  sound; the keys are too coarse for the catalog.
-- **Incremental computation** (Salsa): the same trace with early
-  cutoff: an input changed, an intermediate value did not, nothing
-  downstream runs. `DEPENDS ON` is a hand-written early cutoff.
-- **dbt, Dagster:** dependencies are declared; each asset has a data
-  version and a code version.
+- **Build systems** ("Build systems à la carte"): a system is a
+  scheduler and a rule for validity. Ours is a verifying trace with
+  version numbers. With content hashes it gains early cutoff: a
+  rebuilt input with the same value stops there.
+- **Salsa:** one revision counter per class of input ("durability"),
+  so a change in one class does not make results over another class
+  check again. Our store version is one counter for everything.
+- **dbt, Dagster:** declared dependencies; a code version and a data
+  version per asset; an observed version for outside data, which is
+  the place for the model service's version.
+- **Bazel:** a step can read only what it declared. Here: a body
+  reads the catalog only through reads that report themselves.
+- **DuckLake's change feed** gives the rows a snapshot changed. Three
+  reloads of the same file showed every row as updated and no row
+  different.
 
-## The open design question
+## The choices
 
-How the system learns what a SQL body read from the catalog. Three
-ways, and today's code mixes them:
-
-- **Declared:** the author states it (`DEPENDS ON`, dbt's `ref`).
-- **Discovered:** the engine sees it. Tables and columns can be read
-  from a plan; which rows of a catalog table were read cannot, as far
-  as known. `json_serialize_sql` is to be checked.
-- **Approximated:** the whole relation counts (today's base rule).
+1. **Where dependencies come from.** Discovered from the plan, with
+   our own table functions reporting what they read (recommended:
+   nothing for an author to write, and it removes "everything").
+   Declared by the author (`DEPENDS ON`) stays only if a case remains
+   that discovery cannot see; otherwise it is removed.
+2. **The grain for the catalog.** Per dataset and property
+   (recommended: the optimizer's filters give it, and it removes
+   every bold cell but the ones about data), or per asset and
+   property (finest; needs a rule for filters that are not
+   constants).
+3. **When checks run.** Once per call, after all writes, against one
+   fill (recommended: keeps "what is stated is tested" true at the
+   end of every call). Or at the next read of `next` or of the tests.
+4. **Identical reloads.** Compare content through the change feed
+   (recommended), or keep counting every load.
 
 ## Next issue (draft)
 
-**The dependency matrix.** What it buys: one agreed page that says,
-for everything that can be outdated, what it depends on and at which
-grain, so that the rule and the cost follow from it. What is there:
-this file; the facts gathered for it. Done when: the matrix is filled
-from the code, each cell that the engine cannot see is marked, the
-release-build cost of a read and of a write is in "Measured", and the
-project lead has chosen the rule for validity and the rule for when
-to compute again.
+**One fill per call.** What it buys: an annotation on a scanned
+table costs about 2 s in place of 6 s, with no change to what counts
+as outdated. What is there: the read cache keyed by one store
+version (`glossql_store.cpp:1636-1906`); `built_in_tests`
+(`crates/duck/src/lib.rs:1762-1865`); the measurements above. Done
+when: storing a result leaves the kept glossary read in place for
+readers that did not read that result; the checks of one call run
+against one fill; the six calls above are measured again and in this
+file; both suites pass.
