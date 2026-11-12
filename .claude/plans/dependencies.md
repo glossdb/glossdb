@@ -14,12 +14,11 @@ it current. It works as a build system does.
 4. **One read says what is due**: `results_due()` lists the results a
    dataset's views want that are missing or outdated, with the
    statement that computes each, an input before what reads it.
-5. **Three readers of that one read.** The server runs it after a
-   write, until nothing is left. The console's re-measure runs it with
-   the preview measurements (`preview := true`): those call the model
-   service (`../glossthesi`), and a person starts them. `next` lists what is
-   left over: what only an actor can do (a statement to write, a red
-   test, a decision, a preview measurement that is due).
+5. **Two readers of that one read.** The server runs it after a
+   write, until nothing is left. `next` lists what the server leaves:
+   what only an actor can do (a statement to write, a red test, a
+   decision, a preview measurement that is due, since those call the
+   model service in `../glossthesi` and an actor starts them).
 
 A result no view wants is not due. Nothing else decides what is
 computed: no second list, no flag.
@@ -36,7 +35,7 @@ computed: no second list, no flag.
 | `SPEC.md` says "data version" in seven places (§5.2, §6, §7, §7.2); §6 lists six of the nine input forms and does not say that a function declared again outdates its results | Low; the project lead reviews | the extension: `SPEC.md`, `grammar.ebnf` comments, `docs/inputs.md`, README | With the rule above, one diff | |
 | An identical reload moves the table's version: the merge updates every matched row, the replace builds a new table | Low: results are computed once more | the extension (`glossql_runner.cpp:565-574`) | When measured as a cost | |
 | The read cache is keyed by the lake's snapshot, results by their inputs: two version schemes | Low | the extension (`StoreVersion`) | When measured as a cost | |
-| The preview measurements are due by the outlook kit's own rule (`outlook_due()`), joined into `results_due(preview := true)`; a response of the model service is kept under a hash of the request and the service's version | Medium | `kits/outlook/kit.sql`, the extension's service call | With the outlook issue (`harness.md`) | |
+| The preview measurements are due by the outlook kit's own rule (`outlook_due()`), listed by `next`; a response of the model service is kept under a hash of the request and the service's version | Medium | `kits/outlook/kit.sql`, the extension's service call | With the outlook issue (`harness.md`) | |
 | `next` takes 0.35 s per read; the MCP interface keeps its rows per lake snapshot, the console reads it whole | Low | `kits/goals/kit.sql`, `crates/serverd/src/mcp.rs` | When measured as a cost | |
 | Newest-row windows left in the outlook kit and the console's frames | Low | `kits/outlook/kit.sql`, `crates/apps/builtin/console/frames` | With the outlook issue | |
 
@@ -57,14 +56,14 @@ computed: no second list, no flag.
   not run, and the tests on it and on what it reads.
 - **The server** (`bring_current` in `crates/duck/src/lib.rs`) runs
   it after a write, in rounds, before the next read of the same call.
-  The console's re-measure calls the same function.
+  The console has no re-measure button.
 - **`next`** reads the catalog's states and `load_changes()` (what
   the newest load changed in a table). `open_items`, the older list
   beside it, is removed.
 
 ## Measured
 
-Server at `e42e21e`: 126 tests pass. Extension at `96b34b7`: 19 test
+Server at `dfcc513`: 116 tests pass (126 before the suites were cut to one layer per behaviour, 7,398 to 6,017 lines). Extension at `96b34b7`: 19 test
 files, 2128 assertions. On the server with the Formula 1 data (9
 tables, 4 metrics):
 
