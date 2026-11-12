@@ -1566,10 +1566,11 @@ async fn the_plan_is_served_beside_its_metric() {
 
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes value, and a metric whose
-/// period column nobody profiled — the banner counts the want, the
-/// console's re-measure runs the profile, and the series serves.
+/// period column the server profiled with the definition, so its series
+/// serves. The banner counts the preview measurements nobody ran, and
+/// the console's re-measure runs them.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
+async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_measurements() {
     let (app, plane, _dir) = workspace().await;
     plane
         .channel(
@@ -1612,21 +1613,17 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
         "{measures}"
     );
 
-    // Nobody profiled `dso.month`: the banner counts it, and the series waits.
+    // The server profiled `dso.month` after the write: the series serves.
     let latest = get(&app, "/perf/app/console/frames/latest").await;
-    assert_eq!(row_count(latest).await, 0, "no cadence, no series yet");
+    assert_eq!(row_count(latest).await, 1, "the one series' newest period");
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The outlook kit's expected ranges, forecast and estimate are required beside the profile.
-    for function in [
-        "metric_ranges",
-        "metric_forecast",
-        "metric_scenario",
-        "temporal",
-    ] {
+    // The outlook kit's expected ranges, forecast and estimate wait for a run.
+    for function in ["metric_ranges", "metric_forecast", "metric_scenario"] {
         assert!(banner.contains(function), "{function}: {banner}");
     }
+    assert!(!banner.contains("temporal"), "{banner}");
     let response = app
         .clone()
         .oneshot(
@@ -1641,7 +1638,7 @@ async fn a_remeasure_profiles_an_unprofiled_metric_and_its_series_serves() {
     assert_eq!(
         row_count(banner).await,
         0,
-        "the profile ran; the expected ranges and the forecast stored their reasons"
+        "the expected ranges and the forecast stored their reasons"
     );
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");

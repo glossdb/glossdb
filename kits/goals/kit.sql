@@ -81,13 +81,11 @@ CREATE OR REPLACE VIEW main.open_items AS
            'never measured: ' || f.name || '() over ' || ds.dataset AS what,
            'a tested measurement on the dataset with no result — run the function' AS why, '' AS since
     FROM main.functions f, ds
-    JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
-      ON a.name = f.returns
+    JOIN main.aspects a ON a.name = f.returns AND a.kind = 'MEASUREMENT'
     WHERE (f.scope = 'GLOBAL' OR f.scope = ds.dataset) AND list_contains(a.grains, 'DATASET')
       AND EXISTS (SELECT 1 FROM main.tests w WHERE w.aspect = a.name)
       AND EXISTS (SELECT 1 FROM main.view_definitions s WHERE s.defined)
-      AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
-    QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.begin_snapshot DESC) = 1),
+      AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)),
   foldins AS (
     SELECT 'apply-decision' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
            'decided (' || r.stance || ') — not yet applied to the definition' AS why, r.written_at::VARCHAR AS since
@@ -165,8 +163,8 @@ CREATE OR REPLACE VIEW main.next AS
                 THEN '{"floor": "<' || array_to_string(json_extract_string(schema, '$.properties.floor.enum[*]'), '|') || '>"}' END AS shape,
            -- an expectation a test scores: asked for where it is set, not on every asset
            name IN (SELECT p.name FROM main.tested_properties() p) AS expectation
-    FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects)
-    WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
+    FROM main.aspects
+    WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   -- the newest annotation on each asset: an outdated one is offered
   -- back to be checked and recorded again
@@ -306,9 +304,7 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN a.kind = 'FACT' AND json_extract(a.schema, '$.properties.tolerance') IS NOT NULL THEN 'tolerance'
                 ELSE 'threshold' END AS by,
            w.aspect
-    FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) w
-    JOIN (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
-      ON a.name = w.aspect
+    FROM main.tests w JOIN main.aspects a ON a.name = w.aspect
     WHERE w.detector = 'rate_tolerance'),
   s_test AS (
     SELECT CASE t.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 ELSE 3 END, 3, 'test', t.subject, t.state, 'agent',

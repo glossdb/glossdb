@@ -829,8 +829,9 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 -- metric needs: the profile of each column it reads or joins on, the
 -- relationship check of its dataset, and the tests on it and on what it
 -- reads. A profile and the relationship check come first: the tests
--- read them. The preview features' measurements are not among them: a
--- person or an agent runs those.
+-- read them, and so does a measurement a metric's row names as not run
+-- (the grain of its period column). The preview features' measurements
+-- are not among them: a person or an agent runs those.
 --===------------------------------------------------------------------===--
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
 WITH ds AS (SELECT current_schema() AS d),
@@ -848,6 +849,10 @@ stored AS (
 SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
 FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
 WHERE NOT coalesce(s.current, false)
+UNION ALL
+SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
+       'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
+FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
 UNION ALL
 SELECT 2, 'relationship_coherence', ds.d, 'SELECT relationship_coherence() FROM ' || ds.d
 FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_coherence'
