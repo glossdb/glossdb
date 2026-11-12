@@ -68,9 +68,13 @@ the catalogue):
 - Every row of `ducklake_table`, `ducklake_view`, `ducklake_tag` and
   the others has `begin_snapshot` and `end_snapshot`. A replaced or
   removed row gets an end; it is not overwritten or deleted.
-- The number is the id of the commit's snapshot. `ducklake_snapshot`
-  has a primary key on it, so two commits cannot share one; the later
-  one is tried again.
+- The number is the id of the commit's snapshot. A commit reads the
+  highest `snapshot_id`, adds one and inserts that row into
+  `ducklake_snapshot` in the same catalogue transaction as its
+  changes. The column is a primary key, so the second of two commits
+  fails, is rolled back and is tried again with a new number after a
+  short random wait (`ducklake_transaction_state.cpp`, `Commit`;
+  `ducklake_max_retry_count`).
 - `ducklake_snapshot_changes` says per snapshot what changed, with an
   author, a message and a free field.
 - Expiring snapshots is explicit. It removes the change log of the
@@ -85,13 +89,17 @@ DuckLake tables (inlined or in Parquet).
 1. **The catalog's relations stay our tables in the catalogue
    database**, beside DuckLake's. Each row gets a begin marker when it
    is written and an end marker when it is replaced or removed.
-2. **The number comes from one source two writers cannot share.**
-   Which source is the open point below.
+2. **The number is taken the way DuckLake takes it.** A table of
+   catalog commits with a primary key on the number. A write reads the
+   highest number, adds one and inserts the commit row and its own
+   rows in one transaction; on a key violation it is tried again. The
+   commit row carries the time, the actor and the lake's snapshot.
 3. **The version of a relation** is the highest begin or end marker of
    its rows. A removal moves it, because it sets an end.
-4. **A kept read is keyed by** its text, its parameters, the dataset
-   and the versions of the relations and data tables its plan reads.
-   A changed relation gives another key; old entries leave by LRU.
+4. **One key rule.** A stored result and a kept read are valid for
+   their text (with parameters and dataset) and the versions of the
+   relations and data tables their plan reads. A changed relation
+   gives another key; old entries leave by LRU.
 5. **A plan names what it reads.** The glossary and the test results
    are queries over the relations.
 6. **A response of the model service is kept by content.** The key is
@@ -100,12 +108,9 @@ DuckLake tables (inlined or in Parquet).
 
 ## Open
 
-- **Where the number comes from.** A catalog write makes no snapshot,
-  so the lake's snapshot id is not it. Candidates: a sequence in the
-  catalogue database; a counter row updated in the write's
-  transaction. Not verified: how each behaves through DuckDB's
-  Postgres attachment, and whether the write and the number are one
-  transaction there.
+- Not verified: that a store write and its commit row are one
+  transaction through DuckDB's Postgres attachment, and that the key
+  violation comes back as an error the write can try again.
 - The glossary as of a version of the data needs the lake's snapshot
   on each row beside the marker, as glossary rows have today.
 - A miss still costs the planning of a large read (0.3 to 0.4 s).
@@ -118,8 +123,8 @@ DuckLake tables (inlined or in Parquet).
 version per relation and one order of rows under concurrent writes.
 What is there: `Inner::Seq`, `StoreVersionSQL` (`:1677`), `PartsSQL`
 (`:389`), the delete (`:1031`) in `glossql_store.cpp`; the
-reproduction of duplicate `seq`. Done when: the open point on the
-number is answered by a test on both catalogues; the eleven relations
+reproduction of duplicate `seq`. Done when: a test on both catalogues shows the
+write and its commit row are one transaction; the eleven relations
 carry the markers; `seq` and the store version are gone; `DELETE FROM
 glossary` sets an end; a test writes annotations from 8 connections
 and finds one order; both suites pass.
