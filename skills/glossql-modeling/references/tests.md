@@ -22,11 +22,11 @@ statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
 preview test calls the model service. `TESTS(asset)` gives the same
-states for any asset. A test that is not green is a row of `next`
-under `test`, on a view, a table or a column alike: `open` is the
-test's name and its finding, `statement` its fix. Where the check
-returns no `fix`, the statement is the check to run again and, for a
-red test of your own, the statement that records an accepted rate.
+states for any asset. A test that is not green is a `test` row of
+`next`, on a view, a table or a column alike: `open` is the test's
+name and its finding, `statement` its fix. Where the check returns no
+`fix`, the statement is the check to run again and, for a red test of
+your own, the annotation that records an accepted rate.
 
 ## The built-in tests
 
@@ -63,39 +63,68 @@ wrong, or accept what is right and say why.
 
 ## A test of your own
 
-Three statements and one run: a property for the result (`AS
-MEASUREMENT ON TABLE`, or `ON COLUMN` for one column), a function
-that measures it, the test, and a first run of the function on the
-table (`FROM <table>`) or the column (`FROM <table>.<column>`).
-`skill://glossql/SKILL.md` step 4 shows both whole, `define.md` one
-check for a data contract.
+Four statements and one run:
 
-- **`breach_rate` is the share of rows that break the rule.** 0.0
-  passes. A pass rate under that name reads red.
-- **A test states the rule.** Declare it with `THRESHOLD 0.0` where
-  the rule allows no exception. `rate_tolerance` is green at or under
-  the threshold, red above it, and `yellow` while the function has
-  not run. Where the data breaks the rule the test is red, and it
-  stays red until the data is right. Do not set the threshold at what
-  you measured to make the test green: that hides the defect.
-- **A red test closes in one of two ways.** Fix the load query or the
-  view's definition and run the check again. Or a person accepts the
-  measured rate, and you record it with their reason. `next` gives
-  both statements. For a property declared `AS MEASUREMENT` the
-  accepted rate is the test's threshold, declared again; say in the
-  asset's `meaning` who accepted it and why:
+1. **A property for the expectation**, declared `AS FACT ON TABLE`,
+   or `ON COLUMN` for one column. Its schema holds what a person
+   states (`outcome`, `tolerance`, `basis`) and what the check
+   returns (`breach_rate`, `finding`). Leave `required` out: the
+   check's result is validated against the same schema.
+2. **A function that measures it**, with `RETURNS <property>`.
+3. **The test**, with `BY (AGENT, HUMAN)`, which names who may
+   annotate the property, and `DETECTOR rate_tolerance`.
+4. **The expectation, annotated on the asset** the rule holds for.
+5. **A first run** of the function on the table (`FROM <table>`) or
+   the column (`FROM <table>.<column>`).
 
 ```glossql
-DECLARE TEST weight_filled_test ON weight_filled DETECTOR rate_tolerance THRESHOLD 0.2;
+DECLARE ASPECT hours_match WITH $${"type": "object",
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
+DECLARE FUNCTION hours_match_check FOR workshop AS $$
+  SELECT count(*) FILTER (WHERE booked_hours <> card_hours) / greatest(count(*), 1)::DOUBLE AS breach_rate,
+         CASE WHEN count(*) FILTER (WHERE booked_hours <> card_hours) > 0
+              THEN count(*) FILTER (WHERE booked_hours <> card_hours) || ' bookings differ from the job card' END AS finding
+  FROM bookings
+$$ RETURNS hours_match;
+DECLARE TEST hours_match_test ON hours_match BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+GLOSS hours_match ON bookings AS $${"outcome": "booked hours match the hours on the job card",
+  "tolerance": 0.0, "basis": "the job card is the source of the booking"}$$;
+SELECT hours_match_check() FROM bookings;
 ```
 
+`skill://glossql/SKILL.md` shows a table test and a column test
+whole, `define.md` one check for a data contract.
+
+- **The annotation sets the test.** The test is on the assets that
+  carry the expectation and on no other. `next` and
+  `workspace_status` count it there. One property can hold for
+  several assets: annotate each, and run the function on each.
+- **`breach_rate` is the share of rows that break the rule.** 0.0
+  passes. A pass rate under that name reads red.
+- **`tolerance` is the share of rows that may break the rule.** State
+  0.0 where the rule allows no exception. `rate_tolerance` is green
+  at or under the tolerance, red above it, and `yellow` while the
+  function has not run. It reads a person's tolerance first, then
+  yours, then the test's `THRESHOLD`, then 0.0.
+- **A test states the rule.** Where the data breaks the rule the test
+  is red, and it stays red until the data is right or a person
+  accepts the rate. Do not set the tolerance at what you measured to
+  make the test green: that hides the defect.
+- **A red test closes in one of two ways.** Fix the load query or the
+  view's definition and run the check again. Or a person accepts the
+  measured rate: the same property, annotated on the same asset, with
+  the rate as `tolerance` and who accepted it and why as `basis`.
+  `next` gives both statements. A person writes that annotation in
+  the console or over the query endpoint, and theirs outranks yours.
+  Where you record it for them, name them in `basis`.
 - Until a person has accepted a rate, report the red test as a
   finding with its size.
 - **Return `finding` beside `breach_rate`.** A result with one
   column is stored as a bare value and does not fit the property's
   object schema. `finding` is one sentence on what is wrong; `next`
   shows it. A field `fix`, a statement as text, is shown as the row's
-  statement.
+  statement; add it to the property's schema to use it.
 - **The subject is the asset the function is run on**: a view, a
   table, or a column. Run the function once. After a load of a table
   the view reads, the server runs it again.
@@ -105,36 +134,16 @@ DECLARE TEST weight_filled_test ON weight_filled DETECTOR rate_tolerance THRESHO
   property, function and test.
 - The function's body is one SQL query
   (`skill://glossql-functions/SKILL.md`).
+- `GLOSSARY()` lists the property as `missing` on the assets that do
+  not carry it. That is the catalog's coverage read. It asks nothing
+  of you: the test is only where you set it.
 
 What to test: a key that must be unique, a column that must be
 filled, a code that must be in its code table, a total that must
 match a second route to the same number. A check you ran by hand is
 right today; as a test it is run again at each load.
 
-## A test a person can set the tolerance of
-
-Declare the property `AS FACT` with a `tolerance` in its schema. You
-or a person annotate the expectation; the function measures the same
-property; `rate_tolerance` compares the two. The person's tolerance
-is used before yours, and both before the `THRESHOLD`. An accepted
-rate is then an annotation on the one asset, with its reason, and
-`next` gives that statement for a red test:
-`{"tolerance": <rate>, "basis": "<who accepted the rate and why>"}`.
-
-```glossql
-DECLARE ASPECT hours_match WITH $${"type": "object",
-  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"},
-                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}
-}$$ AS FACT ON TABLE WHEN entity = 'workshop booking';
-DECLARE TEST hours_match_test ON hours_match BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
-GLOSS hours_match ON bookings AS $${"outcome": "booked hours match the hours on the job card", "tolerance": 0.02}$$;
-```
-
-- `BY (AGENT, HUMAN)` names who may annotate the property. Declare
-  the test before the annotation, or the annotation is refused.
-- A `FACT` property with a test is required on every asset of its
-  `ON` kind that a view reads, and shows as `missing` there. Narrow
-  it with `WHEN <property> = '<value>'`, here to the tables whose
-  `entity` is `workshop booking`.
-- A rate above the tolerance withholds the value: `GLOSSARY()` shows
-  the state `conflict` and the test is red.
+A property declared `AS MEASUREMENT` holds only what a function
+returns, such as a profile. It carries no expectation, so nobody can
+accept a rate on one asset. Use it for a test only where the test has
+a detector of your own that needs no tolerance.

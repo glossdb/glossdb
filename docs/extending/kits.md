@@ -65,6 +65,11 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
 - **A condition** makes a property required only where it applies:
   `WHEN role = 'measure'` by another property's value, `WHEN TYPE =
   'GEOMETRY'` by the column's type.
+- **An expectation** is a `FACT` property that a function returns
+  and a test scores, without `x-subject`. It is set where someone
+  annotates it, and is not required on the other assets:
+  `tested_properties()` lists these, and `next` and
+  `workspace_status` count each on the assets that carry it.
 - **A measurement** is a function with `RETURNS`. Its body is one SQL
   query. `$subject` is the asset it runs over, and
   `subject_column($subject)` is that column as a relation with one

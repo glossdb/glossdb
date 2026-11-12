@@ -511,11 +511,11 @@ DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "sc
 
 # declared and not annotated
 query TTTT
-SELECT scenario, glossed, applicable, (reason) IS NOT NULL FROM scenarios();
+SELECT scenario, annotated, applicable, (reason) IS NOT NULL FROM scenarios();
 ----
 price_up	false	false	true
 
-# a lever nobody glossed refuses the scenario at read
+# a lever nobody annotated refuses the scenario at read
 statement ok
 GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.1}, "basis": "the February price list"}]}$$;
 
@@ -819,7 +819,7 @@ GLOSS cheaper ON thin AS $${"levers": [{"column": "visits.price", "factor": {"20
 
 # a scenario declared for another dataset is none of this one's
 query T
-SELECT scenario FROM scenarios() WHERE glossed;
+SELECT scenario FROM scenarios() WHERE annotated;
 ----
 cheaper
 

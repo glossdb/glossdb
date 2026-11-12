@@ -67,11 +67,11 @@ the whole list, so include the earlier entries.
 
 A decision leaves the agent one action: record the view definition
 again, with the decided assumption at confidence 1.0, or rewritten as
-the correction says. `next` lists it under `decide`, with the
+the correction says. `next` lists it as a `review` row, with the
 statement to edit:
 
 ```sql
-SELECT asset, state, who, open, statement FROM next WHERE step = 'decide';
+SELECT asset, state, who, open, statement FROM next WHERE step = 'review';
 ```
 
 | `state` | `who` | Meaning |
@@ -103,4 +103,4 @@ Two more things a person decides:
 - **A view's meaning or formula.** Annotate `meaning` on the view;
   write a formula into `definitions`
   ([define views](views.md)). A person's formula newer than the
-  view's definition shows in `next` under `decide`.
+  view's definition shows in `next` as a `review` row.

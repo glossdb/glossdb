@@ -10,7 +10,7 @@ column, a relationship or a source.
 ```glossql
 USE hr;
 GLOSS entity ON staff AS $${"value": "one row per employee and contract",
-  "role": "dimension", "identity_columns": ["employee_id", "contract_no"]}$$;
+  "role": "dimension", "grain": ["employee_id", "contract_no"]}$$;
 GLOSS meaning ON staff.fte AS $${"value": "contracted share of a full week, 0 to 1"}$$;
 GLOSS role ON staff.fte AS $${"value": "measure"}$$;
 GLOSS additivity ON staff.fte AS $${"value": "semi-additive", "basis": "a level per person, not an event"}$$;
@@ -30,7 +30,7 @@ asset it applies to. The `kpi` kit declares these:
 | Property | On | Value |
 |---|---|---|
 | `meaning` | table, column, relationship | `value`: what it is, in words; `term` |
-| `entity` | table | `value`: what one row is; `role` (`fact`, `dimension`), `grain`, `time_axis`, `identity_columns` |
+| `entity` | table | `value`: what one row is; `role` (`fact`, `dimension`), `grain` (the key columns), `time_axis` |
 | `role` | column | `key`, `measure`, `dimension`, `timestamp` or `attribute` |
 | `additivity` | a measure column | `additive`, `semi-additive`, `ratio` (with `numerator`, `denominator`) or `non-additive`; `basis` |
 | `unit` | a measure column | `value`; `source_column` |

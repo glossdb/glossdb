@@ -56,8 +56,9 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- whose metric definition is a view — what the catalog says its columns are
 -- and whether a series can be served: view, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
--- against), stopped (the author's text), applicable, reason (the road out
--- when it is not), period_column, value_column, numerator and denominator
+-- against), stopped (the author's text), applicable (a series can be
+-- served), reason (what is missing when it cannot), period_column,
+-- value_column, numerator and denominator
 -- (a ratio's halves), grain_detected (the grain temporal() measured on the
 -- period column), floor (the time grains', else grain_detected),
 -- window_periods (how many periods a read serves at the floor), additivity
@@ -71,7 +72,11 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- single value needs none, so both are empty for it),
 -- measurements_to_run (the measurement the row reads and nobody ran),
 -- profile_current (the period column's temporal profile is current at the
--- data's own version). A plan (x-kind plan) is
+-- data's own version). A table (x-kind relation) and a single value
+-- (x-kind scalar) have no series: applicable, period_column,
+-- grain_detected, floor and window_periods are NULL for them, and
+-- reason is filled only where the view is stopped or its definition
+-- serves no view. A plan (x-kind plan) is
 -- read through the metric it names: its period and value are the columns
 -- named as that metric's, or period and value, its additivity the metric's,
 -- its floor the grain its rows are booked against where the declaration
@@ -182,8 +187,7 @@ judged AS (
   SELECT *,
     CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
          WHEN NOT served THEN 'the definition serves no view'
-         WHEN kind = 'scalar' THEN 'served as a single value: read it with fact_values() or FROM ' || metric
-         WHEN kind = 'relation' THEN 'served as a table: read it FROM ' || metric
+         WHEN kind IN ('scalar', 'relation') THEN NULL
          WHEN period_column IS NULL AND len(period_cols) > 1 THEN
               list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period: name it so in the SQL, or annotate role attribute on the others'
          WHEN period_column IS NULL THEN
@@ -225,11 +229,13 @@ judged_plans AS (
          WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
     END AS reason
   FROM plans)
-SELECT metric AS view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
-       period_column, value_column, numerator, denominator, grain_detected, floor,
-       CASE WHEN floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
+SELECT metric AS view, kind, plan_of, covers, stopped,
+       CASE WHEN series THEN reason IS NULL END AS applicable, reason,
+       CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
+       CASE WHEN series THEN grain_detected END AS grain_detected, CASE WHEN series THEN floor END AS floor,
+       CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
        additivity, additivity_state, dims, dimensions_without_rank, columns_without_role, missing, measurements_to_run, profile_current
-FROM judged
+FROM (SELECT *, coalesce(kind, '') NOT IN ('scalar', 'relation') AS series FROM judged)
 UNION ALL
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, NULL AS grain_detected, covers AS floor, NULL AS window_periods,
@@ -444,7 +450,7 @@ ORDER BY view, table_name NULLS LAST, field NULLS FIRST;
 -- it on the metric; their value outranks the agent's. `x-subject:
 -- view` marks a test view_tests() expects on every metric, run or
 -- not, and the test the server runs itself after a call that defined
--- the metric, glossed its columns or imported a table it scans.
+-- the metric, annotated its columns or loaded a table it scans.
 --
 -- view_reads_of(ds, m): the tables and columns metric m of dataset ds
 -- descends from, through its view's lineage; none when it does not plan.
@@ -830,8 +836,9 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 -- (the open format for exchanging a semantic model; spec 0.3.0.dev0),
 -- one row, column `document` (JSON). Each loaded table and each served
 -- metric is an Ossie dataset with its fields; a column annotated as the
--- time or a dimension carries `dimension`; a table's key comes from its
--- entity's identity columns; a metric's value is an Ossie metric whose
+-- time or a dimension carries `dimension`; a table's key is the `grain`
+-- of its entity; a metric's description is the `meaning` annotated on
+-- the view; a metric's value is an Ossie metric whose
 -- expression follows its additivity (a sum for additive, the ratio of
 -- the summed halves for a ratio; a semi-additive or non-additive value
 -- is exported as a sum with the additivity in `custom_extensions`, since
@@ -879,20 +886,19 @@ measures AS (
            'expression': {'sql': CASE WHEN x.additivity = 'ratio' AND x.numerator IS NOT NULL AND x.denominator IS NOT NULL
                                       THEN 'SUM("' || x.numerator || '") / SUM("' || x.denominator || '")'
                                       ELSE 'SUM("' || x.value_column || '")' END},
-           'description': coalesce(json_extract_string(d.value, '$.definitions.' || x.metric || '.meaning'),
-                                   json_extract_string(a.schema, '$.title')),
+           'description': coalesce(vm.value->>'value', json_extract_string(a.schema, '$.title')),
            'custom_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
              [{'vendor_name': 'glossdb', 'data': to_json({'additivity': x.additivity, 'time_column': x.period_column})::VARCHAR}] END
          })) AS measure
   FROM metrics x CROSS JOIN ds
-  LEFT JOIN known d ON d.subject = ds.dataset AND d.aspect = 'definitions'
+  LEFT JOIN known vm ON vm.subject = ds.dataset || '.' || x.metric AND vm.aspect = 'meaning'
   LEFT JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = x.metric),
 datasets AS (
   SELECT t.table_name,
          json_merge_patch('{}', to_json({
            'name': t.table_name,
            'source': ds.dataset || '.' || t.table_name,
-           'primary_key': from_json(json_extract(e.value, '$.identity_columns'), '["VARCHAR"]'),
+           'primary_key': from_json(json_extract(e.value, '$.grain'), '["VARCHAR"]'),
            'description': coalesce(tm.value->>'value', e.value->>'value'),
            'fields': (SELECT list(f.field ORDER BY f.ordinal_position) FROM fields f WHERE f.table_name = t.table_name),
            'metrics': (SELECT list(m.measure) FROM measures m WHERE m.metric = t.table_name)

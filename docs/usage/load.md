@@ -131,7 +131,8 @@ GLOSS conventions ON fleet_export AS $${
 
 A person records an approved change as a `recipe_change` annotation
 on the table, with `table`, `sql` and `reason`. It shows in `next`
-under `connect` until a load of that table is newer than the approval.
+as an `integrate` row until a load of that table is newer than the
+approval.
 
 ## Plain SQL writes
 

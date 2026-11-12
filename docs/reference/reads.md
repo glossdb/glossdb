@@ -72,18 +72,26 @@ narrows either to one property.
   `re-measure`, `never measured` or `apply-decision`.
 - `workspace_status`: `area` is `sources`, `tables`, `relationships`,
   `properties`, `annotations`, `functions`, `views`, `tests`,
-  `scenarios`, `plans`, `review` or `apps`.
+  `scenarios`, `plans`, `review` or `apps`. For `tests`, `open`
+  counts a test of your own on each asset that carries its
+  expectation and has no result yet, and a descriptive property with
+  a test (`meaning`, `role`, `entity`) on each asset a metric reads
+  that has no value. `tested_properties()` lists the properties of
+  the first kind by `name`.
 
 ### next
 
 The open work of the dataset in use, one row per asset and state,
-ordered by `priority`, then `ord`. A test has one row per asset it is
-red on, and each assumption that waits for a person has a row.
+ordered by `priority`, then `ord`: the most urgent first, not by kind
+of work. A test has one row per asset it is not green on, and each
+assumption that waits for a person has a row. A test of your own is
+listed on the assets that carry its expectation.
 
 | Column | Holds |
 |---|---|
 | `priority` | 1 a number is wrong or withheld; 2 something changed or was decided; 3 not there yet; 9 waiting for a person |
-| `ord`, `step` | `connect` (1), `describe` (2), `test` (3), `decide` (4), `serve` (5) |
+| `step` | the kind of work: `integrate` (a source to connect, a table to load, a view to define), `describe`, `test`, `review` (a question for a person, or a person's decision to apply) |
+| `ord` | the order of the rows inside one priority: loads (1), `describe` (2), `test` (3), `review` (4), views (5) |
 | `asset` | the dataset, table, column, relationship or view |
 | `state` | `missing`, `stale`, `conflict`, a test's state, `decided`, `waiting`, `blocked` |
 | `who` | `agent` or `person` |
@@ -110,9 +118,9 @@ One row per view of the dataset in use.
 | `view`, `kind` | the name; `relation`, `scalar`, `plan`, or NULL for a metric |
 | `plan_of`, `covers` | a plan's metric, and the grain its rows are booked against |
 | `stopped` | the stop reason |
-| `applicable`, `reason` | whether a series is served; else what to change |
-| `period_column`, `value_column`, `numerator`, `denominator` | the columns the series reads |
-| `grain_detected`, `floor`, `window_periods` | the grain `temporal()` measured on the period column; the finest grain served; how many periods a read serves at that grain |
+| `applicable`, `reason` | whether a metric's series is served; else what to change. A table and a single value have no series: `applicable` is NULL, and `reason` is filled only where the view is stopped or its definition serves no view |
+| `period_column`, `value_column`, `numerator`, `denominator` | the columns the series reads; `period_column` is NULL for a table and a single value |
+| `grain_detected`, `floor`, `window_periods` | the grain `temporal()` measured on the period column; the finest grain served; how many periods a read serves at that grain. NULL for a table and a single value |
 | `additivity`, `additivity_state` | the value column's additivity; `none` where nobody stated it, `conflict` where it is withheld |
 | `dims`, `dimensions_without_rank` | the slicing columns, primary first; dimension columns without a `dimension` annotation |
 | `columns_without_role`, `missing` | served columns without a `role`; the annotation each needs. Both are empty for a single value |
@@ -178,7 +186,7 @@ Stored results of the model service, read back as SQL
 | `range_points()` | `metric`, `applicable`, `reason`, `additivity`, `backtested`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at` |
 | `forecast_points()` | `seq`, `metric`, `applicable`, `reason`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `held_80`, `held_90`, `held_from` |
 | `forecast_coverage()` | `metric`, `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90`, `held_80`, `held_90` |
-| `scenarios()` | `scenario`, `glossed`, `applicable`, `reason`, `levers` |
+| `scenarios()` | `scenario`, `annotated`, `applicable`, `reason`, `levers` |
 | `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
 | `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `held_80`, `held_from`, `origin` |

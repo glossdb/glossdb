@@ -15,17 +15,31 @@ The MCP interface serves each page here as `doc://docs/<path>`.
 - [Quickstart](getting-started/quickstart.md): two CSV files to a
   tested table, a single value and a metric.
 
-## The work, step by step
+## The five functions of data intelligence
 
-| Step | Page |
-|---|---|
-| Connect | [Connect and load](usage/load.md): sources, load queries, loads |
-| Describe | [Describe](usage/describe.md): annotations, relationships, the business glossary |
-| Serve | [Define views](usage/views.md): a table, a single value, a metric |
-| Test | [Test](usage/test.md): the built-in tests, your own tests, states |
-| Decide | [Review and decide](usage/review.md): the review queue and review decisions |
-| Serve | [Serve and read](usage/serve.md): SQL, Arrow, export, the console, data apps |
-| Preview | [Forecasts, expected ranges, plans and scenarios](usage/outlook.md) |
+Each function answers one question about the data. The pages are
+grouped by it.
+
+| Function | The question | Page |
+|---|---|---|
+| Integration | Which sources map? | [Connect and load](usage/load.md): sources, load queries, loads. [Define views](usage/views.md): a table, a single value, a metric |
+| Metadata | What does this mean? | [Describe](usage/describe.md): annotations, relationships, the business glossary |
+| Quality | Can we trust this value? | [Test](usage/test.md): the built-in tests, your own tests, states |
+| Governance | Who decides and may use it? | [Review and decide](usage/review.md): the review queue and review decisions |
+| Lineage | Where does this come from? | [Read the views](usage/read.md): column lineage, OpenLineage events, and how the views are read: SQL, Arrow, export, the console, data apps |
+
+Preview: [Forecasts, expected ranges, plans and scenarios](usage/outlook.md).
+
+## The four kinds of work
+
+The work on a dataset is of four kinds: integrate (connect a source,
+load tables, define views), describe, test and review (an open
+question goes to a person; the decision is kept). They are kinds of
+work, not stages. A view needs a loaded table, a test needs
+something defined, and a review needs an open question. Lineage
+results from the other four, and a view can be queried once it is
+defined. `next` labels each open row with its kind and orders the
+rows by urgency ([reads](reference/reads.md)).
 
 ## Operate and extend
 

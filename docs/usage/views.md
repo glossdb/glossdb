@@ -149,10 +149,12 @@ SELECT view, kind, applicable, reason, floor, additivity, dims, missing, measure
 FROM view_summary();
 ```
 
-`applicable` says whether a series is served. For a table and a
-single value it is false, and `reason` says how to read them. `missing` lists the annotations the columns still need,
+`applicable` says whether a metric's series is served, and `reason`
+what to change when it is not. A table and a single value have no
+series: `applicable`, `reason` and `floor` are empty on their rows.
+`missing` lists the annotations the columns still need,
 `measurements_to_run` the measurements to run. Reading the views:
-[serve and read](serve.md). Each column: [reads](../reference/reads.md).
+[read the views](read.md). Each column: [reads](../reference/reads.md).
 
 Plans, forecasts and scenarios on a metric are preview features:
 [outlook](outlook.md).

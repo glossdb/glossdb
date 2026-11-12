@@ -100,22 +100,28 @@ CREATE OR REPLACE VIEW main.open_items AS
   UNION ALL SELECT * FROM foldins;
 
 
--- next: what is open on the bound dataset, by step of the data
--- intelligence layer (connect, describe, test, decide, serve), read
--- from the states the catalog holds and narrowed to what the views
--- read and serve. One row per asset and state: priority (1 a number
--- is wrong or withheld, 2 something changed or was decided, 3 not
--- there yet, 9 waiting for a person), ord (the step's order), step,
--- asset, state, who (agent or person), open (the finding), for_view,
--- cause (what the newest load changed), statement (what opens the
--- work; <...> marks what only the author can fill). It serves
--- building the layer (missing, not run) and running it (outdated
--- after a load, red, conflict) alike. A test's finding and fix are
--- the test's own (`finding` and `fix` in its result), on a view, a
--- table or a column alike; a red test without a `fix` gets the check
--- to run again and the statement that accepts its rate. A kit adds rows
--- through its tests, and the outlook kit through outlook_findings().
--- An assumption that waits for a person is one row each.
+-- next: what is open on the bound dataset, read from the states the
+-- catalog holds and narrowed to what the views read and serve. One
+-- row per asset and state: priority (1 a number is wrong or withheld,
+-- 2 something changed or was decided, 3 not there yet, 9 waiting for
+-- a person), ord (the order of the rows inside one priority), step
+-- (the kind of work: integrate, describe, test, review), asset,
+-- state, who (agent or person), open (the finding), for_view, cause
+-- (what the newest load changed), statement (what opens the work;
+-- <...> marks what only the author can fill). The kinds of work are
+-- labels, not stages: integrate is a source to connect, a table to
+-- load or a view to define; review is a question for a named person
+-- or a person's decision to apply. The rows are ordered by priority,
+-- not by kind. It serves building the layer (missing, not run) and
+-- running it (outdated after a load, red, conflict) alike. A test's
+-- finding and fix are the test's own (`finding` and `fix` in its
+-- result), on a view, a table or a column alike; a red test without
+-- a `fix` gets the check to run again and the statement that accepts
+-- its rate. A property that exists to be tested (tested_properties())
+-- is a row where its test is set, and is not asked for on the other
+-- assets. A kit adds rows through its tests, and the outlook kit
+-- through outlook_findings(). An assumption that waits for a person
+-- is one row each.
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
@@ -156,7 +162,9 @@ CREATE OR REPLACE VIEW main.next AS
                 WHEN json_extract(schema, '$.properties.value') IS NOT NULL
                 THEN '{"value": "<' || name || '>"}'
                 WHEN json_extract(schema, '$.properties.floor.enum') IS NOT NULL
-                THEN '{"floor": "<' || array_to_string(json_extract_string(schema, '$.properties.floor.enum[*]'), '|') || '>"}' END AS shape
+                THEN '{"floor": "<' || array_to_string(json_extract_string(schema, '$.properties.floor.enum[*]'), '|') || '>"}' END AS shape,
+           -- an expectation a test scores: asked for where it is set, not on every asset
+           name IN (SELECT p.name FROM main.tested_properties() p) AS expectation
     FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
     WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
@@ -188,6 +196,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
     LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
     WHERE (x.asset IS NOT NULL OR g.state = 'conflict')
+      AND NOT (s.expectation AND g.state = 'missing')
       -- `entity` says what one row of a table is: asked on a loaded
       -- table and on a table view, not on a metric, a single value or a plan
       AND NOT (g.aspect = 'entity' AND g.state = 'missing' AND EXISTS (
@@ -241,8 +250,8 @@ CREATE OR REPLACE VIEW main.next AS
                   || coalesce('; ' || c.what, '') AS cause
     FROM loads l LEFT JOIN changed c ON c.tbl = l.tbl
     WHERE l.rn = 1 AND l.rows_before IS NOT NULL),
-  s_connect AS (
-    SELECT 3 AS priority, 1 AS ord, 'connect' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
+  s_load AS (
+    SELECT 3 AS priority, 1 AS ord, 'integrate' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
            '-- name where the data is, list what is there, then load each table with a load query' || chr(10)
              || 'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
@@ -253,7 +262,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
-    SELECT 2, 1, 'connect', ds.d || '.' || o.subject, 'decided', 'agent',
+    SELECT 2, 1, 'integrate', ds.d || '.' || o.subject, 'decided', 'agent',
            'a person approved a change to the load query of ' || o.subject || '; it is not declared yet', '', '',
            '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'' ORDER BY seq DESC;' || chr(10)
              || 'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
@@ -314,34 +323,36 @@ CREATE OR REPLACE VIEW main.next AS
                                    || CASE k.by
                                         WHEN 'tolerance' THEN 'record it with their reason:' || chr(10)
                                                || '-- ' || main.gloss_statement(k.aspect, t.subject,
-                                               '{"tolerance": ' || ceil(t.score * 1000) / 1000 || ', "basis": "<who accepted the rate and why>"}')
+                                               json_merge_patch(coalesce(e.body, '{}'),
+                                                 '{"tolerance": ' || ceil(t.score * 1000) / 1000 || ', "basis": "<who accepted the rate and why>"}')::VARCHAR)
                                         WHEN 'threshold' THEN 'declare the test again with it, and say in the meaning of ' || t.subject || ' who accepted it and why:' || chr(10)
                                                || '-- DECLARE TEST ' || t.test || ' ON ' || k.aspect
                                                || ' DETECTOR rate_tolerance THRESHOLD ' || ceil(t.score * 1000) / 1000 || ';' END, '') END,
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
     FROM vt t LEFT JOIN accepts k ON k.test = t.test
+    LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect
     WHERE t.state <> 'green'),
-  s_decide AS (
-    SELECT 2, 4, 'decide', ds.d || '.' || r.aspect, 'decided', 'agent',
+  s_review AS (
+    SELECT 2, 4, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
              || '; the definition does not carry it yet', r.aspect, '',
            '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, r.aspect)
     FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
-    SELECT 2, 4, 'decide', ds.d || '.' || o.subject, 'decided', 'agent',
+    SELECT 2, 4, 'review', ds.d || '.' || o.subject, 'decided', 'agent',
            'a person''s formula for ' || o.subject || ' is newer than its definition', o.subject, '',
            '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.subject || '''; change the SQL to match it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, o.subject)
     FROM items o, ds WHERE o.kind = 'formula'
     UNION ALL
-    SELECT 9, 4, 'decide', ds.d || '.' || q.aspect, 'waiting', 'person',
+    SELECT 9, 4, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',
            'SELECT key, assumption, basis, alternative FROM open_questions WHERE aspect = ''' || q.aspect || ''' AND key = ''' || q.key || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d),
-  s_serve AS (
-    SELECT 3, 5, 'serve', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
+  s_views AS (
+    SELECT 3, 5, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
            '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
              || '-- a table:' || chr(10)
              || 'DECLARE ASPECT <table_view> WITH $${"title": "<its name in the business''s words>", "x-kind": "relation"}$$ AS VIEW;' || chr(10)
@@ -357,7 +368,7 @@ CREATE OR REPLACE VIEW main.next AS
     UNION ALL
     -- a metric with no series yet: the statement is the annotation or
     -- the measurement its summary row names, else the definition again
-    SELECT 2, 5, 'serve', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
+    SELECT 2, 5, 'integrate', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
            CASE WHEN m.period_column IS NULL
                 THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<period column> AS $${"value": "timestamp"}$$;'
                 WHEN m.value_column IS NULL
@@ -383,6 +394,6 @@ CREATE OR REPLACE VIEW main.next AS
     FROM main.outlook_measurements() m, ds
     WHERE m.due)
   SELECT * FROM (
-    SELECT * FROM s_connect UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
-    UNION ALL SELECT * FROM s_decide UNION ALL SELECT * FROM s_serve UNION ALL SELECT * FROM s_outlook)
+    SELECT * FROM s_load UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
+    UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_outlook)
   ORDER BY priority, ord, asset, state;

@@ -30,29 +30,36 @@ who build and run that layer. Harmonising several systems of record is
 the first use case. glossdb works beside dbt, semantic layers, catalogs
 and lakes, in their formats.
 
-## The five steps
+## Five functions, four kinds of work
 
-1. **Connect.** Declare a source. A load query (`DECLARE RECIPE`)
-   brings a table into a dataset. Each load is a snapshot with its row
-   count and column lineage.
-2. **Describe.** Annotate (`GLOSS`) each table, column and
-   relationship: meaning, role, unit, additivity. Each annotation is
-   validated against a JSON Schema on write and stored with its author
-   and the data version.
-3. **Test.** A test is a statement about the data with a state: green,
-   yellow, orange or red. Each metric gets built-in tests for join
-   fan-out, referential integrity and additivity. A test brings its
-   finding and the statement that fixes it.
-4. **Decide.** An assumption in a view definition that a person should
-   confirm goes to the review queue. The person's decision is stored
-   and outranks the agent's annotation.
-5. **Serve.** A view is named SQL on a dataset, read as
-   `FROM <dataset>.<name>`: a table, a single value or a metric. The
-   semantic model is served as an Apache Ossie document and the
-   lineage as OpenLineage events.
+Data intelligence has five functions. Each answers one question about
+the data.
 
-`next` lists a dataset's open work by these steps; every MCP result
-ends with its count and first row.
+| Function | The question | In glossdb |
+|---|---|---|
+| Integration | Which sources map? | A source is declared. A load query (`DECLARE RECIPE`) brings a table into a dataset, and each load is a snapshot with its row count. A view is named SQL on a dataset, read as `FROM <dataset>.<name>`: a table, a single value or a metric. |
+| Metadata | What does this mean? | An annotation (`GLOSS`) on each table, column and relationship: meaning, role, unit, additivity. Each is validated against a JSON Schema on write and stored with its author and the data version. |
+| Quality | Can we trust this value? | A test is a statement about the data with a state: green, yellow, orange or red. Each metric gets built-in tests for join fan-out, referential integrity and additivity. A test brings its finding and the statement that fixes it. |
+| Governance | Who decides and may use it? | An assumption in a view definition that a person should confirm goes to the review queue. The person's decision is stored and outranks the agent's annotation. Access per user is planned. |
+| Lineage | Where does this come from? | Each load records its column lineage, and each view the columns it reads. The lineage is served as OpenLineage events, the semantic model as an Apache Ossie document. |
+
+The work on the layer is of four kinds:
+
+- **Integrate.** Connect a source, load its tables, define the views.
+- **Describe.** Annotate what the data means.
+- **Test.** Check what was stated against the data.
+- **Review.** An open question goes to a named person, and the
+  decision is kept.
+
+These are kinds of work, not stages. A view needs a loaded table, a
+test needs something defined, and a review needs an open question;
+nothing else fixes the order. Lineage is no work of its own: the
+other four record it. A view can be queried once it is defined.
+
+`next` lists a dataset's open work, most urgent first: a red test,
+then what a load changed or a person decided, then what is missing.
+Each row is labelled with its kind of work. Every MCP result ends
+with the count per kind and the first row.
 
 ## Getting started
 

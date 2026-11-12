@@ -28,7 +28,9 @@ Two properties carry the story:
   version of the data it describes.
 - Statements about the data are tested against the data.
 
-The five steps: connect, describe, test, decide, serve. Harmonising
+The five functions of data intelligence: integration, metadata,
+quality, governance, lineage. The four kinds of work: integrate,
+describe, test, review. They are kinds of work, not stages. Harmonising
 systems of record is the first use case we name. glossdb works beside
 dbt, semantic layers, catalogs and lakes, in their formats.
 

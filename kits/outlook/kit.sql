@@ -104,7 +104,7 @@ judged AS (
          END AS reason
   FROM levers l),
 folded AS (
-  SELECT b.scenario, b.body IS NOT NULL AS glossed,
+  SELECT b.scenario, b.body IS NOT NULL AS annotated,
          coalesce(list({'lever': j.lever, 'metric': j.metric, 'column': j.col, 'factor': j.factor, 'basis': j.basis, 'reason': j.reason}
                        ORDER BY j.lever) FILTER (WHERE j.lever IS NOT NULL), []) AS levers,
          CASE WHEN b.body IS NULL THEN 'declared and not annotated: a scenario is a factor per period on declared levers'
@@ -112,7 +112,7 @@ folded AS (
               ELSE string_agg(j.reason, '; ' ORDER BY j.lever) END AS reason
   FROM bodies b LEFT JOIN judged j USING (scenario)
   GROUP BY b.scenario, b.body)
-SELECT scenario, glossed, reason IS NULL AS applicable, reason, levers FROM folded ORDER BY scenario;
+SELECT scenario, annotated, reason IS NULL AS applicable, reason, levers FROM folded ORDER BY scenario;
 
 CREATE OR REPLACE MACRO main.view_inputs() AS TABLE
 WITH ds AS (SELECT current_schema() AS d),
@@ -135,7 +135,7 @@ threshold AS (
 sc AS MATERIALIZED (SELECT * FROM main.scenarios()),
 reached AS (SELECT DISTINCT u.l.metric AS view FROM sc, unnest(sc.levers) AS u(l)),
 scen AS (
-  SELECT coalesce((SELECT string_agg(scenario || ':' || glossed::VARCHAR || ':' || coalesce(reason, '') || ':' || levers::VARCHAR, ';' ORDER BY scenario) FROM sc), '')
+  SELECT coalesce((SELECT string_agg(scenario || ':' || annotated::VARCHAR || ':' || coalesce(reason, '') || ':' || levers::VARCHAR, ';' ORDER BY scenario) FROM sc), '')
            || '/' || coalesce((SELECT string_agg(m.inputs, ',' ORDER BY m.view) FROM metrics m JOIN reached r USING (view)), '') AS digest),
 -- what the dataset needs, where a model service is named and a metric is served
 live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
@@ -623,14 +623,14 @@ ORDER BY r.seq, r.point_seq NULLS FIRST;
 
 --===------------------------------------------------------------------===--
 -- The scenario. A lever is a FACT on a column of a metric's view — a list
--- price, a discount rate — glossed true where someone sets it, false where
--- it was looked at and nobody does; a column with no lever gloss is no
+-- price, a discount rate — annotated true where someone sets it, false where
+-- it was looked at and nobody does; a column with no lever annotation is no
 -- lever. A scenario is the actor's own FACT aspect on the dataset, x-kind
 -- scenario, its body a factor per period on declared levers: {"levers":
 -- [{"column": "<metric>.<column>", "factor": {"YYYY-MM": 1.15, …},
 -- "basis": "…"}]}; a period is a month or a day, one not named keeps a
--- factor of one. scenarios(): every scenario declared, judged — glossed,
--- each lever a glossed lever on a served metric's column, the factor a
+-- factor of one. scenarios(): every scenario declared, judged — annotated,
+-- each lever an annotated lever on a served metric's column, the factor a
 -- map. scenario_request(): the scenario's reach, one row per scenario
 -- and metric whose view carries one of its levers: grain (the metric's
 -- floor), origin (the last complete actual, as the forecast's), history,
@@ -815,7 +815,7 @@ ORDER BY r.scenario, r.metric;
 
 --===------------------------------------------------------------------===--
 -- metric_scenario: the estimate as a measurement on the dataset, over
--- every scenario glossed: per scenario its judgement and levers, per
+-- every scenario annotated: per scenario its judgement and levers, per
 -- metric reached its grain, origin, the service's sign, confidence and
 -- basis, explains and error, the points ahead (period, low, value, high
 -- at the 10, 50 and 90 levels; baseline, the same estimate's median with
@@ -1063,7 +1063,7 @@ WITH named AS (
   SELECT a.view AS plan, a.applicable, a.reason FROM main.view_summary() a WHERE a.kind = 'plan' AND a.view = p),
 refusal AS (
   SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
-              WHEN w = 'scenario' AND s IS NULL THEN error('scenario_not_named: metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, glossed with a factor per period on declared levers')
+              WHEN w = 'scenario' AND s IS NULL THEN error('scenario_not_named: metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, annotated with a factor per period on declared levers')
               WHEN w = 'scenario' AND NOT EXISTS (SELECT 1 FROM main.scenarios() WHERE scenario = s) THEN error(
                 'unknown_scenario: metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario')
               WHEN w = 'plan' AND p IS NULL THEN error('plan_not_named: metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>')
@@ -1369,7 +1369,7 @@ SELECT name, stored, due FROM main.outlook_due() WHERE needed;
 
 --===------------------------------------------------------------------===--
 -- outlook_findings(): what the preview features leave open on the bound
--- dataset, as rows for `next`: step (test or serve), asset, state,
+-- dataset, as rows for `next`: step (test or integrate), asset, state,
 -- open (the finding), for_view, statement (the fix), test (the test the
 -- finding belongs to). A value outside its expected range, a plan
 -- outside the forecast's range, a plan whose comparison is not current
@@ -1453,7 +1453,7 @@ FROM plans p LEFT JOIN compared c USING (plan) LEFT JOIN held h ON h.subject = c
 WHERE live.named AND p.applicable
   AND (c.plan IS NULL OR NOT coalesce(h.current, false))
 UNION ALL
-SELECT 'serve', ds.d || '.' || p.plan, 'missing',
+SELECT 'integrate', ds.d || '.' || p.plan, 'missing',
        p.plan || ' (preview) plans ' || p.metric || ' and has no definition', p.metric,
        main.gloss_statement(p.plan, ds.d, '{"sql": "SELECT <date column> AS <the metric''s period column>, <planned value> AS <the metric''s value column> FROM <budget table>"}'),
        NULL
@@ -1471,7 +1471,7 @@ SELECT 'test', ds.d, 'not_run',
                  THEN chr(10) || '-- a lever is a column someone sets: ' || main.gloss_statement('lever', '<metric>.<column>', '{"value": true, "basis": "<who sets it>"}') ELSE '' END,
        'scenario_test'
 FROM main.scenarios() s LEFT JOIN scenario_bodies b USING (scenario), ds, live
-WHERE live.named AND s.glossed AND NOT s.applicable
+WHERE live.named AND s.annotated AND NOT s.applicable
 UNION ALL
 -- a scenario estimated for no period of a metric, for a reason its author can settle; once the scenario is
 -- annotated again the estimate is due, and the finding is the old annotation's

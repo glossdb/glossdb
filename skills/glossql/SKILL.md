@@ -1,6 +1,6 @@
 ---
 name: glossql
-description: Build a company's data intelligence layer in a glossdb workspace over the MCP interface — connect sources, describe the data, define views (a table, a single value, a metric), test them, and leave decisions to a person. The entry skill — the five steps with a working example each, how to read `next`, the statements and the reads. Use for any work in a glossdb workspace.
+description: Build a company's data intelligence layer in a glossdb workspace over the MCP interface — connect sources, describe the data, define views (a table, a single value, a metric), test them, and leave decisions to a person. The entry skill — the four kinds of work (integrate, describe, test, review) with a working example each, how to read `next`, the statements and the reads. Use for any work in a glossdb workspace.
 ---
 
 # Building the data intelligence layer
@@ -13,8 +13,24 @@ single values and metrics come out, as views any tool that opens the
 lake can read. What you state is stored with the data and tested
 against it after each load. A person reviews and decides.
 
-The work has five steps: connect, describe, serve, test, decide. This
-page walks them on a dataset of parcel deliveries.
+There are four kinds of work:
+
+| Kind | What you do |
+|---|---|
+| integrate | connect a source, load its tables, define views |
+| describe | annotate what a table, a column or a relationship means |
+| test | check what was stated against the data |
+| review | give a judgment call to a person, and apply their decision |
+
+They are kinds of work, not stages. Three things are fixed: a view
+needs a loaded table, a test needs something defined, and a review
+needs an open question. Lineage needs no work of its own: each load
+and each view definition records it. A view can be queried once it
+is defined.
+
+This page shows each kind once, on a dataset of parcel deliveries,
+starting from an empty workspace. That order is one way through, not
+the rule. What the person asked for decides what you do and when.
 
 ## The interface and `next`
 
@@ -36,27 +52,28 @@ next: describe 2 · test 1 · waiting for a person 1
 first: test logistics.parcels_delivered (red): orphan_test: 10.0% of rows … find no parent (next://logistics/test)
 ```
 
-`next:` counts what is open on the dataset per step, and the
+`next:` counts what is open on the dataset per kind of work, and the
 assumptions that wait for a person apart. `first:` is the first open
 row. A call on the workspace endpoint without `USE` has neither. Two
 more lines appear when they apply: `summary:` after a call that
 changed what waits in the workspace (assumptions for a person,
 decisions to apply), and `window:` after a read of `metric_series()`.
-Read the list after each step, in a call of its own:
+Read the list after a piece of work, in a call of its own:
 
 ```sql
 SELECT step, asset, state, open, cause, statement FROM next
 ```
 
-Each row has a statement that closes it; `<…>` marks what you fill
-in. `cause` says what the newest load changed. A red test comes
-first, then what a load changed or a person decided, then what is
-missing. The list covers what your views read and serve. The work on
+`step` is the row's kind of work. Each row has a statement that
+closes it; `<…>` marks what you fill in. `cause` says what the newest
+load changed. The list is ordered by urgency, not by kind: a red test
+comes first, then what a load changed or a person decided, then what
+is missing. The list covers what your views read and serve. The work on
 a dataset is complete when no row has `who = 'agent'`; rows that wait
 for a person do not hold you back. The list is context: what the
 person asked for decides what you work on.
 
-## 1. Connect: declare a source, load tables
+## Integrate: connect a source, load tables
 
 ```glossql
 DECLARE DATASET logistics SET (purpose: 'parcel deliveries by depot');
@@ -92,7 +109,7 @@ The acknowledgement counts: `loaded logistics.deliveries: 10 rows, 0
 dropped`. Look into every dropped row. `IMPORT deliveries;` loads the
 table again. More: `skill://glossql-modeling/references/load.md`.
 
-## 2. Describe: annotate what the data means
+## Describe: annotate what the data means
 
 An annotation (`GLOSS`) writes one property of one asset: a table, a
 column (`table.column`), a relationship or the dataset.
@@ -132,7 +149,7 @@ GLOSS meaning ON deliveries.depot_id -> depots.depot_id AS $${"value": "each del
 column, its annotations read `stale`; `next` hands each back with its
 value to check and record again.
 
-## 3. Serve: define views
+## Integrate: define views
 
 A view is named SQL on the dataset: declare the name, then define it.
 There are three kinds, each read as `FROM <view>`.
@@ -168,8 +185,8 @@ GLOSS parcels_delivered ON logistics AS $${
 }$$;
 ```
 
-A table and a single value are served as they are. A metric also
-needs a grain for its series. Where its dates follow no regular
+A table and a single value can be queried once they are defined. A
+metric also needs a grain for its series. Where its dates follow no regular
 grain, `next` gives the statement:
 
 ```glossql
@@ -182,7 +199,7 @@ view's `meaning` is what `view_definitions` shows. A table in a
 given target format (a data contract), metric shapes, stopping a
 view: `skill://glossql-modeling/references/define.md`.
 
-## 4. Test: check what you stated
+## Test: check what you stated
 
 The server runs the built-in tests on each metric after you define
 it or load a table it reads: join fan-out, referential integrity on
@@ -195,46 +212,67 @@ accept the rate with a reason; a person can overrule it:
 GLOSS orphan_check ON logistics.parcels_delivered AS $${"tolerance": 0.1, "basis": "depot 099 closed in 2025 and is not in the depot list"}$$;
 ```
 
-A test of your own is a property, a function that measures it, and
-the test. The function returns `breach_rate`, the share of rows that
-break the rule; 0 is green:
+A test of your own has four parts: a property for the expectation, a
+function that measures how often the data breaks it, the test, and
+the expectation annotated on the asset it holds for.
 
 ```glossql
 DECLARE ASPECT delivery_key_unique WITH $${"type": "object",
-  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON TABLE;
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION delivery_key_check FOR logistics AS $$
   SELECT (count(*) - count(DISTINCT delivery_id)) / greatest(count(*), 1)::DOUBLE AS breach_rate,
          CASE WHEN count(*) > count(DISTINCT delivery_id)
               THEN (count(*) - count(DISTINCT delivery_id)) || ' rows repeat a delivery_id' END AS finding
   FROM clean_deliveries
 $$ RETURNS delivery_key_unique;
-DECLARE TEST delivery_key_test ON delivery_key_unique DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST delivery_key_test ON delivery_key_unique BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+GLOSS delivery_key_unique ON clean_deliveries AS $${"outcome": "a delivery_id names one delivery run",
+  "tolerance": 0.0, "basis": "the carrier issues one id per run"}$$;
 SELECT delivery_key_check() FROM clean_deliveries;
 ```
 
+- **The property** is declared `AS FACT`. Its annotation is the
+  expectation: `outcome` says the rule in words, `tolerance` is the
+  share of rows that may break it (0.0 allows none), `basis` says
+  why.
+- **The function** returns `breach_rate`, the share of rows that
+  break the rule, and `finding`, one sentence on what is wrong. Its
+  `RETURNS` names the property.
+- **The test** scores one against the other: green at or under the
+  tolerance, red above it, yellow while the function has not run.
+- **The annotation** sets the test on that asset. The test is on no
+  other asset, and `next` asks for it nowhere else.
+
 Run the function once. After a later load the server runs it again.
-A test on one column is declared `ON COLUMN` and run on the column:
+A test on one column is declared `ON COLUMN`, and annotated and run
+on the column:
 
 ```glossql
 DECLARE ASPECT weight_filled WITH $${"type": "object",
-  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
 DECLARE FUNCTION weight_filled_check FOR logistics AS $$
   SELECT count(*) FILTER (WHERE weight_kg IS NULL) / greatest(count(*), 1)::DOUBLE AS breach_rate,
          CASE WHEN count(*) FILTER (WHERE weight_kg IS NULL) > 0
               THEN count(*) FILTER (WHERE weight_kg IS NULL) || ' deliveries have no weight' END AS finding
   FROM deliveries
 $$ RETURNS weight_filled;
-DECLARE TEST weight_filled_test ON weight_filled DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST weight_filled_test ON weight_filled BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+GLOSS weight_filled ON deliveries.weight_kg AS $${"outcome": "each delivery has a weight",
+  "tolerance": 0.0, "basis": "the carrier bills by weight"}$$;
 SELECT weight_filled_check() FROM deliveries.weight_kg;
 ```
 
 A test states the rule. Where the data breaks it, the test is red and
 a row of `next`, with the finding and two statements: the check to
 run again after you fixed the load query or the definition, and the
-one that records a rate a person accepts. More:
-`skill://glossql-modeling/references/tests.md`.
+annotation that records a rate a person accepts. That annotation is
+the same property on the same asset, with a higher `tolerance` and
+the person's reason in `basis`. A person's annotation outranks yours.
+More: `skill://glossql-modeling/references/tests.md`.
 
-## 5. Decide: leave judgment to a person
+## Review: leave judgment to a person
 
 A judgment call is a choice the data cannot settle: which rows count,
 which date, how a text column is written. State each as an assumption
@@ -248,8 +286,9 @@ SELECT aspect, key, assumption, basis, conf FROM open_questions
 
 A person confirms or corrects it in the console, or in a form the
 interface sends with your calls. Where the client shows no forms, ask
-in chat. The decision then appears in `next` under `decide`, with the
-definition to record again. Do not ask a person for something the
+in chat. The decision is stored as the person's annotation. It then
+appears in `next` as a `review` row, with the definition to record
+again. Do not ask a person for something the
 data can tell you: measure it. More: `references/review.md`.
 
 ## The other statements
@@ -259,8 +298,8 @@ data can tell you: measure it. More: `references/review.md`.
 | `IMPORT t;` | loads the table again from the source |
 | `DROP TABLE t;` | removes a table; refused while it holds data or annotations |
 | `DECLARE RELATIONSHIP a.(x, y) -> b.(x, y);` | a join on a composite key |
-| `DECLARE ASPECT p WITH $$json schema$$ AS FACT ON TABLE, COLUMN;` | adds a property that agents and people annotate; `AS MEASUREMENT` for one a function fills |
-| `DECLARE TEST t ON p BY (AGENT, HUMAN) DETECTOR f THRESHOLD x;` | a test; `BY` names who may annotate the property |
+| `DECLARE ASPECT p WITH $$json schema$$ AS FACT ON TABLE, COLUMN;` | adds a property that agents and people annotate; `AS MEASUREMENT` for one only a function fills, such as a profile |
+| `DECLARE TEST t ON p BY (AGENT, HUMAN) DETECTOR f THRESHOLD x;` | a test; `BY` names who may annotate the property; `THRESHOLD` applies where no annotation carries a `tolerance` |
 
 A body goes inside `$$…$$` as it is, with plain double quotes. `CREATE
 VIEW` and other DDL are closed: tables come from load queries, views
@@ -272,8 +311,8 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 
 | Read | Gives |
 |---|---|
-| `next` | what is open on the dataset, by step |
-| `view_summary()` | one row per view: `kind`, `stopped`, `applicable` and `reason`, period and value columns, `additivity`, `floor`, `window_periods`, `dims`, `missing` |
+| `next` | what is open on the dataset, most urgent first; `step` is the kind of work |
+| `view_summary()` | one row per view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
 | `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `formula`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `view_sources()` | lineage: per view and field the source `table.column` |
@@ -293,7 +332,7 @@ is `information_schema.columns`.
 
 | Page | When |
 |---|---|
-| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each step; its references: `load.md`, `define.md`, `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
+| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each kind of work; its references: `load.md`, `define.md`, `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
 | `references/review.md` | assumptions, review decisions, conflicts |
 | `skill://glossql-apps/SKILL.md` | a data app over the views |
 | `skill://glossql-functions/SKILL.md` | a function of your own |

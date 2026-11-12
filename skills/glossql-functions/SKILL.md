@@ -35,7 +35,8 @@ SELECT script FROM functions WHERE name = 'rate_tolerance'
 
 ```glossql
 DECLARE ASPECT late_deliveries WITH $${"type": "object",
-  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON TABLE;
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION late_delivery_check FOR logistics AS $$
   SELECT CASE WHEN count(*) = 0 THEN 0.0
               ELSE count(*) FILTER (WHERE delivered_on > promised_on) / count(*)::DOUBLE END AS breach_rate,
@@ -45,6 +46,10 @@ DECLARE FUNCTION late_delivery_check FOR logistics AS $$
 $$ RETURNS late_deliveries;
 ```
 
+- The property here is the expectation of a test of your own, so it
+  is declared `AS FACT` and also holds what a person states
+  (`outcome`, `tolerance`, `basis`). A property only a function
+  fills, such as a profile, is declared `AS MEASUREMENT`.
 - `FOR` is a dataset or `GLOBAL`.
 - `RETURNS` names the property the result fills. The property's `ON`
   says which kind of asset the function runs on: `ON COLUMN`, `ON
@@ -106,11 +111,13 @@ Return one row per asset: `subject`, `state` (`green`, `yellow`,
 green: keep a row for every `subject`.
 
 ```glossql
-DECLARE TEST late_delivery_test ON late_deliveries DETECTOR rate_tolerance THRESHOLD 0.05;
+DECLARE TEST late_delivery_test ON late_deliveries BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+GLOSS late_deliveries ON deliveries AS $${"outcome": "a delivery arrives by the promised day",
+  "tolerance": 0.05, "basis": "the service level in the carrier contract"}$$;
 ```
 
 `rate_tolerance` reads `breach_rate` from the function's value and
-`tolerance` from a person's or an agent's annotation, else the
-threshold: green at or under it, red above, yellow while nothing was
-measured. Tests in full:
+`tolerance` from a person's annotation, else an agent's, else the
+test's threshold: green at or under it, red above, yellow while
+nothing was measured. Tests in full:
 `skill://glossql-modeling/references/tests.md`.

@@ -84,12 +84,23 @@ SELECT metric_ranges() FROM subway;
 SELECT metric, period, actual, p05, p50, p95, pit FROM range_points() WHERE newest;
 ```
 
+An expected range is a statistical interval. For a count or another
+value that cannot be negative, its lower bound can still lie below
+zero.
+
 `trains_run` was 73,479 in August 2025, in a range of 69,225 to
 78,245, with `pit` 0.50. `pit` says where the actual fell in the
 range: 0.5 is the middle. `range_test` is red where the newest month
 has a `pit` below 0.01 or above 0.99. `next` then names the metric,
 the value and the range. Cut at April 2020 the same metric was
 21,236 against a range of 52,760 to 74,873, and the test was red.
+
+A measured limitation (preview): the ranges are narrower than their
+nominal level. In the evaluation's backtests the 90% range (`p05` to
+`p95`) covered 63% of the actual values: 34 of 54 monthly points
+from six datasets. Source: finding GV-18 of the evaluation
+repository. Read a value outside its range as a reason to look, not
+as proof of a defect.
 
 A defect in the data and a real change look the same here. Fix a
 defect in the load or the definition. State a real change as an

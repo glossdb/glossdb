@@ -1,8 +1,12 @@
 # The plan
 
-glossdb builds a company's data intelligence layer: connect, describe,
-test, decide, serve. This file is the frame. It lists what is open,
-first the data intelligence direction, then the backlog by step. The
+glossdb builds a company's data intelligence layer. Its five
+functions are the frame for what a person looks at: integration,
+metadata, quality, governance, lineage. The work on it is of four
+kinds: integrate, describe, test, review. They are kinds of work, not
+stages; lineage results from the four, and a view can be queried once
+it is defined. This file is the frame. It lists what is open, first
+the data intelligence direction, then the backlog by kind of work. The
 plans beside it: `platform.md` (dbt, semantic models, lakes, the
 workspace as code), `sources.md` (spreadsheets, documents, search),
 `gate.md` (access per user), `clients.md` and `chat.md` (the hosted
@@ -19,30 +23,30 @@ branch `data-intelligence` in both repositories, not pushed.
 | 1 | Names: every interface name that was a project word is renamed to the industry's word, in both repositories | built |
 | 2 | Text: README, docs, skills, the corpus, the text an agent reads on connecting, written new for every kind of view (a table, a single value, a metric) and checked against the code | built |
 | 3 | Tests: no test compares wording; tests that protected nothing and code written for tests are deleted; a refusal carries a code | built |
-| 4 | `next`: the work list by step, derived from the states the catalog holds, with a statement per row; the console's overview shows the same rows | built |
-| 5 | The console: overview along the five steps, model and lineage as two pages, a test's page with its results, every kind of view under Views | built; the wording inside the other pages is the next pass |
+| 4 | `next`: the work list, most urgent first, each row labelled with its kind of work, derived from the states the catalog holds, with a statement per row; the console's overview shows the same rows | built |
+| 5 | The console: overview, model and lineage as two pages, a test's page with its results, every kind of view under Views | built along the earlier step names; the overview moves to the five functions and the four kinds of work, then the wording inside the other pages |
 | 6 | What an outside agent found when it built a workspace from the skill alone (20 items) | in work |
 | 7 | glossval: its tools follow the renamed reads; its old notes and tools are cut; the contract test cases run (`evaluation.md`) | next |
 | 8 | One pull request per repository; the extension's branch first, then the server's pin moves to it | when the project lead says the branches go up |
 | 9 | Results page and websites | after 7 |
 
-## The backlog, by step
+## The backlog, by kind of work
 
-| Step | Element | Risk | What it touches | When | Issue |
+| Kind of work | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|---|
-| Connect | Harmonisation kit: the mapping of several systems of record onto one target model, and the reconciliation per load | Medium: the demo's statements are written for one case; the kit must hold for a second | `kits/`, a skill, a suite; the statements in `../glossdemo/statements/` (structure, harmonise, watch) and its Mapping and Reconciliation pages | The first use case | |
-| Connect | Works with your platform: dbt, semantic models, lakes read in place, attached databases | See `platform.md` | | | #221 |
-| Connect | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
+| Integrate | Harmonisation kit: the mapping of several systems of record onto one target model, and the reconciliation per load | Medium: the demo's statements are written for one case; the kit must hold for a second | `kits/`, a skill, a suite; the statements in `../glossdemo/statements/` (structure, harmonise, watch) and its Mapping and Reconciliation pages | The first use case | |
+| Integrate | Works with your platform: dbt, semantic models, lakes read in place, attached databases | See `platform.md` | | | #221 |
+| Integrate | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
 | Describe | The workspace as code: declarations as `.glossql` files, tested in CI | See `platform.md` | | | #219 |
 | Describe | Citations to documents on tables, columns, relationships and metrics | Low | an optional kit | With documents | #220 |
 | Test | A certification level per metric: the level sets which tests and which review a metric needs before it is served as certified | Low: a property and a read over `view_tests()` | the views kit, `next`, the console's metric page | After the harmonisation kit | |
 | Test | A recompute rule: a measure that does not sum from its members is recomputed, not summed | Medium | the views kit | | #41 |
-| Decide | Access per user | See `gate.md` | | When a workspace has a second user | |
-| Decide | A recommendations read: findings with their options, chosen in the console (preview) | Low | the outlook kit, a console tile | | #174 |
-| Decide | A review decision made inside the chat | See `chat.md` | | With the trial | #20 |
-| Serve | The hosted trial | See `clients.md` | | | |
+| Review | Access per user | See `gate.md` | | When a workspace has a second user | |
+| Review | A recommendations read: findings with their options, chosen in the console (preview) | Low | the outlook kit, a console tile | | #174 |
+| Review | A review decision made inside the chat | See `chat.md` | | With the trial | #20 |
+| None of the four | The hosted trial | See `clients.md` | | | |
 
-Housekeeping, outside the steps: #214 (the image hangs on opening a
+Housekeeping, outside the kinds of work: #214 (the image hangs on opening a
 seeded workspace), #60 (an infrastructure error's text reaches the
 client), #56 (Tera 2 for the app pages).
 

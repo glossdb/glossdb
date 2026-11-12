@@ -33,7 +33,7 @@ A view's meaning is its `meaning` annotation (`GLOSS meaning ON
 <dataset>.<view>`), which `next` asks for. A metric's unit is the
 `unit` of its `measure`. `view_definitions` shows both. Its `formula`
 is a formula a person recorded for the view; when it is newer than
-your definition, `next` lists it under `decide`.
+your definition, `next` lists it as a `review` row.
 
 ## A table to a data contract
 
@@ -75,7 +75,8 @@ breaks. One test per rule gives one row of `next` per rule
 
 ```glossql
 DECLARE ASPECT staff_contract WITH $${"type": "object",
-  "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON TABLE;
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION staff_contract_check FOR hr AS $$
   WITH r AS (
     SELECT count(*) AS n,
@@ -90,7 +91,9 @@ DECLARE FUNCTION staff_contract_check FOR hr AS $$
            CASE WHEN uncoded > 0 THEN uncoded || ' rows carry a department outside ENG, OPS, FIN' END), '') AS finding
   FROM r
 $$ RETURNS staff_contract;
-DECLARE TEST staff_contract_test ON staff_contract DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST staff_contract_test ON staff_contract BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+GLOSS staff_contract ON staff AS $${"outcome": "the key is unique, name and hire date are filled, each department is in the code table",
+  "tolerance": 0.0, "basis": "the data contract"}$$;
 SELECT staff_contract_check() FROM staff;
 ```
 

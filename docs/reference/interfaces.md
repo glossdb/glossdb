@@ -63,9 +63,10 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
 - `status:` says whether the last statement ran or was refused. For a
   view definition it adds whether the view is served and what its
   columns still need.
-- `next:` counts the open rows of `next` per step. The assumptions
-  that wait for a person are counted apart. `first:` is the first open row and the
-  resource that lists its step. A read of `next` in the same call
+- `next:` counts the open rows of `next` per kind of work:
+  `integrate`, `describe`, `test`, `review`. The assumptions that
+  wait for a person are counted apart. `first:` is the first open row
+  and the resource that lists the rows of its kind. A read of `next` in the same call
   lists the rows counted: the built-in tests of what the call wrote
   run before its next read.
 - `window:` appears on a call that reads `metric_series()`: the read
@@ -88,7 +89,7 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
 | `doc://functions/interface.md` | the functions a statement can call, each once: the kits' reads and the declared functions |
-| `next://<dataset>/<step>` | the open rows of one step with cause and statement; `next://<dataset>` serves each step |
+| `next://<dataset>/<kind>` | the open rows of one kind of work (`integrate`, `describe`, `test`, `review`) with cause and statement; `next://<dataset>` serves every open row, most urgent first |
 
 The same pages are rows of `pages()` (`uri`, `title`, `body`), for a
 client that reads no resources:

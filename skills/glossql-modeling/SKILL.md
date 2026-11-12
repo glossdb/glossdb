@@ -1,12 +1,13 @@
 ---
 name: glossql-modeling
-description: The judgment inside each step of building a glossdb dataset — which kind of view fits the request, what a table is, which joins hold, how a measure adds up, what the data can settle before a person is asked, and what to hand back. Use with the glossql skill for any substantive work in a workspace; its references cover loading, defining views, tests, time grains, the preview features and the other interfaces.
+description: The judgment inside each kind of work on a glossdb dataset — which kind of view fits the request, what a table is, which joins hold, how a measure adds up, what the data can settle before a person is asked, and what to hand back. Use with the glossql skill for any substantive work in a workspace; its references cover loading, defining views, tests, time grains, the preview features and the other interfaces.
 ---
 
-# Modeling: the judgment in each step
+# Modeling: the judgment in each kind of work
 
-`skill://glossql/SKILL.md` walks the five steps and their statements.
-This page says how to decide inside them. The references go deeper.
+`skill://glossql/SKILL.md` shows the four kinds of work (integrate,
+describe, test, review) and their statements. This page says how to
+decide inside them. The references go deeper.
 
 ## Start from the request
 

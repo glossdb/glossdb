@@ -200,6 +200,26 @@ CREATE OR REPLACE VIEW main.view_definitions AS
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
      OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
+-- tested_properties(): the table and column properties that exist to
+-- be tested, by name: a test with a scoring function is declared on
+-- the property, and a check measures it (a function returns the
+-- property, or the property is a measurement). Such a property is set
+-- on the assets someone chose: the expectation is annotated there, or
+-- a result is stored there. It is not required on every asset a view
+-- reads, as a descriptive property (meaning, role, entity) is. A
+-- kit's check on a view (x-subject) and a measurement the server runs
+-- for a kind of view (x-used-by) follow their own rules.
+CREATE OR REPLACE MACRO main.tested_properties() AS TABLE
+  SELECT a.name
+  FROM (SELECT name, kind, grains, schema FROM main.aspects
+        QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  WHERE a.kind IN ('FACT', 'MEASUREMENT')
+    AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN'))
+    AND json_extract(a.schema, '$.x-subject') IS NULL
+    AND json_extract(a.schema, '$.x-used-by') IS NULL
+    AND EXISTS (SELECT 1 FROM main.tests t WHERE t.aspect = a.name AND t.detector IS NOT NULL)
+    AND (a.kind = 'MEASUREMENT' OR EXISTS (SELECT 1 FROM main.functions f WHERE f.returns = a.name));
+
 -- What this workspace can be extended through, and its state on
 -- each: `existing` counts what exists, `open` what is unfinished on the
 -- area and the agent can finish, `waiting` what waits for a person,
@@ -213,23 +233,56 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     SELECT name, kind, grains, condition, schema FROM (
       SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
       FROM main.aspects) WHERE rn = 1),
-  -- A test is open while its property is in use and has no value. A
-  -- table or column property is in use on what the metrics read: each
-  -- loaded table a metric's view descends from when the property takes
-  -- tables, else each such column, where a WHEN holds on that asset;
-  -- each asset without a value is open. Every other property counts
-  -- once, in use when something that exists needs it: a measurement
-  -- marked `x-used-by`, once a property of one of those x-kinds is
-  -- declared; a WHEN on another property's value, once an asset carries
-  -- that value; a WHEN on a column type, once such a column exists; a
-  -- relationship property, once a key is declared; anything else,
-  -- always.
+  -- A test is open while its property is in use and has no value.
+  -- A property that exists to be tested (tested_properties()) is in
+  -- use where the test is set: each asset that carries its expectation
+  -- as an annotation is open until a result is stored there. A kit's
+  -- check on a view (x-subject view) is in use on each metric that is
+  -- defined, and open there until its result is stored. A
+  -- descriptive table or column property is in use on what the metrics
+  -- read: each loaded table a metric's view descends from when the
+  -- property takes tables, else each such column, where a WHEN holds
+  -- on that asset; each asset without a value is open. Every other
+  -- property counts once, in use when something that exists needs it:
+  -- a measurement marked `x-used-by`, once a property of one of those
+  -- x-kinds is declared; a WHEN on another property's value, once an
+  -- asset carries that value; a WHEN on a column type, once such a
+  -- column exists; a relationship property, once a key is declared;
+  -- anything else, always.
+  to_test AS MATERIALIZED (SELECT name FROM main.tested_properties()),
   tested AS (
     SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema,
            json_extract(a.schema, '$.x-used-by') IS NULL
              AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN')) AS on_assets
     FROM (SELECT DISTINCT aspect FROM main.tests) t
-    JOIN newest_aspects a ON a.name = t.aspect),
+    JOIN newest_aspects a ON a.name = t.aspect
+    WHERE a.name NOT IN (SELECT name FROM to_test)
+      AND json_extract_string(a.schema, '$.x-subject') IS DISTINCT FROM 'view'),
+  -- a kit's check on a view, on each metric whose newest definition
+  -- holds SQL, until a result of the check is stored on the metric
+  view_checks AS (
+    SELECT DISTINCT a.name FROM (SELECT DISTINCT aspect FROM main.tests) t
+    JOIN newest_aspects a ON a.name = t.aspect
+    WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
+  metrics AS (
+    SELECT dataset, aspect AS view FROM (
+      SELECT g.dataset, g.aspect, g.body FROM main.glossary g
+      JOIN newest_aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
+        AND json_extract_string(a.schema, '$.x-kind') IS NULL
+      WHERE g.subject = g.dataset
+      QUALIFY row_number() OVER (PARTITION BY g.dataset, g.aspect ORDER BY g.seq DESC) = 1)
+    WHERE json_extract_string(body, '$.sql') IS NOT NULL),
+  open_view_checks AS (
+    SELECT v.dataset, v.view, c.name FROM metrics v, view_checks c
+    WHERE NOT EXISTS (SELECT 1 FROM main.measurements m
+                      WHERE m.dataset = v.dataset AND m.subject = v.dataset || '.' || v.view AND m.aspect = c.name)),
+  -- where a test is set and no check has run: the expectation is
+  -- annotated on the asset and no result is stored there
+  set_open AS (
+    SELECT DISTINCT g.dataset, g.subject, g.aspect FROM main.glossary g
+    WHERE g.aspect IN (SELECT name FROM to_test) AND g.actor_kind IN ('agent', 'human')
+      AND NOT EXISTS (SELECT 1 FROM main.measurements m
+                      WHERE m.dataset = g.dataset AND m.subject = g.subject AND m.aspect = g.aspect)),
   metric_reads AS (
     SELECT DISTINCT split_part(path, '.', 1) AS dataset, split_part(path, '.', 2) AS table_name,
            split_part(path, '.', 3) AS column_name
@@ -298,7 +351,8 @@ CREATE OR REPLACE VIEW main.workspace_status AS
            (SELECT count(*) FROM in_use u WHERE u.used
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
               AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name))
-             + (SELECT count(*) FROM open_assets) AS open_tests,
+             + (SELECT count(*) FROM open_assets) + (SELECT count(*) FROM set_open)
+             + (SELECT count(*) FROM open_view_checks) AS open_tests,
            (SELECT n FROM asked) AS waiting,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
@@ -330,7 +384,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     ('annotations', 'GLOSS <property> ON <asset> writes one; a person''s annotation outranks the agent''s'),
     ('functions', 'measurements over the data: SELECT <function>() FROM <asset> runs one; DECLARE FUNCTION adds your own'),
     ('views', 'named SQL on a dataset, declared AS VIEW and defined with GLOSS: a table (x-kind relation), a single value (x-kind scalar) or a metric'),
-    ('tests', 'tests of your own: a property, a function that measures its breach_rate, and DECLARE TEST with DETECTOR rate_tolerance; TESTS() lists the results'),
+    ('tests', 'tests of your own: a property AS FACT for the expectation (outcome, tolerance, basis), annotated on the asset it holds for; a function that measures breach_rate and RETURNS the property; DECLARE TEST with DETECTOR rate_tolerance; TESTS() lists the results'),
     ('scenarios', 'preview: a FACT aspect with x-kind scenario, annotated with its levers'),
     ('plans', 'preview: a VIEW aspect with x-kind plan and x-plan-of the metric it plans, defined by SQL over the loaded plan table'),
     ('review', 'a person confirms or corrects an assumption; the agent then records the definition again with the decision applied; `waiting` counts the assumptions that wait for a person'),

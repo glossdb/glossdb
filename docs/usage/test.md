@@ -58,7 +58,7 @@ A built-in test's result carries `finding`, one sentence on what is
 wrong and what it does to the number, and `fix`, the statement that
 settles it. `next` serves both, for a test on a view, a table or a
 column. A red test of your own without a `fix` gets the check to run
-again and the statement that records an accepted rate:
+again and the annotation that records an accepted rate:
 
 ```sql
 SELECT asset, state, open, cause, statement FROM next WHERE step = 'test';
@@ -94,43 +94,63 @@ measures it, and the test that scores one against the other.
 ```glossql
 DECLARE ASPECT reading_filled WITH $${
   "type": "object",
-  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"},
-                 "breach_rate": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE WHEN entity = 'one row per sensor reading';
-
-DECLARE TEST reading_filled_test ON reading_filled BY (AGENT, HUMAN)
-  DETECTOR rate_tolerance THRESHOLD 0.0;
+  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
+                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}
+}$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION reading_filled_check FOR plant AS $$
-  SELECT 'share of readings without a value' AS outcome,
-         CASE WHEN count(*) = 0 THEN 0.0
-              ELSE count(*) FILTER (WHERE value IS NULL) / count(*)::DOUBLE END AS breach_rate
+  SELECT CASE WHEN count(*) = 0 THEN 0.0
+              ELSE count(*) FILTER (WHERE value IS NULL) / count(*)::DOUBLE END AS breach_rate,
+         CASE WHEN count(*) FILTER (WHERE value IS NULL) > 0
+              THEN count(*) FILTER (WHERE value IS NULL) || ' readings carry no value' END AS finding
   FROM readings
 $$ RETURNS reading_filled;
 
-GLOSS reading_filled ON readings AS $${"outcome": "each reading carries a value", "tolerance": 0.01}$$;
+DECLARE TEST reading_filled_test ON reading_filled BY (AGENT, HUMAN)
+  DETECTOR rate_tolerance;
+
+GLOSS reading_filled ON readings AS $${"outcome": "each reading carries a value",
+  "tolerance": 0.01, "basis": "a sensor drops out for a few seconds per shift"}$$;
 SELECT reading_filled_check() FROM readings;
 ```
 
-1. **The property** (`AS FACT`) holds the expectation: an `outcome` in
-   words and a `tolerance`. `WHEN` limits it to the tables it is
-   about; without it the property is required on each table.
-2. **The test** (`DECLARE TEST`) names who may annotate the property
-   (`BY`), the detector and the threshold. Declare it before the
-   annotation.
-3. **The check** is a function whose `RETURNS` names the same
+1. **The property** (`AS FACT`) holds the expectation: an `outcome`
+   in words, a `tolerance` (the share of rows that may break it) and
+   a `basis` (why). The same schema holds what the check returns, so
+   it lists no `required` field.
+2. **The check** is a function whose `RETURNS` names the same
    property and whose result carries `breach_rate`: the share of rows
-   that violate the expectation. 0.0 passes.
-4. **The detector** `rate_tolerance` compares the two: green at or
+   that break the expectation. 0.0 passes. `finding` is one sentence
+   on what is wrong.
+3. **The test** (`DECLARE TEST`) names who may annotate the property
+   (`BY`) and the detector.
+4. **The annotation** sets the test on that asset: a table, or a
+   column for a property declared `ON COLUMN`. The test is on the
+   assets that carry the expectation and on no other; `next` and
+   `workspace_status` count it there.
+5. **The detector** `rate_tolerance` compares the two: green at or
    under the tolerance, red above it, yellow while no check result
-   exists. It is one-sided.
+   exists. It reads a person's tolerance first, then an agent's, then
+   the test's `THRESHOLD`, then 0.0. It is one-sided.
 
 A test states the rule. Where the data breaks it, the test stays red
 until the load query or the data is fixed, or a person accepts the
-measured rate as the tolerance, with the reason in `basis`. A
-tolerance set at the measured rate without that decision hides the
-defect. A check that also returns `finding` and `fix` has both served
-in `next`, as the built-in tests do.
+measured rate. The person annotates the same property on the same
+asset, with the rate as `tolerance` and the reason in `basis`:
+
+```glossql
+GLOSS reading_filled ON plant.readings AS $${"outcome": "each reading carries a value",
+  "tolerance": 0.03, "basis": "line 2 runs the old sensors until the refit in May"}$$;
+```
+
+A tolerance set at the measured rate without that decision hides the
+defect. `next` lists a red test with its `finding`, the check to run
+again and that annotation to fill in. A check that also returns `fix`
+has it served as the row's statement, as the built-in tests do.
+
+A property declared `AS MEASUREMENT` holds only a function's result,
+such as a profile. It carries no expectation and no tolerance per
+asset, so a test of your own is declared on a `FACT` property.
 
 The result lists under each view that reads the table in
 `view_tests()`, and in `TESTS()`.

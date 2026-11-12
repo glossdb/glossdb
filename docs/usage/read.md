@@ -1,9 +1,9 @@
-# Serve and read
+# Read the views
 
-What the layer serves is tables, single values and metrics, each with
-its description and its test results. People, agents and tools read
-them in four ways: SQL over an interface, files, the console, and the
-lake itself.
+The layer holds tables, single values and metrics, each with its
+description, its test results and its lineage. A view can be queried
+once it is defined. People, agents and tools read the views in four
+ways: SQL over an interface, files, the console, and the lake itself.
 
 ## Read a view
 
@@ -63,7 +63,8 @@ SELECT subject, aspect, value, state FROM GLOSSARY(stays.booked_nights);
 ```
 
 `view_sources()` is the column lineage: each served field and the
-loaded column it comes from.
+loaded column it comes from. Lineage needs no work of its own. Each
+load and each view definition records it.
 
 ## Over the interfaces
 

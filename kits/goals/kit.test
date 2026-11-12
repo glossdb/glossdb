@@ -42,11 +42,11 @@ SELECT count(*) FROM open_items;
 ----
 0
 
-# with no table in the dataset, the list has one row: connect
+# with no table in the dataset, the list has one row: a source to connect and a table to load
 query TTT
 SELECT step, state, who FROM next;
 ----
-connect	missing	agent
+integrate	missing	agent
 
 query TT
 FROM glossql_kit('{KITS}/goals/kit.sql');
@@ -290,33 +290,101 @@ SELECT step, asset, state FROM next WHERE contains(statement, 'GLOSS price_cut O
 ----
 test	ops.orders	not_run
 
-# --- a test of one's own on a column a view reads: its row in `next` carries the check's finding, the check to
-# run again and the statement that records a rate a person accepts; view_tests() names the check as `run`
+# --- a test of one's own on a column a view reads. The property holds the expectation, annotated on the one
+# column: `next` does not ask for it on the other assets the views read. Its row in `next` carries the check's
+# finding, the check to run again and the annotation that records a rate a person accepts, with the
+# expectation's own words kept; view_tests() names the check as `run`. The count of open tests in
+# workspace_status is compared with the count before the test was declared
 
 statement ok
-DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+CREATE TABLE memory.main.open_before AS SELECT open FROM workspace_status WHERE area = 'tests';
+
+statement ok
+DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
 
 statement ok
 DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <= 11) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) FILTER (WHERE price <= 11) || ' rows are priced at 11 or under' AS finding FROM ops.orders_raw$$ RETURNS price_rule;
 
 statement ok
-DECLARE TEST price_test ON price_rule DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST price_test ON price_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+
+# declared and set nowhere: nothing asks for it
+query II
+SELECT (SELECT count(*) FROM next WHERE contains(statement, 'price_rule')),
+       (SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests');
+----
+0	0
+
+statement ok
+GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.0, "basis": "the price list starts at 12"}$$;
+
+# set on the one column and not run: the test waits there, with the check as its statement, and counts as open once
+query TTT
+SELECT step, asset, state FROM next WHERE contains(statement, 'price_rule') OR contains(statement, 'price_check');
+----
+test	ops.orders_raw.price	yellow
+
+query I
+SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
+----
+1
 
 statement ok
 SELECT price_check() FROM ops.orders_raw.price;
+
+query I
+SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
+----
+0
 
 query TT
 SELECT state, run FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
 ----
 red	SELECT price_check() FROM ops.orders_raw.price
 
-query TTTT
+query TTTTT
 SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are priced'),
        contains(statement, 'SELECT price_check() FROM ops.orders_raw.price;'),
-       contains(statement, 'DECLARE TEST price_test ON price_rule DETECTOR rate_tolerance THRESHOLD ')
+       contains(statement, 'GLOSS price_rule ON ops.orders_raw.price AS') AND contains(statement, '"tolerance":'),
+       contains(statement, '"outcome":"a price is above 11"')
 FROM next WHERE step = 'test' AND asset = 'ops.orders_raw.price' AND for_view = 'orders';
 ----
-red	true	true	true
+red	true	true	true	true
+
+# the expectation is asked for on no other asset: no row of `next` names it as missing
+query I
+SELECT count(*) FROM next WHERE step = 'describe' AND contains(statement, 'price_rule');
+----
+0
+
+# a tolerance above the measured rate, with its basis, turns the test green and closes the row
+statement ok
+GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.7, "basis": "sales lead: the two low price points are promotions"}$$;
+
+query T
+SELECT state FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
+----
+green
+
+query I
+SELECT count(*) FROM next WHERE step = 'test' AND asset = 'ops.orders_raw.price';
+----
+0
+
+# a test on a measurement is set where its check ran, and is asked for nowhere else
+statement ok
+DECLARE ASPECT staff_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+
+statement ok
+DECLARE FUNCTION staff_check FOR ops AS $$SELECT count(*) FILTER (WHERE staff < 1) / greatest(count(*), 1)::DOUBLE AS breach_rate, NULL::VARCHAR AS finding FROM ops.orders_raw$$ RETURNS staff_rule;
+
+statement ok
+DECLARE TEST staff_test ON staff_rule DETECTOR rate_tolerance THRESHOLD 0.0;
+
+query I
+SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
+----
+0
 
 # --- each assumption that waits for a person is a row of `next`, as open_questions counts them; `entity` is
 # asked on a table view, with its grain, and not on a metric

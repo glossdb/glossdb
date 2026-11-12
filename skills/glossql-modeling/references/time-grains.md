@@ -68,7 +68,9 @@ FROM view_summary() ORDER BY view
 ```
 
 `applicable` says whether a series can be served, and `reason` what
-to change when it cannot. `grain_detected` is the grain `temporal()`
+to change when it cannot. A table and a single value have no series:
+these columns are empty on their rows, apart from `value_column` and
+`additivity`. `grain_detected` is the grain `temporal()`
 measured on the period column, `floor` the grain the series is served
 at, `window_periods` how many periods of it a read returns.
 

@@ -1,8 +1,9 @@
 //! `next`, the work list of a dataset, read through the agent
-//! interface: what is open by step (connect, describe, test, decide,
-//! serve), each row with its asset, its state and the statement that
-//! opens the work. The tests check step, asset and state, and that a
-//! row's statement names the asset and the property of the fixture.
+//! interface: what is open, each row labelled with its kind of work
+//! (the `step` column: integrate, describe, test, review), with its
+//! asset, its state and the statement that opens the work. The tests
+//! check kind, asset and state, and that a row's statement names the
+//! asset and the property of the fixture.
 
 use std::sync::Arc;
 
@@ -109,19 +110,19 @@ async fn fin() -> (Router, tempfile::TempDir) {
 async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_closes_it() {
     let (app, _dir) = fin().await;
     let all = rows(&app, "SELECT * FROM next").await;
-    // A table is there and no view: one row under "serve", with the
-    // statements that define one. Nothing is asked about a table no
+    // A table is there and no view: one row of kind "integrate", with
+    // the statements that define one. Nothing is asked about a table no
     // view reads, and the preview rows stay out while no model
     // service is named.
     let open: Vec<(String, String)> = all
         .iter()
         .map(|r| (text(r, "step"), text(r, "state")))
         .collect();
-    assert_eq!(open, [("serve".into(), "missing".into())], "{all:?}");
+    assert_eq!(open, [("integrate".into(), "missing".into())], "{all:?}");
     assert!(!text(&all[0], "statement").is_empty(), "{all:?}");
 
     // A view is a metric, a single value or a table. Only a metric needs
-    // a series; the other two leave nothing open under "serve".
+    // a series; the other two leave nothing to integrate.
     say(
         &app,
         r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
@@ -130,25 +131,47 @@ async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_c
            GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
     )
     .await;
-    let serve = rows(&app, "SELECT * FROM next WHERE step = 'serve'").await;
-    assert!(serve.is_empty(), "{serve:?}");
+    let integrate = rows(&app, "SELECT * FROM next WHERE step = 'integrate'").await;
+    assert!(integrate.is_empty(), "{integrate:?}");
+    // A table and a single value have no series: their summary rows
+    // carry neither `applicable` nor a period column, a floor or a window.
+    let summary = rows(
+        &app,
+        "SELECT * FROM view_summary() WHERE view IN ('ledger_clean', 'ledger_rows')",
+    )
+    .await;
+    assert_eq!(summary.len(), 2, "{summary:?}");
+    for row in &summary {
+        for field in [
+            "applicable",
+            "reason",
+            "period_column",
+            "floor",
+            "window_periods",
+        ] {
+            assert!(row.get(field).is_none_or(Value::is_null), "{field}: {row}");
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
     let (app, _dir) = fin().await;
-    // A table view with a test of the team's own. The check measures
-    // the share of rows outside the code table; one fund in three is
-    // outside it, so the test is red and the list carries a row under
-    // "test" for the view. The table's own columns are asked to be
-    // described, as a table is handed over with them.
+    // A table view with a test of the team's own: the property holds
+    // the expectation, annotated on the view, and the check returns the
+    // same property. The check measures the share of rows outside the
+    // code table; one fund in three is outside it, so the test is red
+    // and the list carries a row of kind "test" for the view. The
+    // table's own columns are asked to be described, as a table is
+    // handed over with them.
     say(
         &app,
         r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
            GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
-           DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS MEASUREMENT ON TABLE;
+           DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
            DECLARE FUNCTION fund_coded_check FOR fin AS $$SELECT count(*) FILTER (WHERE fund NOT IN ('general', 'water')) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) AS rows FROM fin.ledger_clean$$ RETURNS fund_coded;
-           DECLARE TEST fund_coded_test ON fund_coded DETECTOR rate_tolerance THRESHOLD 0.0;
+           DECLARE TEST fund_coded_test ON fund_coded BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+           GLOSS fund_coded ON ledger_clean AS $${"outcome": "each fund is in the code table", "tolerance": 0.0, "basis": "the code table lists every fund"}$$;
            SELECT fund_coded_check() FROM ledger_clean;"#,
     )
     .await;
@@ -163,6 +186,20 @@ async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
         text(row, "statement").contains("fund_coded_check()"),
         "{row}"
     );
+    // The rate is accepted where the expectation is: an annotation on
+    // the view, which a person can write with a reason.
+    assert!(
+        text(row, "statement").contains("GLOSS fund_coded ON fin.ledger_clean AS"),
+        "{row}"
+    );
+    // The expectation is set on the view. The list asks for it on no
+    // other asset the view reads.
+    let asked = rows(
+        &app,
+        "SELECT asset, statement FROM next WHERE step = 'describe' AND contains(statement, 'fund_coded')",
+    )
+    .await;
+    assert!(asked.is_empty(), "{asked:?}");
     let described = rows(
         &app,
         "SELECT * FROM next WHERE step = 'describe' AND asset = 'fin.ledger_clean'",
@@ -263,10 +300,14 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
         r#"GLOSS spend ON fin AS $${"stopped": "the ledger is not booked before 2024"}$$;"#,
     )
     .await;
-    let serve = rows(&app, "SELECT asset, state FROM next WHERE step = 'serve'").await;
-    assert_eq!(serve.len(), 1, "{serve:?}");
-    assert_eq!(text(&serve[0], "asset"), "fin", "{serve:?}");
-    assert_eq!(text(&serve[0], "state"), "missing", "{serve:?}");
+    let integrate = rows(
+        &app,
+        "SELECT asset, state FROM next WHERE step = 'integrate'",
+    )
+    .await;
+    assert_eq!(integrate.len(), 1, "{integrate:?}");
+    assert_eq!(text(&integrate[0], "asset"), "fin", "{integrate:?}");
+    assert_eq!(text(&integrate[0], "state"), "missing", "{integrate:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -297,7 +338,7 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
 
     // Every result on the dataset's interface closes with the link to
-    // the page of the first open row's step.
+    // the page of the first open row's kind of work.
     let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(6, "SELECT 1 AS one")).await).await;
     let window = body["result"]["content"][1]["text"].as_str().unwrap();
     assert!(window.contains("next://fin/describe"), "{window}");
@@ -353,7 +394,7 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
            GLOSS amount_per_booking_month ON fin AS $${"sql": "SELECT date_trunc('month', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_booking GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;"#,
     )
     .await;
-    // Both are red under "test", with the fix the test itself returns:
+    // Both are red rows of kind "test", with the fix the test itself returns:
     // the metric's current definition, to edit and record.
     let open = rows(
         &app,
@@ -484,7 +525,7 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
         .lines()
         .find_map(|l| l.strip_prefix("next:"))
         .unwrap_or_else(|| panic!("{window}"));
-    for step in ["connect", "describe", "test", "decide", "serve"] {
+    for step in ["integrate", "describe", "test", "review"] {
         let counted: usize = line
             .split('\u{b7}')
             .find_map(|part| part.trim().strip_prefix(step)?.trim().parse().ok())

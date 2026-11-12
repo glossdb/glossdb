@@ -1,7 +1,7 @@
 # Review: assumptions, review decisions, conflicts
 
 Read before you state your first assumption, and when `next` shows a
-row under `decide`.
+`review` row.
 
 ## Assumptions
 
@@ -59,7 +59,7 @@ The work goes on while a question waits; `next` counts it under
 
 A person's answer is a review decision: `confirmed`, `corrected` or
 `unclear`, with a note. It is the person's own annotation and
-outranks yours. `next` lists it under `decide` with the view's
+outranks yours. `next` lists it as a `review` row with the view's
 current definition as the statement.
 
 - **Confirmed**: record the definition again with that assumption at
@@ -76,7 +76,8 @@ again after the new definition. A test that turns red after a
 decision stays red for the person to see; do not change the
 definition to make it green.
 
-Other rows under `decide` and `connect`:
+Two more rows carry a person's decision, one of kind `review` and
+one of kind `integrate`:
 
 - **A person's formula is newer than the definition.** A person wrote
   a `formula` for the view in the business glossary. Change the SQL

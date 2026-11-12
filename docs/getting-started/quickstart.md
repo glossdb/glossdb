@@ -1,9 +1,10 @@
 # Quickstart
 
 Two CSV files go in. A tested table, a single value and a metric come
-out. The session takes the five steps: connect, describe, test,
-decide, serve. An agent normally sends these statements over MCP; here
-you send them yourself, so each step is visible.
+out. The session shows the four kinds of work: integrate, describe,
+test and review. The order below is one way through an empty
+workspace, not a rule. An agent normally sends these statements over
+MCP; here you send them yourself, so each one is visible.
 
 You need a running server with sign-in off
 ([installation](installation.md)), `curl` and `jq`.
@@ -59,7 +60,7 @@ gq() {
 Save each block below as a file and run it: `gq 1-connect.sql` for the
 workspace, `gq 2-load.sql shop/mcp` once the dataset exists.
 
-## 1. Connect
+## 1. Integrate: connect and load
 
 Declare the source and the dataset, then look before loading. A dry
 run (`PREVIEW`) runs SQL at the source and loads nothing; `LIMIT 0`
@@ -111,7 +112,7 @@ the join. Then measure how well the join holds.
 
 ```glossql
 GLOSS entity ON orders AS $${"value": "one row per order", "role": "fact",
-  "identity_columns": ["order_id"], "time_axis": "ordered"}$$;
+  "grain": ["order_id"], "time_axis": "ordered"}$$;
 GLOSS meaning ON orders.amount AS $${"value": "order value net of tax"}$$;
 GLOSS role ON orders.amount AS $${"value": "measure"}$$;
 GLOSS unit ON orders.amount AS $${"value": "EUR"}$$;
@@ -126,11 +127,11 @@ The measurement finds the defect: 1 of 12 orders has no customer
 open work:
 
 ```
-next: serve 1
-first: serve shop (missing): no view is defined (a table, a single value or a metric) (next://shop/serve)
+next: integrate 1
+first: integrate shop (missing): no view is defined (a table, a single value or a metric) (next://shop/integrate)
 ```
 
-## 3. Define three views
+## 3. Integrate: define three views
 
 A view is named SQL on the dataset. Declare the name (`AS VIEW`), then
 annotate it with its SQL.
@@ -166,9 +167,9 @@ GLOSS time_grains ON order_value.ordered AS $${"floor": "month", "basis": "order
   builds on `shipped_orders`. The order dates follow no regular grain,
   so `time_grains` states the grain the series is served at.
 
-## 4. Serve
+## 4. Read the views
 
-All three read like tables. The metric also has a series:
+A view can be queried once it is defined. All three read like tables. The metric also has a series:
 
 ```sql
 SELECT region, count(*) AS orders, sum(amount) AS amount
@@ -209,7 +210,7 @@ SELECT test, subject, state, score FROM view_tests();
 `validity_test` are green. The `statement` column of `next` carries
 the fix: repair the load, or accept the rate with a reason.
 
-## 6. Decide
+## 6. Review
 
 Two things wait for a person: the red test, and the assumption in
 `shipped_orders`. A person answers in the console
@@ -225,26 +226,26 @@ GLOSS review_decision ON shop AS $${"decisions": [
 ```
 
 ```bash
-curl -s -X POST --data-binary @6-decide.sql http://127.0.0.1:8080/shop/query
+curl -s -X POST --data-binary @6-review.sql http://127.0.0.1:8080/shop/query
 ```
 
 The test is green at the accepted rate, with the reason stored. The
 decision goes back to the agent as a row of `next`:
 
 ```
-decide shop.shipped_orders (decided): a person decided shipped-only (confirmed): cancelled orders are not revenue; the definition does not carry it yet
+review shop.shipped_orders (decided): a person decided shipped-only (confirmed): cancelled orders are not revenue; the definition does not carry it yet
 ```
 
 The agent records the definition again with that assumption at
-confidence 1.0, and the row closes. What remains in `next` is the
-describe step: the columns nobody annotated yet.
+confidence 1.0, and the row closes. What remains in `next` is
+`describe` rows: the columns nobody annotated yet.
 
 ## Where next
 
-- Each step in depth: [connect and load](../usage/load.md),
+- Each part in depth: [connect and load](../usage/load.md),
   [describe](../usage/describe.md), [define views](../usage/views.md),
   [test](../usage/test.md), [review and decide](../usage/review.md),
-  [serve and read](../usage/serve.md).
+  [read the views](../usage/read.md).
 - Let an agent do the work: connect one
   ([installation](installation.md#connect-an-agent)) and ask it to
   load a folder and describe it. The skills it reads are served by the

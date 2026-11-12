@@ -307,11 +307,12 @@ SELECT * FROM fact_values();
 ----
 fte_cap	40.0	NULL
 
-# a single value has no series, and its row gives a reason for that
-query TT
-SELECT applicable, reason IS NOT NULL FROM view_summary() WHERE view = 'fte_cap';
+# a single value has no series: what belongs to a series is NULL on its row, and no reason is given
+query TTTTT
+SELECT applicable IS NULL, reason IS NULL, period_column IS NULL, floor IS NULL, window_periods IS NULL
+FROM view_summary() WHERE view = 'fte_cap';
 ----
-false	true
+true	true	true	true	true
 
 statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;
@@ -597,3 +598,39 @@ query II
 SELECT len(columns_without_role), len(missing) FROM view_summary() WHERE view = 'fte_cap';
 ----
 0	0
+
+# --- a table view has no series either, though one of its columns is a timestamp; the semantic model takes a
+# table's key from the grain of its entity and a metric's description from the meaning annotated on the view
+
+statement ok
+DECLARE ASPECT ledger_lines WITH $${"title": "Ledger lines", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS ledger_lines ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
+
+statement ok
+GLOSS role ON ledger_lines.booked AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS time_grains ON ledger_lines.booked AS $${"floor": "day"}$$;
+
+query TTTTTT
+SELECT kind, applicable IS NULL, reason IS NULL, period_column IS NULL, floor IS NULL, window_periods IS NULL
+FROM view_summary() WHERE view = 'ledger_lines';
+----
+relation	true	true	true	true	true
+
+statement ok
+GLOSS entity ON ledger AS $${"value": "one booking", "role": "fact", "grain": ["booked", "fund"], "time_axis": "booked"}$$;
+
+statement ok
+GLOSS meaning ON fin.spend AS $${"value": "money booked per month"}$$;
+
+query TT
+SELECT (SELECT json_extract(d, '$.primary_key')::VARCHAR FROM unnest(json_extract(document, '$.datasets')::JSON[]) t(d)
+        WHERE json_extract_string(d, '$.name') = 'ledger'),
+       (SELECT json_extract_string(d, '$.metrics[0].description') FROM unnest(json_extract(document, '$.datasets')::JSON[]) t(d)
+        WHERE json_extract_string(d, '$.name') = 'spend')
+FROM semantic_model();
+----
+["booked","fund"]	money booked per month

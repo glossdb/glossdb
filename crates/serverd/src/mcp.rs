@@ -38,19 +38,22 @@ async fn summary_counts(plane: &Plane) -> Result<SummaryCounts, String> {
 const INSTRUCTIONS: &str = "glossdb is the data harness for people and agents. Here you \
 build this workspace's data intelligence layer in the lake, beside the data: source data in; \
 described and tested tables, single values and metrics out, readable by any tool that opens \
-the lake. The work has five steps. Connect: declare a source and load its tables with load \
-queries. Describe: annotate the dataset, its tables, columns and relationships. Serve: define \
-views, each a named SQL query on the dataset: a table, a single value, or a metric (a value \
-per period with dimensions). Test: the built-in tests run after each load, and you declare \
-your own. Decide: state each judgment call as an assumption with a key and a confidence; a \
-person confirms or corrects it, and their decision outranks your annotation. \
+the lake. There are four kinds of work. Integrate: declare a source, load its tables with \
+load queries, and define views, each a named SQL query on the dataset: a table, a single \
+value, or a metric (a value per period with dimensions). Describe: annotate the dataset, its \
+tables, columns and relationships. Test: the built-in tests run after each load, and you \
+declare your own. Review: state each judgment call as an assumption with a key and a \
+confidence; a person confirms or corrects it, and their decision outranks your annotation. \
+The kinds are not stages. A view needs a loaded table, a test needs something defined, a \
+review needs an open question; apart from that, work in the order the task asks for. Lineage \
+is recorded as you load and define, and a view can be queried once it is defined. \
 One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
-body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It walks the five steps with one \
-working example each and names the references for depth. Every page this server serves is a \
+body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It shows each kind of work with \
+a working example and names the references for depth. Every page this server serves is a \
 row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
 Every result ends with `status:`: whether the last statement ran or was refused. A call on \
 a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
-is open on the dataset per step, and `first:`, the first open row. A call that changed what \
+is open on the dataset per kind of work, and `first:`, the first open row. A call that changed what \
 waits in the workspace adds `summary:`. \
 `SELECT step, asset, state, open, statement FROM next` lists every open row with the \
 statement that closes it; `<...>` marks what you fill in. Work on a dataset is complete when \
@@ -227,8 +230,8 @@ impl GlossqlMcp {
                 let mut open = Vec::new();
                 if counts.decisions_open > 0 {
                     open.push(format!(
-                        "{} review decision{} wait{} to be applied: `next` lists each under `decide` \
-                         with the definition to record again",
+                        "{} review decision{} wait{} to be applied: `next` lists each as a `review` \
+                         row with the definition to record again",
                         counts.decisions_open,
                         if counts.decisions_open == 1 { "" } else { "s" },
                         if counts.decisions_open == 1 { "s" } else { "" },
@@ -631,7 +634,7 @@ impl GlossqlMcp {
                  `view_summary()`. A refused statement is an error that names what was wrong \
                  and its place in the call; the statements before it stay stored \
                  (`{{completed}}`). Every result ends with `status:` (the last statement); a call \
-                 on a dataset adds `next:` (what is open on it per step) and `first:` (the \
+                 on a dataset adds `next:` (what is open on it per kind of work) and `first:` (the \
                  first open row); \
                  `SELECT step, asset, state, open, statement FROM next` gives each row's \
                  statement. Start with `SELECT body FROM pages() WHERE uri = \
@@ -986,11 +989,11 @@ impl ServerHandler for GlossqlMcp {
             resource_templates: vec![
                 ResourceTemplate::new("next://{dataset}/{step}", "next")
                     .with_description(
-                        "What is open on a dataset under one step (connect, describe, \
-                         test, decide, serve): each row with its asset, its state, what \
+                        "What is open on a dataset for one kind of work (integrate, \
+                         describe, test, review): each row with its asset, its state, what \
                          the newest load changed and the statement that opens the work. \
-                         `next://{dataset}` serves every step; the same rows through the \
-                         tool are `SELECT * FROM next WHERE step = '<step>'`.",
+                         `next://{dataset}` serves every row; the same rows through the \
+                         tool are `SELECT * FROM next WHERE step = '<kind>'`.",
                     )
                     .with_mime_type("text/markdown"),
             ],
@@ -1003,7 +1006,7 @@ impl ServerHandler for GlossqlMcp {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
-        // `next://<dataset>[/<step>]` is computed from the catalog for
+        // `next://<dataset>[/<kind of work>]` is computed from the catalog for
         // the caller, never a page of the binary.
         if let Some(rest) = request.uri.strip_prefix("next://") {
             return self.next_resource(rest, &request.uri, &context).await;
@@ -1458,7 +1461,7 @@ impl GlossqlMcp {
         read_rows(&session, &sql).await
     }
 
-    /// `next://<dataset>[/<step>]` as a page: every open row with its
+    /// `next://<dataset>[/<kind of work>]` as a page: every open row with its
     /// statement, for the caller the gate stamped.
     async fn next_resource(
         &self,

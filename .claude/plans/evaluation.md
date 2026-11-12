@@ -16,9 +16,9 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| glossval's tools follow the server's renamed reads and the new `next`; the notes and tools of the old measurement are cut to what the contract test cases use | Medium: about 16,000 lines of tools read the old names | glossval `tools/`, its notes | Next | |
-| The review step in the contract harness: a second agent answers the builder's assumptions from the reference's documentation (`tools/interact.py`) | Low | glossval `tools/contract_run.py` | With the first row | |
-| Both test cases run three times each; cost, turns and scores per run | Low | glossval scenarios `ferc-steam`, `eia-generators` | After the first row | |
+| The evaluation's server runs in a container that mounts only the sources. Today a load query can read outside its source's location, so it can reach the reference | High for the scores: a run that could read the reference proves nothing | glossval `tools/contract_run.py`, the container's mounts; the server's own fix is a row of `gate.md` | Next, before any scored run | |
+| The review step's two model calls are tested. The step is wired: a second agent answers the builder's assumptions from the reference's documentation | Low: the calls have not run against a model | glossval `tools/contract_run.py`, `tools/interact.py` | With the first row | |
+| Both test cases run three times each; cost, turns and scores per run | Low | glossval scenarios `ferc-steam`, `eia-generators` | After the first two rows | |
 | The rows the builder misses on FERC (the new filing system: 3,909 of 5,221 found by hand) | Medium: PUDL's own mapping may not be reachable from the sources | glossval `ferc-steam` | With the runs | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
 | The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Low | both test cases | After the first runs | |
@@ -47,7 +47,13 @@ DuckDB only as a comparison (a story for the docs later).
   against itself scores 100%.
 - **The harness** `tools/contract_run.py`: sources mounted, nothing
   loaded, the contract in the task, the built table exported and
-  scored.
+  scored. The review step is wired into it: a second agent answers
+  the builder's assumptions from the reference's documentation
+  (`tools/interact.py`). Its two model calls are untested.
+- **The tools follow the server.** glossval's tools read the
+  server's renamed reads and the current `next`. The notes and tools
+  of the old measurement are cut to what the contract test cases
+  use.
 - **Measured so far.** By hand in plain SQL: EIA 99.0% of keys and
   95.7% of cells; FERC 96.8% of keys, 96.4% of cells, 86.4% of rows.
   One agent run on `ferc-steam`: 32 turns, 1.35 USD, 94.0% of keys,
@@ -68,11 +74,11 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**glossval follows the renamed reads.** What it buys: the contract
-test cases run against the current server, and the repository holds
-only what they use. What is there: `tools/contract_run.py`,
-`contract_score.py`, `gen_eia.py`, `gen_ferc.py`, `fetch_corpora.py`
-and the two scenarios; the rename map of the server's reads. Done
-when: a search for the old names in glossval finds nothing; both test
-cases run end to end; the tools and notes no test case uses are
-deleted.
+**The evaluation's server sees only the sources.** What it buys: a
+score that the builder could not have read off the reference. What
+is there: `tools/contract_run.py` starts the server and mounts the
+sources; a load query can read a path outside its source's location
+(`gate.md` has the server's row). Done when: the server of a run
+starts in a container whose only data mount is the scenario's
+sources; a load query that names the reference's path fails in a
+run; both test cases still run end to end.
