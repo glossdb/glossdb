@@ -88,10 +88,7 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
-aspects AS (
-  SELECT name, schema FROM (
-    SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
-    FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
+aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
   SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
@@ -525,8 +522,7 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
     SELECT subject, try_cast(json_extract(value, '$.distinct') AS BIGINT) AS distinct_values,
            round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
     FROM main.measurements
-    WHERE dataset = split_part($subject, '.', 1) AND function = 'column_profile'
-    QUALIFY row_number() OVER (PARTITION BY subject ORDER BY begin_snapshot DESC) = 1),
+    WHERE dataset = split_part($subject, '.', 1) AND function = 'column_profile'),
   judged AS (
     SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
            NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
@@ -642,8 +638,7 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
       AND split_part(r.left_side, '.', 2) <> split_part(r.right_side, '.', 2)),
   coherence AS (
     SELECT value FROM main.measurements
-    WHERE dataset = split_part($subject, '.', 1) AND function = 'relationship_coherence' AND subject = split_part($subject, '.', 1)
-    ORDER BY begin_snapshot DESC LIMIT 1),
+    WHERE dataset = split_part($subject, '.', 1) AND function = 'relationship_coherence' AND subject = split_part($subject, '.', 1)),
   edges AS (
     SELECT json_extract_string(j, '$.relationship') AS relationship, try_cast(json_extract(j, '$.orphan_rate') AS DOUBLE) AS orphan_rate
     FROM coherence, unnest(coalesce(json_extract(coherence.value, '$.relationships')::JSON[], [])) t(j)),
@@ -766,8 +761,7 @@ authors AS (
 expected AS (
   SELECT t.name AS test, t.aspect
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
-  JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
-    ON a.name = t.aspect
+  JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
 evidence AS (
   SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
@@ -892,7 +886,7 @@ measures AS (
          })) AS measure
   FROM metrics x CROSS JOIN ds
   LEFT JOIN known vm ON vm.subject = ds.dataset || '.' || x.metric AND vm.aspect = 'meaning'
-  LEFT JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a ON a.name = x.metric),
+  LEFT JOIN main.aspects a ON a.name = x.metric),
 datasets AS (
   SELECT t.table_name,
          json_merge_patch('{}', to_json({
@@ -917,7 +911,7 @@ edges AS (
 SELECT json_merge_patch('{}', to_json({
          'version': '0.3.0.dev0',
          'name': ds.dataset,
-         'description': (SELECT json_extract_string(settings, '$.purpose') FROM main.datasets WHERE name = ds.dataset ORDER BY begin_snapshot DESC LIMIT 1),
+         'description': (SELECT json_extract_string(settings, '$.purpose') FROM main.datasets WHERE name = ds.dataset),
          'datasets': (SELECT list(dataset ORDER BY table_name) FROM datasets),
          'relationships': (SELECT list(edge) FROM edges)
        })) AS document
@@ -943,7 +937,7 @@ CREATE OR REPLACE MACRO main.lineage_events() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 loads AS (
   SELECT i.dataset, i.table_name, i.imported_at, i.snapshot_id, i.rows, i.lineage::JSON AS lineage,
-         (SELECT r.source FROM main.recipes r WHERE r.dataset = i.dataset AND r.table_name = i.table_name ORDER BY r.begin_snapshot DESC LIMIT 1) AS source
+         (SELECT r.source FROM main.recipes r WHERE r.dataset = i.dataset AND r.table_name = i.table_name) AS source
   FROM main.imports_history i, ds WHERE i.dataset = ds.dataset),
 load_fields AS (
   SELECT l.table_name, l.snapshot_id, k.key AS field,

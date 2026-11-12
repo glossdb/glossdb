@@ -18,10 +18,7 @@ CREATE OR REPLACE VIEW main.current_dataset AS
 -- an answered question drops out once the decision is applied and its
 -- confidence raised.
 CREATE OR REPLACE VIEW main.agent_assumptions AS
-  WITH latest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY begin_snapshot DESC) AS rn
-      FROM main.glossary g WHERE actor_kind = 'agent') WHERE rn = 1)
+  WITH latest AS (SELECT * FROM main.glossary WHERE actor_kind = 'agent')
   SELECT l.dataset, l.subject, l.aspect, t.i - 1 AS idx,
          json_extract_string(t.a, '$.dimension') AS dimension,
          json_extract_string(t.a, '$.key') AS key,
@@ -36,10 +33,7 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
 -- `review_decision` body on a subject; `folded_in` once no agent assumption below
 -- full confidence carries the decided key under the decided aspect.
 CREATE OR REPLACE VIEW main.review_decisions AS
-  WITH latest AS (
-    SELECT * FROM (
-      SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY begin_snapshot DESC) AS rn
-      FROM main.glossary r WHERE aspect = 'review_decision' AND actor_kind = 'human') WHERE rn = 1),
+  WITH latest AS (SELECT * FROM main.glossary WHERE aspect = 'review_decision' AND actor_kind = 'human'),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
            json_extract_string(t.r, '$.aspect') AS aspect,
@@ -66,10 +60,7 @@ CREATE OR REPLACE VIEW main.review_decisions AS
 -- carries a decision on the same key under another aspect, so the
 -- review can offer it back. No ORDER BY: order where you consume.
 CREATE OR REPLACE VIEW main.open_questions AS
-  WITH view_aspects AS (
-    SELECT name FROM (
-      SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
+  WITH view_aspects AS (SELECT name FROM main.aspects WHERE kind = 'VIEW')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
          max(s.stance || ' on ' || s.aspect) AS sibling,
@@ -95,12 +86,10 @@ CREATE OR REPLACE VIEW main.open_questions AS
 -- agent's. This is the draft; the console serves the app at its release.
 CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY begin_snapshot DESC) AS rn
-      FROM main.glossary g
-      WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
-        AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
-        AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')) WHERE rn = 1),
+    SELECT * FROM main.glossary
+    WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
+      AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
+      AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')),
   winning AS (
     SELECT * FROM newest
     QUALIFY row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
@@ -121,10 +110,7 @@ CREATE OR REPLACE VIEW main.app_parts AS
 -- its body names. The same two collapses as app_parts.
 CREATE OR REPLACE VIEW main.app_releases AS
   WITH newest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, actor_kind ORDER BY begin_snapshot DESC) AS rn
-      FROM main.glossary g
-      WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset) WHERE rn = 1),
+    SELECT * FROM main.glossary WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset),
   winning AS (
     SELECT * FROM newest
     QUALIFY row_number() OVER (PARTITION BY dataset, subject ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
@@ -147,16 +133,11 @@ CREATE OR REPLACE VIEW main.app_releases AS
 -- view_summary() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
-  aspects AS (
-    SELECT name, schema FROM (
-      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
+  aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
   current_values AS (
-    SELECT aspect, body, actor_kind FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) AS rn
-      FROM main.glossary g, ds
-      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
-        AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
+    SELECT g.aspect, g.body, g.actor_kind FROM main.glossary g, ds
+    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
+      AND g.aspect IN (SELECT name FROM aspects)),
   collapsed AS (
     SELECT aspect, body FROM current_values
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
@@ -164,10 +145,8 @@ CREATE OR REPLACE VIEW main.view_definitions AS
     SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
   registry AS (
-    SELECT aspect, body FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) AS rn
-      FROM main.glossary g, ds
-      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions') WHERE rn = 1
+    SELECT g.aspect, g.body FROM main.glossary g, ds
+    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions'
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
   -- the annotations in force on the view and on its columns
   in_force AS (
@@ -211,8 +190,7 @@ CREATE OR REPLACE VIEW main.view_definitions AS
 -- for a kind of view (x-used-by) follow their own rules.
 CREATE OR REPLACE MACRO main.tested_properties() AS TABLE
   SELECT a.name
-  FROM (SELECT name, kind, grains, schema FROM main.aspects
-        QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
+  FROM main.aspects a
   WHERE a.kind IN ('FACT', 'MEASUREMENT')
     AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN'))
     AND json_extract(a.schema, '$.x-subject') IS NULL
@@ -229,10 +207,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
   decided AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
-  newest_aspects AS (
-    SELECT name, kind, grains, condition, schema FROM (
-      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
-      FROM main.aspects) WHERE rn = 1),
+  newest_aspects AS (SELECT name, kind, grains, condition, schema FROM main.aspects),
   -- A test is open while its property is in use and has no value.
   -- A property that exists to be tested (tested_properties()) is in
   -- use where the test is set: each asset that carries its expectation
