@@ -31,11 +31,10 @@ pages(top, label, link, o) AS (
   UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 2
   UNION ALL SELECT 'Integration', 'Sources and views', (SELECT * FROM base) || 'views', 1
   UNION ALL SELECT 'Metadata', 'Glossary', (SELECT * FROM base) || 'glossary', 1
-  UNION ALL SELECT 'Metadata', 'Model', (SELECT * FROM base) || 'model', 2
   UNION ALL SELECT 'Quality', 'All results', (SELECT * FROM base) || 'quality', 1
   UNION ALL SELECT 'Governance', 'Review queue', (SELECT * FROM base) || 'review', 1
   UNION ALL SELECT 'Governance', 'Decisions', (SELECT * FROM base) || 'review#decisions', 2
-  UNION ALL SELECT 'Lineage', 'Source to view', (SELECT * FROM base) || 'lineage', 1
+  UNION ALL SELECT 'Lineage', 'Model and lineage', (SELECT * FROM base) || 'lineage', 1
   UNION ALL SELECT 'Data', 'Export', (SELECT * FROM base) || 'export', 1
   UNION ALL SELECT 'Data', 'Query', (SELECT * FROM base) || 'query', 2)
 SELECT top, section, parent, name, label, link

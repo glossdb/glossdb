@@ -61,7 +61,7 @@
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow">A read of your own</span></header>
+    <header><span class="eyebrow">Your own query</span></header>
     <p class="hint">For anything these files do not answer, use the query endpoint: post a query, receive an Arrow stream. The downloads above use the same endpoint.</p>
 <pre class="statement">curl -s --data 'SELECT * FROM &lt;table&gt; LIMIT 10' \
   -H "Authorization: Bearer $TOKEN" {{ origin }}/{{ dataset }}/query</pre>

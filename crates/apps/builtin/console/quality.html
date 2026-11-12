@@ -73,21 +73,15 @@
 
 {% else %}
 {{ object::crumbs(dataset=dataset, top=bar_section) }}
-{# ---- what is wrong, then the instruments --------------------------- #}
-{# Findings first: what is wrong right now, worst first, each a
-   sentence from the catalog's fields with the numbers behind it, what
-   reads the subject and where it came from — a test's result that
-   is not green, a load whose casts refused cells, a defect a function
-   measured. A breached corridor shows its months against the
-   corridor and where the move is. Then the instruments, in words: the
-   tests, what the functions measured, each table's newest
-   load, and what the vocabulary still misses by name. Everything here
-   is measured — a test's live result, the load's own account,
-   the measurement's own body — never assumed, and nothing is a count
-   in place of a sentence. #}
+{# ---- tests per view, findings, the tests, the measurements --------- #}
+{# A finding is a sentence from the catalog's fields with the numbers
+   behind it: a test result that is not green, a load whose casts
+   could not read cells, a defect a function measured. A metric
+   outside its expected range shows its months against the range and
+   the members that moved. #}
 <div class="tiles">
   <section class="tile">
-    <header><span class="eyebrow" title="Every test on each view and on the tables and columns it reads, worst first: join fan-out, referential integrity, additivity, validity dates, and the team's own. A view whose tests all pass is one green row.">Tests per view</span>
+    <header><span class="eyebrow" title="Every test on each view and on the tables and columns it reads, worst first: fan-out in a join, referential integrity, additivity, validity dates, and the team's own. A view whose tests all pass is one green row.">Tests per view</span>
       <code class="chip">view_tests()</code></header>
     <p class="hint">What can break what each view serves. Worst first. A green row means every test on the view passes or a person accepted it.</p>
     <gl-rows frame="frames/view_tests" empty="no view is defined yet: the tests appear with the first definition">
@@ -106,8 +100,8 @@
       <code class="chip">TESTS() · imports · measurements</code></header>
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
 
-    {# A breached corridor: the metric whose newest complete point
-       loaded outside. The picture and the movers are the metric's own
+    {# A metric whose newest complete month is outside its expected
+       range. The picture and the movers are the metric's own
        frames, keyed by its name through the row's field. #}
     <gl-rows frame="frames/breaches" empty="">
       <template>
@@ -116,8 +110,8 @@
           <p class="f-why">The month closed at <code>{actual}</code>. From its own history the metric was expected between <code>{lo}</code> and <code>{hi}</code>; the point sits {side} that, displacement <code>{displacement}</code>. {others}</p>
           <gl-chart frame="frames/corridor?view={view}" spec="specs/corridor.vl.json" empty=""></gl-chart>
           <p class="f-meta">the shaded area is the range predicted for each month from the months before it, the 10th to the 90th percentile; the line is the actual</p>
-          <p class="f-sub">Where the move is · the previous month to this one, by each axis the metric is sliced by</p>
-          <gl-rows frame="frames/movers?view={view}" empty="the metric is sliced by no axis, so the move has no parts">
+          <p class="f-sub">Where the change is · the previous month to this one, by each dimension of the metric</p>
+          <gl-rows frame="frames/movers?view={view}" empty="the metric has no dimension, so the change has no parts">
             <template>
               <div class="rrow f-move" style="grid-template-columns:8rem 7rem 12rem 7rem minmax(0,1fr)">
                 <span class="r-meta">{axis}</span>
@@ -133,7 +127,7 @@
       </template>
     </gl-rows>
 
-    <gl-rows frame="frames/findings" empty="Beyond the expected ranges, nothing stands out: every test green, every cell read, every join resolving, every identity holding.">
+    <gl-rows frame="frames/findings" empty="Beyond the expected ranges, nothing is wrong: every test is green, every cell was read, every relationship resolves, every identity holds.">
       <template>
         <article class="finding">
           <div class="f-head"><code class="chip {scls}">{chip}</code><h2>{headline}</h2></div>
@@ -148,7 +142,7 @@
     <header><span class="eyebrow" title="One row per test: what it asks, its scoring function and threshold, its results counted by state (the bar shows the shares), and its worst state. A row opens the test, with its declaration, its result and the evidence. A new load makes the result stale; the next read computes it again.">The tests</span>
       <code class="chip">tests · TESTS()</code></header>
     <p class="hint">The tests on this dataset, and how their results fell. Open a row for what the test saw.</p>
-    <gl-rows frame="frames/tests" empty="no test has a scoring function yet, so nothing is tested; the checks goal in the next steps gives the statement">
+    <gl-rows frame="frames/tests" empty="no test has a scoring function yet, so nothing is tested">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:9rem minmax(0,1fr) 10rem 10rem 5rem">
           <span class="r-subj">{test}<br><span class="r-meta">{expectation}</span></span>
@@ -165,7 +159,7 @@
     <header><span class="eyebrow" title="Every measurement, with what it found, how many assets it covered and when. A measurement reports and never judges: a defect shows above as a finding, and becomes a result only through a test. Measurements nobody has run are folded under the list.">What was measured</span>
       <code class="chip">GLOSSARY(all =&gt; true) · kind = measurement</code></header>
     <p class="hint">What the measurements found, property by property.</p>
-    <gl-rows frame="frames/measured" empty="no function has measured anything here yet — the next read's checks goal hands the statement">
+    <gl-rows frame="frames/measured" empty="no function has measured anything here yet">
       <template>
         <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr) 9rem">
           <span class="r-subj">{aspect}<br><span class="r-meta">{subjects}</span></span>

@@ -1,21 +1,25 @@
 // <gl-graph nodes="frames/…" edges="frames/…" empty="…"> draws a graph
 // of boxes with their columns over two stored frames.
 //
-// The nodes frame is one row per column: `node`, `kind` (`source` |
-// `table` | `view`), `col` (empty for a node with no columns), `ord`,
-// and optionally `role`, `detail` (shown at the column's right, and
-// enough to keep the column unfolded), `sub` (a line under the node's
-// name) and `link` (the node's page).
+// The nodes frame is one row per column: `node`, `kind` (`table` |
+// `view`), `col`, `ord`, and optionally `role`, `detail` (shown at the
+// column's right, and enough to keep the column unfolded), `sub` (a
+// line under the node's name), `tag` (shown at the right of the name:
+// the source a table is loaded from) and `link` (the node's page).
 //
 // The edges frame is one row per edge: `src`, `dst`, `kind`.
 //   `m2o` | `o2o`: a declared key between two columns (`table.col`, a
 //     composite endpoint as `table.(a, b)`); the parent is placed left
 //     of the table that points at it.
 //   `reads`: a column to the view column that descends from it.
-//   `loads`: a source to the table its load query produces, node to
-//     node.
 //
-// dagre places the nodes left to right along the edges. A column an
+// With the `layers` attribute the graph carries two switches above
+// it: relationships, and views (with what they read). A layer switched
+// off is left out of the layout too. The choice is in the URL as
+// `hide`, so the picture is a link.
+//
+// dagre places the nodes left to right along the edges, the views
+// right of every table. A column an
 // edge touches, or one with a detail, shows; the rest fold under a
 // count and open on click. Hover follows a column through its edges.
 // Click puts it in the URL as `focus`, so the picture is a link.
@@ -44,6 +48,22 @@
     if (!m) return [path];
     return m[2].split(',').map((c) => m[1] + '.' + c.trim());
   }
+
+  // A layer is a kind of node with the edges that end at it, or a kind
+  // of edge alone.
+  const LAYERS = [
+    { key: 'relationships', label: 'Relationships', nodes: [], edges: ['m2o', 'o2o'] },
+    { key: 'views', label: 'Views', nodes: ['view'], edges: ['reads'] },
+  ];
+
+  function hidden() {
+    const said = new URLSearchParams(document.location.search).get('hide') || '';
+    return new Set(said.split(',').filter(Boolean));
+  }
+
+  // The layout's node between the tables and the views. No table or
+  // view has a name with a space.
+  const GAP = 'tables views';
 
   function nodeOf(id) {
     return id.slice(0, id.lastIndexOf('.'));
@@ -108,19 +128,19 @@
       const byNode = new Map();
       for (const r of nodeRows) {
         if (!byNode.has(r.node)) {
-          byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', link: r.link || '', columns: [] });
+          byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', tag: r.tag || '', link: r.link || '', columns: [] });
         }
         if (r.col) byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
       }
-      const NODES = [...byNode.values()];
+      const off = this.hasAttribute('layers') ? hidden() : new Set();
+      const noNodes = new Set(LAYERS.filter((l) => off.has(l.key)).flatMap((l) => l.nodes));
+      const noEdges = new Set(LAYERS.filter((l) => off.has(l.key)).flatMap((l) => l.edges));
+      const NODES = [...byNode.values()].filter((n) => !noNodes.has(n.kind));
 
       const touched = new Set();
       const edges = [];
       for (const r of edgeRows) {
-        if (r.kind === 'loads') {
-          edges.push({ from: r.src, to: r.dst, kind: r.kind });
-          continue;
-        }
+        if (noEdges.has(r.kind)) continue;
         const from = endpoints(r.src);
         const to = endpoints(r.dst);
         for (let i = 0; i < from.length; i++) {
@@ -153,13 +173,22 @@
         // a key points from the child to its parent; the data flows
         // from the parent, so the parent ranks first
         const key = e.kind === 'm2o' || e.kind === 'o2o';
-        const first = e.kind === 'loads' ? e.from : nodeOf(key ? e.to : e.from);
-        const then = e.kind === 'loads' ? e.to : nodeOf(key ? e.from : e.to);
+        const first = nodeOf(key ? e.to : e.from);
+        const then = nodeOf(key ? e.from : e.to);
         const pair = first + '>' + then;
         if (first !== then && g.hasNode(first) && g.hasNode(then) && !seen.has(pair)) {
           g.setEdge(first, then);
           seen.add(pair);
         }
+      }
+      // Every view ranks right of every table: a node of no size
+      // between the two kinds holds them apart.
+      const tables = NODES.filter((n) => n.kind === 'table');
+      const views = NODES.filter((n) => n.kind === 'view');
+      if (tables.length && views.length) {
+        g.setNode(GAP, { width: 0, height: 0 });
+        for (const n of tables) g.setEdge(n.name, GAP);
+        for (const n of views) g.setEdge(GAP, n.name);
       }
       dagre.layout(g);
       const pos = new Map();
@@ -203,6 +232,9 @@
         } else {
           grp.append(name);
         }
+        if (n.tag) {
+          grp.append(el('text', { class: 'n-sub', x: p.width - 10, y: 19, 'text-anchor': 'end' }, n.tag));
+        }
         if (n.sub) {
           // About 6px a character at the subtitle's size: trim to the
           // box, the whole line on hover.
@@ -228,7 +260,6 @@
           grp.append(col);
           anchors.set(id, { x0: x, x1: x + p.width, y: y + cy + ROW / 2 });
         });
-        anchors.set('node:' + n.name, { x0: x, x1: x + p.width, y: y + 15 });
         if (s.hidden) {
           const fold = el('g', { class: 'fold', 'data-node': n.name });
           fold.append(el('text', { x: 10, y: top + s.cols.length * ROW + 11 }, '+ ' + s.hidden + ' more'));
@@ -238,9 +269,8 @@
       }
 
       for (const e of edges) {
-        const whole = e.kind === 'loads';
-        const a = anchors.get(whole ? 'node:' + e.from : e.from);
-        const b = anchors.get(whole ? 'node:' + e.to : e.to);
+        const a = anchors.get(e.from);
+        const b = anchors.get(e.to);
         if (!a || !b) continue;
         const ltr = a.x1 <= b.x0;
         const x0 = ltr ? a.x1 : a.x0;
@@ -265,6 +295,7 @@
       const line = document.createElement('p');
       line.className = 'focus-line';
       this.replaceChildren(svg, line);
+      if (this.hasAttribute('layers')) this.prepend(this.switches(off));
       // Past the fit floor the section scrolls: say so, since the views
       // are the right-hand end and would otherwise sit out of sight.
       const wrap = this.closest('.graph-wrap');
@@ -325,6 +356,33 @@
       if (focus) lit(focus);
     }
   }
+
+  // The layer switches: one button per layer, pressed while it shows.
+  GlGraph.prototype.switches = function (off) {
+    const bar = document.createElement('div');
+    bar.className = 'filters';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'layers shown');
+    for (const l of LAYERS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (off.has(l.key) ? '' : ' on');
+      b.setAttribute('aria-pressed', off.has(l.key) ? 'false' : 'true');
+      b.textContent = l.label;
+      b.addEventListener('click', () => {
+        const next = hidden();
+        if (next.has(l.key)) next.delete(l.key);
+        else next.add(l.key);
+        const url = new URL(document.location.href);
+        if (next.size) url.searchParams.set('hide', [...next].join(','));
+        else url.searchParams.delete('hide');
+        history.replaceState(null, '', url.toString());
+        this.draw();
+      });
+      bar.append(b);
+    }
+    return bar;
+  };
 
   customElements.define('gl-graph', GlGraph);
 })();

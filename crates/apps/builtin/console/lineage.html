@@ -2,24 +2,40 @@
 {% import "modules/object.html" as object %}
 
 {% block main %}
-{{ object::crumbs(dataset=dataset, top=bar_section, section="Lineage") }}
-{# Lineage: the way the data takes, left to right. A source, the
-   tables its load queries produce, the views that read them, column
-   by column. Every line is a row of the catalog. #}
+{{ object::crumbs(dataset=dataset, top=bar_section) }}
+{# One graph for the semantic model and the lineage: the loaded
+   tables with their source, the declared relationships between them,
+   and the views that read them column by column. Every line is a row
+   of the catalog. The two layers switch on and off above the graph;
+   the choice is in the URL. #}
 <div class="tiles">
   <section class="tile">
-    <header><span class="eyebrow" title="Where each served column comes from: the source, the table a load query produced from it, and the view columns that descend from the table's columns.">Lineage</span>
-      <code class="chip">sources · recipes · imports · view_sources()</code></header>
-    <p class="hint">Where the data comes from and where it goes, left to right: sources, the tables loaded from them, the views that read the tables. A dotted line is a load. A dashed line is a view column that descends from a table column. Columns no view reads fold under their table. Hover a column to follow it up and down; a click keeps it lit and puts it in the URL. For what the tables mean and how they join, see <a href="/{{ dataset }}/app/console/p/model">Model</a>.</p>
+    <header><span class="eyebrow" title="The loaded tables with what each column is, the declared relationships between them, and the view columns that descend from the table columns.">Model and lineage</span>
+      <code class="chip">recipes · relationships · GLOSSARY() · view_sources()</code></header>
+    <p class="hint">Left to right: the tables, then the views that read them. Beside a table's name: the source it is loaded from. Under it: what one row is. Beside a column: its role, a measure's additivity and unit, and whether it is part of the grain or the time axis. Switch a layer off to read the rest: without views the graph is the semantic model; without relationships it is the lineage. Hover a column to follow its lines; a click keeps it lit and puts it in the URL. A name opens its page.</p>
     <div class="graph-wrap">
-      <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges" node-width="230" label="lineage"
+      <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges" node-width="250" label="model and lineage" layers
                 empty="no table is loaded yet. A load query (DECLARE RECIPE) loads a table from a source."></gl-graph>
     </div>
     <p class="hint scroll-hint">The graph is wider than the page: scroll right for the views.</p>
     <div class="legend">
-      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-loads"/></svg>a load query loads the table from the source</span>
-      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-reads"/></svg>a view column descends from the column</span>
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-key"/></svg>relationship (→ many-to-one, ↔ one-to-one)</span>
+      <span><svg width="26" height="8" aria-hidden="true"><path d="M1 4 H25" class="lg-reads"/></svg>lineage: column to view column</span>
+      <span><span class="role-measure">measure</span> · key · dimension · timestamp · attribute: the column's role</span>
     </div>
+  </section>
+  <section class="tile">
+    <header><span class="eyebrow" title="Every declared relationship, what it means, and whether every row finds its parent as last measured (referential integrity).">Relationships</span>
+      <code class="chip">relationships · relationship_coherence</code></header>
+    <gl-rows frame="frames/joins?table=&column=" empty="no relationship is declared yet (DECLARE RELATIONSHIP)">
+      <template>
+        <a class="rrow" href="{link}" style="grid-template-columns:minmax(14rem,1.2fr) minmax(0,1.4fr) minmax(10rem,1fr)">
+          <span class="r-subj">{rel}</span>
+          <span class="r-what">{meaning}</span>
+          <span class="r-meta">{coherence}</span>
+        </a>
+      </template>
+    </gl-rows>
   </section>
 </div>
 {% endblock main %}

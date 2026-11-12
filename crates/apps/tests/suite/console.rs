@@ -486,7 +486,6 @@ async fn every_page_renders_and_passes_the_shells_policy() {
     for uri in [
         "/",
         "/perf/app/console",
-        "/perf/app/console/p/model",
         "/perf/app/console/p/history",
         "/perf/app/console/p/history?kind=load",
         "/perf/app/console/p/lineage",
@@ -1836,11 +1835,11 @@ async fn a_download_refuses_what_it_should() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
-    // The lineage's frames are the catalog as rows: every source a
-    // load query reads, every column of every loaded table, and for
-    // every view the columns its served fields descend from. The
-    // declared relationships are the model's edges.
+async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
+    // The lineage's frames are the catalog as rows: every column of
+    // every loaded table with the source it is loaded from, the
+    // declared relationships, and for every view the columns its
+    // served fields descend from.
     let (app, plane, dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = plane
@@ -1885,7 +1884,7 @@ async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
                 .unwrap()
                 .clone()
         };
-        let (node, kind, c, role) = (col("node"), col("kind"), col("col"), col("role"));
+        let (node, kind, c, role) = (col("node"), col("kind"), col("col"), col("tag"));
         for i in 0..batch.num_rows() {
             rows.push((
                 node.value(i).into(),
@@ -1900,6 +1899,10 @@ async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
     assert!(has("ledger", "cohort"), "{rows:?}");
     assert!(has("ledger", "value"), "{rows:?}");
     assert!(has("cohorts", "cohort"), "{rows:?}");
+    assert!(
+        rows.iter().any(|r| r.0 == "cohorts" && r.3 == "erp2"),
+        "a table names its source:\n{rows:?}"
+    );
     assert!(has("dso", "month"), "{rows:?}");
     assert!(has("dso", "cohort"), "{rows:?}");
     assert!(
@@ -1917,14 +1920,7 @@ async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
         "a metadata table leaked into the nodes:\n{rows:?}"
     );
 
-    // The model's edges are the declared relationships.
-    let keys = body_text(get(&app, "/perf/app/console/frames/model_edges").await).await;
-    assert!(
-        keys.contains("ledger.cohort") && keys.contains("cohorts.cohort") && keys.contains("m2o"),
-        "{keys}"
-    );
-
-    // The lineage's edges: a load from its source, and the view's reads.
+    // The edges: the declared relationships and the view's reads.
     let edges = get(&app, "/perf/app/console/frames/lineage_edges").await;
     assert_eq!(edges.status(), StatusCode::OK);
     let bytes = to_bytes(edges.into_body(), usize::MAX).await.unwrap();
@@ -1952,7 +1948,11 @@ async fn lineage_serves_sources_tables_and_reads_and_the_model_serves_keys() {
         }
     }
     assert!(
-        edges.contains(&("erp2".into(), "cohorts".into(), "loads".into())),
+        edges.contains(&(
+            "ledger.cohort".into(),
+            "cohorts.cohort".into(),
+            "m2o".into()
+        )),
         "{edges:?}"
     );
     assert!(
@@ -2375,7 +2375,6 @@ async fn the_tree_links_the_catalogs_objects_and_the_pages_the_bar_does_not() {
         "/perf/app/console/p/glossary?source=erp\n",
         "/perf/app/console/p/glossary?table=ledger\n",
         "/perf/app/console/p/glossary?column=ledger.value\n",
-        "/perf/app/console/p/model\n",
         "/perf/app/console/p/history\n",
         "/perf/app/console/p/lineage\n",
         "/perf/app/console/p/review#decisions\n",
@@ -2390,8 +2389,8 @@ async fn the_bar_shows_the_five_functions_and_an_object_marks_its_own() {
     let (app, _plane, _dir) = workspace().await;
     let index = text(get(&app, "/perf/app/console").await).await;
     // The overview, the five functions (integration, metadata, quality,
-    // governance, lineage) and the data. The model, history and query
-    // pages are reached from the left nav.
+    // governance, lineage) and the data. The history and query pages
+    // are reached from the left nav.
     assert_eq!(
         hrefs(bar(&index)),
         [
@@ -2407,7 +2406,6 @@ async fn the_bar_shows_the_five_functions_and_an_object_marks_its_own() {
     );
     // A page marks the section that owns it.
     for (url, section) in [
-        ("/perf/app/console/p/model", "/perf/app/console/p/glossary"),
         ("/perf/app/console/p/history", "/perf/app/console"),
         ("/perf/app/console/p/lineage", "/perf/app/console/p/lineage"),
         (
@@ -2447,14 +2445,12 @@ async fn the_bar_shows_the_five_functions_and_an_object_marks_its_own() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_source_has_five_tabs_and_serves_its_load_queries_and_loads() {
+async fn a_source_has_its_three_tabs_and_serves_its_load_queries_and_loads() {
     let (app, _plane, _dir) = workspace().await;
     let page = text(get(&app, "/perf/app/console/p/glossary?source=erp").await).await;
     let links = hrefs(&page);
     for tab in [
         "?source=erp",
-        "?source=erp&tab=measurements",
-        "?source=erp&tab=tests",
         "?source=erp&tab=used",
         "?source=erp&tab=history",
     ] {
@@ -2475,8 +2471,8 @@ async fn a_source_has_five_tabs_and_serves_its_load_queries_and_loads() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_model_serves_each_table_as_its_entity() {
-    // The model's nodes: each table with what one row is under its
+async fn the_graph_serves_each_table_as_its_entity() {
+    // The graph's table nodes: each table with what one row is under its
     // name, and each column with what it carries — role, additivity,
     // unit, the grain, the time axis.
     let (app, plane, _dir) = workspace().await;
@@ -2500,7 +2496,7 @@ async fn the_model_serves_each_table_as_its_entity() {
         )
         .await
         .unwrap();
-    let nodes = body_text(get(&app, "/perf/app/console/frames/model_nodes").await).await;
+    let nodes = body_text(get(&app, "/perf/app/console/frames/lineage_nodes").await).await;
     for line in [
         "one booking\n",
         "measure",
@@ -2508,7 +2504,7 @@ async fn the_model_serves_each_table_as_its_entity() {
         "EUR",
         "/perf/app/console/p/glossary?table=ledger\n",
     ] {
-        assert!(nodes.contains(line), "{line:?} in the model:\n{nodes}");
+        assert!(nodes.contains(line), "{line:?} in the nodes:\n{nodes}");
     }
 }
 

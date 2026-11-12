@@ -43,7 +43,6 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
     files: &[
         console!("app.toml"),
         console!("index.html"),
-        console!("model.html"),
         console!("review.html"),
         console!("history.html"),
         console!("views.html"),
@@ -81,9 +80,7 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("lineage_nodes.sql"),
         frame!("history.sql"),
         frame!("measured.sql"),
-        frame!("model_edges.sql"),
         frame!("next_rows.sql"),
-        frame!("model_nodes.sql"),
         frame!("view.sql"),
         frame!("view_head.sql"),
         frame!("view_history.sql"),
