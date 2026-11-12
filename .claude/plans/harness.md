@@ -13,22 +13,28 @@ workspace as code), `sources.md` (spreadsheets, documents, search),
 trial), `evaluation.md` (what glossval measures), `dependencies.md`
 (how a result becomes outdated and when it is computed again).
 
-## First: the data intelligence direction
+## First: the release candidate
 
-Finished before anything new is picked. Everything built is on the
-branch `data-intelligence` in both repositories, not pushed.
+The release candidate is the two branches `data-intelligence` as
+glossval measures them. Nothing new is picked before it. Work is
+committed locally after each step whose suites pass; nothing is
+pushed.
 
 | # | What | State |
 |---|---|---|
-| 1 | Names: every interface name that was a project word is renamed to the industry's word, in both repositories | built |
-| 2 | Text: README, docs, skills, the corpus, the text an agent reads on connecting, written new for every kind of view (a table, a single value, a metric) and checked against the code | built |
-| 3 | Tests: no test compares wording; tests that protected nothing and code written for tests are deleted; a refusal carries a code | built |
-| 4 | `next`: the work list, most urgent first, each row labelled with its kind of work, derived from the states the catalog holds, with a statement per row; the console's overview shows the same rows | built |
-| 5 | The console: overview, model and lineage as two pages, a test's page with its results, every kind of view under Views | built along the earlier step names; the overview moves to the five functions and the four kinds of work, then the wording inside the other pages |
-| 6 | What an outside agent found when it built a workspace from the skill alone (20 items) | in work |
-| 7 | glossval: its tools follow the renamed reads; its old notes and tools are cut; the contract test cases run (`evaluation.md`) | next |
-| 8 | One pull request per repository; the extension's branch first, then the server's pin moves to it | when the project lead says the branches go up |
-| 9 | Results page and websites | after 7 |
+| 1 | Names, text, tests, `next`, the console: the data intelligence direction | built |
+| 2 | Dependencies: the catalog's rows carry begin and end snapshots, a stored result records its inputs as rows, and the server computes what is due after a write (`dependencies.md`) | built, committed |
+| 3 | glossval follows the catalog: its two reads of the old columns are changed; a run can replay an earlier run's statements with no model (`--replay`) | built |
+| 4 | The recorded `ferc-steam` build replayed on this server: the same score as the run it replays, no refusal, the review step stores its decisions | measured, on the host |
+| 5 | The goldens' baseline, accepted at these commits: rel-f1, the import path, the cube, rel-event, booksql | in work |
+| 6 | The server image at these commits; both contract test cases, three runs each, in the container (`evaluation.md`) | in work; a run calls a paid model |
+| 7 | What an outside agent found when it built a workspace from the skill alone (20 items) | open: the list is not in this repository |
+| 8 | One pull request per repository; the extension's branch first, then the server's pin | when the project lead says the branches go up |
+
+After the release candidate, in this order: the outlook kit keeps the
+request and the stored answer and the model service returns the
+verdict; the rest of `dependencies.md`; the results page and the
+websites; then the backlog.
 
 ## The backlog, by kind of work
 
@@ -56,11 +62,9 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| How a result becomes outdated and when it is computed again: a caching design on versions the storage guarantees; a proposal, nothing built | `dependencies.md` | after the open items of this round |
 | A kit cannot change a property that has values, not even to add a description, so an existing workspace cannot take a kit update | the extension | before a workspace lives longer than a release |
 | The spec says data-changing SQL is refused; the server allows it. It follows access control | `gate.md` | with `gate.md` |
 | The demo workspace is rebuilt on the new names | the demo server | before the pull requests |
-| `../glossthesi` uses the old words in its README | `../glossthesi` | before the pull requests |
 
 ## Measured
 

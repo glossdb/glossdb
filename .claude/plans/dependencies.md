@@ -18,9 +18,10 @@ committed.
 | A read names what it serves: annotations by property, the lineage functions the lake's shape, a glossary read its property; two checks pass the property | — | the extension, `kits/views/kit.sql` | Built | |
 | After a write the server computes the results the kit's `results_due()` lists, an input before what reads it, until none is left; the matching of outcome text is gone | — | `crates/duck/src/lib.rs`, `kits/views/kit.sql` | Built | |
 | The interface keeps a dataset's `next` rows while the lake's snapshot holds | — | `crates/serverd/src/mcp.rs` | Built | |
-| `view_summary()` reads the whole glossary, so `additivity_check` runs again on every annotation (4 results, 0.4 s) | Medium | `kits/views/kit.sql` | Next | |
-| `next` read again after a write costs 0.37 s, 0.27 s of it the preview arm on a workspace with no forecast or plan | Medium | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | Next | |
-| `next` is the results the system cannot bring current itself: a missing input only an actor can give, a red test, a decision that waits | Medium | `kits/goals/kit.sql` | With the next | |
+| After a write the server runs a metric's measurement that nobody ran (the grain of its period column), so a series serves after its definition | — | `kits/views/kit.sql` | Built | |
+| `view_summary()` reads the whole glossary, so `additivity_check` runs again on every annotation (4 results, 0.4 s). One of the five properties it reads is filled by a function, so naming the properties is not enough: the read must say that it takes an outdated value too | Medium | `kits/views/kit.sql`, the extension | After the release candidate | |
+| `next` read again after a write costs 0.37 s, 0.27 s of it the preview arm on a workspace with no forecast or plan | Medium | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | With the outlook | |
+| `next` is what the system cannot bring current itself: a missing input only an actor can give, a red test, a decision that waits. Read row by row, it already was, except the profile above and the preview measurements that are due | Low | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | The preview measurements with the outlook | |
 | The outlook kit keeps the request and the stored answer; the model service returns the verdict | Medium: the service is extended | `kits/outlook/kit.sql`, `../glossthesi` | After | |
 | The kits read the current rows plainly: 81 newest-row windows become a read of the view | Low | the kits, the console's frames | After | |
 | A function's macro and a dataset's schema are DuckLake's commits, each followed by its row; a removal leaves a view as it is | Low | the extension | After | |
@@ -100,10 +101,10 @@ Findings behind the numbers:
 
 ## Next issue (draft)
 
-**`view_summary()` reads the properties it needs.** What it buys:
-`additivity_check` is computed again only when a role, an additivity
-or a time grain changes, so a description costs no check. What is
-there: `view_summary()` and `additivity_check` in
-`kits/views/kit.sql`; the property argument of the glossary read.
-Done when: an annotation of `meaning` on a scanned table computes no
-result, measured; both suites pass.
+**The model service returns the verdict of a forecast.** What it buys:
+the outlook kit keeps the request and the stored answer and no longer
+computes the comparison in SQL. What is there: `POST /forecast` with
+`origins` already returns one result (score and state) over all
+members (`../glossthesi/docs/contract.md`); `kits/outlook/kit.sql`
+(1,613 lines) and its suite. Done when: the kit's tests read the
+service's state, the kit is under half its size, both suites pass.
