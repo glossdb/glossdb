@@ -26,17 +26,6 @@
 </gl-rows>
 {{ object::subtabs(q=q, tab=tab, used="Source columns") }}
 <div class="tiles">
-  {# A preview measurement that is due, or a result the server could not
-     compute after a write. One row while any is; the button computes
-     them and the frames refetch. #}
-  <gl-rows frame="frames/remeasure" empty="">
-    <template>
-      <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">
-        <span class="hint">{hint}</span>
-        <button type="submit" class="wbtn">Re-measure</button>
-      </form>
-    </template>
-  </gl-rows>
 
 
 {% if tab == "description" %}
@@ -272,17 +261,6 @@
     </gl-rows>
   </section>
 
-  {# A preview measurement that is due, or a result the server could not
-     compute after a write. One row while any is; the button computes
-     them and the frames refetch. #}
-  <gl-rows frame="frames/remeasure" empty="">
-    <template>
-      <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">
-        <span class="hint">{hint}</span>
-        <button type="submit" class="wbtn">Re-measure</button>
-      </form>
-    </template>
-  </gl-rows>
 
   <section class="tile">
     <header><span class="eyebrow" title="Every metric with its review state, or why it charts nothing, beside the newest period, the change into it and its dimensions. A review decision refreshes the first part and leaves the numbers alone.">Metrics</span>

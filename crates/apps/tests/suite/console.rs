@@ -10,34 +10,15 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use glossdb_apps::engine::{Actor, ActorKind};
-use glossdb_apps::engine::{Caller, Plane, Service, Session};
+use glossdb_apps::engine::{Caller, Plane, Session};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
 
-async fn open_plane(dir: &std::path::Path, service: Option<Service>) -> Plane {
-    let mut config = glossdb_apps::engine::testing::golden(dir).await.unwrap();
-    config.service = service;
-    Plane::open(config).await.unwrap()
-}
-
+/// A workspace with the dataset `perf`, a ledger loaded from a CSV, and
+/// the app `board` glossed on it, behind the app interface.
 async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
-    workspace_on(None).await
-}
-
-/// The workspace with a model service named: a preview measurement is
-/// due once a metric is served. Nothing in these tests calls it.
-async fn workspace_with_service() -> (Router, Arc<Plane>, tempfile::TempDir) {
-    workspace_on(Some(Service {
-        url: "http://model.test".into(),
-        token: None,
-        audience: None,
-    }))
-    .await
-}
-
-async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("ledger.csv"),
@@ -45,7 +26,10 @@ async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile
     )
     .unwrap();
 
-    let plane = Arc::new(open_plane(dir.path(), service).await);
+    let config = glossdb_apps::engine::testing::golden(dir.path())
+        .await
+        .unwrap();
+    let plane = Arc::new(Plane::open(config).await.unwrap());
     let session = builder(&plane).await;
     session
         .execute(&format!(
@@ -786,7 +770,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("test", "catalog"),
         ("test_results", "catalog"),
         ("axes", "catalog"),
-        ("remeasure", "catalog"),
         ("view", "catalog"),
         ("trend", "catalog"),
         ("plan", "catalog"),
@@ -1280,17 +1263,8 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         "cohort a moved between the two months; cohort b has one period"
     );
 
-    // The axes banner is silent while the results stand at this data
-    // version: the server computed them after each write, and with no
-    // model service named no preview measurement is due.
-    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
-    assert_eq!(banner.status(), StatusCode::OK);
-    assert_eq!(row_count(banner).await, 0, "nothing to re-measure");
-
-    // A gloss moves the data version. The cube rebuilds at the next read with
-    // the same numbers — and the results measured the data's columns,
-    // which the gloss did not touch, so they still stand and the
-    // banner stays silent: glossing work does not churn the catalog.
+    // A gloss moves the data version: the cube rebuilds at the next read
+    // with the same numbers.
     builder(&plane).await
         .execute(r#"USE perf; GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;"#)
         .await
@@ -1305,41 +1279,6 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         2 * series,
         "the numbers stand after the gloss"
     );
-    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
-    assert_eq!(
-        row_count(banner).await,
-        0,
-        "the results read the data, not this gloss"
-    );
-
-    // Re-measure — the console's second write, a compute act: with
-    // nothing stale it stores nothing, and the response is still the
-    // write event the browser's frame store hears.
-    let response = app
-        .clone()
-        .oneshot(
-            Request::post("/perf/app/console/remeasure")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    // The write names itself beside the write event: a re-measure can
-    // change the cube, which a review decision cannot, so the store drops data
-    // frames on the first and record frames on the second.
-    assert_eq!(
-        response.headers()["HX-Trigger"],
-        "glossql:remeasured, glossql:written"
-    );
-    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
-    assert_eq!(row_count(banner).await, 0, "the results still stand");
-    let trend = get(
-        &app,
-        "/perf/app/console/frames/trend?view=dso&grain=month&span=24",
-    )
-    .await;
-    assert_eq!(row_count(trend).await, 2 * series, "and the numbers stand");
 }
 
 /// The plan on DuckDB: a plan declared on dso over the same ledger,
@@ -1397,11 +1336,10 @@ async fn the_plan_is_served_beside_its_metric() {
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes value, and a metric whose
 /// period column the server profiled with the definition, so its series
-/// serves. With a model service named, the banner counts the preview
-/// measurements nobody ran, and the console's re-measure runs them.
+/// serves.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_measurements() {
-    let (app, plane, _dir) = workspace_with_service().await;
+async fn a_defined_metric_serves_its_series() {
+    let (app, plane, _dir) = workspace().await;
     builder(&plane)
         .await
         .execute(
@@ -1431,28 +1369,6 @@ async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_mea
     assert_eq!(measures.col("name"), ["dso", "undated"]);
 
     // The server profiled `dso.month` after the write: the series serves.
-    let latest = get(&app, "/perf/app/console/frames/latest").await;
-    assert_eq!(row_count(latest).await, 1, "the one series' newest period");
-    // The expected ranges wait for a run; with no plan and no scenario
-    // the forecast and the estimate are not needed.
-    let banner = frame(get(&app, "/perf/app/console/frames/remeasure").await).await;
-    assert_eq!(banner.col("functions"), ["metric_ranges"]);
-    let response = app
-        .clone()
-        .oneshot(
-            Request::post("/perf/app/console/remeasure")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
-    assert_eq!(
-        row_count(banner).await,
-        0,
-        "with too short a history the expected ranges stored their reasons without a call"
-    );
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
 }

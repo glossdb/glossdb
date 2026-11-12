@@ -1607,21 +1607,6 @@ impl Session {
         })
     }
 
-    /// The console's re-measure, a person's act: what the server
-    /// computes after a write, and the preview measurements that are
-    /// due, which call the model service. Returns how many ran.
-    pub async fn remeasure(&self) -> Result<usize, SessionError> {
-        let conn = Arc::clone(&self.conn);
-        tokio::task::spawn_blocking(move || {
-            let conn = conn
-                .lock()
-                .map_err(|e| SessionError::Engine(e.to_string()))?;
-            Ok(bring_current(&conn, true))
-        })
-        .await
-        .map_err(|e| SessionError::Engine(e.to_string()))?
-    }
-
     /// What SQL on this channel can call beyond the engine's own: the
     /// kits' macros as interfaces, the declared functions as extractions.
     pub async fn registered_functions(&self) -> Result<Vec<Registered>, SessionError> {
@@ -1717,7 +1702,7 @@ impl Pending {
     /// fails the call.
     fn run(&mut self, conn: &Connection) {
         if std::mem::take(&mut self.wrote) {
-            bring_current(conn, false);
+            bring_current(conn);
         }
     }
 }
@@ -1730,22 +1715,18 @@ const ROUNDS: usize = 4;
 /// date, computed until none is left: the kit's `results_due()` says
 /// which (a result whose inputs moved, by the catalog's own versions,
 /// or one never computed) and in which order, an input before what
-/// reads it, the preview measurements last where `preview` asks for
-/// them. As CI runs a suite after a commit. A statement that fails is
-/// logged and not tried again in this call; its result stays due and
-/// the test report says so. Returns how many ran.
-fn bring_current(conn: &Connection, preview: bool) -> usize {
+/// reads it. As CI runs a suite after a commit. A statement that fails
+/// is logged and not tried again in this call; its result stays due and
+/// the test report says so.
+fn bring_current(conn: &Connection) {
     let mut failed = std::collections::BTreeSet::new();
-    let mut ran = 0;
     for _ in 0..ROUNDS {
         let Ok((_, _, due)) = arrow_batches(
             conn,
-            &format!(
-                "SELECT run FROM {LAKE}.main.results_due(preview := {preview}) ORDER BY ord, run"
-            ),
+            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
             &[],
         ) else {
-            return ran;
+            return;
         };
         let statements: Vec<String> = rows_as_text(&due)
             .into_iter()
@@ -1753,19 +1734,15 @@ fn bring_current(conn: &Connection, preview: bool) -> usize {
             .filter(|statement| !failed.contains(statement))
             .collect();
         if statements.is_empty() {
-            return ran;
+            return;
         }
         for statement in statements {
-            match run(conn, &statement) {
-                Ok(()) => ran += 1,
-                Err(e) => {
-                    tracing::debug!(error = %e, %statement, "a result: not computed");
-                    failed.insert(statement);
-                }
+            if let Err(e) = run(conn, &statement) {
+                tracing::debug!(error = %e, %statement, "a result: not computed");
+                failed.insert(statement);
             }
         }
     }
-    ran
 }
 
 /// Whether a statement is a measurement call, `SELECT <function>() FROM

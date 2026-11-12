@@ -34,7 +34,6 @@ pub mod glossed;
 pub mod ipc;
 mod overview;
 mod pages;
-mod remeasure;
 
 /// The engine the interfaces are built on: the facade over DuckDB and the
 /// glossql extension, under the one name an interface uses.
@@ -138,10 +137,6 @@ pub fn router(plane: Arc<Plane>, origin: &str) -> Router {
         .route("/{app}/frames/{frame}", get(frames::frame))
         .route("/{app}/specs/{spec}", get(pages::spec))
         .route("/{app}/decide", axum::routing::post(decide::decide))
-        .route(
-            "/{app}/remeasure",
-            axum::routing::post(remeasure::remeasure),
-        )
         .with_state(AppInterface {
             plane,
             origin: origin.into(),

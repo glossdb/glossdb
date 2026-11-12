@@ -38,7 +38,7 @@ statement ok
 FROM glossql_kit('{KITS}/goals/kit.sql');
 
 query I
-SELECT count(*) FROM results_due(preview := true);
+SELECT count(*) FROM results_due();
 ----
 0
 
@@ -139,12 +139,12 @@ SELECT asset, state, statement FROM next WHERE asset = 'ops' AND statement LIKE 
 ----
 ops	not_run	SELECT metric_ranges() FROM ops;
 
-# the server does not run it after a write; a person's re-measure does
-query IT
+# the server does not run it after a write: results_due() does not list it, and `next` does
+query II
 SELECT (SELECT count(*) FROM results_due() WHERE function = 'metric_ranges'),
-       (SELECT run FROM results_due(preview := true) WHERE function = 'metric_ranges');
+       (SELECT count(*) FROM next WHERE statement = 'SELECT metric_ranges() FROM ops;');
 ----
-0	SELECT metric_ranges() FROM ops
+0	1
 
 statement ok
 SELECT metric_ranges() FROM ops;

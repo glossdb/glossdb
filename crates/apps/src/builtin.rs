@@ -95,7 +95,6 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("measures.sql"),
         frame!("reads.sql"),
         frame!("relations.sql"),
-        frame!("remeasure.sql"),
         frame!("settled.sql"),
         frame!("slices.sql"),
         frame!("source_head.sql"),

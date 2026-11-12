@@ -88,9 +88,8 @@ A substituted `href` or `src` with a script-capable scheme becomes
 
 ## Writes and refresh
 
-An app's pages read. The console adds two writes, each answered with
-an event the tiles refetch on: a review decision (`glossql:written`)
-and a re-measure (`glossql:remeasured`).
+An app's pages read. The console adds one write, a review decision,
+answered with the event the tiles refetch on (`glossql:written`).
 
 ## The console as an example
 

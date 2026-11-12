@@ -4,7 +4,7 @@
 -- work list of the bound dataset (`next`).
 
 --===------------------------------------------------------------------===--
--- results_due(preview := false): the results the bound dataset wants that
+-- results_due(): the results the bound dataset wants that
 -- are missing or out of date, each with the statement that computes it,
 -- in the order to run them: ord, function, subject, run. A result is out
 -- of date when an input it read has another version now (the catalog's
@@ -13,11 +13,10 @@
 -- and on what it reads. A profile and the relationship check come first:
 -- the tests read them, and so does a measurement a metric's row names as
 -- not run (the grain of its period column). The server computes these
--- after each write. With preview := true the preview measurements that
--- are due come last (outlook_measurements()): they call the model
--- service, so a person or an agent runs them, and `next` lists them.
+-- after each write. A preview measurement calls the model service and is
+-- not among them: where it is due, `next` lists it with its statement.
 --===------------------------------------------------------------------===--
-CREATE OR REPLACE MACRO main.results_due(preview := false) AS TABLE
+CREATE OR REPLACE MACRO main.results_due() AS TABLE
 WITH ds AS (SELECT current_schema() AS d),
 metrics AS (
   SELECT view FROM main.view_summary()
@@ -44,10 +43,7 @@ WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 3, t.aspect, t.subject, t.run
 FROM main.view_tests_without_preview() t
-WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current)
-UNION ALL
-SELECT 4, m.name, ds.d, 'SELECT ' || m.name || '() FROM ' || ds.d
-FROM main.outlook_measurements() m, ds WHERE preview AND m.due;
+WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current);
 
 --===------------------------------------------------------------------===--
 -- load_changes(): per table of the bound dataset loaded more than once,

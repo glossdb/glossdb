@@ -136,9 +136,10 @@ datasets.
 | Review | the review queue and the decisions |
 | Data | export as CSV or Parquet; a query pane for reads |
 
-The console reads, with two writes: a review decision, and
-**Re-measure**, which runs again each measurement stored before the
-last change it read.
+The console reads, with one write: a review decision. The server
+computes the results a view needs after each write; a preview
+measurement that is due is a row of `next`, with the statement that
+runs it.
 
 ## Data apps
 

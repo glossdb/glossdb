@@ -942,7 +942,6 @@ main.with-tree > .content { min-width: 0; }
 .wbtn.on { color: var(--open); border-color: var(--open-dim); }
 
 gl-window { display: block; margin: 0.4rem 0 0.8rem; }
-.remeasure { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; }
 
 /* The Glossary's dictionary: a table's columns folded as lines; and
    the query pane, the Query tab's and a view's page's. */
