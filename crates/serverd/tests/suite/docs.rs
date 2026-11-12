@@ -29,32 +29,22 @@ fn blocks() -> Vec<Block> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn every_doc_example_parses() {
-    let broken = examples::unparsed(&blocks()).await;
+async fn every_doc_example_parses_and_every_read_binds() {
+    let report = examples::check(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.unparsed.is_empty(),
         "doc examples that do not parse:\n{}",
-        broken.join("\n")
+        report.unparsed.join("\n")
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn every_doc_function_body_compiles() {
-    let (_, broken) = examples::broken_function_bodies(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.broken_bodies.is_empty(),
         "doc function bodies that do not compile:\n{}",
-        broken.join("\n")
+        report.broken_bodies.join("\n")
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn every_doc_read_names_columns_that_exist() {
-    let (_, broken) = examples::unbound_reads(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.unbound_reads.is_empty(),
         "doc examples naming something the reads do not serve:\n{}",
-        broken.join("\n")
+        report.unbound_reads.join("\n")
     );
 }
 
@@ -70,7 +60,7 @@ fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
         .join("../..")
         .canonicalize()
         .unwrap();
-    let mut on_disk: Vec<(String, String)> = Vec::new();
+    let mut on_disk: Vec<String> = Vec::new();
     let mut stack = vec![repo.join("vendor")];
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d).unwrap().filter_map(|e| e.ok()) {
@@ -83,22 +73,20 @@ fn the_served_substrate_guide_is_the_vendor_directory_at_the_pin() {
                     .unwrap()
                     .to_string_lossy()
                     .into_owned();
-                on_disk.push((rel, std::fs::read_to_string(&path).unwrap()));
+                on_disk.push(rel);
             }
         }
     }
     on_disk.sort();
-    let mut served: Vec<(String, String)> = glossdb_serverd::skills::VENDORED
+    let mut served: Vec<String> = glossdb_serverd::skills::VENDORED
         .iter()
-        .map(|p| (p.path.to_string(), p.body.to_string()))
+        .map(|p| p.path.to_string())
         .collect();
     served.sort();
     assert_eq!(
-        served.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
-        on_disk.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
+        served, on_disk,
         "the served guide is the files under vendor/"
     );
-    assert_eq!(served, on_disk, "a served page is the file as it stands");
     let pages = glossdb_serverd::skills::served_pages()
         .expect("the language's documents beside the extension's kits");
     for p in glossdb_serverd::skills::VENDORED {

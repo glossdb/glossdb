@@ -83,11 +83,46 @@ pub fn under(root: &Path, base: &Path) -> Vec<Block> {
     out
 }
 
-/// The examples the engine does not parse, the language's grammar on:
-/// the extension's parser is the one the interface runs.
-pub async fn unparsed(blocks: &[Block]) -> Vec<String> {
+/// What one pass over a tree's blocks found on one scratch workspace:
+/// each list names a block and why, the counts say how much was checked.
+pub struct Report {
+    pub unparsed: Vec<String>,
+    pub bodies_checked: usize,
+    pub broken_bodies: Vec<String>,
+    pub reads_bound: usize,
+    pub unbound_reads: Vec<String>,
+}
+
+/// The three checks over `blocks`, on one scratch workspace with the
+/// datasets the examples name, `ops` in use.
+pub async fn check(blocks: &[Block]) -> Report {
     let (_dir, plane) = common::scratch_plane().await;
     let session = plane.channel(common::human(), None).await.unwrap();
+    for name in ["ops", "fin", "orders", "erp_export"] {
+        session
+            .execute(&format!(
+                "DECLARE DATASET {name} SET (purpose: 'the examples harness');"
+            ))
+            .await
+            .unwrap();
+    }
+    session.execute("USE ops;").await.unwrap();
+    let (bodies_checked, broken_bodies) = broken_function_bodies(&session, blocks).await;
+    let (reads_bound, unbound_reads) = unbound_reads(&session, blocks).await;
+    Report {
+        unparsed: unparsed(&session, blocks).await,
+        bodies_checked,
+        broken_bodies,
+        reads_bound,
+        unbound_reads,
+    }
+}
+
+type Session = glossdb_serverd::engine::Session;
+
+/// The examples the engine does not parse, the language's grammar on:
+/// the extension's parser is the one the interface runs.
+async fn unparsed(session: &Session, blocks: &[Block]) -> Vec<String> {
     let mut broken = Vec::new();
     for b in blocks {
         if let Err(e) = session.parse(&b.sql).await {
@@ -101,9 +136,7 @@ pub async fn unparsed(blocks: &[Block]) -> Vec<String> {
 /// and how many bodies were checked. The engine's parser cannot see
 /// inside a dollar-quoted body, so a broken one parses perfectly as
 /// part of its statement.
-pub async fn broken_function_bodies(blocks: &[Block]) -> (usize, Vec<String>) {
-    let (_dir, plane) = common::scratch_plane().await;
-    let session = plane.channel(common::human(), None).await.unwrap();
+async fn broken_function_bodies(session: &Session, blocks: &[Block]) -> (usize, Vec<String>) {
     let mut checked = 0;
     let mut broken = Vec::new();
     for b in blocks {
@@ -134,20 +167,9 @@ pub async fn broken_function_bodies(blocks: &[Block]) -> (usize, Vec<String>) {
 /// naming a column, a relation or a function the engine and its kits
 /// do not serve — and how many reads were bound. A missing table is
 /// fine: an example may name a customer's data. A missing column is
-/// not. One channel for the run, with a dataset in use — the names the
-/// examples spell — so a read reaches its columns.
-pub async fn unbound_reads(blocks: &[Block]) -> (usize, Vec<String>) {
-    let (_dir, plane) = common::scratch_plane().await;
-    let session = plane.channel(common::human(), None).await.unwrap();
-    for name in ["ops", "fin", "orders", "erp_export"] {
-        session
-            .execute(&format!(
-                "DECLARE DATASET {name} SET (purpose: 'the examples harness');"
-            ))
-            .await
-            .unwrap();
-    }
-    session.execute("USE ops;").await.unwrap();
+/// not. The channel has a dataset in use — the names the examples
+/// spell — so a read reaches its columns.
+async fn unbound_reads(session: &Session, blocks: &[Block]) -> (usize, Vec<String>) {
     let mut bound = 0;
     let mut broken = Vec::new();
     for b in blocks {

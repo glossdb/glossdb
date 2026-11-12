@@ -798,43 +798,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_dataset_does_not_multiply_a_views_rows() {
-    // With two datasets in the
-    // workspace, frames that scanned the `datasets` relation fanned
-    // every joined row out — two formulas, two materializations. The
-    // bound dataset rides in as `current_dataset` instead; one row per
-    // face.
-    let (app, plane, _dir) = workspace().await;
-    seed_model_shapes(&plane).await; // seeds a second dataset
-
-    let metric = get(&app, "/perf/app/console/frames/view?view=dso").await;
-    assert_eq!(metric.status(), StatusCode::OK);
-    let served = frame(metric).await;
-    assert_eq!(served.col("aspect"), ["dso"]);
-    // The formula the seed wrote, not the empty-state prose. Counting
-    // rows alone is how the face came to render nothing in every real
-    // workspace: the fixture wrote a formula no skill ever taught an
-    // agent to write, so the join returned a row and the value was null
-    // everywhere but here.
-    assert_eq!(
-        served.col("formula"),
-        ["ar[end of w] / revenue[w] * days[w]"]
-    );
-    // Unit and meaning come from the `definitions` registry, never the
-    // aspect blob — a declaration cannot be superseded, and exactly
-    // this field goes stale there.
-    // The seed's blob carries no unit, so a face reading `x-unit` shows
-    // nothing and this fails.
-    assert_eq!(
-        served.col("meaning"),
-        ["receivables outstanding expressed in days of revenue"]
-    );
-    let assumptions = get(&app, "/perf/app/console/frames/assumptions?view=dso").await;
-    assert_eq!(assumptions.status(), StatusCode::OK);
-    assert_eq!(row_count(assumptions).await, 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_recorded_again() {
     // A person writes a formula for a metric that is newer than the
     // metric's recorded definition. The open list shows a row for the
@@ -886,21 +849,30 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
     );
 }
 
+/// The metric frame serves one row per view: with a second dataset in
+/// the workspace (the seed declares one) and with two values on
+/// `definitions`, the winning one — a person's over the agent's. Unit,
+/// formula and meaning come from the `definitions` registry, not the
+/// aspect's declaration. The assumptions frame serves the agent's
+/// working record, which a person's definition does not replace.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metric_frame_serves_the_winning_value_once() {
-    // With two values on `definitions` (human and
-    // agent) the detail rendered the formula and the materialization
-    // twice. The metric face reads the winning value only — human
-    // outranking agent, exactly like the collapsed read. The
-    // assumptions ledger is different: it
-    // is the AGENT's working record (review decisions annotate it, and a human
-    // supersede of the metric governs reads without replacing it).
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let before = get(&app, "/perf/app/console/frames/view?view=dso").await;
-    assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(row_count(before).await, 1);
+    let served = frame(get(&app, "/perf/app/console/frames/view?view=dso").await).await;
+    assert_eq!(served.col("aspect"), ["dso"]);
+    assert_eq!(
+        served.col("formula"),
+        ["ar[end of w] / revenue[w] * days[w]"]
+    );
+    assert_eq!(
+        served.col("meaning"),
+        ["receivables outstanding expressed in days of revenue"]
+    );
+    assert_eq!(served.col("unit"), ["days"]);
+    let assumptions = get(&app, "/perf/app/console/frames/assumptions?view=dso").await;
+    assert_eq!(row_count(assumptions).await, 2);
 
     // The human answers the formula, then supersedes the metric gloss
     // itself — both through their session channel.

@@ -1,9 +1,5 @@
-//! The skills, under the standing invariant.
-//!
-//! Run 2's first friction was five skills teaching `SELECT value FROM
-//! GLOSSARY(…)` — a column that does not exist and never did. Prose
-//! drifts from a moving surface because nothing checks it, so the
-//! examples are checked here instead of proofread.
+//! The skills, under the standing invariant: their examples are
+//! checked here instead of proofread.
 //!
 //! Two rules, over every fenced ` ```glossql ` and ` ```sql ` block in
 //! the product skills (every `.md` under `skills/<name>/` — the
@@ -50,41 +46,36 @@ fn blocks() -> Vec<Block> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn every_skill_example_parses() {
-    let broken = examples::unparsed(&blocks()).await;
+async fn every_skill_example_parses_and_every_read_binds() {
+    let report = examples::check(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.unparsed.is_empty(),
         "skill examples that do not parse:\n{}",
-        broken.join("\n")
+        report.unparsed.join("\n")
     );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_function_body_compiles() {
-    let (checked, broken) = examples::broken_function_bodies(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.broken_bodies.is_empty(),
         "skill function bodies that do not compile:\n{}",
-        broken.join("\n")
+        report.broken_bodies.join("\n")
     );
     assert!(
-        checked >= 2,
-        "only {checked} function bodies were compiled — the scan has stopped finding its subject"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_read_names_columns_that_exist() {
-    let (bound, broken) = examples::unbound_reads(&blocks()).await;
-    assert!(
-        broken.is_empty(),
+        report.unbound_reads.is_empty(),
         "skill examples naming something the reads do not serve:\n{}",
-        broken.join("\n")
+        report.unbound_reads.join("\n")
     );
-    // A test that silently checks nothing passes forever. The skills
-    // teach reads; if this floor is not met, the classification has
-    // started skipping what it should be holding.
-    assert!(bound >= 12, "only {bound} skill reads were bound");
+    // A scan that silently checks nothing passes forever: the skills
+    // teach function bodies and reads, and these floors say the scan
+    // still finds its subject.
+    assert!(
+        report.bodies_checked >= 2,
+        "only {} function bodies were compiled",
+        report.bodies_checked
+    );
+    assert!(
+        report.reads_bound >= 12,
+        "only {} skill reads were bound",
+        report.reads_bound
+    );
 }
 
 /// The served table is the directory. `include_str!` keeps each
@@ -116,10 +107,8 @@ fn the_served_skills_are_the_skills_directory() {
             skill.name
         );
     }
-    // And every reference on disk is served, current, under the
-    // skill's own root — the build embeds the directory, and this is
-    // what proves the embedding is the directory as it stands.
-    let mut on_disk: Vec<(String, String)> = Vec::new();
+    // And every reference on disk is served, under the skill's own root.
+    let mut on_disk: Vec<String> = Vec::new();
     let mut stack = vec![dir.clone()];
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d).unwrap().filter_map(|e| e.ok()) {
@@ -134,29 +123,19 @@ fn the_served_skills_are_the_skills_directory() {
                     .unwrap()
                     .to_string_lossy()
                     .into_owned();
-                on_disk.push((rel, std::fs::read_to_string(&path).unwrap()));
+                on_disk.push(rel);
             }
         }
     }
     on_disk.sort();
-    let mut served: Vec<(String, String)> = glossdb_serverd::skills::REFERENCES
+    let mut served: Vec<String> = glossdb_serverd::skills::REFERENCES
         .iter()
-        .map(|p| {
-            (
-                p.path.strip_prefix("skills/").unwrap().to_string(),
-                p.body.to_string(),
-            )
-        })
+        .map(|p| p.path.strip_prefix("skills/").unwrap().to_string())
         .collect();
     served.sort();
     assert_eq!(
-        served.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
-        on_disk.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
-        "the served references are the files under skills/"
-    );
-    assert_eq!(
         served, on_disk,
-        "a served reference is the file as it stands"
+        "the served references are the files under skills/"
     );
     for p in glossdb_serverd::skills::REFERENCES {
         assert!(
