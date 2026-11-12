@@ -1720,7 +1720,6 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     let stored = "USE fin; \
         SELECT aspect, key, stance, note, folded_in FROM review_decisions; \
         SELECT aspect, actor_kind FROM glossary WHERE actor_kind = 'human'; \
-        SELECT kind, subject FROM open_items WHERE kind = 'apply-decision'; \
         SELECT step, asset, state, who, for_view FROM next WHERE step = 'review';";
     let body = expect_ok(mcp(app.clone(), call_with(meta(), 83, stored, None)).await).await;
     let outcomes = outcomes_of(&body);
@@ -1738,11 +1737,6 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     // What the agent is asked to do: apply the decision to the view.
     assert_eq!(
         outcomes[3]["rows"],
-        json!([{"kind": "apply-decision", "subject": "dso"}]),
-        "{outcomes}"
-    );
-    assert_eq!(
-        outcomes[4]["rows"],
         json!([{"step": "review", "asset": "fin.dso", "state": "decided",
                 "who": "agent", "for_view": "dso"}]),
         "{outcomes}"

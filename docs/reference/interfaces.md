@@ -157,7 +157,7 @@ where the refusal came out of a function.
 | `/<dataset>/app/<app>/frames/<frame>` | a frame as Arrow IPC; URL parameters bind as `$name` |
 | `/<dataset>/app/<app>/specs/<spec>` | a chart spec |
 | `POST /<dataset>/app/<app>/decide` | a review decision; 409 when the question is no longer open |
-| `POST /<dataset>/app/<app>/remeasure` | run stale and missing measurements again |
+| `POST /<dataset>/app/<app>/remeasure` | run the missing and out-of-date measurements, the preview measurements among them |
 | `/<dataset>/app/export/<name>.csv`, `.parquet` | a table or a view as a file; another format is a 404 |
 
 ## Sign-in on the wire

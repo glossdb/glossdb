@@ -54,7 +54,6 @@ narrows either to one property.
 | `agent_assumptions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `aspect`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
 | `view_definitions` | dataset | `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `defined`, `stopped` |
-| `open_items` | dataset | `kind`, `subject`, `what`, `why`, `since` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
 | `app_releases` | workspace | `dataset`, `app`, `at`, `note`, `actor_kind`, `released_at` |
@@ -71,8 +70,6 @@ narrows either to one property.
   annotation on the view, `unit` the `unit` of a metric's or a single
   value's value column. `formula` is the view's formula in the
   dataset's `definitions` annotation, NULL where there is none.
-- `open_items`: `kind` is `recipe-change`, `formula`, `conflict`,
-  `re-measure`, `never measured` or `apply-decision`.
 - `workspace_status`: `area` is `sources`, `tables`, `relationships`,
   `properties`, `annotations`, `functions`, `views`, `tests`,
   `scenarios`, `plans`, `review` or `apps`. For `tests`, `open`

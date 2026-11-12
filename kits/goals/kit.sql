@@ -1,102 +1,89 @@
 -- The interfaces' reads that build on the kits', declared at every open
--- after the kits, where core.sql comes before them: `open_items` and
--- `next`, the work list of the bound dataset.
+-- after the kits, where core.sql comes before them: what the server
+-- brings current by itself (`results_due()`) and what it cannot, the
+-- work list of the bound dataset (`next`).
 
--- decided_items(): what a person decided and the catalog does not carry
--- yet — the `recipe-change` and `formula` rows of open_items, as a read
--- of their own, since `next` lists these two kinds and nothing else of it.
-CREATE OR REPLACE MACRO main.decided_items() AS TABLE
-  WITH ds AS (SELECT current_schema() AS dataset),
-  approvals AS (
-    SELECT h.dataset, json_extract_string(h.body, '$.table') AS tbl, h.written_at
-    FROM main.glossary h, ds
-    WHERE h.dataset = ds.dataset AND h.aspect = 'recipe_change' AND h.actor_kind = 'human'),
-  recipes AS (
-    SELECT 'recipe-change' AS kind, a.tbl AS subject, 'recipe change on ' || a.tbl AS what,
-           'approved — not yet declared again' AS why, a.written_at::VARCHAR AS since
-    FROM approvals a
-    WHERE a.tbl IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM main.imports i
-                      WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
-  -- a person's formula answer newer than the agent's current metric definition:
-  -- the view keeps serving the recorded SQL until the agent recomposes it
-  query_aspects AS (
-    SELECT name FROM main.aspects
-    QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1 AND kind = 'VIEW'),
-  current_definition AS (
-    SELECT g.dataset, g.subject, g.aspect, g.begin_snapshot FROM main.glossary g, ds
-    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind = 'agent'
-      AND g.aspect IN (SELECT name FROM query_aspects)
-    QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1),
-  answered AS (
-    SELECT h.dataset, h.subject, h.body, h.begin_snapshot, h.written_at FROM main.glossary h, ds
-    WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'definitions' AND h.actor_kind = 'human'
-    QUALIFY row_number() OVER (ORDER BY h.begin_snapshot DESC) = 1),
-  formulas AS (
-    SELECT 'formula' AS kind, g.aspect AS subject, 'formula answer on ' || g.aspect AS what,
-           'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
-    FROM current_definition g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.begin_snapshot > g.begin_snapshot
-    WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL)
-  SELECT * FROM recipes
-  UNION ALL SELECT * FROM formulas;
+--===------------------------------------------------------------------===--
+-- results_due(preview := false): the results the bound dataset wants that
+-- are missing or out of date, each with the statement that computes it,
+-- in the order to run them: ord, function, subject, run. A result is out
+-- of date when an input it read has another version now (the catalog's
+-- `inputs`). What a metric needs: the profile of each column it reads or
+-- joins on, the relationship check of its dataset, and the tests on it
+-- and on what it reads. A profile and the relationship check come first:
+-- the tests read them, and so does a measurement a metric's row names as
+-- not run (the grain of its period column). The server computes these
+-- after each write. With preview := true the preview measurements that
+-- are due come last (outlook_measurements()): they call the model
+-- service, so a person or an agent runs them, and `next` lists them.
+--===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.results_due(preview := false) AS TABLE
+WITH ds AS (SELECT current_schema() AS d),
+metrics AS (
+  SELECT view FROM main.view_summary()
+  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+columns AS (
+  SELECT s.table_name || '.' || unnest(s.columns) AS subject
+  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
+  UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
+  UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
+stored AS (
+  SELECT subject, aspect, bool_and(current) AS current
+  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
+SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
+FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
+WHERE NOT coalesce(s.current, false)
+UNION ALL
+SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
+       'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
+FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
+UNION ALL
+SELECT 2, 'relationship_coherence', ds.d, 'SELECT relationship_coherence() FROM ' || ds.d
+FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_coherence'
+WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
+UNION ALL
+SELECT DISTINCT 3, t.aspect, t.subject, t.run
+FROM main.view_tests_without_preview() t
+WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current)
+UNION ALL
+SELECT 4, m.name, ds.d, 'SELECT ' || m.name || '() FROM ' || ds.d
+FROM main.outlook_measurements() m, ds WHERE preview AND m.due;
 
--- What waits on an action in the bound dataset, from the data
--- alone: `recipe-change`, an approved load-query change with no load since;
--- `formula`, a person's formula answer newer than the metric's recorded
--- definition; `conflict`, a value withheld at read; `re-measure`, a
--- measurement stored before the last change; `never measured`, a
--- measurement a metric's row reads and nobody ran, or a tested
--- measurement on the dataset with no result while a metric is defined;
--- `apply-decision`, a review decision whose key is still below full confidence.
--- Each row resolves by the action it names, never by a flag.
-CREATE OR REPLACE VIEW main.open_items AS
-  WITH ds AS (SELECT current_schema() AS dataset),
-  collapsed AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
-  contests AS (
-    SELECT 'conflict' AS kind, c.subject, 'conflict: ' || c.subject || ' ' || c.aspect AS what,
-           'withheld at read — a detector crossed its threshold or the values differ' AS why, '' AS since
-    FROM collapsed c WHERE c.state = 'conflict'),
-  -- a kit's check on a metric (x-subject view) is the server's to run
-  -- again, at the next touch of the metric: never an item here; a
-  -- preview measurement is one only while it is due (outlook_due())
-  remeasures AS (
-    SELECT 're-measure' AS kind, v.actor AS subject, 'stale results from ' || v.actor AS what,
-           'stored before the last change — run the function again, or use Re-measure in the console' AS why, '' AS since
-    FROM (SELECT DISTINCT m.function AS actor FROM glossql_glossary(current_schema(), NULL, true) r
-          JOIN main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect
-          WHERE r.actor = 'function' AND NOT r.current
-            AND r.aspect NOT IN (SELECT name FROM main.aspects
-                                 WHERE json_extract_string(schema, '$.x-subject') = 'view')) v
-    WHERE NOT EXISTS (SELECT 1 FROM main.outlook_due() d WHERE d.name = v.actor AND NOT d.due)),
-  to_run AS (
-    SELECT DISTINCT split_part(w, ' over ', 1) AS function, split_part(w, ' over ', 2) AS over
-    FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary())),
-  unmeasured AS (
-    SELECT 'never measured' AS kind, w.function AS subject,
-           'never measured: ' || w.function || '() over ' || string_agg(w.over, ', ' ORDER BY w.over) AS what,
-           'the metric''s row reads it and no result exists — run the function over the column' AS why, '' AS since
-    FROM to_run w GROUP BY w.function),
-  unwalked AS (
-    SELECT 'never measured' AS kind, f.name AS subject,
-           'never measured: ' || f.name || '() over ' || ds.dataset AS what,
-           'a tested measurement on the dataset with no result — run the function' AS why, '' AS since
-    FROM main.functions f, ds
-    JOIN main.aspects a ON a.name = f.returns AND a.kind = 'MEASUREMENT'
-    WHERE (f.scope = 'GLOBAL' OR f.scope = ds.dataset) AND list_contains(a.grains, 'DATASET')
-      AND EXISTS (SELECT 1 FROM main.tests w WHERE w.aspect = a.name)
-      AND EXISTS (SELECT 1 FROM main.view_definitions s WHERE s.defined)
-      AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)),
-  foldins AS (
-    SELECT 'apply-decision' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
-           'decided (' || r.stance || ') — not yet applied to the definition' AS why, r.written_at::VARCHAR AS since
-    FROM main.review_decisions r, ds WHERE r.dataset = ds.dataset AND NOT r.folded_in)
-  SELECT * FROM main.decided_items()
-  UNION ALL SELECT * FROM contests
-  UNION ALL SELECT * FROM remeasures
-  UNION ALL SELECT * FROM unmeasured
-  UNION ALL SELECT * FROM unwalked
-  UNION ALL SELECT * FROM foldins;
-
+--===------------------------------------------------------------------===--
+-- load_changes(): per table of the bound dataset loaded more than once,
+-- what its newest load changed against the load before: the row count,
+-- and each column whose stored profile moved (distinct values, the share
+-- empty, the lowest and the highest value). Columns: table_name
+-- (<dataset>.<table>), cause.
+--===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.load_changes() AS TABLE
+WITH loads AS (
+  SELECT dataset || '.' || table_name AS tbl, rows, end_snapshot IS NULL AS newest,
+         lag(rows) OVER (PARTITION BY table_name ORDER BY begin_snapshot) AS rows_before
+  FROM main.imports_history WHERE dataset = current_schema()),
+profiles AS (
+  SELECT subject, value AS now_, end_snapshot IS NULL AS newest,
+         lag(value) OVER (PARTITION BY subject ORDER BY begin_snapshot) AS before
+  FROM main.measurements_history WHERE dataset = current_schema() AND function = 'column_profile'),
+moved AS (
+  SELECT array_to_string(string_split(subject, '.')[1:2], '.') AS tbl, subject,
+         concat_ws(', ',
+           CASE WHEN now_->>'distinct' IS DISTINCT FROM before->>'distinct'
+                THEN (now_->>'distinct') || ' distinct values, ' || (before->>'distinct') || ' before' END,
+           CASE WHEN now_->>'null_ratio' IS DISTINCT FROM before->>'null_ratio'
+                THEN round(CAST(now_->>'null_ratio' AS DOUBLE) * 100, 1) || '% empty, '
+                     || round(CAST(before->>'null_ratio' AS DOUBLE) * 100, 1) || '% before' END,
+           CASE WHEN now_->>'min' IS DISTINCT FROM before->>'min'
+                THEN 'lowest ' || coalesce(now_->>'min', 'none') || ', ' || coalesce(before->>'min', 'none') || ' before' END,
+           CASE WHEN now_->>'max' IS DISTINCT FROM before->>'max'
+                THEN 'highest ' || coalesce(now_->>'max', 'none') || ', ' || coalesce(before->>'max', 'none') || ' before' END) AS what
+  FROM profiles WHERE newest AND before IS NOT NULL),
+changed AS (
+  SELECT tbl, string_agg(string_split(subject, '.')[3] || ' (' || what || ')', '; ' ORDER BY subject) AS what
+  FROM moved WHERE what <> '' GROUP BY tbl)
+SELECT l.tbl AS table_name, 'loaded again: ' || l.rows || ' rows, ' || l.rows_before || ' before' || coalesce('; ' || c.what, '') AS cause
+FROM loads l LEFT JOIN changed c USING (tbl)
+WHERE l.newest AND l.rows_before IS NOT NULL;
 
 -- next: what is open on the bound dataset, read from the states the
 -- catalog holds and narrowed to what the views read and serve. One
@@ -125,7 +112,23 @@ CREATE OR REPLACE VIEW main.next AS
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
             FROM glossql_views_scans(current_schema())),
   summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
-  items AS MATERIALIZED (SELECT * FROM main.decided_items()),
+  -- a load-query change a person approved, with no load of the table since
+  approved AS (
+    SELECT json_extract_string(a.body, '$.table') AS tbl FROM main.glossary a, ds
+    WHERE a.dataset = ds.d AND a.aspect = 'recipe_change' AND a.actor_kind = 'human'
+      AND json_extract_string(a.body, '$.table') IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.d
+                        AND i.table_name = json_extract_string(a.body, '$.table') AND i.imported_at >= a.written_at)),
+  -- a person's formula newer than the agent's definition of the view:
+  -- the view serves the recorded SQL until the agent records it again
+  formulas AS (
+    SELECT g.aspect AS view
+    FROM main.glossary g JOIN main.glossary h ON h.dataset = g.dataset AND h.subject = g.subject AND h.begin_snapshot > g.begin_snapshot, ds
+    WHERE g.dataset = ds.d AND g.subject = ds.d AND g.actor_kind = 'agent'
+      AND g.aspect IN (SELECT name FROM main.aspects WHERE kind = 'VIEW')
+      AND h.aspect = 'definitions' AND h.actor_kind = 'human'
+      AND json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
+  reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
   -- the preview features' tests come in through outlook_findings(), below
   vt AS MATERIALIZED (SELECT * FROM main.view_tests_without_preview()),
   -- the assets a view reads, the view itself, and the columns of a
@@ -208,46 +211,6 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, false, false, u.statement
     FROM (SELECT m.view, unnest(m.columns_without_role) AS col, unnest(m.missing) AS statement FROM summary m
           WHERE m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation', 'plan')) u, ds),
-  -- the newest load of each table against the one before it
-  loads AS (
-    SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
-           lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot) AS rows_before,
-           row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) AS rn
-    FROM main.imports_history i, ds WHERE i.dataset = ds.d),
-  -- what the newest load changed in a column a view reads: its
-  -- stored profile against the one before
-  profiles AS (
-    SELECT m.subject, m.value,
-           lag(m.value) OVER (PARTITION BY m.subject ORDER BY m.begin_snapshot) AS before,
-           row_number() OVER (PARTITION BY m.subject ORDER BY m.begin_snapshot DESC) AS rn
-    FROM main.measurements_history m, ds WHERE m.dataset = ds.d AND m.function = 'column_profile'),
-  changed AS (
-    SELECT array_to_string(string_split(p.subject, '.')[1:2], '.') AS tbl,
-           string_agg(string_split(p.subject, '.')[3] || ' ('
-             || concat_ws(', ',
-                  CASE WHEN p.value->>'distinct' IS DISTINCT FROM p.before->>'distinct'
-                       THEN (p.value->>'distinct') || ' distinct values, ' || (p.before->>'distinct') || ' before' END,
-                  CASE WHEN p.value->>'null_ratio' IS DISTINCT FROM p.before->>'null_ratio'
-                       THEN round(CAST(p.value->>'null_ratio' AS DOUBLE) * 100, 1) || '% empty, '
-                            || round(CAST(p.before->>'null_ratio' AS DOUBLE) * 100, 1) || '% before' END,
-                  CASE WHEN p.value->>'min' IS DISTINCT FROM p.before->>'min'
-                       THEN 'lowest ' || coalesce(p.value->>'min', 'none') || ', ' || coalesce(p.before->>'min', 'none') || ' before' END,
-                  CASE WHEN p.value->>'max' IS DISTINCT FROM p.before->>'max'
-                       THEN 'highest ' || coalesce(p.value->>'max', 'none') || ', ' || coalesce(p.before->>'max', 'none') || ' before' END)
-             || ')', '; ' ORDER BY p.subject) AS what
-    FROM profiles p
-    WHERE p.rn = 1 AND p.before IS NOT NULL
-      AND (p.value->>'distinct' IS DISTINCT FROM p.before->>'distinct'
-        OR p.value->>'null_ratio' IS DISTINCT FROM p.before->>'null_ratio'
-        OR p.value->>'min' IS DISTINCT FROM p.before->>'min'
-        OR p.value->>'max' IS DISTINCT FROM p.before->>'max')
-    GROUP BY 1),
-  -- per table loaded more than once: the newest load against the one before
-  reloaded AS (
-    SELECT l.tbl, 'loaded again: ' || l.rows || ' rows, ' || l.rows_before || ' before'
-                  || coalesce('; ' || c.what, '') AS cause
-    FROM loads l LEFT JOIN changed c ON c.tbl = l.tbl
-    WHERE l.rn = 1 AND l.rows_before IS NOT NULL),
   s_load AS (
     SELECT 3 AS priority, 1 AS ord, 'integrate' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
@@ -260,11 +223,11 @@ CREATE OR REPLACE VIEW main.next AS
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
-    SELECT 2, 1, 'integrate', ds.d || '.' || o.subject, 'decided', 'agent',
-           'a person approved a change to the load query of ' || o.subject || '; it is not declared yet', '', '',
+    SELECT 2, 1, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
+           'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '', '',
            '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
-             || 'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
-    FROM items o, ds WHERE o.kind = 'recipe-change'),
+             || 'DECLARE RECIPE ' || o.tbl || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
+    FROM approved o, ds),
   s_describe AS (
     SELECT CASE h.state WHEN 'conflict' THEN 1 WHEN 'stale' THEN 2 ELSE 3 END, 2, 'describe', h.home, h.state, 'agent',
            count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' WHEN 'conflict' THEN 'in conflict' ELSE h.state END || ': '
@@ -337,11 +300,11 @@ CREATE OR REPLACE VIEW main.next AS
              || main.view_redefine(ds.d, r.aspect)
     FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
-    SELECT 2, 4, 'review', ds.d || '.' || o.subject, 'decided', 'agent',
-           'a person''s formula for ' || o.subject || ' is newer than its definition', o.subject, '',
-           '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.subject || '''; change the SQL to match it, then record the definition again:' || chr(10)
-             || main.view_redefine(ds.d, o.subject)
-    FROM items o, ds WHERE o.kind = 'formula'
+    SELECT 2, 4, 'review', ds.d || '.' || o.view, 'decided', 'agent',
+           'a person''s formula for ' || o.view || ' is newer than its definition', o.view, '',
+           '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.view || '''; change the SQL to match it, then record the definition again:' || chr(10)
+             || main.view_redefine(ds.d, o.view)
+    FROM formulas o, ds
     UNION ALL
     SELECT 9, 4, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',

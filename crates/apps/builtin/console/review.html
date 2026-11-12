@@ -17,8 +17,8 @@
          chip="review_decisions",
          note="Every review decision in this dataset, in the person's own words.") }}
     {{ tiles::value(frame="frames/front", field="waiting", label="Waiting for an action",
-         chip="open_items",
-         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations, a measurement older than the data.") }}
+         chip="next",
+         note="What waits for the agent: a value to annotate, a red test, a conflict between annotations, a review decision to apply, a load after an approved load-query change.") }}
   </div>
 
   <section class="tile" id="queue">

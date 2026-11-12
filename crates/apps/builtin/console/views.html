@@ -26,9 +26,9 @@
 </gl-rows>
 {{ object::subtabs(q=q, tab=tab, used="Source columns") }}
 <div class="tiles">
-  {# A function's result computed before the newest load is served and
-     marked, and one a test reads may be missing. One row while either
-     holds; the button computes them and the frames refetch. #}
+  {# A preview measurement that is due, or a result the server could not
+     compute after a write. One row while any is; the button computes
+     them and the frames refetch. #}
   <gl-rows frame="frames/remeasure" empty="">
     <template>
       <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">
@@ -272,9 +272,9 @@
     </gl-rows>
   </section>
 
-  {# A function's result computed before the newest load is served and
-     marked, and one a test reads may be missing. One row while either
-     holds; the button computes them and the frames refetch. #}
+  {# A preview measurement that is due, or a result the server could not
+     compute after a write. One row while any is; the button computes
+     them and the frames refetch. #}
   <gl-rows frame="frames/remeasure" empty="">
     <template>
       <form class="remeasure" hx-post="/{{ dataset }}/app/console/remeasure" hx-swap="none">

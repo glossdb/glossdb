@@ -1,23 +1,12 @@
--- One row while any measurement in the dataset holds from before the
--- last change — a function's value loaded at an earlier data version, served and
--- marked — or while one a metric's row or a test reads was never
--- made (`open_items`'s `never measured` rows). Catalog-class: the banner
--- appears with the write that caused it and clears when re-measure
--- lands.
-WITH stale AS (
-  SELECT actor, count(*) AS n FROM GLOSSARY(all => true)
-  WHERE NOT current AND lower(kind) = 'measurement' GROUP BY actor),
-unmade AS (SELECT subject AS actor FROM open_items WHERE kind = 'never measured'),
-counts AS (
-  SELECT (SELECT coalesce(sum(n), 0) FROM stale) AS n,
-         (SELECT count(*) FROM unmade) AS m,
-         (SELECT string_agg(actor, ', ' ORDER BY actor)
-          FROM (SELECT actor FROM stale UNION SELECT actor FROM unmade)) AS functions)
-SELECT n, m,
-       coalesce(functions, '') AS functions,
-       concat_ws(', ',
-         CASE WHEN n > 0 THEN CAST(n AS VARCHAR) || ' measurements are from before the last change' END,
-         CASE WHEN m > 0 THEN CAST(m AS VARCHAR) || ' measurements that a metric or a test reads were never run' END)
-         || ' (' || coalesce(functions, '') || ') — the numbers are current; the column roles, the slices and the test results may not be.' AS hint
-FROM counts
-WHERE n > 0 OR m > 0
+-- One row while a measurement the metrics read is missing or out of
+-- date (`results_due(preview := true)`): the server computes the others
+-- after each write, so a row here is a preview measurement, which calls
+-- the model service, or one that could not be computed. Catalog-class:
+-- the banner appears with the write that caused it and clears when
+-- re-measure lands.
+SELECT count(*) AS n,
+       string_agg(DISTINCT function, ', ' ORDER BY function) AS functions,
+       count(*) || ' measurements are missing or out of date (' || string_agg(DISTINCT function, ', ' ORDER BY function)
+         || ') — the numbers are current; the column roles, the slices and the test results may not be.' AS hint
+FROM results_due(preview := true)
+HAVING count(*) > 0

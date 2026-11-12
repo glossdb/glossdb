@@ -46,7 +46,7 @@ versions.
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
 | unit test | a measurement, a test | function, `TEST` |
-| test coverage | coverage of required annotations | `open_items`, `missing` |
+| test coverage | coverage of required annotations | `missing` in `next` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
 | code review | the review queue | `open_questions` |
@@ -67,7 +67,7 @@ type it. Never a project word the reader cannot look up.
 | console | docket | the `console` path |
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
-| missing, required; coverage | owed | `open_items` |
+| missing, required; coverage | owed | `missing` |
 | metric definition | grounding | |
 | load | landing, land | `IMPORT` |
 | load query | recipe (in prose) | `RECIPE` |

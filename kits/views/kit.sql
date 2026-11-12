@@ -821,47 +821,6 @@ FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM d
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
          current, view, test, subject;
 
---===------------------------------------------------------------------===--
--- results_due(): the results the bound dataset wants that are missing or
--- out of date, each with the statement that computes it, in the order to
--- run them: ord, function, subject, run. A result is out of date when an
--- input it read has another version now (the catalog's `inputs`). What a
--- metric needs: the profile of each column it reads or joins on, the
--- relationship check of its dataset, and the tests on it and on what it
--- reads. A profile and the relationship check come first: the tests
--- read them, and so does a measurement a metric's row names as not run
--- (the grain of its period column). The preview features' measurements
--- are not among them: a person or an agent runs those.
---===------------------------------------------------------------------===--
-CREATE OR REPLACE MACRO main.results_due() AS TABLE
-WITH ds AS (SELECT current_schema() AS d),
-metrics AS (
-  SELECT view FROM main.view_summary()
-  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
-columns AS (
-  SELECT s.table_name || '.' || unnest(s.columns) AS subject
-  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
-  UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
-  UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
-stored AS (
-  SELECT subject, aspect, bool_and(current) AS current
-  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
-SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
-FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
-WHERE NOT coalesce(s.current, false)
-UNION ALL
-SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
-       'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
-FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
-UNION ALL
-SELECT 2, 'relationship_coherence', ds.d, 'SELECT relationship_coherence() FROM ' || ds.d
-FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_coherence'
-WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
-UNION ALL
-SELECT DISTINCT 3, t.aspect, t.subject, t.run
-FROM main.view_tests_without_preview() t
-WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current);
-
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
 SELECT * FROM (
   SELECT * FROM main.view_tests_without_preview()

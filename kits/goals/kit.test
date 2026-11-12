@@ -1,5 +1,5 @@
 # name: kits/goals/kit.test
-# description: the goals kit — what waits on an action (`open_items`) and the work list `next`, on the kits before it; run again, it holds
+# description: the goals kit — what the server computes after a write (`results_due()`) and the work list `next`, on the kits before it; run again, it holds
 # group: [sql]
 
 require glossql
@@ -38,7 +38,7 @@ statement ok
 FROM glossql_kit('{KITS}/goals/kit.sql');
 
 query I
-SELECT count(*) FROM open_items;
+SELECT count(*) FROM results_due(preview := true);
 ----
 0
 
@@ -133,6 +133,13 @@ SELECT asset, state, statement FROM next WHERE asset = 'ops' AND statement LIKE 
 ----
 ops	not_run	SELECT metric_ranges() FROM ops;
 
+# the server does not run it after a write; a person's re-measure does
+query IT
+SELECT (SELECT count(*) FROM results_due() WHERE function = 'metric_ranges'),
+       (SELECT run FROM results_due(preview := true) WHERE function = 'metric_ranges');
+----
+0	SELECT metric_ranges() FROM ops
+
 statement ok
 SELECT metric_ranges() FROM ops;
 
@@ -204,6 +211,11 @@ SELECT name, due FROM outlook_measurements() ORDER BY name;
 ----
 metric_forecast	true
 metric_ranges	true
+
+query TT
+SELECT table_name, starts_with(cause, 'loaded again: ') FROM load_changes();
+----
+ops.orders_raw	true
 
 statement ok
 SELECT metric_ranges() FROM ops;

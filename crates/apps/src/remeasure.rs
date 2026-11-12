@@ -1,13 +1,10 @@
-//! The console's second write, a compute act: re-run every measurement
-//! that holds from before the last change.
-//!
-//! Every write moves the data version, and a function's value loaded at an earlier
-//! data version is served and marked (SPEC.md §7): the numbers are current (a
-//! metric's view reads the data as it holds); the judged axes and the
-//! check results stand on those values until they run again. The banner counts them
-//! (the raw read's `current`), and this writes the next rows — the same
-//! extractions an agent would run, nothing authored: the functions
-//! speak.
+//! The console's second write, a compute act: the measurements the
+//! metrics read that are missing or out of date, the kit's
+//! `results_due(preview := true)`. The server computes the others after
+//! each write; what is left is a preview measurement, which calls the
+//! model service, or a result that could not be computed. The banner
+//! counts the same rows, and this runs them: the same extractions an
+//! agent would run, nothing authored.
 //!
 //! The response is the write event, as the review decision's is — and it names
 //! itself: 204 with `HX-Trigger: glossql:remeasured, glossql:written`.

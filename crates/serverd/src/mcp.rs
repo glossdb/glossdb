@@ -218,7 +218,7 @@ impl GlossqlMcp {
         let datasets = plane.datasets().await.map(|d| d.len()).unwrap_or(0);
         // How to begin, decided by whether anything holds to read: a
         // workspace before its first dataset has no summary to sweep —
-        // `open_items`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
+        // `next`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
         // the modeling skill's load page is where it starts.
         let opening = if datasets == 0 {
             "No dataset exists yet. `SELECT * FROM workspace_status` shows what the \
@@ -234,8 +234,8 @@ impl GlossqlMcp {
                 // Debt first, presence last: what owes an act is what
                 // the reader acts on, and a count of human writings is
                 // the catalog's size, not a task. The required acts are
-                // exactly `open_items`' kinds that the whole workspace can
-                // count; the questions are `open_questions`'s rows.
+                // the kinds of `next` row the whole workspace can count;
+                // the questions are `open_questions`'s rows.
                 let mut open = Vec::new();
                 if counts.decisions_open > 0 {
                     open.push(format!(

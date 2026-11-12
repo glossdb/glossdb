@@ -11,19 +11,34 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use glossdb_apps::engine::{Actor, ActorKind};
-use glossdb_apps::engine::{Caller, Plane};
+use glossdb_apps::engine::{Caller, Plane, Service};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
 const ORIGIN: &str = "https://glossql.example";
 
-async fn open_plane(dir: &std::path::Path) -> Plane {
-    Plane::open(glossdb_apps::engine::testing::golden(dir).await.unwrap())
-        .await
-        .unwrap()
+async fn open_plane(dir: &std::path::Path, service: Option<Service>) -> Plane {
+    let mut config = glossdb_apps::engine::testing::golden(dir).await.unwrap();
+    config.service = service;
+    Plane::open(config).await.unwrap()
 }
 
 async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
+    workspace_on(None).await
+}
+
+/// The workspace with a model service named: a preview measurement is
+/// due once a metric is served. Nothing in these tests calls it.
+async fn workspace_with_service() -> (Router, Arc<Plane>, tempfile::TempDir) {
+    workspace_on(Some(Service {
+        url: "http://model.test".into(),
+        token: None,
+        audience: None,
+    }))
+    .await
+}
+
+async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("ledger.csv"),
@@ -31,7 +46,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
     )
     .unwrap();
 
-    let plane = Arc::new(open_plane(dir.path()).await);
+    let plane = Arc::new(open_plane(dir.path(), service).await);
     let session = plane
         .channel(
             Actor {
@@ -1424,15 +1439,12 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         "cohort a moved between the two months; cohort b has one period"
     );
 
-    // The axes banner is silent while the results stand at this data version.
-    // On DuckDB the outlook kit's expected ranges and forecast are required from the
-    // first metric definition: the banner counts them in one row, the re-measure
-    // runs them, and with too short a history each stores its reasons
-    // without a call.
-    let preview = 1;
+    // The axes banner is silent while the results stand at this data
+    // version: the server computed them after each write, and with no
+    // model service named no preview measurement is due.
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
-    assert_eq!(row_count(banner).await, preview, "nothing to re-measure");
+    assert_eq!(row_count(banner).await, 0, "nothing to re-measure");
 
     // A gloss moves the data version. The cube rebuilds at the next read with
     // the same numbers — and the results measured the data's columns,
@@ -1464,7 +1476,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(
         row_count(banner).await,
-        preview,
+        0,
         "the results read the data, not this gloss"
     );
 
@@ -1488,9 +1500,6 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         response.headers()["HX-Trigger"],
         "glossql:remeasured, glossql:written"
     );
-    // The re-measure ran the expected ranges too: with no metric of seven whole
-    // months it called no service and loaded its reasons, so nothing
-    // stays open.
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(row_count(banner).await, 0, "the results still stand");
     let trend = get(
@@ -1567,11 +1576,11 @@ async fn the_plan_is_served_beside_its_metric() {
 /// The same list on DuckDB: no fact declared, an undated measure that
 /// serves no series and says why in the axes value, and a metric whose
 /// period column the server profiled with the definition, so its series
-/// serves. The banner counts the preview measurements nobody ran, and
-/// the console's re-measure runs them.
+/// serves. With a model service named, the banner counts the preview
+/// measurements nobody ran, and the console's re-measure runs them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_measurements() {
-    let (app, plane, _dir) = workspace().await;
+    let (app, plane, _dir) = workspace_with_service().await;
     plane
         .channel(
             Actor {
@@ -1619,10 +1628,10 @@ async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_mea
     let banner = get(&app, "/perf/app/console/frames/remeasure").await;
     assert_eq!(banner.status(), StatusCode::OK);
     let banner = body_text(banner).await;
-    // The outlook kit's expected ranges, forecast and estimate wait for a run.
-    for function in ["metric_ranges", "metric_forecast", "metric_scenario"] {
-        assert!(banner.contains(function), "{function}: {banner}");
-    }
+    // The expected ranges wait for a run; with no plan and no scenario
+    // the forecast and the estimate are not needed.
+    assert!(banner.contains("metric_ranges"), "{banner}");
+    assert!(!banner.contains("metric_forecast"), "{banner}");
     assert!(!banner.contains("temporal"), "{banner}");
     let response = app
         .clone()
@@ -1638,7 +1647,7 @@ async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_mea
     assert_eq!(
         row_count(banner).await,
         0,
-        "the expected ranges and the forecast stored their reasons"
+        "with too short a history the expected ranges stored their reasons without a call"
     );
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");

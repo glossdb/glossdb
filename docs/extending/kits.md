@@ -13,7 +13,7 @@ reads. It does not add grammar.
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `metric_series()`, `view_tests()`, `view_sources()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
 | `outlook` | glossdb | preview: expected ranges, forecasts, plans, scenarios |
-| `goals` | glossdb | `open_items` and `next` |
+| `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
 
 The server loads them at each start, in this order. A kit the lake
 already recorded with the same text runs nothing. The extension also

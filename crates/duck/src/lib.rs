@@ -524,7 +524,6 @@ const CATALOG: &[&str] = &[
     "open_questions",
     "review_decisions",
     "agent_assumptions",
-    "open_items",
     "view_definitions",
     "view_summary",
     "view_sources",
@@ -1608,52 +1607,19 @@ impl Session {
         })
     }
 
-    /// The console's re-measure: every function's value of the bound
-    /// dataset that is out of date runs again over its subject; every
-    /// measurement a metric's fact row wants and nobody ran, and every
-    /// tested measurement on the dataset nobody ran (the expected
-    /// ranges), runs for the first time. A function that read other
-    /// functions' results runs after the others, by what its last
-    /// result read (the catalog's `inputs`); one that has no result yet
-    /// may turn out to read them, so the list is taken again until
-    /// nothing is left or nothing more runs. Returns how many ran. A
-    /// function that refuses — the expected ranges with no service
-    /// named — is logged and stays required, where the banner and the
-    /// goal's next act carry its refusal by name; the others run.
+    /// The console's re-measure, a person's act: what the server
+    /// computes after a write, and the preview measurements that are
+    /// due, which call the model service. Returns how many ran.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
-        let mut ran = 0;
-        let mut refused = std::collections::BTreeSet::new();
-        for _ in 0..ROUNDS {
-            let acts = self
-                .batches(
-                    &format!(
-                        "WITH due AS (                            SELECT DISTINCT m.function, m.subject                            FROM glossql_glossary(current_schema(), NULL, true) r                            JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect                            WHERE r.actor = 'function' AND NOT r.current                            UNION                            SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2)                            FROM (SELECT unnest(measurements_to_run) AS w FROM {LAKE}.main.view_summary())                            UNION                            SELECT o.subject, split_part(o.what, ' over ', 2)                            FROM {LAKE}.main.open_items o                            WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema()),                          readers AS (                            SELECT DISTINCT m.function FROM {LAKE}.main.measurements_history m                            JOIN {LAKE}.main.inputs_history i USING (begin_snapshot)                            WHERE starts_with(i.input, 'main.measurements/'))                          SELECT function, subject FROM due                          ORDER BY function IN (SELECT function FROM readers), 1, 2"
-                    ),
-                    &[],
-                )
-                .await?;
-            let acts: Vec<(String, String)> = rows_as_text(&acts)
-                .into_iter()
-                .filter_map(|row| Some((row.first()?.clone()?, row.get(1)?.clone()?)))
-                .filter(|act| !refused.contains(act))
-                .collect();
-            if acts.is_empty() {
-                break;
-            }
-            for (function, subject) in acts {
-                match self
-                    .execute(&format!("SELECT {function}() FROM {subject}"))
-                    .await
-                {
-                    Ok(_) => ran += 1,
-                    Err(e) => {
-                        tracing::warn!(function, subject, "re-measure: {e}");
-                        refused.insert((function, subject));
-                    }
-                }
-            }
-        }
-        Ok(ran)
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|e| SessionError::Engine(e.to_string()))?;
+            Ok(bring_current(&conn, true))
+        })
+        .await
+        .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
     /// What SQL on this channel can call beyond the engine's own: the
@@ -1751,7 +1717,7 @@ impl Pending {
     /// fails the call.
     fn run(&mut self, conn: &Connection) {
         if std::mem::take(&mut self.wrote) {
-            bring_current(conn);
+            bring_current(conn, false);
         }
     }
 }
@@ -1764,18 +1730,22 @@ const ROUNDS: usize = 4;
 /// date, computed until none is left: the kit's `results_due()` says
 /// which (a result whose inputs moved, by the catalog's own versions,
 /// or one never computed) and in which order, an input before what
-/// reads it. As CI runs a suite after a commit. A statement that fails
-/// is logged and not tried again in this call; its result stays due
-/// and the test report says so.
-fn bring_current(conn: &Connection) {
+/// reads it, the preview measurements last where `preview` asks for
+/// them. As CI runs a suite after a commit. A statement that fails is
+/// logged and not tried again in this call; its result stays due and
+/// the test report says so. Returns how many ran.
+fn bring_current(conn: &Connection, preview: bool) -> usize {
     let mut failed = std::collections::BTreeSet::new();
+    let mut ran = 0;
     for _ in 0..ROUNDS {
         let Ok((_, _, due)) = arrow_batches(
             conn,
-            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
+            &format!(
+                "SELECT run FROM {LAKE}.main.results_due(preview := {preview}) ORDER BY ord, run"
+            ),
             &[],
         ) else {
-            return;
+            return ran;
         };
         let statements: Vec<String> = rows_as_text(&due)
             .into_iter()
@@ -1783,15 +1753,19 @@ fn bring_current(conn: &Connection) {
             .filter(|statement| !failed.contains(statement))
             .collect();
         if statements.is_empty() {
-            return;
+            return ran;
         }
         for statement in statements {
-            if let Err(e) = run(conn, &statement) {
-                tracing::debug!(error = %e, %statement, "a result: not computed");
-                failed.insert(statement);
+            match run(conn, &statement) {
+                Ok(()) => ran += 1,
+                Err(e) => {
+                    tracing::debug!(error = %e, %statement, "a result: not computed");
+                    failed.insert(statement);
+                }
             }
         }
     }
+    ran
 }
 
 /// Whether a statement is a measurement call, `SELECT <function>() FROM
@@ -2091,9 +2065,7 @@ mod tests {
         );
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
-            call_shape("USE fin; SELECT * FROM open_items")
-                .dataset
-                .as_deref(),
+            call_shape("USE fin; SELECT * FROM next").dataset.as_deref(),
             Some("fin")
         );
         assert!(call_shape("SELECT column_profile() FROM ops").writes);
