@@ -77,6 +77,12 @@ DECLARE SOURCE erp SET (type: csv, location: '{TEST_DIR}');
 statement ok
 DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv')$$;
 
+# a table is loaded and no view reads it: the one row is still to define a view; nothing is asked about the table
+query TTTT
+SELECT step, state, who, statement <> '' FROM next;
+----
+integrate	missing	agent	true
+
 statement ok
 DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS VIEW;
 
@@ -432,3 +438,74 @@ query T
 SELECT kind FROM view_definitions WHERE name = 'order_list';
 ----
 relation
+
+# --- every kind of view closes the row to define one, a stopped one does not. A test of one's own on a table view
+# is set on the view: its row names the view, its check and the statement that accepts its rate, and the table view's
+# own columns are asked to be described
+
+statement ok
+DECLARE DATASET side SET (purpose: 'views of every kind');
+
+statement ok
+USE side;
+
+statement ok
+CREATE TABLE side.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, (i % 7 + 1)::DOUBLE AS amount,
+  ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
+
+statement ok
+DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
+
+statement ok
+GLOSS ledger_rows ON side AS $${"sql": "SELECT count(*) AS value FROM side.ledger"}$$;
+
+query I
+SELECT count(*) FROM next WHERE step = 'integrate';
+----
+0
+
+statement ok
+GLOSS ledger_rows ON side AS $${"stopped": "the count is read elsewhere"}$$;
+
+query TT
+SELECT asset, state FROM next WHERE step = 'integrate';
+----
+side	missing
+
+statement ok
+DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS ledger_clean ON side AS $${"sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
+
+query I
+SELECT count(*) FROM next WHERE step = 'integrate';
+----
+0
+
+statement ok
+DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
+
+statement ok
+DECLARE FUNCTION fund_coded_check FOR side AS $$SELECT count(*) FILTER (WHERE fund NOT IN ('general', 'water')) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) AS rows FROM side.ledger_clean$$ RETURNS fund_coded;
+
+statement ok
+DECLARE TEST fund_coded_test ON fund_coded BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+
+statement ok
+GLOSS fund_coded ON ledger_clean AS $${"outcome": "each fund is in the code table", "tolerance": 0.0, "basis": "the code table lists every fund"}$$;
+
+statement ok
+SELECT fund_coded_check() FROM ledger_clean;
+
+query TTTT
+SELECT state, for_view, contains(statement, 'fund_coded_check()'), contains(statement, 'GLOSS fund_coded ON side.ledger_clean AS')
+FROM next WHERE step = 'test' AND asset = 'side.ledger_clean';
+----
+red	ledger_clean	true	true
+
+query II
+SELECT (SELECT count(*) FROM next WHERE step = 'describe' AND contains(statement, 'fund_coded')),
+       (SELECT count(*) FROM next WHERE step = 'describe' AND asset = 'side.ledger_clean' AND contains(statement, 'side.ledger_clean.fund'));
+----
+0	1

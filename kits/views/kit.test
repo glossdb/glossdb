@@ -578,6 +578,13 @@ WHERE view LIKE 'amount_per_line%' AND test = 'measure_additivity_test' ORDER BY
 amount_per_line	red	ratio
 amount_per_line_year	red	ratio
 
+# the fix a red additivity test brings is the metric's current definition, to edit and record again
+query T
+SELECT contains(evidence->>'fix', 'GLOSS amount_per_line ON fin AS $${"sql"') FROM view_tests()
+WHERE view = 'amount_per_line' AND test = 'measure_additivity_test';
+----
+true
+
 statement ok
 GLOSS amount_per_line ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.lines GROUP BY 1"}$$;
 

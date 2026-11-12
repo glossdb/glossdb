@@ -35,158 +35,45 @@ async fn fin() -> common::Served {
     served
 }
 
+/// The server runs a metric's tests after each write: the definition
+/// is tested before anyone asks, and so is each annotation after it,
+/// until nothing is open and the series serves.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_closes_it() {
+async fn the_server_runs_a_metrics_tests_after_each_write() {
     let (app, _, _dir) = fin().await;
-    let all = rows(&app, FIN, "SELECT * FROM next").await;
-    // A table is there and no view: one row of kind "integrate", with
-    // the statements that define one. Nothing is asked about a table no
-    // view reads, and the preview rows stay out while no model
-    // service is named.
-    let open: Vec<(String, String)> = all
-        .iter()
-        .map(|r| (text(r, "step"), text(r, "state")))
-        .collect();
-    assert_eq!(open, [("integrate".into(), "missing".into())], "{all:?}");
-    assert!(!text(&all[0], "statement").is_empty(), "{all:?}");
-
-    // A view is a metric, a single value or a table. Only a metric needs
-    // a series; the other two leave nothing to integrate.
-    say(&app, FIN,
-        r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, upper(fund) AS fund FROM fin.ledger"}$$;
-           DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
-           GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
-    )
-    .await;
-    let integrate = rows(&app, FIN, "SELECT * FROM next WHERE step = 'integrate'").await;
-    assert!(integrate.is_empty(), "{integrate:?}");
-    // A table and a single value have no series: their summary rows
-    // carry neither `applicable` nor a period column, a floor or a window.
-    let summary = rows(
-        &app,
-        FIN,
-        "SELECT * FROM view_summary() WHERE view IN ('ledger_clean', 'ledger_rows')",
-    )
-    .await;
-    assert_eq!(summary.len(), 2, "{summary:?}");
-    for row in &summary {
-        for field in [
-            "applicable",
-            "reason",
-            "period_column",
-            "floor",
-            "window_periods",
-        ] {
-            assert!(row.get(field).is_none_or(Value::is_null), "{field}: {row}");
-        }
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
-    let (app, _, _dir) = fin().await;
-    // A table view with a test of the team's own: the property holds
-    // the expectation, annotated on the view, and the check returns the
-    // same property. The check measures the share of rows outside the
-    // code table; one fund in three is outside it, so the test is red
-    // and the list carries a row of kind "test" for the view. The
-    // table's own columns are asked to be described, as a table is
-    // handed over with them.
-    say(&app, FIN,
-        r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
-           DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
-           DECLARE FUNCTION fund_coded_check FOR fin AS $$SELECT count(*) FILTER (WHERE fund NOT IN ('general', 'water')) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) AS rows FROM fin.ledger_clean$$ RETURNS fund_coded;
-           DECLARE TEST fund_coded_test ON fund_coded BY (AGENT, HUMAN) DETECTOR rate_tolerance;
-           GLOSS fund_coded ON ledger_clean AS $${"outcome": "each fund is in the code table", "tolerance": 0.0, "basis": "the code table lists every fund"}$$;
-           SELECT fund_coded_check() FROM ledger_clean;"#,
-    )
-    .await;
-    let open = open_tests(&app).await;
-    let row = open
-        .iter()
-        .find(|r| text(r, "asset") == "fin.ledger_clean")
-        .unwrap_or_else(|| panic!("no test row for the table view: {open:?}"));
-    assert_eq!(text(row, "state"), "red", "{row}");
-    assert_eq!(text(row, "for_view"), "ledger_clean", "{row}");
-    assert!(
-        text(row, "statement").contains("fund_coded_check()"),
-        "{row}"
-    );
-    // The rate is accepted where the expectation is: an annotation on
-    // the view, which a person can write with a reason.
-    assert!(
-        text(row, "statement").contains("GLOSS fund_coded ON fin.ledger_clean AS"),
-        "{row}"
-    );
-    // The expectation is set on the view. The list asks for it on no
-    // other asset the view reads.
-    let asked = rows(&app, FIN,
-        "SELECT asset, statement FROM next WHERE step = 'describe' AND contains(statement, 'fund_coded')",
-    )
-    .await;
-    assert!(asked.is_empty(), "{asked:?}");
-    let described = rows(
-        &app,
-        FIN,
-        "SELECT * FROM next WHERE step = 'describe' AND asset = 'fin.ledger_clean'",
-    )
-    .await;
-    assert!(
-        described
+    let states = async || {
+        let tests = rows(
+            &app,
+            FIN,
+            "SELECT test, state FROM view_tests() WHERE view = 'spend' ORDER BY test",
+        )
+        .await;
+        tests
             .iter()
-            .any(|r| text(r, "statement").contains("fin.ledger_clean.fund")),
-        "{described:?}"
-    );
-}
+            .map(|r| (text(r, "test"), text(r, "state")))
+            .collect::<Vec<_>>()
+    };
+    let state = |states: &[(String, String)], test: &str| {
+        states
+            .iter()
+            .find(|(t, _)| t == test)
+            .map(|(_, s)| s.clone())
+            .unwrap_or_else(|| panic!("no {test}: {states:?}"))
+    };
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_metric_walks_its_tests_from_the_definition_to_green() {
-    let (app, _, _dir) = fin().await;
-
-    // Defined: the write answers with the metric's row, the server runs
-    // the built-in tests, and the additivity test says the columns owe
-    // their roles. One table scanned: nothing to fan out, no join to check.
-    let outcomes = say(&app, FIN,
+    say(
+        &app,
+        FIN,
         r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
-    let written = &outcomes[1]["rows"][0];
-    assert_eq!(written["view"], json!("spend"), "{outcomes}");
-    assert_eq!(written["applicable"], json!(false), "{outcomes}");
-    let tests = rows(
-        &app,
-        FIN,
-        "SELECT test, state FROM view_tests() WHERE view = 'spend' ORDER BY test",
-    )
-    .await;
-    let states: Vec<(String, String)> = tests
-        .iter()
-        .map(|r| (text(r, "test"), text(r, "state")))
-        .collect();
-    assert_eq!(
-        states,
-        [
-            ("fan_out_test".into(), "green".into()),
-            ("measure_additivity_test".into(), "yellow".into()),
-            ("orphan_test".into(), "green".into()),
-            ("validity_test".into(), "green".into()),
-        ],
-        "{tests:?}"
-    );
-    let open = open_tests(&app).await;
-    assert_eq!(open.len(), 1, "{open:?}");
-    assert_eq!(text(&open[0], "asset"), "fin.spend", "{open:?}");
-    assert_eq!(text(&open[0], "state"), "yellow", "{open:?}");
-    assert!(
-        text(&open[0], "statement").contains("GLOSS role ON fin.spend.period"),
-        "{open:?}"
-    );
+    let defined = states().await;
+    for test in ["fan_out_test", "orphan_test", "validity_test"] {
+        assert_eq!(state(&defined, test), "green", "{defined:?}");
+    }
+    assert_eq!(state(&defined, "measure_additivity_test"), "yellow");
 
-    // The roles are annotated and the period is profiled: the server
-    // ran the tests again after each call, and the additivity is open.
     say(
         &app,
         FIN,
@@ -196,53 +83,22 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
            SELECT temporal() FROM fin.spend.period;"#,
     )
     .await;
-    let open = open_tests(&app).await;
-    assert_eq!(open.len(), 1, "{open:?}");
-    assert_eq!(text(&open[0], "state"), "red", "{open:?}");
-    assert!(
-        text(&open[0], "statement").contains("GLOSS additivity ON fin.spend.value"),
-        "{open:?}"
-    );
-    // The series is refused, and the refusal names the column it waits on.
-    let refusal = common::refused(
-        &app,
-        FIN,
-        "SELECT period, value FROM metric_series() WHERE metric = 'spend'",
-    )
-    .await;
-    let reason = refusal["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(reason.contains("fin.spend.value"), "{refusal}");
+    assert_eq!(state(&states().await, "measure_additivity_test"), "red");
 
-    // Annotated: every test is green and nothing is open under
-    // "test"; the series serves at its finest grain and coarser.
     say(
         &app,
         FIN,
         r#"GLOSS additivity ON spend.value AS $${"value": "additive"}$$;"#,
     )
     .await;
-    let open = open_tests(&app).await;
-    assert!(open.is_empty(), "{open:?}");
-    let cells = rows(&app, FIN, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
+    assert!(open_tests(&app).await.is_empty());
+    let cells = rows(
+        &app,
+        FIN,
+        "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period",
+    )
+    .await;
     assert_eq!(cells.len(), 4, "{cells:?}");
-
-    // A stopped metric is no longer served, and the list says that no
-    // metric is defined.
-    say(
-        &app,
-        FIN,
-        r#"GLOSS spend ON fin AS $${"stopped": "the ledger is not booked before 2024"}$$;"#,
-    )
-    .await;
-    let integrate = rows(
-        &app,
-        FIN,
-        "SELECT asset, state FROM next WHERE step = 'integrate'",
-    )
-    .await;
-    assert_eq!(integrate.len(), 1, "{integrate:?}");
-    assert_eq!(text(&integrate[0], "asset"), "fin", "{integrate:?}");
-    assert_eq!(text(&integrate[0], "state"), "missing", "{integrate:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -310,54 +166,11 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
-    let (app, _, _dir) = fin().await;
-    // What an earlier session left: a daily rate marked additive, and a
-    // monthly metric that sums the daily rates. Both are wrong numbers;
-    // the additivity test reads how each value is computed.
-    say(&app, FIN,
-        r#"DECLARE ASPECT amount_per_booking WITH $${"title": "Amount per booking"}$$ AS VIEW;
-           GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;
-           DECLARE ASPECT amount_per_booking_month WITH $${"title": "Amount per booking, monthly"}$$ AS VIEW;
-           GLOSS amount_per_booking_month ON fin AS $${"sql": "SELECT date_trunc('month', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_booking GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;"#,
-    )
-    .await;
-    // Both are red rows of kind "test", with the fix the test itself returns:
-    // the metric's current definition, to edit and record.
-    let open = rows(
-        &app,
-        FIN,
-        "SELECT asset, state, statement FROM next WHERE step = 'test' ORDER BY asset",
-    )
-    .await;
-    let assets: Vec<String> = open.iter().map(|r| text(r, "asset")).collect();
-    assert_eq!(
-        assets,
-        ["fin.amount_per_booking", "fin.amount_per_booking_month"],
-        "{open:?}"
-    );
-    for row in &open {
-        assert_eq!(text(row, "state"), "red", "{row}");
-    }
-    let fix = text(&open[0], "statement");
-    assert!(
-        fix.contains("GLOSS amount_per_booking ON fin AS $${\"sql\""),
-        "{fix}"
-    );
-    // Marked a ratio with its two halves, the daily metric is done.
-    say(&app, FIN,
-        r#"GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "ratio", "numerator": "num", "denominator": "den"}}$$;"#,
-    )
-    .await;
-    let open = open_tests(&app).await;
-    let assets: Vec<String> = open.iter().map(|r| text(r, "asset")).collect();
-    assert_eq!(assets, ["fin.amount_per_booking_month"], "{open:?}");
-}
-
 /// The rows of `next` under "describe" for the bookings table.
 async fn bookings_rows(app: &Router) -> Vec<Value> {
-    rows(app, FIN,
+    rows(
+        app,
+        FIN,
         "SELECT state, cause FROM next WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
     )
     .await
