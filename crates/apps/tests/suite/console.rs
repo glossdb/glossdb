@@ -819,7 +819,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("open", "catalog"),
         ("settled", "catalog"),
         ("next_rows", "catalog"),
-        ("steps", "catalog"),
+        ("functions", "catalog"),
         ("assumptions", "catalog"),
         ("measures", "catalog"),
         ("views", "catalog"),
@@ -2386,26 +2386,30 @@ async fn the_tree_links_the_catalogs_objects_and_the_pages_the_bar_does_not() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_bar_shows_six_sections_and_an_object_marks_its_own() {
+async fn the_bar_shows_the_five_functions_and_an_object_marks_its_own() {
     let (app, _plane, _dir) = workspace().await;
     let index = text(get(&app, "/perf/app/console").await).await;
-    // Six sections; the model, history, lineage and query pages are
-    // reached from the left nav, not from the bar.
+    // The overview, the five functions (integration, metadata, quality,
+    // governance, lineage) and the data. The model, history and query
+    // pages are reached from the left nav.
     assert_eq!(
         hrefs(bar(&index)),
         [
             "/perf/app/console",
-            "/perf/app/console/p/glossary",
             "/perf/app/console/p/views",
+            "/perf/app/console/p/glossary",
             "/perf/app/console/p/quality",
             "/perf/app/console/p/review",
+            "/perf/app/console/p/lineage",
             "/perf/app/console/p/export",
         ],
         "{index}"
     );
     // A page marks the section that owns it.
     for (url, section) in [
-        ("/perf/app/console/p/model", "/perf/app/console"),
+        ("/perf/app/console/p/model", "/perf/app/console/p/glossary"),
+        ("/perf/app/console/p/history", "/perf/app/console"),
+        ("/perf/app/console/p/lineage", "/perf/app/console/p/lineage"),
         (
             "/perf/app/console/p/glossary?table=ledger",
             "/perf/app/console/p/glossary",

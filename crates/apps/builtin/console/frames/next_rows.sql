@@ -3,7 +3,7 @@
 -- page of the row's step.
 WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d)
-SELECT n.step,
+SELECT n.step AS kind,
        substr(n.asset, len(d.dataset) + 2) AS asset,
        n.state,
        CASE n.who WHEN 'person' THEN 'a person' ELSE 'the agent' END AS who,
@@ -11,7 +11,7 @@ SELECT n.step,
        coalesce(n.cause, '') AS cause,
        CASE WHEN n.state IN ('red', 'conflict') THEN 'warn' ELSE '' END AS scls,
        (SELECT b FROM base) || CASE n.step
-         WHEN 'connect' THEN 'glossary' WHEN 'describe' THEN 'glossary'
-         WHEN 'test' THEN 'quality' WHEN 'decide' THEN 'review' ELSE 'views' END AS link
+         WHEN 'describe' THEN 'glossary' WHEN 'test' THEN 'quality'
+         WHEN 'review' THEN 'review' ELSE 'views' END AS link
 FROM next n CROSS JOIN d
 ORDER BY n.priority, n.ord, n.asset

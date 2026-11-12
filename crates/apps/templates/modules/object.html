@@ -4,7 +4,7 @@
    a sub-tab is the object's link with `tab=` added. #}
 
 {% macro crumbs(dataset, top="", section="", section_link="", object="", object_link="", child="") %}
-{% if top == "Catalog" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Views" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/views" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Review" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
+{% if top == "Metadata" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Integration" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/views" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Governance" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Lineage" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/lineage" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
 <p class="crumbs">
   <a href="/{{ dataset }}/app/console">{{ dataset }}</a>
   {% if top %}<span class="crumb-sep">›</span>{% if section or object %}<a href="{{ top_link }}">{{ top }}</a>{% else %}{{ top }}{% endif %}{% endif %}

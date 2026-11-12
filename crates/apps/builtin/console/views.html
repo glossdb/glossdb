@@ -26,6 +26,23 @@
 </gl-rows>
 {{ object::subtabs(q=q, tab=tab) }}
 <div class="tiles">
+  <section class="tile">
+    <header><span class="eyebrow" title="The newest load of each table: what the load query read (a join&#x27;s inputs listed, not summed), what was loaded and when, the rows a filter dropped (a join cannot count them and says nothing), and the cells its casts could not read with their values, most frequent first (up to eight). A load that could not count its casts says so. The table opens its page under Metadata.">Sources and loads</span>
+      <code class="chip">imports</code></header>
+    <p class="hint">Each table's newest load in one line: what was read, what was loaded, when, and what the casts could not read.</p>
+    <gl-rows frame="frames/loads" empty="nothing is loaded here yet: a table is loaded by a load query, DECLARE RECIPE over the MCP interface">
+      <template>
+        <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr) 6rem 9rem minmax(0,1.4fr)">
+          <span class="r-subj"><a href="{link}">{name}</a><br><span class="r-meta">{casts}</span></span>
+          <span class="r-meta">{read}</span>
+          <span class="r-num">{loaded}<br><span class="r-meta">loaded</span></span>
+          <span class="r-meta">{at}<br>{dropped}</span>
+          <span class="r-what dict">{refused}</span>
+        </div>
+      </template>
+    </gl-rows>
+  </section>
+
   {# The re-measure banner: every write moves the data version, and a function
      value loaded at an earlier version is served and marked — the numbers
      are current, the judged axes and the test results rest on

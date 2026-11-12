@@ -968,12 +968,12 @@ dl.facts dt { font-family: var(--mono); font-size: var(--step); color: var(--fai
 dl.facts dd { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
 .preview { font-family: var(--mono); font-size: 0.68rem; color: var(--open); border: 1px solid currentColor; border-radius: 2px; padding: 0 0.3rem; margin-left: 0.4rem; letter-spacing: 0.04em; text-transform: lowercase; }
 
-/* ---- the overview's five steps ------------------------------------ */
+/* ---- the overview's five functions -------------------------------- */
 .steps gl-rows { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); margin-top: 1rem; }
 .step { display: flex; flex-direction: column; gap: 0.35rem; padding: 1rem 1.1rem 1.1rem; border-right: 1px solid var(--rule); text-decoration: none; color: inherit; min-height: 9.5rem; }
 .step:last-child { border-right: 0; }
 .step:hover { background: var(--panel); }
-.step .s-n { font-family: var(--mono); font-size: var(--step); color: var(--faint); }
+.step .s-q { color: var(--faint); font-size: 0.8rem; font-style: italic; }
 .step .s-title { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); font-weight: 600; }
 .step .s-have { color: var(--ink); font-size: 0.95rem; line-height: 1.35; margin-top: 0.3rem; }
 .step .s-more { color: var(--faint); font-size: 0.8rem; line-height: 1.4; }

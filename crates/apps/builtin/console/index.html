@@ -3,21 +3,22 @@
 {% import "modules/object.html" as object %}
 
 {% block main %}
-{# The Overview: the dataset's data intelligence layer along the five
-   steps of the work, and what is open now. The open rows are the
-   `next` list, the same one the agent reads after every call. #}
+{# The Overview: the dataset's data intelligence layer by its five
+   functions, each with the question it answers, and what is open now.
+   The open rows are the `next` list, the same one the agent reads
+   after every call. #}
 {{ object::crumbs(dataset=dataset, top=bar_section) }}
 <div class="tiles">
   <section class="tile">
-    <header><span class="eyebrow" title="What exists for each step of the work, and how many rows of the next-steps list are open for it.">The data intelligence layer</span>
+    <header><span class="eyebrow" title="The five functions of data intelligence, each with the question it answers: what exists for it in this dataset, and how many rows of the next-steps list are open for it.">The data intelligence layer</span>
       <code class="chip">catalog · next</code></header>
-    <p class="hint">What is known about this dataset, step by step: where the data comes from, what it means, whether the tests hold, what a person decided, and what is served. A step opens its page.</p>
+    <p class="hint">What is known about this dataset, by the five functions of data intelligence. A function opens its page.</p>
     <div class="steps">
-      <gl-rows frame="frames/steps" empty="">
+      <gl-rows frame="frames/functions" empty="">
         <template>
           <a class="step {scls}" href="{link}">
-            <span class="s-n">{ord}</span>
             <span class="s-title">{title}</span>
+            <span class="s-q">{question}</span>
             <span class="s-have">{have}</span>
             <span class="s-more">{more}</span>
             <span class="s-open">{open}</span>
@@ -31,12 +32,12 @@
     <header><span class="eyebrow" title="Every open row of the next-steps list, in its order: a red test first, then what a load changed or a person decided, then what is missing. The agent reads the same list after every call.">Open now</span>
       <code class="chip">next</code></header>
     <div class="rrow rhead" style="grid-template-columns:6rem minmax(9rem,15rem) minmax(0,1fr) 7rem 6rem">
-      <span>step</span><span>asset</span><span>what is open</span><span>waits for</span><span>state</span>
+      <span>work</span><span>asset</span><span>what is open</span><span>waits for</span><span>state</span>
     </div>
-    <gl-rows frame="frames/next_rows" empty="nothing is open: every view is described, tested and served, and no assumption waits for a person">
+    <gl-rows frame="frames/next_rows" empty="nothing is open: every view is described and tested, and no question waits for an owner">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:6rem minmax(9rem,15rem) minmax(0,1fr) 7rem 6rem">
-          <span class="r-meta">{step}</span>
+          <span class="r-meta">{kind}</span>
           <span class="r-subj">{asset}</span>
           <span class="r-what">{open}<br><span class="r-meta">{cause}</span></span>
           <span class="r-meta">{who}</span>
