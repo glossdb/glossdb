@@ -1,150 +1,142 @@
 # Dependency plan
 
-How glossdb decides that something is outdated, and when it computes
-it again. Today this is one base rule with exceptions added case by
-case. This plan replaces that with one concept, agreed before any
-further code. Until then the topic is frozen: no new exception, no
-new clause. `DEPENDS ON` is built and provisional.
+How glossdb knows that a result is still valid, and how a read is
+served again without being computed again. This is a caching problem:
+filled on read, keyed by versions, evicted by LRU. A key works when it
+names every input by a version the storage guarantees. Today the
+catalog has no such version. This plan is a proposal; nothing in it is
+built. `DEPENDS ON` and the server's result cache were built and are
+reverted.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The project lead chooses from "The choices" below | — | this file | Next | |
-| Checks run once per call against one fill of the reads; storing a result does not empty the reads of other datasets or of readers that did not read it | Medium: the read cache's key is the centre of the extension's read path | the extension (`glossql_store.cpp:1636-1906`), `crates/duck/src/lib.rs:1742-1865` | First: it removes most of a write's 6 s without changing what counts as outdated | |
-| The extension's own table functions report what they read (`GLOSSARY()`, `dataset_cells`), so a body that reads the catalog through them no longer records "everything" | Medium | the extension (`glossql_runner.cpp:961-1071`) | Second | |
-| Catalog dependencies at the grain the matrix names | High: it changes `SPEC.md` §5 and §6 | the extension, the spec, the kits | Third | |
-| A content version for a table, so a reload of the same rows outdates nothing | Low: DuckLake's change feed gives it | the extension (`PartsSQL`) | With the third | |
-| A property that carries a test's expectation is required only where it is annotated. Today `GLOSSARY()` reports it as missing on every other asset of its kind; the kits ignore that, six console frames do not (`vocabulary`, `aspect_head`, `aspect_values`, `column_values`, `measured`, `unmeasured`) | Medium: it changes what "required" means in `SPEC.md` §5 | the extension (`GLOSSARY()`), the console frames | With the third | |
-| The 13 places where spec, docs or comments contradict the code are corrected with each step | Low | both repositories | With each step | |
+| The project lead agrees or changes "The design" below | — | this file | Next | |
+| The catalog's relations are kept by DuckLake: tables in the catalogue database with DuckLake's row id and begin and end snapshot, in place of `seq`, the store version and `snapshot_id` on glossary rows. Removing an annotation appends a row | High: every read and write of the extension's store; `SPEC.md` §5 | the extension (`glossql_store.cpp`, `glossql_runner.cpp`) | First | |
+| One key rule for a stored result and a kept read: the text and the versions of the relations its plan reads | Medium | the extension (`PartsSQL`, `Cached`) | Second | |
+| The glossary and the test results are queries over those relations, so a plan names what it reads and no result records "everything" | Medium | the extension, the kits | With the second | |
+| A response of the model service is kept under a hash of the request | Medium | the extension (`glossql_service.cpp`) | Third | |
+| The server keeps a read's result, keyed by SQL, parameters, dataset and the versions of what the plan reads | Low | `crates/duck/src/lib.rs` | Fourth | |
+| The checks of one call run on separate connections | Low | `crates/duck/src/lib.rs` (`built_in_tests`) | Fifth | |
+| A property that carries a test's expectation is required only where it is annotated | Medium: `SPEC.md` §5 | the extension (`GLOSSARY()`), six console frames | With the second | |
 
-## The matrix: what is outdated by what, today
+## The facts today
 
-Rows are what can be outdated; columns are what changed. "all" means
-every result of that kind in the workspace or dataset.
+- **Data tables** are DuckLake tables. A load is a commit and makes a
+  snapshot. The change log names the tables a snapshot changed.
+- **The catalog** (glossary, measurements, tests, properties,
+  functions, relationships, load queries, loads, sources, datasets,
+  kits) is eleven plain tables `glossql_*` in DuckLake's catalogue
+  database. A write to them is not a lake commit. **It makes no
+  snapshot.**
+- **Rows are appended**, with one exception: `DELETE FROM glossary`
+  (`SPEC.md` §5.2) deletes rows.
+- **`seq` is not unique.** It is "highest so far plus one", read
+  without a lock. Measured: 24 annotations from 8 connections gave 182
+  rows and 166 distinct `seq`; one value was shared by 7 rows. The
+  newest annotation is chosen by `seq`.
+- **The store version** is a fingerprint: the lake's snapshot joined
+  with the highest `seq`, the row count and the newest timestamp of
+  each of the eleven tables. Any write changes it, so each write
+  empties the three reads and the views kept under it.
+- **60 of 88 stored results** on the Formula 1 workspace record
+  "everything" as what they read: the glossary is read through a table
+  function a plan cannot see into.
+- **The glossary read contains the stored results**, so a stored
+  result changes it.
+- **Not inputs of a read:** the clock (no kit or console frame uses
+  it), the actor (writes only), the kits' views and macros (fixed
+  while the server runs).
+- **The model service** is called in 5 places, all in functions that
+  store a result. The request carries the series. The response carries
+  the service's version.
 
-| | Load of a table it read | Load of another table | Annotation it read | Annotation elsewhere | Another function's result | Declaration |
-|---|---|---|---|---|---|---|
-| Annotation | only if the column was retyped, dropped or derived differently | no | — | no | no | no |
-| Result of a function over data only (profiles) | yes | no | — | no | no | its own, newer |
-| Result of a built-in check (reads the catalog) | yes | **yes** (all tables of the dataset) | yes | **yes** (any write to that catalog table, any dataset) | yes, per function, **any dataset** | its own, newer |
-| Preview result (with `DEPENDS ON`) | yes | **yes** (all tables of the dataset) | yes | no | no | its own, newer |
-| Test result | follows the results it scores | | | | | |
-| The kept reads (glossary, tests, view rows) | **all emptied by any write, any dataset** | | | | | |
-
-The bold cells are wrong against the spec's own sentence, "a write
-the body never reads is not its staleness". A reload of identical
-rows counts as a load in every cell.
-
-## What is there
-
-- **Data** is versioned per table by the lake's snapshots.
-- **The catalog** is versioned per whole relation, with no dataset
-  filter. Other functions' results are versioned per function, with
-  no dataset or subject.
-- **Why "all tables" appears.** A body's reads are taken from its
-  plan. The extension's own table functions (`GLOSSARY()`,
-  `dataset_cells`) appear in the plan as opaque scans, so the body is
-  recorded as reading everything. All four view checks and all four
-  preview functions are in this state. It is our own functions that
-  hide the reads, not the engine.
-- **What the engine can tell.** The bound plan names tables and
-  columns through views and macros. After the optimizer it also gives
-  the constant filters on each scan, for example `subject = '…' AND
-  aspect = 'meaning'` on the glossary. It cannot tell rows selected
-  through a join. `json_serialize_sql` gives the text's parse tree
-  only: no views, no macros.
-- **When things run.** After a call that annotates, defines or loads,
-  the server runs the built-in checks for every metric that scans the
-  touched table: 12 results for three metrics. Once per call, not per
-  statement. Test results and `next` are computed at read.
-- **The exceptions on top of the base rule:** nine in the extension
-  and five in the server, each added for one case within two weeks.
-
-## Measured
-
-Release build, Formula 1 workspace (9 tables, 5 views, 3 metrics).
-The build mode of the server does not change these numbers.
+Measured on the Formula 1 workspace (9 tables, 5 views, 3 metrics):
 
 | Call | Time |
 |---|---|
-| Any call (of which the closing read of `next`: 0.47 s) | 0.47 s |
-| A read of `next` | 0.92 s |
-| An annotation on a table no view scans | 1.3 s |
-| An annotation on a table a view scans | 6.0 s |
-| A reload of one table, same file | 5.5 to 7.8 s |
-| 104 annotations in one call | 7.6 s |
+| Any agent call, of which the closing read of `next` 0.46 s | 0.51 s |
+| `next` with `LIMIT 0`: planning only | 0.29 s |
+| `GLOSSARY()` from the object cache | 0.011 s |
+| An annotation on a table a view scans: 12 checks one after another, each refilling the glossary | 6.0 s |
+| Eight reads of `next` at once, wall time | 0.80 s |
 
-Where the 6.0 s go: 0.8 s the write and the first check; 3.9 s the
-other 11 checks; 1.3 s the closing `next`. Each stored result moves
-the one store version, so the next check fills the glossary read
-again: about 12 fills of 0.4 s. The time is planning (binding and
-optimizing), not execution. A warm read of the glossary is 0.011 s.
+## What DuckLake does (DuckDB 2.0.0, measured on scratch lakes)
 
-Concurrency, measured on the same workspace (15 cores, debug build):
+DuckLake stores a small write to a table in its catalogue database and
+makes a snapshot of it (data inlining; on by default up to 10 rows per
+write). The same results on a DuckDB file and on Postgres 18 as the
+catalogue, unless two numbers are given.
 
-| Read | Alone | 8 at once (wall) |
-|---|---|---|
-| `next` | 0.46 s | 0.80 s |
-| `next LIMIT 0` (planning only) | 0.29 s | |
-| `GLOSSARY()`, kept | 0.011 s | 0.02 s |
+| | Result |
+|---|---|
+| 200 single-row writes | 0.5 s / 1.1 s, 200 snapshots, no Parquet file |
+| 400 writes from 8 connections | 2.9 s / 4.3 s, no error, 600 distinct row ids |
+| A row's `rowid` and `snapshot_id` | set at commit; the same after a flush to Parquet and after older snapshots expire |
+| A function stores a result while another transaction is open | both commit; the open one does not see the result until it ends |
+| Two transactions insert into one table | both commit |
+| A delete beside an insert or a delete on the same table | the later commit fails with a conflict |
+| A delete | the row gets an end snapshot; older versions still read it |
+| A flush to Parquet | a snapshot of its own (`flushed_inlined`); no automatic flush |
+| Expiring snapshots | explicit only; the change log of the expired snapshots is gone, the rows stay |
+| Author, message and a free field per commit | `set_commit_message` |
+| A read of 55 scans, planned / run | 3 ms / 17 ms; plain tables 2 ms / 6 ms |
 
-- Each channel is its own connection; reads on different connections
-  run at the same time. Nothing serialises the whole system.
-- Within one call the checks run one after another on the call's
-  connection (`built_in_tests`). That loop is ours, not the engine's.
-- The engine parses, binds and optimizes one query on one thread. It
-  runs a plan in parallel over row groups. The catalog's relations are
-  a few hundred rows, so there is nothing to split: `next` reads about
-  85 scans (55 of the lake's metadata tables, 16 of `glossql_columns`,
-  10 kept reads) and 0.29 s of its 0.46 s is planning.
-- A kept read is filled inside the bind of the query that asks for
-  it, on a second connection.
-- The object cache works. Its entries are keyed by lake, kind of read
-  and dataset, and compared against the one store version.
+Two versions of a table follow, and they differ:
 
-## Prior art
+- **The last snapshot that changed it**, from the change log. A flush
+  moves it though no row changed. Expiry removes it. The parts of data
+  tables use this today.
+- **The highest `snapshot_id` of its rows.** A flush and expiry leave
+  it as it was. A delete does not move it.
 
-- **Build systems** ("Build systems à la carte"): a system is a
-  scheduler and a rule for validity. Ours is a verifying trace with
-  version numbers. With content hashes it gains early cutoff: a
-  rebuilt input with the same value stops there.
-- **Salsa:** one revision counter per class of input ("durability"),
-  so a change in one class does not make results over another class
-  check again. Our store version is one counter for everything.
-- **dbt, Dagster:** declared dependencies; a code version and a data
-  version per asset; an observed version for outside data, which is
-  the place for the model service's version.
-- **Bazel:** a step can read only what it declared. Here: a body
-  reads the catalog only through reads that report themselves.
-- **DuckLake's change feed** gives the rows a snapshot changed. Three
-  reloads of the same file showed every row as updated and no row
-  different.
+## The design
 
-## The choices
+1. **DuckLake keeps the catalog's relations.** They stay catalogue
+   tables; DuckLake adds the row id and the begin and end snapshot.
+   Every write is a commit. The commit carries who wrote and why.
+2. **Catalog relations are append only.** Removing an annotation
+   appends a row that says so. Then concurrent writers do not
+   conflict, and the version of a relation is the highest
+   `snapshot_id` of its rows. The newest annotation is the one with
+   the highest `rowid`.
+3. **One key rule.** A result is valid for the text that computed it
+   and the versions of the relations its plan read. Example: a profile
+   of `results.grid`, computed by `column_profile` when `results` was
+   at 41, holds while the function's text is the same and `results` is
+   at 41. A load into `races` does not touch it. Nothing is
+   invalidated: a changed relation gives another key, and old entries
+   leave by LRU.
+4. **A plan names what it reads.** The glossary and the test results
+   are queries over the relations. A check that reads annotations is
+   keyed on `glossary`; a stored result moves `measurements` only.
+5. **A response of the model service is kept by content.** The key is
+   a hash of the route, the request body and the service's version.
+   The body carries the series, so an identical reload is a hit. This
+   is the action cache of build systems.
+6. **The grain is the relation.** Finer grains (per dataset, per
+   property) come when a measurement asks for them.
 
-1. **Where dependencies come from.** Discovered from the plan, with
-   our own table functions reporting what they read (recommended:
-   nothing for an author to write, and it removes "everything").
-   Declared by the author (`DEPENDS ON`) stays only if a case remains
-   that discovery cannot see; otherwise it is removed.
-2. **The grain for the catalog.** Per dataset and property
-   (recommended: the optimizer's filters give it, and it removes
-   every bold cell but the ones about data), or per asset and
-   property (finest; needs a rule for filters that are not
-   constants).
-3. **When checks run.** Once per call, after all writes, against one
-   fill (recommended: keeps "what is stated is tested" true at the
-   end of every call). Or at the next read of `next` or of the tests.
-4. **Identical reloads.** Compare content through the change feed
-   (recommended), or keep counting every load.
+## Open
+
+- The version of a data table: the change log (today) or the highest
+  `snapshot_id` of its rows. The second costs a scan of a large table
+  and misses deletes; the first is lost when snapshots expire. The
+  server does not expire snapshots and closes the call to agents.
+- A miss still costs the planning of a large read (0.3 to 0.4 s).
+  Making `next` and `view_tests()` smaller is separate work.
+- An identical reload still changes a table's version.
+- Not measured: `next` itself over lake-kept relations; a working
+  day's number of snapshots on a real workspace.
 
 ## Next issue (draft)
 
-**One fill per call.** What it buys: an annotation on a scanned
-table costs about 2 s in place of 6 s, with no change to what counts
-as outdated. What is there: the read cache keyed by one store
-version (`glossql_store.cpp:1636-1906`); `built_in_tests`
-(`crates/duck/src/lib.rs:1762-1865`); the measurements above. Done
-when: storing a result leaves the kept glossary read in place for
-readers that did not read that result; the checks of one call run
-against one fill; the six calls above are measured again and in this
-file; both suites pass.
+**DuckLake keeps the catalog's relations.** What it buys: a version
+per relation that the storage guarantees, unique row order under
+concurrent writes, the glossary as of a version of the data by time
+travel. What is there: the store's relations and `Inner::Seq`
+(`glossql_store.cpp`), `StoreVersionSQL` (`:1677`), `PartsSQL`
+(`:389`), the delete (`:1031`); the scratch measurements above. Done
+when: the eleven relations are DuckLake tables; `seq`, the store
+version and `snapshot_id` on glossary rows are gone; `DELETE FROM
+glossary` appends; a test writes annotations from 8 connections and
+finds one order; `SPEC.md` §5 says the same; both suites pass.
