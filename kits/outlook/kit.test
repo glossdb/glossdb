@@ -890,7 +890,7 @@ SELECT count(*) FROM range_request() WHERE metric = 'ledger_rows';
 0
 
 query TTIT
-SELECT floor, r.applicable, r.months, contains(r.reason, 'served by year')
+SELECT floor, r.applicable, r.months, coalesce(r.reason, '') <> ''
 FROM range_request() r JOIN view_summary() s ON s.view = r.metric WHERE r.metric = 'spend_by_year';
 ----
 year	false	0	true

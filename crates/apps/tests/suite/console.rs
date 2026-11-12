@@ -681,11 +681,10 @@ async fn a_review_decision_is_signed_with_the_callers_own_name() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn every_builtin_frame_executes_and_serves_classic_types() {
-    // Parse-only coverage lets two defect classes ship:
-    // an optimizer error that only fires at plan time, and view-typed
-    // columns the browser reader cannot decode. Every built-in frame
-    // must execute end to end and stream classic types — against a
-    // workspace carrying the shapes the frames read.
+    // Every built-in frame executes end to end — an optimizer error
+    // fires only at plan time — and streams classic types, which the
+    // browser's reader decodes; on a workspace carrying the shapes the
+    // frames read.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
@@ -725,18 +724,13 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
-    // Metadata and data are not one pile: every
-    // frame response carries `glossql-frame-class`, derived by the
-    // session's pre-pass from what the frame's expansion actually
-    // resolves — never a curated list. `catalog` frames read the
-    // glossary somewhere and can change under a review decision; `data` frames
-    // provably cannot, so the browser's store keeps them across
-    // decisions. The class is about what a frame SERVES, not what its
-    // build consumed: the cube's facts (`axes`) say what the judged
-    // catalog admitted and are catalog; its cells (`slices`, `latest`,
-    // `drivers`) are the data at a grain and survive a review decision on
-    // screen. The trend joins the stored forecast for the range and how
-    // often it held, so it is catalog-class and is read again after a decision.
+    // Every frame response carries `glossql-frame-class`, derived from
+    // what the frame's expansion resolves. A `catalog` frame reads the
+    // glossary and can change under a review decision; a `data` frame
+    // cannot, so the browser's store keeps it across decisions. The
+    // class is about what a frame serves: the cube's facts (`axes`) are
+    // catalog, its cells (`slices`, `latest`, `drivers`) are data, and
+    // the trend, which joins the stored forecast, is catalog.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
@@ -1035,11 +1029,9 @@ async fn an_unclear_review_decision_closes_the_question_without_taking_a_side() 
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_tests_frame_serves_results_not_the_vocabulary() {
-    // A test result is a TESTS row — a
-    // detector's live result beside its test's expectation. A
-    // test without a detector is an actor-kind gate; its annotated values
-    // never render as tests (the old frame showed them with the
-    // state column reading `current`).
+    // A test result is a TESTS row: a detector's live result beside its
+    // test's expectation. A test without a detector is an actor-kind
+    // gate, and its annotated values do not render as tests.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let agent = builder(&plane).await;

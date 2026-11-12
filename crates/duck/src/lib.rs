@@ -2063,46 +2063,19 @@ mod tests {
         assert!(!reads_catalog("SELECT * FROM ws.main.glossary_history"));
     }
 
-    /// A warehouse in an object store is known by its scheme, and its
-    /// credential is one scoped secret, a key pair or a bearer.
+    /// A warehouse in an object store is known by its scheme.
     #[test]
-    fn the_warehouse_credential_is_one_scoped_secret() {
+    fn a_warehouse_in_an_object_store_is_known_by_its_scheme() {
         assert_eq!(store_kind("gs://lake/warehouse"), Some("gcs"));
         assert_eq!(store_kind("s3://lake/warehouse/"), Some("s3"));
         assert_eq!(store_kind("/var/lib/glossql/warehouse"), None);
         assert_eq!(store_kind("abfss://lake@acct.dfs.core.windows.net/w"), None);
-        let keys = WarehouseCredential::Keys {
-            key_id: "GOOG1E".into(),
-            secret: "s'cret".into(),
-            region: None,
-        };
-        assert_eq!(
-            secret_sql("gcs", &keys, "gs://lake/warehouse"),
-            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, KEY_ID 'GOOG1E', SECRET 's''cret', \
-             SCOPE 'gs://lake/warehouse')"
-        );
-        let keys = WarehouseCredential::Keys {
-            key_id: "AKIA".into(),
-            secret: "x".into(),
-            region: Some("eu-west-1".into()),
-        };
-        assert_eq!(
-            secret_sql("s3", &keys, "s3://lake/warehouse"),
-            "CREATE OR REPLACE SECRET warehouse (TYPE s3, KEY_ID 'AKIA', SECRET 'x', \
-             REGION 'eu-west-1', SCOPE 's3://lake/warehouse')"
-        );
-        assert_eq!(
-            secret_sql(
-                "gcs",
-                &WarehouseCredential::Bearer("t".into()),
-                "gs://lake/w"
-            ),
-            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, BEARER_TOKEN 't', SCOPE 'gs://lake/w')"
-        );
     }
 
-    /// The sink replaces the warehouse's secret on the instance, where
-    /// httpfs is loaded; a directory warehouse has no sink.
+    /// The warehouse's credential is one scoped secret: the sink
+    /// replaces a bearer on the instance, where httpfs is loaded, and a
+    /// key pair with a region and a quote in the secret replaces it
+    /// again; a directory warehouse has no sink.
     #[tokio::test(flavor = "multi_thread")]
     async fn the_warehouse_sink_replaces_the_secret() {
         let dir = tempfile::tempdir().expect("a directory");
@@ -2146,6 +2119,33 @@ mod tests {
                 Some("warehouse".to_string()),
                 Some("gcs".to_string()),
                 Some("['gs://lake/warehouse']".to_string())
+            ]]
+        );
+        let keys = WarehouseCredential::Keys {
+            key_id: "AKIA".into(),
+            secret: "s'cret".into(),
+            region: Some("eu-west-1".into()),
+        };
+        run(
+            &plane.instance.connect().expect("a connection"),
+            &secret_sql("s3", &keys, "s3://lake/warehouse"),
+        )
+        .expect("the key pair replaces the bearer");
+        let rows = rows_as_text(
+            &channel
+                .batches(
+                    "SELECT name, type, scope::VARCHAR FROM duckdb_secrets() ORDER BY name",
+                    &[],
+                )
+                .await
+                .expect("reads"),
+        );
+        assert_eq!(
+            rows,
+            vec![vec![
+                Some("warehouse".to_string()),
+                Some("s3".to_string()),
+                Some("['s3://lake/warehouse']".to_string())
             ]]
         );
     }

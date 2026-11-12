@@ -1672,10 +1672,8 @@ async fn an_agent_authors_an_app_over_the_tool() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
-    // The map that replaces the staged manuals: what this workspace can
-    // be extended through, how much of each holds, and what is open on
-    // it. Not an order to follow — the agent judges what to do next;
-    // this only says what the system affords.
+    // What this workspace can be extended through, how much of each
+    // holds, and what is open on it.
     let (app, _, _dir) = on_fin(
         r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
@@ -1721,8 +1719,8 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // One metric declared and defined, one assumption on it waiting for
     // a person. The question waits on the review row; it leaves no
     // metric and no claim open, so "nothing open" stays reachable
-    // without a person (glossdb#210). The sample frame is a VIEW aspect
-    // too and must not inflate the metrics.
+    // without a person. The sample frame is a VIEW aspect too and does
+    // not count as a view.
     assert_eq!(row("views")["existing"], json!(1), "{rows:?}");
     assert_eq!(row("views")["open"], json!(0), "{rows:?}");
     assert_eq!(row("annotations")["open"], json!(0), "{rows:?}");
