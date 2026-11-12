@@ -66,18 +66,16 @@ async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile
     // its own: an `<app>.<part>` subject whose first segment names the
     // dataset would read as dataset-qualified (SPEC.md §3).
     session
-        .execute(&format!(
+        .execute(
             r#"USE perf;
-               {aspects}
-               GLOSS app ON board AS $${{"title": "Perf"}}$$;
-               GLOSS app_page ON board.index AS $${{"html": "{{% extends \"shell.html\" %}}\n{{% import \"modules/tiles.html\" as tiles %}}\n{{% block main %}}\n<div class=\"tiles\">\n{{{{ tiles::chart(frame=\"frames/monthly\", spec=\"specs/monthly.vl.json\", title=\"Monthly\") }}}}\n</div>\n{{% endblock %}}\n"}}$$;
-               GLOSS app_frame ON board.monthly AS $${{"sql": "SELECT month, sum(value) AS value FROM ledger GROUP BY month ORDER BY month"}}$$;
-               GLOSS app_frame ON board.by_cohort AS $${{"sql": "SELECT month, sum(value) AS value FROM ledger WHERE cohort = $cohort GROUP BY month ORDER BY month"}}$$;
-               GLOSS app_frame ON board.uncastable AS $${{"sql": "SELECT CAST(cohort AS BIGINT) AS n FROM ledger"}}$$;
-               GLOSS app_frame ON board.evil AS $${{"sql": "DROP TABLE ledger"}}$$;
-               GLOSS app_spec ON board.monthly AS $${{"spec": "{{\"mark\": \"bar\", \"encoding\": {{}}}}"}}$$;"#,
-            aspects = shipped_app_declarations()
-        ))
+               GLOSS app ON board AS $${"title": "Perf"}$$;
+               GLOSS app_page ON board.index AS $${"html": "{% extends \"shell.html\" %}\n{% import \"modules/tiles.html\" as tiles %}\n{% block main %}\n<div class=\"tiles\">\n{{ tiles::chart(frame=\"frames/monthly\", spec=\"specs/monthly.vl.json\", title=\"Monthly\") }}\n</div>\n{% endblock %}\n"}$$;
+               GLOSS app_frame ON board.monthly AS $${"sql": "SELECT month, sum(value) AS value FROM ledger GROUP BY month ORDER BY month"}$$;
+               GLOSS app_frame ON board.by_cohort AS $${"sql": "SELECT month, sum(value) AS value FROM ledger WHERE cohort = $cohort GROUP BY month ORDER BY month"}$$;
+               GLOSS app_frame ON board.uncastable AS $${"sql": "SELECT CAST(cohort AS BIGINT) AS n FROM ledger"}$$;
+               GLOSS app_frame ON board.evil AS $${"sql": "DROP TABLE ledger"}$$;
+               GLOSS app_spec ON board.monthly AS $${"spec": "{\"mark\": \"bar\", \"encoding\": {}}"}$$;"#,
+        )
         .await
         .unwrap();
 
@@ -96,46 +94,6 @@ async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile
             id: "ada".into(),
         })));
     (router, plane, dir)
-}
-
-/// The core kit, whose declarations the workspace carries from its
-/// first open.
-const CORE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../kits/core/kit.sql"
-));
-
-/// The same aspect as the core kit declares it, cut from its text:
-/// re-declared here, it is a no-op, and the tests keep one shape.
-fn shipped_review_decision_declaration() -> &'static str {
-    let kit = CORE;
-    let start = kit
-        .find("DECLARE ASPECT review_decision")
-        .expect("the kit ships the review_decision aspect");
-    let len = kit[start..]
-        .find("AS FACT;")
-        .expect("the declaration closes")
-        + "AS FACT;".len();
-    &kit[start..start + len]
-}
-
-/// The SHIPPED app aspects — `app`, `app_page`, `app_frame`,
-/// `app_spec` — cut from the core the same way, so the interface serves the
-/// parts a real workspace writes.
-fn shipped_app_declarations() -> &'static str {
-    let kit = CORE;
-    let start = kit
-        .find("DECLARE ASPECT app WITH")
-        .expect("the kit ships the app aspects");
-    let last = kit[start..]
-        .find("DECLARE ASPECT app_release")
-        .expect("the kit ships app_release");
-    let len = last
-        + kit[start + last..]
-            .find("AS FACT;")
-            .expect("the declaration closes")
-        + "AS FACT;".len();
-    &kit[start..start + len]
 }
 
 async fn get(app: &Router, uri: &str) -> Response<Body> {
@@ -705,10 +663,6 @@ async fn a_review_decision_is_signed_with_the_callers_own_name() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
     let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
-    human
-        .execute(shipped_review_decision_declaration())
-        .await
-        .unwrap();
 
     let accepted = app
         .oneshot(
@@ -1012,12 +966,6 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     // put words in the workspace's mouth.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
-    human
-        .execute(shipped_review_decision_declaration())
-        .await
-        .unwrap();
-
     let post = |form: &'static str| {
         let app = app.clone();
         async move {
@@ -1101,12 +1049,6 @@ async fn an_unclear_review_decision_closes_the_question_without_taking_a_side() 
     // its own question), never an applied decision.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
-    human
-        .execute(shipped_review_decision_declaration())
-        .await
-        .unwrap();
-
     let response = app
         .clone()
         .oneshot(

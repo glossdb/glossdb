@@ -48,6 +48,15 @@ fn initialize() -> Value {
     })
 }
 
+/// The gated interfaces over a workspace with the dataset `fin`, the
+/// kits' own vocabulary, and `statements` run on it: the fixture of the
+/// review and the workspace map.
+async fn on_fin(statements: &str) -> common::Served {
+    let served = app_on("fin").await;
+    say(&served.0, "/mcp", &format!("USE fin; {statements}")).await;
+    served
+}
+
 /// A raw `tools/call` request on `/mcp` with `authorization` if given:
 /// for the tests that speak as someone other than `dev-agent`.
 fn raw_call(authorization: Option<String>, statements: &str) -> Request<Body> {
@@ -1021,12 +1030,8 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
     // words, as a box of its own; ticking it stores the same stance
     // and words on that view. The third view is confirmed as stated:
     // the same key holds two different decisions.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'one key, one decision');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dio WITH $${"title": "DIO", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS VIEW;
@@ -1041,8 +1046,9 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
           "assumptions": [{"dimension": "convention", "key": "days-in-period",
             "assumption": "days are the month's own calendar days",
             "basis": "judgment", "confidence": 0.8}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let open = async || rows(&app, "/mcp", "SELECT aspect, key FROM open_questions;").await;
 
@@ -1148,24 +1154,21 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
     // frozen copy would outrank every later correction).
     // The review decision holds the question closed and stands as not
     // yet applied until the agent records the definition again.
-    let (app, _, _dir) = app().await;
-    let applied = async || {
-        let read = "SELECT key, stance, folded_in FROM review_decisions;";
-        Value::Array(rows(&app, "/mcp", read).await)
-    };
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'loose test');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7},
             {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
           ]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
+    let applied = async || {
+        let read = "SELECT key, stance, folded_in FROM review_decisions;";
+        Value::Array(rows(&app, "/mcp", read).await)
+    };
 
     let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5", None).await;
     assert_eq!(
@@ -1246,18 +1249,15 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
 /// apply it to the view's definition.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_the_agent() {
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'alternative test');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line",
             "basis": "judgment", "alternative": "per order", "confidence": 0.7}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
     let body = elicit(&app, review, None).await;
@@ -1331,17 +1331,14 @@ async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again()
     // next review asks it again. Nobody may opt out of being asked:
     // the question is what the numbers rest on, and the way to make it
     // stop is to answer it, `unclear` included.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'defer test');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
     for way_out in [
@@ -1389,17 +1386,14 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     // only calls that read the catalog. A load call and a plain data
     // read run uninterrupted even while a question holds open; the
     // review-shaped call carries the form.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'cadence test');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     // A writing call: the question holds, the load runs through.
     let body = elicit(
@@ -1500,20 +1494,17 @@ async fn a_second_review_decision_keeps_the_first() {
     // first. Review decisions accumulate as entries in the human's
     // one review decision value — each append carries the earlier entries along,
     // and no review decision ever touches the agent's body.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'sequential decisions');
-        USE fin;
-        DECLARE ASPECT review_decision WITH $${"type": "object", "required": ["decisions"],
-          "properties": {"decisions": {"type": "array"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [
             {"dimension": "convention", "key": "flat-30-day-month", "assumption": "a flat 30-day month", "basis": "judgment", "confidence": 0.6},
             {"dimension": "definition", "key": "total-revenue-denominator", "assumption": "total revenue in the denominator", "basis": "judgment", "confidence": 0.7}
           ]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     // Decide the first (lowest confidence asks first), then the second.
     for key in [
@@ -1566,15 +1557,14 @@ async fn an_unkeyed_assumption_is_never_asked() {
     // It is therefore never asked at all — the catalog still shows it,
     // and the skills make the key part of the disclosure shape. The
     // alternative — pairing on the prose — is forbidden.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'unkeyed assumptions');
-        USE fin;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
     let body = elicit(&app, review, None).await;
@@ -1601,10 +1591,8 @@ async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles
     // assumptions below full confidence, without those on a dimension
     // a measurement settles (`grain`). One call asks the assumptions
     // of one view, the least confident first.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'the read library');
-        USE fin;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         DECLARE ASPECT dpo WITH $${"title": "DPO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -1612,8 +1600,9 @@ async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles
         GLOSS dpo ON fin AS $${"sql": "SELECT 2 AS v",
           "assumptions": [{"dimension": "definition", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.4},
                           {"dimension": "grain", "key": "monthly", "assumption": "month grain", "basis": "judgment", "confidence": 0.3}]}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     // Two rows are open; dpo's `grain` assumption is not among them.
     let body = tool(
@@ -1647,21 +1636,14 @@ async fn an_agent_authors_an_app_over_the_tool() {
     // at — it has statements, not a filesystem. Nothing new carries it:
     // the parts travel as glosses, supersession versions each one, and
     // actor kind records whose hand shaped it.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'an agent authors an app');
-        USE fin;
-        DECLARE ASPECT app WITH $${"type": "object", "required": ["title"],
-          "properties": {"title": {"type": "string"}, "dataset": {"type": "string"}}}$$ AS FACT;
-        DECLARE ASPECT app_page WITH $${"type": "object", "required": ["html"],
-          "properties": {"html": {"type": "string"}}}$$ AS FACT;
-        DECLARE ASPECT app_frame WITH $${"type": "object", "required": ["sql"],
-          "properties": {"sql": {"type": "string"}}}$$ AS FACT;
+    let (app, _, _dir) = on_fin(
+        r#"
         GLOSS app ON cash AS $${"title": "Monday cash", "dataset": "fin"}$$;
         GLOSS app_page ON cash.index AS $${"html": "{% extends \"shell.html\" %}{% block main %}<h1>What stands open</h1>{% endblock %}"}$$;
         GLOSS app_frame ON cash.open AS $${"sql": "SELECT count(*) AS waiting FROM open_questions"}$$;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     // The page the agent wrote is served by the app interface.
     let response = get(&app, "/fin/app/cash").await;
@@ -1694,10 +1676,8 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // be extended through, how much of each holds, and what is open on
     // it. Not an order to follow — the agent judges what to do next;
     // this only says what the system affords.
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'the affordance map');
-        USE fin;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
@@ -1705,8 +1685,9 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
         DECLARE ASPECT late_pairs WITH $${"title": "Late pairs", "x-kind": "sample"}$$ AS VIEW;
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
         DECLARE TEST ar_tie_test ON ar_tie BY (AGENT, HUMAN);
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let rows = rows(
         &app,
@@ -1781,13 +1762,12 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
 /// and their counts are the counts the unfiltered read gives.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
-    let (app, _, _dir) = app().await;
-    let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');
-        USE fin;
+    let (app, _, _dir) = on_fin(
+        r#"
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-    "#;
-    say(&app, "/mcp", setup).await;
+    "#,
+    )
+    .await;
 
     let whole_rows = rows(
         &app,
