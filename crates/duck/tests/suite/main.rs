@@ -19,19 +19,6 @@ fn human() -> Actor {
     }
 }
 
-/// The extension beside this checkout, or where `GLOSSQL_EXTENSION`
-/// points. A build without one — CI, until the extension ships as an
-/// artifact — runs none of this suite and says so.
-fn extension_present() -> bool {
-    let present = Config::laptop(std::path::Path::new(".")).extension.exists();
-    if !present {
-        eprintln!(
-            "skipped: no glossql extension beside this checkout (GLOSSQL_EXTENSION overrides)"
-        );
-    }
-    present
-}
-
 /// A workspace whose two test actors are root. The interface's gate has a
 /// test of its own below.
 async fn plane() -> (tempfile::TempDir, Plane) {
@@ -48,9 +35,6 @@ async fn plane() -> (tempfile::TempDir, Plane) {
 /// refused statement; a root actor has them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
-    if !extension_present() {
-        return;
-    }
     let dir = tempfile::tempdir().expect("a tempdir");
     let mut config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
     config.root = vec![human().id];
@@ -161,9 +145,6 @@ fn text(outcomes: &[Outcome]) -> Vec<Vec<Option<String>>> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
-    if !extension_present() {
-        return;
-    }
     let (_dir, plane) = plane().await;
     assert!(plane.datasets().await.unwrap().is_empty());
     assert_eq!(plane.summary_counts().await.unwrap().human_writings, 0);
@@ -239,9 +220,6 @@ async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_review_decision_is_stored_as_the_person_and_counted() {
-    if !extension_present() {
-        return;
-    }
     let (_dir, plane) = plane().await;
     plane
         .execute(
@@ -307,11 +285,11 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
     assert_eq!(after.decisions_open, 0);
 }
 
+/// A second open of a workspace declares nothing twice and its derived
+/// reads hold; a kit whose text changed runs again at the next open,
+/// over the views the last one left in main and a dataset's metric view.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
-    if !extension_present() {
-        return;
-    }
+async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
     let dir = tempfile::tempdir().expect("a tempdir");
     async fn count(plane: &Plane) -> String {
         let rows = text(
@@ -322,7 +300,8 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
         );
         rows[0][0].clone().unwrap()
     }
-    let first = Plane::open(glossdb_duck::testing::golden(dir.path()).await.unwrap())
+    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
+    let first = Plane::open(config.clone())
         .await
         .expect("the workspace opens");
     let session = first.channel(agent(), None).await.unwrap();
@@ -405,33 +384,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_hold() {
         unbound.is_empty(),
         "an unbound channel serves no row: {unbound:?}"
     );
-}
-
-/// A kit whose text changed runs again at the next open, over the views
-/// the last one left in main and a dataset's metric view: the open
-/// completes, the kit's new text recorded.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_changed_kit_runs_again_at_the_next_open() {
-    if !extension_present() {
-        return;
-    }
-    let dir = tempfile::tempdir().unwrap();
-    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
-    let first = Plane::open(config.clone())
-        .await
-        .expect("the workspace opens");
-    let session = first.channel(agent(), None).await.unwrap();
-    session
-        .execute(
-            "DECLARE DATASET fin SET (purpose: 'a kit again');
-             USE fin;
-             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
-             GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\"}$$;",
-        )
-        .await
-        .unwrap();
-    drop(session);
-    drop(first);
+    drop(second);
 
     // every kit as it is, the server's own kits each one comment longer
     let kits = tempfile::tempdir().unwrap();
@@ -457,7 +410,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
         .collect();
     // the open on a task of its own: one that never returns holds its worker,
     // never the clock that ends the test
-    let second = tokio::time::timeout(
+    let third = tokio::time::timeout(
         std::time::Duration::from_secs(120),
         tokio::spawn(Plane::open(changed)),
     )
@@ -466,7 +419,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
     .unwrap()
     .expect("the workspace reopens");
     let core = text(
-        &second
+        &third
             .execute(
                 agent(),
                 None,
@@ -478,7 +431,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
     assert_eq!(
         core,
         vec![vec![Some("2".to_string())]],
-        "the metrics kit ran again"
+        "the core kit ran again"
     );
 }
 
@@ -488,9 +441,6 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
 /// the slowest suite's.
 #[test]
 fn the_kits_suites_pass() {
-    if !extension_present() {
-        return;
-    }
     let kits = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kits");
     let mut suites: Vec<_> = std::fs::read_dir(&kits)
         .expect("the kits directory")
