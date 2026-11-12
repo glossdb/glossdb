@@ -16,9 +16,8 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The evaluation's server runs in a container that mounts only the sources. Today a load query can read outside its source's location, so it can reach the reference | High for the scores: a run that could read the reference proves nothing | glossval `tools/contract_run.py`, the container's mounts; the server's own fix is a row of `gate.md` | Next, before any scored run | |
-| The review step's two model calls are tested. The step is wired: a second agent answers the builder's assumptions from the reference's documentation | Low: the calls have not run against a model | glossval `tools/contract_run.py`, `tools/interact.py` | With the first row | |
-| Both test cases run three times each; cost, turns and scores per run | Low | glossval scenarios `ferc-steam`, `eia-generators` | After the first two rows | |
+| Both test cases run three times each, the server in the container; cost, turns and scores per run, before and after the review | Low | glossval scenarios `ferc-steam`, `eia-generators` | Next | |
+| The plant name on FERC: the reference writes it in lower case, the contract and the reference's documentation say "as reported". The builder kept the filed case and asked; the review confirmed it from the documentation; every row is wrong in that column | Medium: rows right stays 0% on FERC until the contract states the case or the scorer ignores it | glossval `ferc-steam` (`tools/gen_ferc.py`, `contract.yaml`) or `tools/contract_score.py` | Before the runs are reported | |
 | The rows the builder misses on FERC (the new filing system: 3,909 of 5,221 found by hand) | Medium: PUDL's own mapping may not be reachable from the sources | glossval `ferc-steam` | With the runs | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
 | The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Low | both test cases | After the first runs | |
@@ -45,20 +44,33 @@ DuckDB only as a comparison (a story for the docs later).
 - **The scorer** `tools/contract_score.py`: keys found, values equal
   per column, cells right, rows right in every column. The reference
   against itself scores 100%.
-- **The harness** `tools/contract_run.py`: sources mounted, nothing
-  loaded, the contract in the task, the built table exported and
-  scored. The review step is wired into it: a second agent answers
+- **The harness** `tools/contract_run.py`: nothing loaded, the
+  contract in the task, the built table exported over HTTP and scored
+  on the host. The review step is part of it: a second agent answers
   the builder's assumptions from the reference's documentation
-  (`tools/interact.py`). Its two model calls are untested.
+  (`tools/interact.py`), and the builder applies the decisions.
+- **The server of a run is a container** (`tools/harness.py`,
+  `evals/container/`, Apple's `container`). The image holds the server
+  and the extension at the last commits of the two checkouts. It
+  mounts the run's workspace and the sources, read-only, and no other
+  host path. Its network ends at the host. Measured by hand over MCP:
+  a load from the sources works; a load query that names the
+  reference's host path, `../reference` or the reference's web
+  address fails. The same three load the reference when the server
+  runs on the host (`--host`, for development; `score.json` records
+  which). A server that confines a source's reads itself is a row of
+  `gate.md`.
 - **The tools follow the server.** glossval's tools read the
   server's renamed reads and the current `next`. The notes and tools
   of the old measurement are cut to what the contract test cases
   use.
 - **Measured so far.** By hand in plain SQL: EIA 99.0% of keys and
   95.7% of cells; FERC 96.8% of keys, 96.4% of cells, 86.4% of rows.
-  One agent run on `ferc-steam`: 32 turns, 1.35 USD, 94.0% of keys,
-  91.2% of cells, 0% of rows, because the reference writes plant
-  names in lower case and the contract did not say so.
+  One agent run on `ferc-steam` in the container (sonnet): 28 turns,
+  1.11 USD, 93.4% of keys, 90.6% of cells, 0% of rows. The builder
+  left 10 assumptions open. The review confirmed 2, corrected none
+  and left 8 open, because the documentation does not settle them.
+  The scores before and after the review are the same.
 
 ## What the scores are
 
@@ -74,11 +86,13 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**The evaluation's server sees only the sources.** What it buys: a
-score that the builder could not have read off the reference. What
-is there: `tools/contract_run.py` starts the server and mounts the
-sources; a load query can read a path outside its source's location
-(`gate.md` has the server's row). Done when: the server of a run
-starts in a container whose only data mount is the scenario's
-sources; a load query that names the reference's path fails in a
-run; both test cases still run end to end.
+**Both contract test cases, three runs each.** What it buys: the
+first scores with their spread, on a server that cannot read the
+reference. What is there: `tools/contract_run.py` runs a test case
+with the server in the container; one `ferc-steam` run is measured
+(above); `eia-generators` starts in the container and has not run
+with a model. Done when: three runs of each test case are in
+`evals/runs/`, each with `server: container` in `score.json`; a table
+gives cost, turns, keys, cells and rows per run, before and after the
+review; what the review confirmed, corrected and left open is counted
+per run.
