@@ -53,9 +53,13 @@ workspace version.
   with a `kit.test` suite beside it. A kit whose words depend on the
   server lives here; `kits/README.md` says what they add: vocabulary
   and reads, never grammar.
-- **Next steps**: the `next` view in `kits/goals/kit.sql`, read from
-  the states the catalog holds; a test brings its own finding and
-  fix. The lines every result closes with:
+- **Results and next steps**: `results_due()` in
+  `kits/goals/kit.sql` lists the results that are missing or
+  outdated; the server computes them after a write
+  (`.claude/plans/dependencies.md`). The `next` view beside it lists
+  what only an actor can do, read from the states the catalog holds;
+  a test brings its own finding and fix. The lines every result
+  closes with:
   `crates/serverd/src/window.rs`.
 - `skills/` — the product skills served to agents over MCP.
   `.claude/skills/` — the skills for building the server: substrate,
@@ -81,8 +85,11 @@ workspace version.
 - **Evaluate from the reader's side.** Say in their words what
   glossdb does for them, what breaks and what it costs. Numbers from
   code, tests and glossval are labelled measured or estimated.
-- **Code is the work.** A task on the server ends in changed code and
-  a passing suite.
+- **The feature is the work.** A task on the server ends in a feature
+  that works when used as the agent or the person uses it. What it
+  replaces is deleted in the same step, with its tests: one read
+  answers one question. The suite follows the feature, not the
+  reverse.
 - **Build on the engine.** A read, a measurement, a next step is SQL
   in a kit. The extension owns the language and the catalog; the
   server owns the interfaces. Extend DuckDB and the extension at
@@ -92,13 +99,16 @@ workspace version.
   every single read binds, the interface suites hold, the corpus
   behaves as tagged, and the kits' suites pass. A change that breaks
   it does not land.
-- **Tests assert code, always; text case by case.** A test compares
-  served text where the text is context an agent acts on, a decided
-  process or offering, a named entity or an industry term. Other
-  text is free to change, synonyms included. A test's name and body
-  say what it protects, in plain words. A test that blocks a text
-  change without protecting one of these is changed or deleted on
-  the way.
+- **Tests assert code, not wording.** A test asserts status, rows,
+  values, columns, paths, that a statement an agent is handed runs,
+  and that a refusal happens, by its code. It compares no sentence,
+  label or hint. A test's name and body say what it protects, in
+  plain words. A test that blocks a text change is changed or
+  deleted on the way.
+- **One layer per behaviour.** A flow a kit owns is tested in its
+  `kit.test`. A Rust test covers what the server adds: results
+  computed after a write, the interfaces, access, the console's
+  frames. Fixtures are the shipped kits.
 - **Lint before pushing**: `cargo fmt`, `cargo clippy`, `cargo test`
   here; `make lint` in the extension.
 

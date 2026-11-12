@@ -1,110 +1,101 @@
 # Dependency plan
 
-How glossdb knows that a result is still valid, and how it is brought
-current. The frame is a build system: inputs with versions (data
-tables, annotations, declarations), rules (functions, tests, views),
-results, and for each result a trace of what it read at which
-version. A result is out of date when an input of its trace has
-another version. Dependencies are found while a rule runs, from its
-plan, as Shake and the Rust compiler's queries do. Nothing here is
-committed.
+How glossdb knows that a stored result is still valid, and who brings
+it current. It works as a build system does.
+
+1. **Everything a result can read has a version**: a table, a view, a
+   relation of the catalog or one property of it, the lake's shape.
+   `glossql_parts()` serves each version as it is now.
+2. **A stored result keeps what it read**, one row per input at the
+   version read (`inputs`). The inputs come from the plan of the
+   function while it runs; nobody declares them.
+3. **A result is current while every input still has that version.**
+   Otherwise it is outdated: it is served and marked.
+4. **One read says what is due**: `results_due()` lists the results a
+   dataset's views want that are missing or outdated, with the
+   statement that computes each, an input before what reads it.
+5. **Three readers of that one read.** The server runs it after a
+   write, until nothing is left. The console's re-measure runs it with
+   the preview measurements (`preview := true`), since those call a
+   paid model service and a person starts them. `next` lists what is
+   left over: what only an actor can do (a statement to write, a red
+   test, a decision, a preview measurement that is due).
+
+A result no view wants is not due. Nothing else decides what is
+computed: no second list, no flag.
+
+## Open, in risk order
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| `begin_snapshot` and `end_snapshot` on the catalog's relations; a catalog write takes the lake's next snapshot id in the transaction that writes its rows; the views serve the current rows, `<name>_history` every row | — | both repositories | Built | |
-| A view definition's DuckLake row is in that transaction; a load record carries the id of the load's own commit | — | the extension | Built | |
-| The staleness rule for annotations as joins; the values of a refill read once | — | the extension | Built | |
-| The trace is rows: the `inputs` relation, one row per input a stored result read, at the version read; current by a join; `glossql_parts()` serves each input's version now. `data_version` and `reads` are gone | — | the extension | Built | |
-| A read names what it serves: annotations by property, the lineage functions the lake's shape, a glossary read its property; two checks pass the property | — | the extension, `kits/views/kit.sql` | Built | |
-| After a write the server computes the results the kit's `results_due()` lists, an input before what reads it, until none is left; the matching of outcome text is gone | — | `crates/duck/src/lib.rs`, `kits/views/kit.sql` | Built | |
-| The interface keeps a dataset's `next` rows while the lake's snapshot holds | — | `crates/serverd/src/mcp.rs` | Built | |
-| After a write the server runs a metric's measurement that nobody ran (the grain of its period column), so a series serves after its definition | — | `kits/views/kit.sql` | Built | |
-| `view_summary()` reads the whole glossary, so `additivity_check` runs again on every annotation (4 results, 0.4 s). One of the five properties it reads is filled by a function, so naming the properties is not enough: the read must say that it takes an outdated value too | Medium | `kits/views/kit.sql`, the extension | After the release candidate | |
-| `next` read again after a write costs 0.37 s, 0.27 s of it the preview arm on a workspace with no forecast or plan | Medium | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | With the outlook | |
-| `next` is what the system cannot bring current itself: a missing input only an actor can give, a red test, a decision that waits. Read row by row, it already was, except the profile above and the preview measurements that are due | Low | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | The preview measurements with the outlook | |
-| The outlook kit keeps the request and the stored answer; the model service returns the verdict | Medium: the service is extended | `kits/outlook/kit.sql`, `../glossthesi` | After | |
-| The kits read the current rows plainly: 81 newest-row windows become a read of the view | Low | the kits, the console's frames | After | |
-| A function's macro and a dataset's schema are DuckLake's commits, each followed by its row; a removal leaves a view as it is | Low | the extension | After | |
-| A response of the model service is kept under a hash of the request and the service's version | Medium | the extension (`glossql_service.cpp`) | With the outlook | |
-| The checks of one call run on separate connections | Low | `crates/duck/src/lib.rs` | When measured as a cost | |
-| One property as the kept unit of the glossary | Low: a refill is 40 ms | the extension | When measured as a cost | |
-| A property that carries a test's expectation is required only where it is annotated | Medium: `SPEC.md` §5 | the extension, six console frames | Open | |
+| A catalog write treats every SQL error as a lost race: a real error is tried 60 times with waits and reported as 60 lost races | High: a bug; every write path | the extension (`CatalogWrite::Run`, `glossql_runner.cpp:215-280`) | Next | drafted below |
+| A replace load is `CREATE OR REPLACE TABLE`. If that moves the lake's shape, every lineage result, column listing and glossary read is outdated after each load. Read from the code, not tested | High until tested | the extension: a test first (`glossql_store.cpp:433`, `glossql_runner.cpp:565`) | With the row above | |
+| A result that read results is outdated when one of them is (rule 3, applied through). Today a glossary read of a property a function fills names the whole glossary, six catalog relations and the lake's shape instead, so any declaration or load anywhere outdates every such reader; `additivity_check` runs again on every annotation (4 results, 0.4 s) | Medium: it replaces the branch in `NameRead` and its fixed inputs; `results_due()` already runs inputs first | the extension (`glossql_store.cpp:1797-1816`), `kits/views/kit.sql` | After the two rows above | |
+| A computation that fails is a result too: stored with its inputs and its error, served as the error while current. Today nothing is stored, so a check that fails every time is due after every write | Medium: a column on `measurements`; a workspace is rebuilt | the extension (`glossql_runner.cpp:1328-1361`) | After | |
+| Snapshot expiry. A table's version comes from the snapshot that last changed it, so expiry recomputes once. If expiry removes ended column or view rows, an outdated annotation reads as current | Medium: not tested | the extension: a test first; a missing earlier row counts as outdated (`glossql_store.cpp:1258-1318`) | Before a workspace expires snapshots | |
+| `SPEC.md` says "data version" in seven places (§5.2, §6, §7, §7.2); §6 lists six of the nine input forms and does not say that a function declared again outdates its results | Low; the project lead reviews | the extension: `SPEC.md`, `grammar.ebnf` comments, `docs/inputs.md`, README | With the rule above, one diff | |
+| An identical reload moves the table's version: the merge updates every matched row, the replace builds a new table | Low: results are computed once more | the extension (`glossql_runner.cpp:565-574`) | When measured as a cost | |
+| The read cache is keyed by the lake's snapshot, results by their inputs: two version schemes | Low | the extension (`StoreVersion`) | When measured as a cost | |
+| The preview measurements are due by the outlook kit's own rule (`outlook_due()`), joined into `results_due(preview := true)`; a response of the model service is kept under a hash of the request and the service's version | Medium | `kits/outlook/kit.sql`, the extension's service call | With the outlook issue (`harness.md`) | |
+| `next` takes 0.35 s per read; the MCP interface keeps its rows per lake snapshot, the console reads it whole | Low | `kits/goals/kit.sql`, `crates/serverd/src/mcp.rs` | When measured as a cost | |
+| Newest-row windows left in the outlook kit and the console's frames | Low | `kits/outlook/kit.sql`, `crates/apps/builtin/console/frames` | With the outlook issue | |
 
 ## What is built
 
-- **One write, one transaction** (`Inner::Write`). It takes the lake's
-  next snapshot id with its rows; a write that loses a race runs
-  again, admission included. The change text is DuckLake's: NULL for a
-  write to the catalog alone, `created_view` for a definition.
-- **A new row ends the row it replaces**; `DELETE FROM glossary` ends
-  rows. No row is deleted.
-- **A view follows the serving definition**, a person's over an
-  agent's, in the transaction of its glossary row.
-- **Inputs are rows.** `<dataset>.*`, `<dataset>.**` and "every other
-  function's results" are inputs too, their version a digest of their
-  members. The versions are read before the result is computed.
-- **Precise inputs.** A scan of the annotations filtered by property
-  names that property. The lineage functions and the column listing
-  name `lake.shape`, DuckLake's schema version. A glossary read of one
-  property that no function fills names that property; any other
-  glossary read names everything, since a stored result's currency
-  depends on the data.
-- **After a write** the server reads `results_due()` and runs what it
-  lists, in rounds. The console's re-measure runs a function that read
-  other functions' results after them, by its last trace.
-- **`SPEC.md` §5.2 and §6** are edited for the markers and the
-  `inputs` relation. The project lead reviews them.
+- **One write, one transaction** (`Inner::Write`). A catalog write
+  takes the lake's next snapshot id with its rows. A new row ends the
+  row it replaces (`end_snapshot`); no row is deleted. `<name>` serves
+  the current rows, `<name>_history` every row. A view's DuckLake row
+  is in the transaction of its glossary row.
+- **Inputs are rows**, written with the result, their versions read
+  before the result is computed. Forms: a table or view, a catalog
+  relation, one function's results, one property of the glossary,
+  `<dataset>.*`, `<dataset>.**`, `lake.shape`.
+- **`results_due()`** is in `kits/goals/kit.sql`. What a metric
+  wants: the profile of each column it reads or joins on, the
+  relationship check of its dataset, the measurement its row names as
+  not run, and the tests on it and on what it reads.
+- **The server** (`bring_current` in `crates/duck/src/lib.rs`) runs
+  it after a write, in rounds, before the next read of the same call.
+  The console's re-measure calls the same function.
+- **`next`** reads the catalog's states and `load_changes()` (what
+  the newest load changed in a table). `open_items`, the older list
+  beside it, is removed.
 
 ## Measured
 
-Extension: 19 test files, 2128 assertions, lint clean. Server: 126
-tests, format and clippy clean. DuckDB 2.0.0; the write path also on
-Postgres 18 by script.
-
-On the server with the Formula 1 data (9 tables, 4 metrics):
+Server at `e42e21e`: 126 tests pass. Extension at `96b34b7`: 19 test
+files, 2128 assertions. On the server with the Formula 1 data (9
+tables, 4 metrics):
 
 | What | At the start | Now |
 |---|---|---|
 | A call that writes nothing | 0.48 s | 0.005 s |
 | An annotation on a table two metrics scan | 3.3 s, 8 results computed | 1.0 s, 4 computed |
-| An annotation on a column no metric scans | not measured; left results out of date | 1.0 s, 4 computed |
 | One row added to a table two metrics scan | not measured | 2.4 s, 17 computed |
-| Results out of date after the setup | 3 (`fan_out_check` ran before `column_profile`) | 0 |
-| Results that record "everything" as an input | 16 of 28 | 0 of 28; `additivity_check` names the whole glossary |
+| Results out of date after the setup | 3 | 0 |
 | A refill of a dataset's glossary | 0.25 s | 0.04 s |
 | One annotation write, 250 in a call | | 14 ms |
-| Call times at 310 and at 1387 snapshots | | unchanged |
+| `next`, read whole; `results_due()` | | 0.35 s; 0.10 s |
 
-Findings behind the numbers:
+Where a writing call's second goes: `next` 0.35 s, four
+`additivity_check` runs 0.4 s, `results_due()` twice 0.1 s.
 
-- The staleness rule for annotations was subqueries per row: DuckDB
-  planned it in 98 ms for 8 rows; as joins, 6 ms.
-- A snapshot with no lake change takes a NULL change text, DuckLake's
-  own form; an empty string breaks its conflict check.
-- The lake and the catalogue database cannot be written in one
-  transaction, and there is no `SAVEPOINT`.
-- Each check quotes the metric's definition in its fix; the plan
-  reader took that for the whole glossary until it read the filter.
-
-## Open
-
-- Where a writing call's second goes: `next` 0.37 s, four
-  `additivity_check` runs 0.4 s, `results_due()` twice 0.1 s.
-- `next` alone 0.11 s, its preview arm alone 0.12 s, together 0.37 s:
-  not explained.
-- The kept `next` rows live in the MCP interface; the console and an
-  agent's own read of `next` read it whole.
-- A check that fails every time stays due and is tried on every
-  writing call.
-- Snapshot expiry against markers that are snapshot ids: not tested.
-- Separate work: an identical reload still changes a table's version.
+Learned on the way: a snapshot with no lake change takes a NULL
+change text, DuckLake's own form; the lake and the catalogue database
+cannot be written in one transaction, and there is no `SAVEPOINT`;
+the staleness rule for annotations is joins (6 ms), not subqueries
+per row (98 ms).
 
 ## Next issue (draft)
 
-**The model service returns the verdict of a forecast.** What it buys:
-the outlook kit keeps the request and the stored answer and no longer
-computes the comparison in SQL. What is there: `POST /forecast` with
-`origins` already returns one result (score and state) over all
-members (`../glossthesi/docs/contract.md`); `kits/outlook/kit.sql`
-(1,613 lines) and its suite. Done when: the kit's tests read the
-service's state, the kit is under half its size, both suites pass.
+**A catalog write reports a real error as itself.** What it buys: a
+write that fails for a reason other than a lost race fails at once
+with its own error, where today it waits through 60 tries and names
+the wrong cause. What is there: `CatalogWrite::Run`
+(`src/glossql_runner.cpp:215-219`) maps every error to `LostRace`;
+the retry loop is at `:247-280`. Done when: only a conflict on the
+snapshot row is retried; a test writes a row that breaks a constraint
+and gets that refusal on the first try; a second test loads a table
+again in place and asserts whether `lake.shape` moved, which settles
+the second row of this plan.
