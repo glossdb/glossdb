@@ -16,8 +16,8 @@ it current. It works as a build system does.
    statement that computes each, an input before what reads it.
 5. **Three readers of that one read.** The server runs it after a
    write, until nothing is left. The console's re-measure runs it with
-   the preview measurements (`preview := true`), since those call a
-   paid model service and a person starts them. `next` lists what is
+   the preview measurements (`preview := true`): those call the model
+   service (`../glossthesi`), and a person starts them. `next` lists what is
    left over: what only an actor can do (a statement to write, a red
    test, a decision, a preview measurement that is due).
 
