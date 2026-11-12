@@ -48,18 +48,16 @@ when something it reads changed:
 
 | Result | Due again after |
 |---|---|
-| expected ranges, forecast | a load of a table of the dataset; a change to the SQL of a view of the dataset; a change to a metric's time or value column, its grain or its additivity |
-| scenario estimate | the same; a change to a scenario's levers or factors |
-| plan comparison | a new forecast; a load of a table of the dataset; a change to the SQL of a view of the dataset |
+| expected ranges, forecast | a load of a table a metric scans; a change to a metric's SQL, its time or value column, its grain or its additivity |
+| scenario estimate | the same for the metrics its levers are on; a change to a scenario's levers or factors |
+| plan comparison | a new forecast; a change to the plan's SQL or a load of its table |
 
-Other changes leave them as they are: a new plan, an assumption added
-to a definition, an annotation the series does not read. Each function
-declares what its result depends on in the catalog (`DEPENDS ON`), and
-the catalog keeps the result current until that or the data changes.
-`TESTS()` reads `current = false` and `next` and
-`outlook_measurements()` list the function once it is due. Run the
-expected ranges and the forecast first, then the scenarios, then each
-plan.
+Other changes leave them as they are: another view, a new plan, an
+assumption added to a definition, an annotation the series does not
+read. `TESTS()` reads `current = false` after any change to the
+catalog; `next` and `outlook_measurements()` list a function only
+when it is due. Run the expected ranges and the forecast first, then
+the scenarios, then each plan.
 
 All of them read the metric's series: the newest periods inside the
 metric's window, 48 months by default ([views](views.md)). A longer

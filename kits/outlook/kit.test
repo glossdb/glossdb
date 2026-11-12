@@ -292,29 +292,11 @@ SELECT count(*) FROM forecast_coverage();
 ----
 0
 
-# --- an annotation elsewhere in the catalog leaves the forecast current: a repeat is served
+# --- run again from the same origin (an annotation elsewhere moved the catalog), the forecast is a second run
+# and still one point per metric, origin, step and span
 
 statement ok
 GLOSS meaning ON fin.ledger AS $${"value": "one booking"}$$;
-
-statement ok
-SELECT metric_forecast() FROM fin;
-
-query IT
-SELECT (SELECT count(*) FROM measurements WHERE function = 'metric_forecast'), current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
-----
-1	true
-
-# --- run again from the same origin (a table of the dataset took a row that changes no series), the forecast
-# is a second run and still one point per metric, origin, step and span
-
-statement ok
-INSERT INTO fin.recent VALUES (DATE '2024-10-01', 0.0);
-
-query T
-SELECT current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
-----
-false
 
 statement ok
 SELECT metric_forecast() FROM fin;

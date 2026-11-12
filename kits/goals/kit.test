@@ -141,8 +141,8 @@ SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_
 ----
 0
 
-# a plan is declared and defined, and a column the metric does not read is annotated: nothing the stored ranges
-# depend on changed, so their result stays current and they are not due; the plan makes the forecast due
+# a plan is declared and defined, and a column the metric does not read is annotated: the catalog moved, so the
+# stale rule marks the stored ranges, and nothing they read changed, so they are not due; the plan makes the forecast due
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
@@ -155,7 +155,7 @@ GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
 query T
 SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
-true
+false
 
 query TTT
 SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
