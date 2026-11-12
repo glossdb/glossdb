@@ -56,7 +56,7 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| How a result becomes outdated and when it is computed again: one concept in place of the exceptions; `DEPENDS ON` is built and provisional | `dependencies.md` | after the open items of this round |
+| How a result becomes outdated and when it is computed again: a caching design on versions the storage guarantees; a proposal, nothing built | `dependencies.md` | after the open items of this round |
 | A kit cannot change a property that has values, not even to add a description, so an existing workspace cannot take a kit update | the extension | before a workspace lives longer than a release |
 | The spec says data-changing SQL is refused; the server allows it. It follows access control | `gate.md` | with `gate.md` |
 | The demo workspace is rebuilt on the new names | the demo server | before the pull requests |
