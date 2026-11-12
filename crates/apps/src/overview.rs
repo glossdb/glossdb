@@ -18,7 +18,7 @@ pub(crate) const DATASETS: &str = "SELECT name, \
 /// workspace-wide relations.
 pub(crate) const COUNTS: &str = "WITH latest AS ( \
        SELECT i.table_name, i.rows, i.imported_at, \
-              row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn \
+              row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn \
        FROM imports i JOIN current_dataset d ON d.dataset = i.dataset) \
      SELECT \
        (SELECT count(*) FROM latest WHERE rn = 1) AS tables, \

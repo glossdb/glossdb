@@ -5,7 +5,7 @@
 -- a plan holds on its metric's page.
 WITH latest AS (
   SELECT i.table_name, i.rows AS n,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset),
 tables AS (
   SELECT table_name AS name, 'table' AS kind, CAST(n AS BIGINT) AS n, '' AS what FROM latest WHERE rn = 1),

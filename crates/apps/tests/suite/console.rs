@@ -352,7 +352,7 @@ async fn a_release_gates_what_is_served() {
     let frame = get(&app, "/perf/app/board/frames/monthly").await;
     assert_eq!(values(frame).await, vec![25.0, 8.0]);
     let first = session
-        .execute("SELECT min(written_at) FROM glossary WHERE aspect = 'app_release';")
+        .execute("SELECT min(written_at) FROM glossary_history WHERE aspect = 'app_release';")
         .await
         .unwrap();
     let glossdb_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {

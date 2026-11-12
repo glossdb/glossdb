@@ -13,7 +13,7 @@ decisions AS (
 annotations AS (
   SELECT g.subject, g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at,
          row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
 cur AS (SELECT subject, aspect, actor_kind, actor_id, body, written_at FROM annotations WHERE rn = 1),

@@ -80,7 +80,7 @@ DECLARE ASPECT lever WITH $${
 
 CREATE OR REPLACE MACRO main.scenarios() AS TABLE
 WITH declared AS (
-  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
+  SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects)
   WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
 bodies AS (
   SELECT d.name AS scenario, g.value AS body
@@ -121,12 +121,12 @@ WITH ds AS (SELECT current_schema() AS d),
 defs AS (
   SELECT g.aspect AS view, md5(json_merge_patch(g.body::JSON, '{"assumptions": null}')::VARCHAR) AS definition
   FROM main.glossary g, ds WHERE g.dataset = ds.d AND g.subject = ds.d
-  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1),
 loads AS (
-  SELECT s.view, string_agg(s.table_name || '@' || coalesce(i.seq::VARCHAR, '?'), ',' ORDER BY s.table_name) AS loads,
-         bool_and(i.seq IS NOT NULL) AS tracked
+  SELECT s.view, string_agg(s.table_name || '@' || coalesce(i.load::VARCHAR, '?'), ',' ORDER BY s.table_name) AS loads,
+         bool_and(i.load IS NOT NULL) AS tracked
   FROM (SELECT DISTINCT view, table_name FROM glossql_views_scans(current_schema())) s
-  LEFT JOIN (SELECT dataset || '.' || table_name AS tbl, max(seq) AS seq FROM main.imports GROUP BY ALL) i ON i.tbl = s.table_name
+  LEFT JOIN (SELECT dataset || '.' || table_name AS tbl, begin_snapshot AS load FROM main.imports) i ON i.tbl = s.table_name
   GROUP BY s.view)
 SELECT m.view, m.kind, m.plan_of, m.stopped, m.applicable,
        md5(concat_ws('|', m.view, coalesce(d.definition, ''), m.applicable::VARCHAR, coalesce(m.period_column, ''), coalesce(m.value_column, ''),
@@ -141,7 +141,7 @@ metrics AS (SELECT * FROM v WHERE coalesce(kind, '') NOT IN ('scalar', 'relation
 series AS (
   SELECT coalesce(string_agg(inputs, ',' ORDER BY view), '') AS digest, coalesce(bool_and(tracked), true) AS tracked FROM metrics),
 threshold AS (
-  SELECT coalesce((SELECT threshold::VARCHAR FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY seq DESC LIMIT 1), '') AS t),
+  SELECT coalesce((SELECT threshold::VARCHAR FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY begin_snapshot DESC LIMIT 1), '') AS t),
 sc AS MATERIALIZED (SELECT * FROM main.scenarios()),
 reached AS (SELECT DISTINCT u.l.metric AS view FROM sc, unnest(sc.levers) AS u(l)),
 scen AS (
@@ -164,7 +164,7 @@ WITH now_ AS (SELECT * FROM main.outlook_inputs()),
 stored AS (
   SELECT function AS name, json_extract_string(value, '$.inputs') AS inputs FROM main.measurements
   WHERE dataset = current_schema() AND function IN ('metric_ranges', 'metric_forecast', 'metric_scenario')
-  QUALIFY row_number() OVER (PARTITION BY function ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY function ORDER BY begin_snapshot DESC) = 1),
 held AS (
   SELECT aspect AS name, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
   WHERE actor = 'function' AND aspect IN ('metric_ranges', 'metric_forecast', 'metric_scenario') GROUP BY aspect)
@@ -213,7 +213,7 @@ ORDER BY a.metric;
 
 CREATE OR REPLACE MACRO main.range_body() AS TABLE
 WITH s AS (SELECT * FROM main.range_series() WHERE metric IN (SELECT metric FROM main.range_request() WHERE applicable)),
-t AS (SELECT coalesce((SELECT threshold FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY seq DESC LIMIT 1), 0.98) AS threshold)
+t AS (SELECT coalesce((SELECT threshold FROM main.tests WHERE aspect = 'metric_ranges' ORDER BY begin_snapshot DESC LIMIT 1), 0.98) AS threshold)
 SELECT CASE WHEN count(s.metric) > 0 THEN json_object(
          'spec', json_object('targets', ['value'], 'origins', 6, 'horizon', 1,
                              'levels', [0.05, 0.1, 0.5, 0.9, 0.95], 'grain', 'month', 'threshold', t.threshold),
@@ -334,12 +334,12 @@ SELECT json_extract_string(value, '$.served_by') AS served_by, json_extract_stri
        json_extract(value, '$.threshold')::DOUBLE AS threshold, computed_at
 FROM main.measurements
 WHERE dataset = current_schema() AND function = 'metric_ranges'
-ORDER BY seq DESC LIMIT 1;
+ORDER BY begin_snapshot DESC LIMIT 1;
 
 CREATE OR REPLACE MACRO main.range_points() AS TABLE
 WITH newest_result AS (
   SELECT value, computed_at FROM main.measurements
-  WHERE dataset = current_schema() AND function = 'metric_ranges' ORDER BY seq DESC LIMIT 1),
+  WHERE dataset = current_schema() AND function = 'metric_ranges' ORDER BY begin_snapshot DESC LIMIT 1),
 metrics AS (
   SELECT unnest(from_json(json_extract(value, '$.metrics'),
     '[{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "additivity": "VARCHAR", "backtested": "BIGINT",
@@ -555,7 +555,7 @@ DECLARE TEST forecast_test ON metric_forecast DETECTOR forecast_exists;
 
 CREATE OR REPLACE MACRO main.forecast_stored() AS TABLE
 WITH runs AS (
-  SELECT seq AS run, value, computed_at FROM main.measurements
+  SELECT begin_snapshot AS run, value, computed_at FROM main.measurements_history
   WHERE dataset = current_schema() AND function = 'metric_forecast'),
 metrics AS (
   SELECT run, computed_at, json_extract_string(value, '$.served_by') AS served_by,
@@ -982,7 +982,7 @@ DECLARE TEST scenario_test ON metric_scenario DETECTOR scenario_exists;
 CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH newest AS (
   SELECT value, computed_at FROM main.measurements
-  WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY seq DESC LIMIT 1),
+  WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY begin_snapshot DESC LIMIT 1),
 scn AS (
   SELECT computed_at, json_extract_string(value, '$.served_by') AS served_by,
          unnest(from_json(json_extract(value, '$.scenarios'),
@@ -1020,7 +1020,7 @@ ORDER BY scenario, metric, step NULLS FIRST;
 CREATE OR REPLACE MACRO main.scenario_levers(s) AS TABLE
 WITH newest AS (
   SELECT value, computed_at FROM main.measurements
-  WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY seq DESC LIMIT 1),
+  WHERE dataset = current_schema() AND function = 'metric_scenario' ORDER BY begin_snapshot DESC LIMIT 1),
 scn AS (
   SELECT computed_at, unnest(from_json(json_extract(value, '$.scenarios'),
            '[{"scenario": "VARCHAR", "metrics": [{"metric": "VARCHAR", "applicable": "BOOLEAN", "reason": "VARCHAR", "sign": "VARCHAR", "basis": "VARCHAR",
@@ -1284,7 +1284,7 @@ ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 -- metric_plan: the plan judged, as a measurement on the plan — the rows
 -- plan_points() serves for it as of the data, with the forecast run they
 -- were judged against (forecast_run, the newest metric_forecast
--- measurement's seq, and its origin) and inputs, the digest of the plan
+-- measurement's begin_snapshot, and its origin) and inputs, the digest of the plan
 -- (view_inputs()). Refused on a view that is not a plan, or a plan that
 -- is not served, by name. Wanted on the plan's row until one exists; due
 -- again once a newer forecast exists or the plan's digest differs.
@@ -1316,11 +1316,11 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
                 THEN error('plan_not_served: ' || $subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
   pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
   own AS (SELECT metric, grain FROM main.plan_grains() WHERE plan = split_part($subject, '.', 2)),
-  run AS (SELECT max(seq) AS seq FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')
+  run AS (SELECT max(begin_snapshot) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast')
   SELECT coalesce((SELECT r FROM refusal)::VARCHAR, split_part($subject, '.', 2)) AS plan,
          (SELECT any_value(metric) FROM own) AS metric,
          (SELECT any_value(grain) FROM own) AS grain,
-         (SELECT seq FROM run) AS forecast_run,
+         (SELECT run FROM run) AS forecast_run,
          (SELECT any_value(origin) FROM pts WHERE origin IS NOT NULL) AS forecast_origin,
          (SELECT inputs FROM main.view_inputs() WHERE view = split_part($subject, '.', 2)) AS inputs,
          (SELECT coalesce(list({'grain': grain, 'period': strftime(period, '%Y-%m-%d'), 'label': label, 'value': value,
@@ -1352,7 +1352,7 @@ CREATE OR REPLACE MACRO main.plan_stored() AS TABLE
 WITH newest AS (
   SELECT subject, value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_plan'
-  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY begin_snapshot DESC) = 1),
 judged AS (
   SELECT json_extract_string(value, '$.plan') AS plan, json_extract_string(value, '$.metric') AS metric,
          json_extract_string(value, '$.grain') AS plan_grain, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run,
@@ -1412,16 +1412,16 @@ asked AS (
 views AS MATERIALIZED (SELECT view, kind, stopped, applicable, inputs FROM main.view_inputs()),
 plans AS (
   SELECT a.name AS plan, json_extract_string(a.schema, '$.x-plan-of') AS metric, x.applicable, x.stopped, x.inputs
-  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  FROM (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
   LEFT JOIN views x ON x.view = a.name
   WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'),
 forecast AS (
-  SELECT max(seq) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
+  SELECT max(begin_snapshot) AS run FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_forecast'),
 compared AS (
   SELECT subject, json_extract_string(value, '$.plan') AS plan, json_extract(value, '$.forecast_run')::BIGINT AS forecast_run,
          json_extract_string(value, '$.inputs') AS inputs
   FROM main.measurements WHERE dataset = current_schema() AND function = 'metric_plan'
-  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY subject ORDER BY begin_snapshot DESC) = 1),
 -- the catalog's stale rule on each stored comparison
 held AS (
   SELECT subject, bool_and(current) AS current FROM glossql_glossary(current_schema(), NULL, true)
@@ -1430,7 +1430,7 @@ held AS (
 estimate AS (
   SELECT value, computed_at FROM main.measurements
   WHERE dataset = current_schema() AND function = 'metric_scenario'
-  ORDER BY seq DESC LIMIT 1),
+  ORDER BY begin_snapshot DESC LIMIT 1),
 estimated AS (
   SELECT sc.scenario AS scenario, unnest(sc.metrics) AS m, computed_at
   FROM (SELECT unnest(from_json(json_extract(value, '$.scenarios'),
@@ -1441,7 +1441,7 @@ estimated AS (
 scenario_bodies AS (
   SELECT w.aspect AS scenario, w.body::VARCHAR AS body, w.written_at FROM main.glossary w, ds
   WHERE w.dataset = ds.d AND w.subject = ds.d
-  QUALIFY row_number() OVER (PARTITION BY w.aspect ORDER BY w.seq DESC) = 1)
+  QUALIFY row_number() OVER (PARTITION BY w.aspect ORDER BY w.begin_snapshot DESC) = 1)
 SELECT 'test' AS step, ds.d || '.' || p.metric AS asset, 'red' AS state,
        'range_test (preview): ' || p.metric || ' is ' || CAST(round(p.actual, 2) AS VARCHAR) || ' at ' || p.period
          || ', outside its expected range of ' || CAST(round(p.p05, 2) AS VARCHAR) || ' to ' || CAST(round(p.p95, 2) AS VARCHAR) AS open,
@@ -1532,7 +1532,7 @@ live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS na
 due AS MATERIALIZED (SELECT * FROM main.outlook_due()),
 declared AS (
   SELECT name AS test, aspect FROM main.tests
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 tests AS (SELECT test, aspect FROM declared WHERE aspect IN ('metric_ranges', 'metric_forecast', 'metric_scenario', 'metric_plan')),
 results AS MATERIALIZED (
   SELECT subject, test, state, score FROM glossql_tests(current_schema(), NULL) WHERE test IN (SELECT test FROM tests)),

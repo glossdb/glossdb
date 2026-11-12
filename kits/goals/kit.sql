@@ -22,20 +22,20 @@ CREATE OR REPLACE MACRO main.decided_items() AS TABLE
   -- the view keeps serving the recorded SQL until the agent recomposes it
   query_aspects AS (
     SELECT name FROM main.aspects
-    QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1 AND kind = 'VIEW'),
+    QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1 AND kind = 'VIEW'),
   current_definition AS (
-    SELECT g.dataset, g.subject, g.aspect, g.seq FROM main.glossary g, ds
+    SELECT g.dataset, g.subject, g.aspect, g.begin_snapshot FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind = 'agent'
       AND g.aspect IN (SELECT name FROM query_aspects)
-    QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) = 1),
+    QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1),
   answered AS (
-    SELECT h.dataset, h.subject, h.body, h.seq, h.written_at FROM main.glossary h, ds
+    SELECT h.dataset, h.subject, h.body, h.begin_snapshot, h.written_at FROM main.glossary h, ds
     WHERE h.dataset = ds.dataset AND h.subject = ds.dataset AND h.aspect = 'definitions' AND h.actor_kind = 'human'
-    QUALIFY row_number() OVER (ORDER BY h.seq DESC) = 1),
+    QUALIFY row_number() OVER (ORDER BY h.begin_snapshot DESC) = 1),
   formulas AS (
     SELECT 'formula' AS kind, g.aspect AS subject, 'formula answer on ' || g.aspect AS what,
            'the recorded materialization predates it' AS why, h.written_at::VARCHAR AS since
-    FROM current_definition g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.seq > g.seq
+    FROM current_definition g JOIN answered h ON h.dataset = g.dataset AND h.subject = g.subject AND h.begin_snapshot > g.begin_snapshot
     WHERE json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL)
   SELECT * FROM recipes
   UNION ALL SELECT * FROM formulas;
@@ -81,13 +81,13 @@ CREATE OR REPLACE VIEW main.open_items AS
            'never measured: ' || f.name || '() over ' || ds.dataset AS what,
            'a tested measurement on the dataset with no result — run the function' AS why, '' AS since
     FROM main.functions f, ds
-    JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
+    JOIN (SELECT name, grains FROM (SELECT name, kind, grains, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects) WHERE rn = 1 AND kind = 'MEASUREMENT') a
       ON a.name = f.returns
     WHERE (f.scope = 'GLOBAL' OR f.scope = ds.dataset) AND list_contains(a.grains, 'DATASET')
       AND EXISTS (SELECT 1 FROM main.tests w WHERE w.aspect = a.name)
       AND EXISTS (SELECT 1 FROM main.view_definitions s WHERE s.defined)
       AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.dataset = ds.dataset AND m.function = f.name)
-    QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.seq DESC) = 1),
+    QUALIFY row_number() OVER (PARTITION BY f.name ORDER BY f.begin_snapshot DESC) = 1),
   foldins AS (
     SELECT 'apply-decision' AS kind, r.aspect AS subject, 'review decision on ' || r.aspect AS what,
            'decided (' || r.stance || ') — not yet applied to the definition' AS why, r.written_at::VARCHAR AS since
@@ -165,19 +165,19 @@ CREATE OR REPLACE VIEW main.next AS
                 THEN '{"floor": "<' || array_to_string(json_extract_string(schema, '$.properties.floor.enum[*]'), '|') || '>"}' END AS shape,
            -- an expectation a test scores: asked for where it is set, not on every asset
            name IN (SELECT p.name FROM main.tested_properties() p) AS expectation
-    FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn FROM main.aspects)
+    FROM (SELECT *, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects)
     WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   -- the newest annotation on each asset: an outdated one is offered
   -- back to be checked and recorded again
   written AS (
-    SELECT w.subject, w.aspect, w.body::VARCHAR AS body, w.seq FROM main.glossary w, ds
+    SELECT w.subject, w.aspect, w.body::VARCHAR AS body, w.begin_snapshot FROM main.glossary w, ds
     WHERE w.dataset = ds.d AND w.actor_kind IN ('agent', 'human')
-    QUALIFY row_number() OVER (PARTITION BY w.subject, w.aspect ORDER BY w.seq DESC) = 1),
+    QUALIFY row_number() OVER (PARTITION BY w.subject, w.aspect ORDER BY w.begin_snapshot DESC) = 1),
   -- each view's newest definition: an annotation on the view written
   -- before it describes the definition before
   defined AS (
-    SELECT ds.d || '.' || w.aspect AS home, w.aspect AS view, max(w.seq) AS seq FROM main.glossary w, ds
+    SELECT ds.d || '.' || w.aspect AS home, w.aspect AS view, max(w.begin_snapshot) AS begin_snapshot FROM main.glossary w, ds
     WHERE w.dataset = ds.d AND w.subject = ds.d AND w.aspect IN (SELECT view FROM summary)
     GROUP BY ALL),
   -- what the views read, and every value withheld as a conflict; a
@@ -189,7 +189,7 @@ CREATE OR REPLACE VIEW main.next AS
            s.shape IS NULL AND g.state = 'missing' AS unshaped,
            coalesce(g.state = 'stale' AND EXISTS (
              SELECT 1 FROM defined d
-             WHERE d.seq > w.seq AND (g.subject = d.home OR starts_with(g.subject, d.home || '.'))), false) AS redefined,
+             WHERE d.begin_snapshot > w.begin_snapshot AND (g.subject = d.home OR starts_with(g.subject, d.home || '.'))), false) AS redefined,
            'GLOSS ' || g.aspect || ' ON ' || g.subject || ' AS $$'
              || CASE WHEN g.state = 'stale' THEN coalesce(w.body, s.shape, '<value>') ELSE coalesce(s.shape, '<value>') END
              || '$$;' AS gloss
@@ -213,16 +213,16 @@ CREATE OR REPLACE VIEW main.next AS
   -- the newest load of each table against the one before it
   loads AS (
     SELECT i.dataset || '.' || i.table_name AS tbl, i.rows,
-           lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.seq) AS rows_before,
-           row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) AS rn
-    FROM main.imports i, ds WHERE i.dataset = ds.d),
+           lag(i.rows) OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot) AS rows_before,
+           row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) AS rn
+    FROM main.imports_history i, ds WHERE i.dataset = ds.d),
   -- what the newest load changed in a column a view reads: its
   -- stored profile against the one before
   profiles AS (
     SELECT m.subject, m.value,
-           lag(m.value) OVER (PARTITION BY m.subject ORDER BY m.seq) AS before,
-           row_number() OVER (PARTITION BY m.subject ORDER BY m.seq DESC) AS rn
-    FROM main.measurements m, ds WHERE m.dataset = ds.d AND m.function = 'column_profile'),
+           lag(m.value) OVER (PARTITION BY m.subject ORDER BY m.begin_snapshot) AS before,
+           row_number() OVER (PARTITION BY m.subject ORDER BY m.begin_snapshot DESC) AS rn
+    FROM main.measurements_history m, ds WHERE m.dataset = ds.d AND m.function = 'column_profile'),
   changed AS (
     SELECT array_to_string(string_split(p.subject, '.')[1:2], '.') AS tbl,
            string_agg(string_split(p.subject, '.')[3] || ' ('
@@ -264,7 +264,7 @@ CREATE OR REPLACE VIEW main.next AS
     UNION ALL
     SELECT 2, 1, 'integrate', ds.d || '.' || o.subject, 'decided', 'agent',
            'a person approved a change to the load query of ' || o.subject || '; it is not declared yet', '', '',
-           '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'' ORDER BY seq DESC;' || chr(10)
+           '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
              || 'DECLARE RECIPE ' || o.subject || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
     FROM items o, ds WHERE o.kind = 'recipe-change'),
   s_describe AS (
@@ -306,8 +306,8 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN a.kind = 'FACT' AND json_extract(a.schema, '$.properties.tolerance') IS NOT NULL THEN 'tolerance'
                 ELSE 'threshold' END AS by,
            w.aspect
-    FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
-    JOIN (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+    FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) w
+    JOIN (SELECT name, kind, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
       ON a.name = w.aspect
     WHERE w.detector = 'rate_tolerance'),
   s_test AS (

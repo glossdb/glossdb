@@ -7,7 +7,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 a AS (
   SELECT name, schema FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
@@ -15,10 +15,10 @@ reads AS (
   GROUP BY ms.source),
 meanings AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning,
-         row_number() OVER (PARTITION BY g.subject ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (PARTITION BY g.subject ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'meaning' AND g.actor_kind IN ('human', 'agent')),
-w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 results AS (
   SELECT v.subject, v.aspect, v.test, v.state, v.score, v.error, v.computed_at, w.detector, w.threshold,
          CASE v.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 ELSE 1 END AS sev
@@ -27,7 +27,7 @@ results AS (
 annotations AS (
   SELECT g.subject, g.aspect,
          string_agg(g.actor_kind || ': ' || coalesce(json_extract_string(g.body, '$.value'), g.body::VARCHAR), ' · '
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.seq DESC) AS said
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.begin_snapshot DESC) AS said
   FROM glossary g JOIN d ON d.dataset = g.dataset
   JOIN (SELECT DISTINCT subject, aspect FROM results) v ON v.subject = g.subject AND v.aspect = g.aspect
   GROUP BY g.subject, g.aspect),

@@ -75,7 +75,7 @@ The acknowledgement says what happened: `loaded fleet.readings: 48210
 rows, 0 dropped (new)`. The `imports` table keeps each load:
 
 ```sql
-SELECT table_name, mode, rows, dropped_rows_count, imported_at FROM imports ORDER BY seq DESC
+SELECT table_name, mode, rows, dropped_rows_count, imported_at FROM imports_history ORDER BY begin_snapshot DESC
 ```
 
 ## CSV files

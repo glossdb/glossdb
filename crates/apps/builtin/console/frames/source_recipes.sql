@@ -8,5 +8,5 @@ SELECT r.table_name,
        '/' || d.dataset || '/app/console/p/glossary?table=' || r.table_name AS link
 FROM recipes r JOIN d ON d.dataset = r.dataset
 WHERE r.source = CAST($source AS VARCHAR)
-QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.seq DESC) = 1
+QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1
 ORDER BY r.table_name

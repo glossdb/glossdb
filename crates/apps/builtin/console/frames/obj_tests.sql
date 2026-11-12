@@ -1,7 +1,7 @@
 -- An object's test results: every result on the object, or on one of
 -- its columns, worst first, each linked to its test's page.
 WITH d AS (SELECT dataset FROM current_dataset),
-t AS (SELECT name, detector FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+t AS (SELECT name, detector FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
 SELECT substr(a.subject, len(d.dataset) + 2) AS subject,
        a.aspect,
        a.test,

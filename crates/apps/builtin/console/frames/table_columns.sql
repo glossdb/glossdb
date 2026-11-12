@@ -9,7 +9,7 @@ tbl AS (SELECT d.dataset || '.' || CAST($table AS VARCHAR) AS subject FROM d),
 annotations AS (
   SELECT g.subject, g.aspect, g.actor_kind, g.body, g.written_at,
          row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject LIKE (SELECT subject FROM tbl) || '.%'
     AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
@@ -25,7 +25,7 @@ states AS (
 human AS (SELECT subject, max(written_at) AS annotated_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
 entity AS (
   SELECT json_extract_string(g.body, '$.time_axis') AS axis,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.actor_kind IN ('human', 'agent')),
 measured AS (

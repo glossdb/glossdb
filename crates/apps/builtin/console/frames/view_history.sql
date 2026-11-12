@@ -8,7 +8,7 @@ SELECT strftime(g.written_at, '%Y-%m-%d %H:%M') AS "at",
        CASE g.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE g.actor_kind END
          || coalesce(' · ' || g.actor_id, '') AS who,
        left(g.body::VARCHAR, 160) || CASE WHEN length(g.body::VARCHAR) > 160 THEN '…' ELSE '' END AS value
-FROM glossary g JOIN d ON d.dataset = g.dataset
+FROM glossary_history g JOIN d ON d.dataset = g.dataset
 WHERE (g.subject = d.dataset AND g.aspect = CAST($view AS VARCHAR))
    OR g.subject LIKE d.dataset || '.' || CAST($view AS VARCHAR) || '.%'
-ORDER BY g.written_at DESC, g.seq DESC
+ORDER BY g.written_at DESC, g.begin_snapshot DESC

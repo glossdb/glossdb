@@ -11,4 +11,4 @@ SELECT strftime(i.imported_at, '%Y-%m-%d %H:%M') AS "at",
        coalesce(fmt_number(nullif(i.dropped_rows_count, 0)), '') AS dropped
 FROM imports i JOIN d ON d.dataset = i.dataset
 JOIN fed ON fed.table_name = i.table_name
-ORDER BY i.imported_at DESC, i.seq DESC
+ORDER BY i.imported_at DESC, i.begin_snapshot DESC

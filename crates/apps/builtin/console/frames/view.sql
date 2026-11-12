@@ -4,19 +4,19 @@
 -- and when, and the statement that re-records it.
 WITH a AS (
   SELECT name, schema FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 q AS (
   SELECT g.aspect, g.body, g.actor_kind, g.actor_id, g.written_at
   FROM glossary g JOIN current_dataset d ON d.dataset = g.dataset
   WHERE g.subject = d.dataset AND g.aspect = $view AND g.actor_kind IN ('human', 'agent')
-  QUALIFY row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) = 1),
 w AS (
   SELECT * FROM q
   QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
 d AS (
   SELECT g.body FROM glossary g JOIN current_dataset c ON c.dataset = g.dataset
   WHERE g.subject = c.dataset AND g.aspect = 'definitions' AND g.actor_kind IN ('human', 'agent')
-  QUALIFY row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) = 1)
+  QUALIFY row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) = 1)
 SELECT w.aspect,
   coalesce(json_extract_string(a.schema, '$.title'), w.aspect) AS title,
   coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.unit'), '') AS unit,

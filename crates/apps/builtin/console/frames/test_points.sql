@@ -12,7 +12,7 @@
 WITH w AS (
   SELECT name, coalesce(threshold, 0.98) AS threshold
   FROM tests WHERE name = $test AND detector = 'range_breach'
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 ),
 newest AS (
   SELECT metric, applicable, reason, period, actual, p10, p90, pit, displacement AS far, withheld,
@@ -45,7 +45,7 @@ top AS (
 ),
 titles AS (
   SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 )
 SELECT coalesce(a.title, n.metric) AS title,
        n.metric AS view,

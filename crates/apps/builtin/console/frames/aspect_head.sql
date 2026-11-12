@@ -12,14 +12,14 @@ WITH a AS (
              THEN array_to_string(json_keys(schema, '$.properties'), ', ')
            ELSE 'a JSON object' END AS holds
   FROM aspects WHERE name = CAST($aspect AS VARCHAR)
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 w AS (
   SELECT string_agg(
            name || coalesce(' by ' || lower(array_to_string(actors, ', ')), '')
              || coalesce(', tested by ' || detector || coalesce(' at ' || CAST(threshold AS VARCHAR), ''), ''),
            ' · ' ORDER BY name) AS tests
   FROM (SELECT * FROM tests WHERE aspect = CAST($aspect AS VARCHAR)
-        QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)),
+        QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)),
 f AS (
   SELECT string_agg(name, ', ' ORDER BY name) AS fns
   FROM (SELECT DISTINCT name FROM functions WHERE returns = CAST($aspect AS VARCHAR))),

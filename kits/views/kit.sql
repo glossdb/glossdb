@@ -90,14 +90,14 @@ CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (
   SELECT name, schema FROM (
-    SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+    SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
     FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
 views AS (
   SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
 bodies AS (
   SELECT aspect AS metric, body FROM (
-    SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn
+    SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) AS rn
     FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
 cols AS (
@@ -484,7 +484,7 @@ CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
 CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
   main.gloss_statement(m, ds, coalesce(
     (SELECT g.body::VARCHAR FROM main.glossary g
-     WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.seq DESC LIMIT 1),
+     WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.begin_snapshot DESC LIMIT 1),
     '<the current definition>'));
 
 -- fan_out_check: the metric joins two tables on columns whose values
@@ -512,8 +512,8 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
   -- validity test judges that join
   dated AS (
     SELECT g.subject AS table_path
-    FROM glossql_glossary(split_part($subject, '.', 1), NULL, false) g
-    WHERE g.aspect = 'validity' AND g.value IS NOT NULL),
+    FROM glossql_glossary(split_part($subject, '.', 1), 'validity', false) g
+    WHERE g.value IS NOT NULL),
   joins AS (
     SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced
     FROM glossql_views_joins(split_part($subject, '.', 1)) j
@@ -526,7 +526,7 @@ DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
            round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
     FROM main.measurements
     WHERE dataset = split_part($subject, '.', 1) AND function = 'column_profile'
-    QUALIFY row_number() OVER (PARTITION BY subject ORDER BY seq DESC) = 1),
+    QUALIFY row_number() OVER (PARTITION BY subject ORDER BY begin_snapshot DESC) = 1),
   judged AS (
     SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
            NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
@@ -643,7 +643,7 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
   coherence AS (
     SELECT value FROM main.measurements
     WHERE dataset = split_part($subject, '.', 1) AND function = 'relationship_coherence' AND subject = split_part($subject, '.', 1)
-    ORDER BY seq DESC LIMIT 1),
+    ORDER BY begin_snapshot DESC LIMIT 1),
   edges AS (
     SELECT json_extract_string(j, '$.relationship') AS relationship, try_cast(json_extract(j, '$.orphan_rate') AS DOUBLE) AS orphan_rate
     FROM coherence, unnest(coalesce(json_extract(coherence.value, '$.relationships')::JSON[], [])) t(j)),
@@ -703,8 +703,8 @@ DECLARE FUNCTION validity_check FOR GLOBAL AS $$
     WHERE s.view = split_part($subject, '.', 2) AND split_part(s.table_name, '.', 1) = split_part($subject, '.', 1)),
   dated AS (
     SELECT split_part(g.subject, '.', 2) AS table_name, g.value->>'valid_from' AS valid_from, g.value->>'valid_to' AS valid_to
-    FROM glossql_glossary(split_part($subject, '.', 1), NULL, false) g
-    WHERE g.aspect = 'validity' AND g.value IS NOT NULL),
+    FROM glossql_glossary(split_part($subject, '.', 1), 'validity', false) g
+    WHERE g.value IS NOT NULL),
   undated AS (
     SELECT DISTINCT s.table_name || ' (' || d.valid_from || ', ' || d.valid_to || ')' AS scan
     FROM scans s JOIN dated d USING (table_name)
@@ -762,16 +762,16 @@ all_views AS (
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
 results AS (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
-  SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 expected AS (
   SELECT t.name AS test, t.aspect
-  FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) t
-  JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+  FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
+  JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
     ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
 evidence AS (
   SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
-  QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
 own AS (
   SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
@@ -790,7 +790,7 @@ reads AS (
 -- measures it: the test's `run`
 checks AS (
   SELECT returns AS aspect, min(name) AS name
-  FROM (SELECT name, returns FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  FROM (SELECT name, returns FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
   WHERE returns IS NOT NULL GROUP BY returns),
 inputs AS (
   SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
@@ -821,13 +821,49 @@ FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM d
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
          current, view, test, subject;
 
+--===------------------------------------------------------------------===--
+-- results_due(): the results the bound dataset wants that are missing or
+-- out of date, each with the statement that computes it, in the order to
+-- run them: ord, function, subject, run. A result is out of date when an
+-- input it read has another version now (the catalog's `inputs`). What a
+-- metric needs: the profile of each column it reads or joins on, the
+-- relationship check of its dataset, and the tests on it and on what it
+-- reads. A profile and the relationship check come first: the tests
+-- read them. The preview features' measurements are not among them: a
+-- person or an agent runs those.
+--===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.results_due() AS TABLE
+WITH ds AS (SELECT current_schema() AS d),
+metrics AS (
+  SELECT view FROM main.view_summary()
+  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+columns AS (
+  SELECT s.table_name || '.' || unnest(s.columns) AS subject
+  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
+  UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
+  UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
+stored AS (
+  SELECT subject, aspect, bool_and(current) AS current
+  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
+SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
+FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
+WHERE NOT coalesce(s.current, false)
+UNION ALL
+SELECT 2, 'relationship_coherence', ds.d, 'SELECT relationship_coherence() FROM ' || ds.d
+FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_coherence'
+WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
+UNION ALL
+SELECT DISTINCT 3, t.aspect, t.subject, t.run
+FROM main.view_tests_without_preview() t
+WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current);
+
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
 SELECT * FROM (
   SELECT * FROM main.view_tests_without_preview()
   UNION ALL
   SELECT p.view, p.test, p.aspect, a.declared_by, p.subject, p.state, p.current, p.score, p.evidence, p.run
   FROM main.preview_tests() p
-  LEFT JOIN (SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a USING (test))
+  LEFT JOIN (SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a USING (test))
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 WHEN 'not_applicable' THEN 4 ELSE 5 END,
          current, view, test, subject;
 
@@ -892,7 +928,7 @@ measures AS (
          })) AS measure
   FROM metrics x CROSS JOIN ds
   LEFT JOIN known vm ON vm.subject = ds.dataset || '.' || x.metric AND vm.aspect = 'meaning'
-  LEFT JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = x.metric),
+  LEFT JOIN (SELECT name, schema FROM main.aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a ON a.name = x.metric),
 datasets AS (
   SELECT t.table_name,
          json_merge_patch('{}', to_json({
@@ -908,7 +944,7 @@ datasets AS (
   LEFT JOIN known tm ON tm.subject = ds.dataset || '.' || t.table_name AND tm.aspect = 'meaning'),
 edges AS (
   SELECT to_json({
-           'name': split_part(r.left_side, '.', 2) || '_to_' || split_part(r.right_side, '.', 2) || '_' || r.seq,
+           'name': split_part(r.left_side, '.', 2) || '_to_' || split_part(r.right_side, '.', 2) || '_' || r.begin_snapshot,
            'from': split_part(r.left_side, '.', 2), 'to': split_part(r.right_side, '.', 2),
            'from_columns': string_split(regexp_replace(regexp_replace(r.left_side, '^[^.]*\.[^.]*\.', ''), '[() ]', '', 'g'), ','),
            'to_columns': string_split(regexp_replace(regexp_replace(r.right_side, '^[^.]*\.[^.]*\.', ''), '[() ]', '', 'g'), ',')
@@ -917,7 +953,7 @@ edges AS (
 SELECT json_merge_patch('{}', to_json({
          'version': '0.3.0.dev0',
          'name': ds.dataset,
-         'description': (SELECT json_extract_string(settings, '$.purpose') FROM main.datasets WHERE name = ds.dataset ORDER BY seq DESC LIMIT 1),
+         'description': (SELECT json_extract_string(settings, '$.purpose') FROM main.datasets WHERE name = ds.dataset ORDER BY begin_snapshot DESC LIMIT 1),
          'datasets': (SELECT list(dataset ORDER BY table_name) FROM datasets),
          'relationships': (SELECT list(edge) FROM edges)
        })) AS document
@@ -943,8 +979,8 @@ CREATE OR REPLACE MACRO main.lineage_events() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 loads AS (
   SELECT i.dataset, i.table_name, i.imported_at, i.snapshot_id, i.rows, i.lineage::JSON AS lineage,
-         (SELECT r.source FROM main.recipes r WHERE r.dataset = i.dataset AND r.table_name = i.table_name ORDER BY r.seq DESC LIMIT 1) AS source
-  FROM main.imports i, ds WHERE i.dataset = ds.dataset),
+         (SELECT r.source FROM main.recipes r WHERE r.dataset = i.dataset AND r.table_name = i.table_name ORDER BY r.begin_snapshot DESC LIMIT 1) AS source
+  FROM main.imports_history i, ds WHERE i.dataset = ds.dataset),
 load_fields AS (
   SELECT l.table_name, l.snapshot_id, k.key AS field,
          (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': coalesce(l.source, split_part(leaf, '.', 1)), 'field': split_part(leaf, '.', 2)})

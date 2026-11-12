@@ -4,7 +4,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 newest AS (
   SELECT i.table_name, i.rows, i.dropped_rows_count, i.imported_at,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN d ON d.dataset = i.dataset),
 rec AS (SELECT r.table_name, max(r.source) AS source FROM recipes r JOIN d ON d.dataset = r.dataset GROUP BY r.table_name)
 SELECT n.table_name AS name,

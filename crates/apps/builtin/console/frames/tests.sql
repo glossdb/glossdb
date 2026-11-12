@@ -5,10 +5,10 @@ WITH v AS (
   SELECT a.test, a.state,
          CASE a.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
   FROM TESTS() a),
-w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 about AS (
   SELECT name, json_extract_string(schema, '$.description') AS description
-  FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 folded AS (
   SELECT w.name AS test, w.aspect, w.detector, w.threshold, any_value(b.description) AS description,
          count(v.state) AS n,

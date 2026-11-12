@@ -10,13 +10,13 @@ WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 w AS (
   SELECT name, aspect, detector, threshold FROM tests WHERE name = $test
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 views AS (SELECT name FROM view_definitions),
 said AS (
   SELECT g.subject,
          string_agg(CASE g.actor_kind WHEN 'human' THEN 'a person' ELSE 'the agent' END || ': '
                       || coalesce(json_extract_string(g.body, '$.value'), g.body::VARCHAR), ' · '
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq) AS annotations,
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot) AS annotations,
          max(json_extract(g.body, '$.tolerance')::DOUBLE) AS tolerance
   FROM glossary g JOIN d ON d.dataset = g.dataset JOIN w ON w.aspect = g.aspect
   WHERE g.actor_kind IN ('human', 'agent')
@@ -27,7 +27,7 @@ measured AS (
          json_extract_string(m.value, '$.finding') AS finding,
          json_extract_string(m.value, '$.reason') AS reason
   FROM measurements m JOIN d ON d.dataset = m.dataset JOIN w ON w.aspect = m.aspect
-  QUALIFY row_number() OVER (PARTITION BY m.subject ORDER BY m.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY m.subject ORDER BY m.begin_snapshot DESC) = 1),
 r AS (
   SELECT a.*, substr(a.subject, len(d.dataset) + 2) AS path FROM TESTS() a CROSS JOIN d WHERE a.test = $test)
 SELECT CASE WHEN r.path = '' THEN 'the dataset' ELSE r.path END AS asset,

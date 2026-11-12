@@ -12,10 +12,10 @@ WITH story AS (
   WHERE metric = CAST($view AS VARCHAR) AND dimension = ''),
 a AS (
   SELECT name, schema FROM aspects WHERE name = CAST($view AS VARCHAR)
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 titles AS (
   SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 plans AS (
   SELECT c.period, coalesce(t.title, c.plan) AS series, c.value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, c.additivity, 'plan' AS world,
          CAST(NULL AS DOUBLE) AS low, CAST(NULL AS DOUBLE) AS high, CAST(NULL AS VARCHAR) AS held

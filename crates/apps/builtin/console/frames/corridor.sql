@@ -14,7 +14,7 @@ SELECT * FROM (
          coalesce(p.displacement >= 0.95, false) AS outside
   FROM range_points() p
   LEFT JOIN (SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
-             QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a ON a.name = p.metric
+             QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a ON a.name = p.metric
   WHERE p.metric = CAST($view AS VARCHAR) AND p.applicable AND p.period IS NOT NULL
 )
 ORDER BY period

@@ -488,7 +488,7 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     assert!(cause.contains("fund"), "{cause}");
     let loads = rows(
         &app,
-        "SELECT rows FROM imports WHERE table_name = 'bookings' ORDER BY seq",
+        "SELECT rows FROM imports_history WHERE table_name = 'bookings' ORDER BY begin_snapshot",
     )
     .await;
     let counts: Vec<&Value> = loads.iter().map(|r| &r["rows"]).collect();
@@ -542,4 +542,61 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
         0,
         "{listed:?}"
     );
+}
+
+/// The interface keeps a dataset's `next` rows while the lake's snapshot
+/// holds. A write that did not come through the interface takes a
+/// snapshot too, so the rows the next call serves are read again.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_next_rows_follow_a_write_made_beside_the_interface() {
+    let (_dir, plane) = common::scratch_plane().await;
+    let plane = Arc::new(
+        plane.with_pages(
+            glossdb_serverd::skills::served_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
+    );
+    let app = router(
+        Arc::clone(&plane),
+        InterfaceConfig::default(),
+        Access::Gated(common::login()),
+    );
+    let body = expect_ok(
+        mcp_on(
+            app.clone(),
+            "/mcp",
+            call(0, "DECLARE DATASET fin SET (purpose: 'the next steps');"),
+        )
+        .await,
+    )
+    .await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "CREATE TABLE fin.ledger AS SELECT 1 AS amount").await;
+    let next_line = |body: &Value| -> String {
+        let window = body["result"]["content"][1]["text"].as_str().unwrap();
+        window
+            .lines()
+            .find(|l| l.starts_with("next:"))
+            .unwrap_or_else(|| panic!("{window}"))
+            .to_string()
+    };
+    // twice the same call, nothing written between: the same line
+    let first = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(1, "SELECT 1 AS x")).await).await;
+    let again = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(2, "SELECT 1 AS x")).await).await;
+    assert!(next_line(&first).contains("integrate 1"), "{first}");
+    assert_eq!(next_line(&first), next_line(&again));
+    // a view defined on the engine's own channel, beside the interface
+    let session = plane
+        .channel(common::human(), Some("fin"))
+        .await
+        .expect("a channel on fin");
+    session
+        .execute(
+            r#"DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
+               GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
+        )
+        .await
+        .expect("the view is defined");
+    let after = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(3, "SELECT 1 AS x")).await).await;
+    assert!(!next_line(&after).contains("integrate"), "{after}");
 }

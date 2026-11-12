@@ -9,7 +9,7 @@ WITH a AS (
          CASE WHEN name IN ('app', 'app_page', 'app_frame', 'app_spec', 'app_release', 'review_decision', 'recipe_change') THEN 'own'
               ELSE lower(kind) END AS side
   FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 counts AS (
   SELECT aspect, count(*) AS required,
          count(*) FILTER (WHERE state <> 'missing') AS annotated,
@@ -19,7 +19,7 @@ w AS (
   SELECT aspect,
          max(CASE WHEN detector IS NOT NULL THEN 1 ELSE 0 END) AS judged,
          max(array_to_string(actors, ', ')) AS actors
-  FROM (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  FROM (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
   GROUP BY aspect),
 f AS (
   SELECT returns AS aspect, string_agg(name, ', ' ORDER BY name) AS fns

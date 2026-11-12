@@ -4,7 +4,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 n AS (
   SELECT i.rows, i.dropped_rows_count, i.imported_at,
-         row_number() OVER (ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN d ON d.dataset = i.dataset
   WHERE i.table_name = CAST($table AS VARCHAR)
   QUALIFY rn = 1),
@@ -14,7 +14,7 @@ rec AS (
   WHERE r.table_name = CAST($table AS VARCHAR)),
 conv AS (
   SELECT g.body,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g CROSS JOIN rec
   WHERE g.aspect = 'conventions' AND g.subject = rec.source AND g.actor_kind IN ('human', 'agent')),
 keyed AS (SELECT body, unnest(json_keys(body)) AS key FROM conv WHERE rn = 1),

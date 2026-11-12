@@ -10,7 +10,7 @@ root AS (SELECT '/' || dataset || '/app/console' AS r FROM d),
 recipe AS (
   SELECT r.table_name, r.source
   FROM recipes r JOIN d ON d.dataset = r.dataset
-  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1),
 loaded AS (
   SELECT DISTINCT i.table_name
   FROM imports i JOIN d ON d.dataset = i.dataset),
@@ -25,7 +25,7 @@ views AS (
 test AS (
   SELECT name, aspect, detector
   FROM tests
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 pages(top, label, link, o) AS (
   SELECT 'Overview', 'Summary', (SELECT * FROM root), 1
   UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 2

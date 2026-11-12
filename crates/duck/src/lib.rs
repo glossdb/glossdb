@@ -548,7 +548,9 @@ const CATALOG: &[&str] = &[
 /// Whether a read touches the catalog anywhere: the store's relations by
 /// name, bare or under the store's schema, or the two reads over it.
 /// Syntactic, as the frame class needs: the words of the text, with
-/// the quoting and punctuation taken off.
+/// the quoting and punctuation taken off. A relation's history
+/// (`<name>_history`) is none of these: it is every row a write
+/// replaced, read under the row cap like the data.
 pub fn reads_catalog(sql: &str) -> bool {
     let lower = sql.to_lowercase();
     lower
@@ -1258,7 +1260,7 @@ impl Plane {
         let sql = format!(
             "WITH g AS (SELECT * FROM {LAKE}.main.glossary),
              humans AS (SELECT count(*) AS n, max(written_at)::VARCHAR AS latest FROM g WHERE actor_kind = 'human'),
-             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn FROM g) WHERE rn = 1),
+             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY begin_snapshot DESC) AS rn FROM g) WHERE rn = 1),
              approvals AS (
                SELECT dataset, json_extract_string(body, '$.table') AS tbl, written_at FROM latest
                WHERE actor_kind = 'human' AND aspect = 'recipe_change' AND json_extract_string(body, '$.table') IS NOT NULL),
@@ -1411,6 +1413,20 @@ impl Session {
         .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
+    /// The lake's snapshot: the version of the data and the catalog
+    /// together, since a load and a write to the catalog each take one.
+    /// A read of the lake alone holds while it does.
+    pub async fn lake_snapshot(&self) -> Option<String> {
+        let batches = self
+            .batches(
+                &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
+                &[],
+            )
+            .await
+            .ok()?;
+        one_cell(&batches)
+    }
+
     /// The statements, in order, each an outcome; a refusal names its
     /// place and carries what loaded before it.
     pub async fn execute(&self, text: &str) -> Result<Vec<Outcome>, SessionError> {
@@ -1426,19 +1442,17 @@ impl Session {
             let total = pieces.len();
             let mut outcomes = Vec::with_capacity(total);
             let mut lines = Vec::new();
-            // What the call wrote decides which metrics' tests run:
-            // before the next read of the call, so that a read of
-            // `next` or the tests in the same call sees what the lines
-            // after the result count, and once more at the end. A
-            // failed sequence runs none, and the next call's write does.
-            // A measurement the call ran may be the evidence a check
-            // reads, so the checks whose result predates it run again
-            // too; so does a load, which is what a declared test is
-            // checked at.
+            // A write leaves results out of date. They are brought
+            // current before the next read of the call, so that a read
+            // of `next` or the tests in the same call sees what the
+            // lines after the result count, and once more at the end.
+            // A failed sequence brings none, and the next call's write
+            // does.
             let mut pending = Pending::default();
             for (i, piece) in pieces.iter().enumerate() {
-                if is_read(piece) && !measurement_call(piece) {
-                    pending.run(&conn, &lines);
+                let reads = is_read(piece) && !measurement_call(piece);
+                if reads {
+                    pending.run(&conn);
                 }
                 let ran = if root {
                     execute_one(&conn, piece, cap)
@@ -1448,7 +1462,7 @@ impl Session {
                 match ran {
                     Ok((outcome, line)) => {
                         outcomes.push(outcome);
-                        pending.measured |= measurement_call(piece);
+                        pending.wrote |= !reads && use_target(piece).is_none();
                         lines.extend(line);
                     }
                     Err(e) if total == 1 => return Err(e),
@@ -1463,7 +1477,7 @@ impl Session {
                     }
                 }
             }
-            pending.run(&conn, &lines);
+            pending.run(&conn);
             Ok(outcomes)
         })
         .await
@@ -1595,46 +1609,48 @@ impl Session {
     }
 
     /// The console's re-measure: every function's value of the bound
-    /// dataset that loaded before the last change runs again over its
-    /// subject; every measurement a metric's fact row wants and nobody
-    /// ran, and every tested measurement on the dataset nobody ran
-    /// (the expected ranges), runs for the first time, in the functions' name order,
-    /// which runs the forecast before the plan judgement that reads it.
-    /// Returns how many ran. A
-    /// function that refuses — the expected ranges with no service named — is
-    /// logged and stays required, where the banner and the goal's next act
-    /// carry its refusal by name; the others run.
+    /// dataset that is out of date runs again over its subject; every
+    /// measurement a metric's fact row wants and nobody ran, and every
+    /// tested measurement on the dataset nobody ran (the expected
+    /// ranges), runs for the first time. A function that read other
+    /// functions' results runs after the others, by what its last
+    /// result read (the catalog's `inputs`); one that has no result yet
+    /// may turn out to read them, so the list is taken again until
+    /// nothing is left or nothing more runs. Returns how many ran. A
+    /// function that refuses — the expected ranges with no service
+    /// named — is logged and stays required, where the banner and the
+    /// goal's next act carry its refusal by name; the others run.
     pub async fn remeasure(&self) -> Result<usize, SessionError> {
-        let acts = self
-            .batches(
-                &format!(
-                    "SELECT DISTINCT m.function, m.subject \
-                     FROM glossql_glossary(current_schema(), NULL, true) r \
-                     JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
-                     WHERE r.actor = 'function' AND NOT r.current \
-                     UNION \
-                     SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(measurements_to_run) AS w FROM {LAKE}.main.view_summary()) \
-                     UNION \
-                     SELECT o.subject, split_part(o.what, ' over ', 2) \
-                     FROM {LAKE}.main.open_items o \
-                     WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
-                     ORDER BY 1, 2"
-                ),
-                &[],
-            )
-            .await?;
         let mut ran = 0;
-        for row in rows_as_text(&acts) {
-            let (Some(Some(function)), Some(Some(subject))) = (row.first(), row.get(1)) else {
-                continue;
-            };
-            match self
-                .execute(&format!("SELECT {function}() FROM {subject}"))
-                .await
-            {
-                Ok(_) => ran += 1,
-                Err(e) => tracing::warn!(function, subject, "re-measure: {e}"),
+        let mut refused = std::collections::BTreeSet::new();
+        for _ in 0..ROUNDS {
+            let acts = self
+                .batches(
+                    &format!(
+                        "WITH due AS (                            SELECT DISTINCT m.function, m.subject                            FROM glossql_glossary(current_schema(), NULL, true) r                            JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect                            WHERE r.actor = 'function' AND NOT r.current                            UNION                            SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2)                            FROM (SELECT unnest(measurements_to_run) AS w FROM {LAKE}.main.view_summary())                            UNION                            SELECT o.subject, split_part(o.what, ' over ', 2)                            FROM {LAKE}.main.open_items o                            WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema()),                          readers AS (                            SELECT DISTINCT m.function FROM {LAKE}.main.measurements_history m                            JOIN {LAKE}.main.inputs_history i USING (begin_snapshot)                            WHERE starts_with(i.input, 'main.measurements/'))                          SELECT function, subject FROM due                          ORDER BY function IN (SELECT function FROM readers), 1, 2"
+                    ),
+                    &[],
+                )
+                .await?;
+            let acts: Vec<(String, String)> = rows_as_text(&acts)
+                .into_iter()
+                .filter_map(|row| Some((row.first()?.clone()?, row.get(1)?.clone()?)))
+                .filter(|act| !refused.contains(act))
+                .collect();
+            if acts.is_empty() {
+                break;
+            }
+            for (function, subject) in acts {
+                match self
+                    .execute(&format!("SELECT {function}() FROM {subject}"))
+                    .await
+                {
+                    Ok(_) => ran += 1,
+                    Err(e) => {
+                        tracing::warn!(function, subject, "re-measure: {e}");
+                        refused.insert((function, subject));
+                    }
+                }
             }
         }
         Ok(ran)
@@ -1723,219 +1739,59 @@ fn execute_one(
     }
 }
 
-/// What a call wrote since its built-in tests last ran: the outcome
-/// lines from `from` on, and whether a measurement ran.
+/// Whether a call wrote since its results were last brought current.
 #[derive(Default)]
 struct Pending {
-    from: usize,
-    measured: bool,
+    wrote: bool,
 }
 
 impl Pending {
-    /// Runs the built-in tests over what is pending, and clears it. A
-    /// test that cannot run is logged and never fails the call.
-    fn run(&mut self, conn: &Connection, lines: &[String]) {
-        let new = &lines[self.from..];
-        let loaded = new.iter().any(|l| loaded_table(l).is_some());
-        let measured = std::mem::take(&mut self.measured);
-        self.from = lines.len();
-        if (measured || loaded || new.iter().any(|l| l.starts_with("glossed ")))
-            && let Err(e) = built_in_tests(conn, new, measured || loaded)
-        {
-            tracing::debug!(error = %e, "built-in tests: not run");
+    /// Brings the dataset's results current after a write, and clears
+    /// the mark. A result that cannot be computed is logged and never
+    /// fails the call.
+    fn run(&mut self, conn: &Connection) {
+        if std::mem::take(&mut self.wrote) {
+            bring_current(conn);
         }
     }
 }
 
-/// The built-in tests the server runs itself, after the statements of a
-/// call that wrote and before its next read: for every metric the call defined, glossed (the view
-/// or one of its columns) or whose scanned table it imported, every test
-/// whose aspect is marked `x-subject: view` runs over the metric, as
-/// CI runs a suite after a commit. A check that fails is logged and
-/// never fails the call; its row stays missing and the test report
-/// says so.
-fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result<(), SessionError> {
-    let newest = |table: &str| {
-        format!(
-            "(SELECT * FROM {LAKE}.main.{table} QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)"
-        )
-    };
-    let (_, _, batches) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT a.name FROM {} w JOIN {} a ON a.name = w.aspect \
-             WHERE json_extract_string(a.schema, '$.x-subject') = 'view' ORDER BY a.name",
-            newest("tests"),
-            newest("aspects")
-        ),
-        &[],
-    )?;
-    let checks: Vec<String> = rows_as_text(&batches)
-        .into_iter()
-        .filter_map(|row| row.into_iter().next().flatten())
-        .collect();
-    if checks.is_empty() {
-        return Ok(());
-    }
-    // A metric is a VIEW aspect that serves a series: a plan, a sample,
-    // a single value and a derived relation have no tests of this kind.
-    let is_measure = |name: &str| -> Result<bool, SessionError> {
-        let quoted = name.replace('\'', "''");
-        let (_, _, kind) = arrow_batches(
+/// The rounds one write is followed for: a result computed in one
+/// round is an input of another's in the next.
+const ROUNDS: usize = 4;
+
+/// The results the bound dataset wants that are missing or out of
+/// date, computed until none is left: the kit's `results_due()` says
+/// which (a result whose inputs moved, by the catalog's own versions,
+/// or one never computed) and in which order, an input before what
+/// reads it. As CI runs a suite after a commit. A statement that fails
+/// is logged and not tried again in this call; its result stays due
+/// and the test report says so.
+fn bring_current(conn: &Connection) {
+    let mut failed = std::collections::BTreeSet::new();
+    for _ in 0..ROUNDS {
+        let Ok((_, _, due)) = arrow_batches(
             conn,
-            &format!(
-                "SELECT kind = 'VIEW' AND coalesce(json_extract_string(schema, '$.x-kind'), '') \
-                 NOT IN ('plan', 'sample', 'scalar', 'relation') \
-                 FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
-            ),
+            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
             &[],
-        )?;
-        Ok(one_cell(&kind).as_deref() == Some("true"))
-    };
-    let mut metrics: std::collections::BTreeSet<(String, String)> = Default::default();
-    for line in lines {
-        if let Some(rest) = line.strip_prefix("glossed ") {
-            // `glossed <aspect> on <subject> as <actor>`
-            let Some((aspect, subject)) = rest.split_once(" on ") else {
-                continue;
-            };
-            let subject = subject.split(" as ").next().unwrap_or(subject).trim();
-            let segments: Vec<&str> = subject.split('.').collect();
-            let (dataset, candidate) = match segments.as_slice() {
-                [dataset] => (*dataset, aspect.trim()),
-                [dataset, view, ..] => (*dataset, *view),
-                _ => continue,
-            };
-            if is_measure(candidate)? {
-                metrics.insert((dataset.to_string(), candidate.to_string()));
-            } else if segments.len() >= 2 {
-                // an annotation on a table or its column: every metric
-                // that scans the table
-                scanning(
-                    conn,
-                    dataset,
-                    &format!("{dataset}.{candidate}"),
-                    &is_measure,
-                    &mut metrics,
-                )?;
-            }
-        } else if let Some(table) = loaded_table(line) {
-            let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
-                continue;
-            };
-            scanning(conn, dataset, table, &is_measure, &mut metrics)?;
+        ) else {
+            return;
+        };
+        let statements: Vec<String> = rows_as_text(&due)
+            .into_iter()
+            .filter_map(|row| row.into_iter().next().flatten())
+            .filter(|statement| !failed.contains(statement))
+            .collect();
+        if statements.is_empty() {
+            return;
         }
-    }
-    check_relationships(conn, &metrics);
-    for (dataset, metric) in metrics {
-        profile_columns(conn, &dataset, &metric);
-        for check in &checks {
-            if let Err(e) = run(conn, &format!("SELECT {check}() FROM {dataset}.{metric}")) {
-                tracing::debug!(error = %e, %dataset, %metric, %check, "built-in test: not run");
+        for statement in statements {
+            if let Err(e) = run(conn, &statement) {
+                tracing::debug!(error = %e, %statement, "a result: not computed");
+                failed.insert(statement);
             }
         }
     }
-    // The checks whose result predates what they read, the kits' and
-    // the team's own on a view, on the bound dataset: a call bound to
-    // none has no report to read.
-    if measured
-        && let Ok((_, _, stale)) = arrow_batches(
-            conn,
-            &format!(
-                "SELECT run FROM {LAKE}.main.view_tests_without_preview() \
-                 WHERE NOT current AND run <> ''"
-            ),
-            &[],
-        )
-    {
-        for row in rows_as_text(&stale) {
-            if let Some(Some(statement)) = row.first()
-                && let Err(e) = run(conn, statement)
-            {
-                tracing::debug!(error = %e, %statement, "built-in test: not run again");
-            }
-        }
-    }
-    Ok(())
-}
-
-/// The measurements the tests read are the server's to run: the orphan
-/// test reads the relationship check of each dataset a metric is in.
-fn check_relationships(conn: &Connection, metrics: &std::collections::BTreeSet<(String, String)>) {
-    let datasets: std::collections::BTreeSet<&String> = metrics.iter().map(|(d, _)| d).collect();
-    for dataset in datasets {
-        if let Err(e) = run(
-            conn,
-            &format!("SELECT relationship_coherence() FROM {dataset}"),
-        ) {
-            tracing::debug!(error = %e, %dataset, "relationships: not checked");
-        }
-    }
-}
-
-/// The table a statement loaded, from its acknowledgement: a load
-/// query declared (`loaded <table>: …`) or run again (`imported
-/// <table>: …`).
-fn loaded_table(line: &str) -> Option<&str> {
-    let rest = line
-        .strip_prefix("imported ")
-        .or_else(|| line.strip_prefix("loaded "))?;
-    Some(rest.split(':').next().unwrap_or("").trim())
-}
-
-/// A profile of every column a metric reads: one aggregate per column,
-/// stored and reused while the table holds. The fan-out test reads
-/// from it whether a join column's values repeat, and the next steps
-/// read from it what a load changed.
-fn profile_columns(conn: &Connection, dataset: &str, metric: &str) {
-    let Ok((_, _, scanned)) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT DISTINCT table_name || '.' || unnest(columns) FROM glossql_views_scans('{d}') \
-             WHERE view = '{m}' \
-             UNION SELECT left_column FROM glossql_views_joins('{d}') WHERE view = '{m}' \
-             UNION SELECT right_column FROM glossql_views_joins('{d}') WHERE view = '{m}'",
-            d = dataset.replace('\'', "''"),
-            m = metric.replace('\'', "''")
-        ),
-        &[],
-    ) else {
-        return;
-    };
-    for row in rows_as_text(&scanned) {
-        if let Some(Some(column)) = row.first()
-            && let Err(e) = run(conn, &format!("SELECT column_profile() FROM {column}"))
-        {
-            tracing::debug!(error = %e, %column, "column: not profiled");
-        }
-    }
-}
-
-/// The metrics of a dataset whose definition scans a table, added to the set.
-fn scanning(
-    conn: &Connection,
-    dataset: &str,
-    table: &str,
-    is_measure: &dyn Fn(&str) -> Result<bool, SessionError>,
-    metrics: &mut std::collections::BTreeSet<(String, String)>,
-) -> Result<(), SessionError> {
-    let (_, _, views) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
-            dataset.replace('\'', "''"),
-            table.replace('\'', "''")
-        ),
-        &[],
-    )?;
-    for row in rows_as_text(&views) {
-        if let Some(Some(view)) = row.first()
-            && is_measure(view)?
-        {
-            metrics.insert((dataset.to_string(), view.clone()));
-        }
-    }
-    Ok(())
 }
 
 /// Whether a statement is a measurement call, `SELECT <function>() FROM
@@ -1980,7 +1836,7 @@ fn definition_row(
     let (_, _, kind) = arrow_batches(
         conn,
         &format!(
-            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
+            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY begin_snapshot DESC LIMIT 1"
         ),
         &[],
     )?;
@@ -2019,7 +1875,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
         conn,
         &format!(
             "SELECT body::VARCHAR FROM {LAKE}.main.glossary WHERE dataset = '{d}' AND subject = '{d}' \
-             AND aspect = '{m}' ORDER BY seq DESC LIMIT 1",
+             AND aspect = '{m}' ORDER BY begin_snapshot DESC LIMIT 1",
             d = dataset.replace('\'', "''"),
             m = metric.replace('\'', "''")
         ),
@@ -2253,6 +2109,9 @@ mod tests {
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
         assert!(reads_catalog("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_catalog("SELECT * FROM fin.orders"));
+        // a history read is paged like the data: what a call serves is the agent's context
+        assert!(!reads_catalog("SELECT * FROM imports_history"));
+        assert!(!reads_catalog("SELECT * FROM ws.main.glossary_history"));
     }
 
     /// A warehouse in an object store is known by its scheme, and its

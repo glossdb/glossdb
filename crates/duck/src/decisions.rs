@@ -60,7 +60,7 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
             &format!(
                 "SELECT body::VARCHAR FROM {}.main.glossary \
                  WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'review_decision' AND actor_kind = 'human' \
-                 ORDER BY seq DESC LIMIT 1",
+                 ORDER BY begin_snapshot DESC LIMIT 1",
                 crate::LAKE
             ),
             &[],

@@ -12,7 +12,9 @@ the MCP interface, the query endpoint and the console.
 
 ## The catalog tables
 
-Append-only; the newest row per key is current. Each carries `seq`.
+The views serve the current rows. Each row carries `begin_snapshot`,
+the lake snapshot its write took. `<name>_history` serves every row a
+write replaced or removed, with its `end_snapshot`.
 
 | Table | Columns |
 |---|---|
@@ -22,9 +24,10 @@ Append-only; the newest row per key is current. Each carries `seq`.
 | `imports` | `dataset`, `table_name`, `mode`, `rows`, `dropped_rows_count`, `lineage`, `snapshot_id`, `imported_at` (the loads) |
 | `relationships` | `dataset`, `left_side`, `op`, `right_side`, `declared_at`, `declared_by` |
 | `aspects` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
-| `glossary` | `dataset`, `subject`, `aspect`, `actor_kind`, `actor_id`, `body`, `snapshot_id`, `written_at` (the annotations) |
+| `glossary` | `dataset`, `subject`, `aspect`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
 | `functions` | `name`, `scope`, `script`, `returns`, `declared_at`, `declared_by` |
-| `measurements` | `dataset`, `function`, `subject`, `aspect`, `data_version`, `value`, `computed_at`, `reads` |
+| `measurements` | `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at` |
+| `inputs` | `begin_snapshot`, `input`, `version` (what each stored result read, at the version read; joins `measurements` on `begin_snapshot`) |
 | `tests` | `name`, `aspect`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
 | `kits` | `name`, `location`, `statements`, `loaded_at`, `hash` |
 

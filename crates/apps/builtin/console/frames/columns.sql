@@ -8,7 +8,7 @@ WITH d AS (SELECT dataset FROM current_dataset),
 g AS (
   SELECT g.subject, g.aspect, g.body,
          row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'entity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
 cur AS (SELECT subject, aspect, body, json_extract_string(body, '$.value') AS value FROM g WHERE rn = 1),
@@ -42,7 +42,7 @@ folded AS (
   FROM cols GROUP BY table_name),
 latest AS (
   SELECT i.table_name, i.rows,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN d ON d.dataset = i.dataset)
 SELECT f.table_name AS name,
        f.n AS columns,

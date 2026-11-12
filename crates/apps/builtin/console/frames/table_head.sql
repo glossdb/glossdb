@@ -6,12 +6,12 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
   SELECT g.body, g.actor_kind, g.written_at,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.actor_kind IN ('human', 'agent')),
 latest AS (
   SELECT i.table_name, i.rows, i.imported_at,
-         row_number() OVER (ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN d ON d.dataset = i.dataset
   WHERE i.table_name = CAST($table AS VARCHAR)),
 cols AS (
@@ -19,7 +19,7 @@ cols AS (
   WHERE c.table_catalog = current_database() AND c.table_name = CAST($table AS VARCHAR)),
 a AS (
   SELECT name, schema FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view

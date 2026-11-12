@@ -9,10 +9,10 @@ base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 todo AS (SELECT step, who, count(*) AS n FROM next GROUP BY ALL),
 recipe AS (
   SELECT r.table_name, r.source FROM recipes r JOIN d ON d.dataset = r.dataset
-  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1),
 load AS (
   SELECT i.table_name, i.imported_at FROM imports i JOIN d ON d.dataset = i.dataset
-  QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) = 1),
 said AS (
   SELECT count(*) FILTER (WHERE state <> 'missing') AS written,
          count(*) FILTER (WHERE state = 'stale') AS outdated

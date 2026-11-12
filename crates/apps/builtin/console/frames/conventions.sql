@@ -8,7 +8,7 @@ srcs AS (SELECT DISTINCT r.source FROM recipes r JOIN d ON d.dataset = r.dataset
 c AS (
   SELECT g.subject AS source, g.body,
          row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.begin_snapshot DESC) AS rn
   FROM glossary g
   WHERE g.aspect = 'conventions' AND g.subject IN (SELECT source FROM srcs) AND g.actor_kind IN ('human', 'agent')),
 keyed AS (SELECT source, body, unnest(json_keys(body)) AS key FROM c WHERE rn = 1),

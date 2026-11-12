@@ -13,7 +13,7 @@ WITH result AS (
   SELECT a.test, a.state, a.computed_at, a.current, w.detector, w.threshold,
          row_number() OVER (ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
   FROM glossql_tests(current_schema(), NULL) a
-  JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
+  JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) w
     ON w.name = a.test
   WHERE w.detector = 'range_breach'
 ),
@@ -47,7 +47,7 @@ top AS (
 ),
 titles AS (
   SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 ),
 counted AS (SELECT count(*) AS n FROM newest WHERE pit IS NOT NULL),
 outside AS (SELECT * FROM newest WHERE pit IS NOT NULL AND far >= 0.95),

@@ -5,7 +5,8 @@
 //! everything live (declared functions, the glossary, the tables) is
 //! read through the language itself, where it is always current.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ElicitRequest,
@@ -142,7 +143,15 @@ pub struct Summary {
     line: std::sync::RwLock<String>,
     opening: std::sync::RwLock<String>,
     facts: std::sync::RwLock<Option<SummaryFacts>>,
+    /// The `next` rows of each dataset, with the lake's snapshot they
+    /// were read at. `next` reads the catalog and the lake's shape and
+    /// no data, so its rows hold while the snapshot does; a load or a
+    /// write to the catalog takes the next one.
+    next: Mutex<HashMap<String, KeptNext>>,
 }
+
+/// A dataset's `next` rows as kept: the snapshot they were read at.
+type KeptNext = (String, Arc<Vec<serde_json::Value>>);
 
 impl Summary {
     pub fn line(&self) -> String {
@@ -1451,14 +1460,32 @@ impl GlossqlMcp {
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        let sql = match step {
-            Some(s) => format!(
-                "SELECT * FROM next WHERE step = '{}'",
-                s.replace('\'', "''")
-            ),
-            None => "SELECT * FROM next".to_string(),
+        // the snapshot is read before the rows: rows read across a
+        // write are kept under the snapshot before it, which no later
+        // call asks for
+        let snapshot = session.lake_snapshot().await;
+        let kept = snapshot.as_ref().and_then(|at| {
+            let kept = self.summary.next.lock().ok()?;
+            let (read_at, rows) = kept.get(dataset)?;
+            (read_at == at).then(|| Arc::clone(rows))
+        });
+        let rows = match kept {
+            Some(rows) => rows,
+            None => {
+                let rows = Arc::new(read_rows(&session, "SELECT * FROM next").await?);
+                if let Some(at) = snapshot
+                    && let Ok(mut kept) = self.summary.next.lock()
+                {
+                    kept.insert(dataset.to_string(), (at, Arc::clone(&rows)));
+                }
+                rows
+            }
         };
-        read_rows(&session, &sql).await
+        Ok(rows
+            .iter()
+            .filter(|row| step.is_none_or(|s| row["step"].as_str() == Some(s)))
+            .cloned()
+            .collect())
     }
 
     /// `next://<dataset>[/<kind of work>]` as a page: every open row with its

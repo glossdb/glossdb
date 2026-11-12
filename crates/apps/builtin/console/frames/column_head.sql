@@ -6,7 +6,7 @@ WITH d AS (SELECT dataset FROM current_dataset),
 annotations AS (
   SELECT g.aspect, g.actor_kind, g.body,
          row_number() OVER (PARTITION BY g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject = d.dataset || '.' || CAST($column AS VARCHAR) AND g.aspect IN ('role', 'meaning')
     AND g.actor_kind IN ('human', 'agent')),
@@ -17,7 +17,7 @@ col AS (
   WHERE c.table_catalog = current_database() AND c.table_name || '.' || c.column_name = CAST($column AS VARCHAR)),
 a AS (
   SELECT name, schema FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
   FROM view_sources() ms LEFT JOIN a ON a.name = ms.view

@@ -470,7 +470,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
             .execute(
                 agent(),
                 None,
-                "SELECT count(DISTINCT hash) FROM kits WHERE name = 'core'",
+                "SELECT count(DISTINCT hash) FROM kits_history WHERE name = 'core'",
             )
             .await
             .unwrap(),

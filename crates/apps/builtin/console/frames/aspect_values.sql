@@ -10,7 +10,7 @@ st AS (
 said AS (
   SELECT g.subject, g.actor_kind, g.actor_id, g.body, g.written_at,
          row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = CAST($aspect AS VARCHAR) AND g.actor_kind IN ('human', 'agent')),
 fn AS (
@@ -20,7 +20,7 @@ fn AS (
 loaded AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 a AS (
   SELECT lower(kind) AS kind FROM aspects WHERE name = CAST($aspect AS VARCHAR)
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
 SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subject, len(d.dataset) + 2) ELSE st.subject END AS subject,
        CASE
          WHEN st.state = 'missing' THEN CASE WHEN a.kind = 'measurement' THEN 'not yet measured' ELSE 'not yet annotated' END

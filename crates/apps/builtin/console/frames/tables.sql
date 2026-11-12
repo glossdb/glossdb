@@ -4,7 +4,7 @@
 -- links are the download interface's paths.
 WITH latest AS (
   SELECT i.table_name, i.rows, i.dropped_rows_count, i.imported_at,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset),
 cols AS (
   SELECT c.table_name, count(*) AS columns

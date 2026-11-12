@@ -20,7 +20,7 @@ CREATE OR REPLACE VIEW main.current_dataset AS
 CREATE OR REPLACE VIEW main.agent_assumptions AS
   WITH latest AS (
     SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY seq DESC) AS rn
+      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY begin_snapshot DESC) AS rn
       FROM main.glossary g WHERE actor_kind = 'agent') WHERE rn = 1)
   SELECT l.dataset, l.subject, l.aspect, t.i - 1 AS idx,
          json_extract_string(t.a, '$.dimension') AS dimension,
@@ -38,7 +38,7 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
 CREATE OR REPLACE VIEW main.review_decisions AS
   WITH latest AS (
     SELECT * FROM (
-      SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
+      SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY begin_snapshot DESC) AS rn
       FROM main.glossary r WHERE aspect = 'review_decision' AND actor_kind = 'human') WHERE rn = 1),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
@@ -68,7 +68,7 @@ CREATE OR REPLACE VIEW main.review_decisions AS
 CREATE OR REPLACE VIEW main.open_questions AS
   WITH view_aspects AS (
     SELECT name FROM (
-      SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+      SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
       FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
@@ -96,7 +96,7 @@ CREATE OR REPLACE VIEW main.open_questions AS
 CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
     SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn
+      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY begin_snapshot DESC) AS rn
       FROM main.glossary g
       WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
         AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
@@ -122,7 +122,7 @@ CREATE OR REPLACE VIEW main.app_parts AS
 CREATE OR REPLACE VIEW main.app_releases AS
   WITH newest AS (
     SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, actor_kind ORDER BY seq DESC) AS rn
+      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, actor_kind ORDER BY begin_snapshot DESC) AS rn
       FROM main.glossary g
       WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset) WHERE rn = 1),
   winning AS (
@@ -149,11 +149,11 @@ CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (
     SELECT name, schema FROM (
-      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
       FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
   current_values AS (
     SELECT aspect, body, actor_kind FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
+      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) AS rn
       FROM main.glossary g, ds
       WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
         AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
@@ -165,7 +165,7 @@ CREATE OR REPLACE VIEW main.view_definitions AS
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
   registry AS (
     SELECT aspect, body FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
+      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) AS rn
       FROM main.glossary g, ds
       WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions') WHERE rn = 1
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
@@ -212,7 +212,7 @@ CREATE OR REPLACE VIEW main.view_definitions AS
 CREATE OR REPLACE MACRO main.tested_properties() AS TABLE
   SELECT a.name
   FROM (SELECT name, kind, grains, schema FROM main.aspects
-        QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) a
+        QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a
   WHERE a.kind IN ('FACT', 'MEASUREMENT')
     AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN'))
     AND json_extract(a.schema, '$.x-subject') IS NULL
@@ -231,7 +231,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
   newest_aspects AS (
     SELECT name, kind, grains, condition, schema FROM (
-      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
+      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn
       FROM main.aspects) WHERE rn = 1),
   -- A test is open while its property is in use and has no value.
   -- A property that exists to be tested (tested_properties()) is in
@@ -270,7 +270,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
       JOIN newest_aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
         AND json_extract_string(a.schema, '$.x-kind') IS NULL
       WHERE g.subject = g.dataset
-      QUALIFY row_number() OVER (PARTITION BY g.dataset, g.aspect ORDER BY g.seq DESC) = 1)
+      QUALIFY row_number() OVER (PARTITION BY g.dataset, g.aspect ORDER BY g.begin_snapshot DESC) = 1)
     WHERE json_extract_string(body, '$.sql') IS NOT NULL),
   open_view_checks AS (
     SELECT v.dataset, v.view, c.name FROM metrics v, view_checks c

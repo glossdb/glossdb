@@ -3,7 +3,7 @@
 -- now, counted by state, with the worst as the page's state.
 WITH w AS (
   SELECT * FROM tests WHERE name = $test
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 v AS (
   SELECT a.state, a.score, a.computed_at, a.current,
          CASE a.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 WHEN 'error' THEN 1 ELSE 0 END AS severity
@@ -11,7 +11,7 @@ v AS (
 about AS (
   SELECT json_extract_string(a.schema, '$.description') AS description
   FROM aspects a JOIN w ON w.aspect = a.name
-  QUALIFY row_number() OVER (ORDER BY a.seq DESC) = 1),
+  QUALIFY row_number() OVER (ORDER BY a.begin_snapshot DESC) = 1),
 folded AS (
   SELECT count(v.state) AS n,
          count(*) FILTER (WHERE v.state = 'green') AS green,

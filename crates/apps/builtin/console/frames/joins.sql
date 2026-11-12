@@ -14,7 +14,7 @@ coh AS (
 m AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind,
          row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.actor_kind IN ('human', 'agent')),
 rels AS (

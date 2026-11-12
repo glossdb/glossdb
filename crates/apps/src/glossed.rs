@@ -175,7 +175,7 @@ async fn rows(interface: &AppInterface, dataset: &str) -> Vec<Row> {
     let Ok(query) = session
         .query_stream(&format!(
             "SELECT g.subject, g.aspect, g.actor_kind, CAST(g.body AS VARCHAR) AS body, \
-             g.written_at FROM glossary g \
+             g.written_at FROM glossary_history g \
              JOIN current_dataset d ON d.dataset = g.dataset WHERE g.aspect IN ({aspects})"
         ))
         .await

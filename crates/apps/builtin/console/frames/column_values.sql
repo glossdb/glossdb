@@ -9,7 +9,7 @@ states AS (SELECT aspect, state FROM GLOSSARY() WHERE subject = (SELECT subject 
 said AS (
   SELECT g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at,
          row_number() OVER (PARTITION BY g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject = (SELECT subject FROM subj) AND g.actor_kind IN ('human', 'agent')),
 authored AS (
@@ -49,7 +49,7 @@ measured AS (
   WHERE lower(g.kind) = 'measurement' AND g.subject = (SELECT subject FROM subj)),
 a AS (
   SELECT name, lower(kind) AS kind FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 unfilled AS (
   SELECT st.aspect, CASE WHEN a.kind = 'measurement' THEN 'measured' ELSE 'said' END AS kind,
          CASE WHEN a.kind = 'measurement' THEN 'not yet measured' ELSE 'not yet annotated' END AS value,

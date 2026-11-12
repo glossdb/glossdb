@@ -186,7 +186,7 @@ statement ok
 SELECT metric_ranges() FROM fin;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_ranges' AND a.test = 'range_test';
+SELECT count(*), bool_and(current) FROM measurements_history m, TESTS() a WHERE m.function = 'metric_ranges' AND a.test = 'range_test';
 ----
 2	true
 
@@ -302,7 +302,7 @@ statement ok
 SELECT metric_forecast() FROM fin;
 
 query II
-SELECT count(*), count(DISTINCT origin) FROM measurements m, (SELECT DISTINCT origin FROM forecast_stored() WHERE metric = 'sales') o
+SELECT count(*), count(DISTINCT origin) FROM measurements_history m, (SELECT DISTINCT origin FROM forecast_stored() WHERE metric = 'sales') o
 WHERE m.function = 'metric_forecast';
 ----
 2	1
@@ -417,7 +417,7 @@ SELECT measurements_to_run FROM view_summary() WHERE view = 'sales_budget';
 []
 
 query TTTTI
-SELECT plan, metric, plan_grain, forecast_run = (SELECT max(seq) FROM measurements WHERE function = 'metric_forecast'), count(*)
+SELECT plan, metric, plan_grain, forecast_run = (SELECT max(begin_snapshot) FROM measurements WHERE function = 'metric_forecast'), count(*)
 FROM plan_stored() GROUP BY ALL;
 ----
 sales_budget	sales	month	true	13
@@ -448,7 +448,7 @@ statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
 query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_test';
+SELECT count(*), bool_and(current) FROM measurements_history m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_test';
 ----
 2	true
 

@@ -11,11 +11,11 @@ base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 recipe AS (
   SELECT r.table_name, r.source
   FROM recipes r JOIN d ON d.dataset = r.dataset
-  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1),
 load AS (
   SELECT i.table_name, i.rows, i.imported_at
   FROM imports i JOIN d ON d.dataset = i.dataset
-  QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) = 1),
 said AS (
   SELECT subject, aspect, value FROM GLOSSARY()
   WHERE aspect IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),

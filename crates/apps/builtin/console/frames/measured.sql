@@ -67,7 +67,7 @@ others AS (
   WHERE aspect NOT IN (SELECT aspect FROM worded)
   GROUP BY aspect),
 every AS (SELECT * FROM worded UNION ALL SELECT * FROM others),
-a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 backlog AS (
   SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unannotated
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect
