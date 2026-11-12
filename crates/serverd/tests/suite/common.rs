@@ -1,7 +1,8 @@
-//! A test issuer: a key minted when the test starts, a gate that holds
-//! its public half, and tokens signed with the private half. The server
-//! only ever verifies — this is the one place in the tree that signs,
-//! and it exists so the tests can say what verification does.
+//! The suite's one harness. A test issuer: a key minted when the test
+//! starts, a gate that holds its public half, and tokens signed with the
+//! private half — the server only ever verifies, and this is the one
+//! place in the tree that signs. A scratch workspace behind the
+//! interfaces, and one helper per way a test speaks to them.
 
 #![allow(dead_code)]
 
@@ -14,7 +15,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::pkcs8::EncodePrivateKey;
-use glossdb_serverd::{Endpoints, Gate, Login};
+use glossdb_serverd::{Access, Endpoints, Gate, InterfaceConfig, Login, Plane, router};
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde_json::{Value, json};
@@ -218,4 +219,183 @@ pub async fn expect_ok(response: Response<Body>) -> Value {
     let text = String::from_utf8_lossy(&bytes);
     assert_eq!(status, StatusCode::OK, "{text}");
     serde_json::from_str(&text).unwrap()
+}
+
+/// A served workspace: the interfaces, the plane behind them, and the
+/// directory the lake lives in (dropped with the test).
+pub type Served = (Router, Arc<Plane>, tempfile::TempDir);
+
+/// The interfaces over a scratch workspace with the served pages, a data
+/// read cut at `row_cap` rows.
+pub async fn served(row_cap: usize, interfaces: InterfaceConfig, access: Access) -> Served {
+    let (dir, plane) = scratch_plane_capped(row_cap).await;
+    let plane = Arc::new(
+        plane.with_pages(
+            glossdb_serverd::skills::served_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
+    );
+    (router(Arc::clone(&plane), interfaces, access), plane, dir)
+}
+
+/// The gated interfaces over an empty workspace.
+pub async fn app() -> Served {
+    served(
+        glossdb_serverd::DEFAULT_ROW_CAP,
+        InterfaceConfig::default(),
+        Access::Gated(login()),
+    )
+    .await
+}
+
+/// The gated interfaces over a workspace that holds `dataset`, declared
+/// through the workspace's agent interface.
+pub async fn app_on(dataset: &str) -> Served {
+    let served = app().await;
+    say(
+        &served.0,
+        "/mcp",
+        &format!("DECLARE DATASET {dataset} SET (purpose: 'the suite');"),
+    )
+    .await;
+    served
+}
+
+/// A `tools/call` of the one tool, stamped with `meta_value`; `answer`
+/// is a review form's answer under its key, sent back with the call.
+pub fn call_with(meta_value: Value, statements: &str, answer: Option<(&str, Value)>) -> Value {
+    let mut params = json!({
+        "_meta": meta_value,
+        "name": "glossql",
+        "arguments": {"statements": statements}
+    });
+    if let Some((key, answer)) = answer {
+        params["inputResponses"] = json!({ key: answer });
+        params["requestState"] = json!("review:v1");
+    }
+    json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params})
+}
+
+/// The sessionless stamp with the elicitation capability advertised.
+pub fn meta_elicit() -> Value {
+    let mut stamp = meta();
+    stamp["io.modelcontextprotocol/clientCapabilities"] = json!({"elicitation": {}});
+    stamp
+}
+
+/// A JSON-RPC request other than a tool call, on the agent interface at `path`.
+pub async fn rpc(app: &Router, path: &str, method: &str, params: Value) -> Value {
+    let mut params = params;
+    params["_meta"] = meta();
+    let payload = json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
+    expect_ok(mcp_on(app.clone(), path, "127.0.0.1", payload).await).await
+}
+
+/// The JSON-RPC body of one tool call on the agent interface at `path`.
+pub async fn tool(app: &Router, path: &str, statements: &str) -> Value {
+    let payload = call_with(meta(), statements, None);
+    expect_ok(mcp_on(app.clone(), path, "127.0.0.1", payload).await).await
+}
+
+/// One tool call on the workspace's agent interface from a client that
+/// takes review forms, with the answer to one form if given.
+pub async fn elicit(app: &Router, statements: &str, answer: Option<(&str, Value)>) -> Value {
+    let payload = call_with(meta_elicit(), statements, answer);
+    expect_ok(mcp_on(app.clone(), "/mcp", "127.0.0.1", payload).await).await
+}
+
+/// The outcomes of a tool call, one per statement.
+pub fn outcomes(body: &Value) -> Value {
+    let text = body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{body}"));
+    serde_json::from_str(text).unwrap_or_else(|e| panic!("{e}: {text}"))
+}
+
+/// The lines that close a tool call's result: the second content block.
+pub fn window(body: &Value) -> String {
+    body["result"]["content"][1]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{body}"))
+        .to_string()
+}
+
+/// Statements on the agent interface at `path`: their outcomes, and a
+/// panic on a refusal.
+pub async fn say(app: &Router, path: &str, statements: &str) -> Value {
+    let body = tool(app, path, statements).await;
+    assert_ne!(
+        body["result"]["isError"],
+        json!(true),
+        "`{statements}`: {body}"
+    );
+    outcomes(&body)
+}
+
+/// The rows of the last read among `statements` on the agent interface at `path`.
+pub async fn rows(app: &Router, path: &str, statements: &str) -> Vec<Value> {
+    let outcomes = say(app, path, statements).await;
+    let last = outcomes.as_array().and_then(|o| o.last()).cloned();
+    last.and_then(|o| o["rows"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// A tool call that must be refused: its body.
+pub async fn refused(app: &Router, path: &str, statements: &str) -> Value {
+    let body = tool(app, path, statements).await;
+    assert_eq!(
+        body["result"]["isError"],
+        json!(true),
+        "`{statements}` was not refused: {body}"
+    );
+    body
+}
+
+/// A POST of `sql` to the query interface at `path`, with `authorization`
+/// as the header if given.
+pub async fn post_query(
+    app: &Router,
+    path: &str,
+    authorization: Option<String>,
+    sql: &str,
+) -> Response<Body> {
+    let mut request = Request::post(path);
+    if let Some(authorization) = authorization {
+        request = request.header(header::AUTHORIZATION, authorization);
+    }
+    app.clone()
+        .oneshot(request.body(Body::from(sql.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+/// `sql` on `fin`'s query interface as the person `dev-human`: the
+/// status and the JSON body.
+pub async fn query(app: &Router, sql: &str) -> (StatusCode, Value) {
+    let response = post_query(app, "/fin/query", Some(bearer("dev-human")), sql).await;
+    let status = response.status();
+    (status, body_json(response).await)
+}
+
+/// A GET as the person `dev-human`.
+pub async fn get(app: &Router, uri: &str) -> Response<Body> {
+    app.clone()
+        .oneshot(
+            Request::get(uri)
+                .header(header::AUTHORIZATION, bearer("dev-human"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+pub async fn body_json(response: Response<Body>) -> Value {
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap_or_else(|e| panic!("{e}: {bytes:?}"))
+}
+
+pub async fn body_text(response: Response<Body>) -> String {
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    String::from_utf8(bytes.to_vec()).unwrap()
 }

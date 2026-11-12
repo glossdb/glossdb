@@ -4,100 +4,85 @@
 //! statements, and answers a failed statement as a tool error, not a
 //! protocol error.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::{Body, to_bytes};
+use axum::body::Body;
 use axum::http::{Request, Response, StatusCode, header};
-use std::collections::HashMap;
-
-use glossdb_serverd::{ARROW_STREAM, Access, INSECURE_DEV_MODE, InterfaceConfig, Login, router};
-
-use crate::common::{self, expect_ok, mcp_on, meta};
-
-const INT: &str = "Int32";
-type IntArray = arrow::array::Int32Array;
+use glossdb_serverd::{ARROW_STREAM, Access, INSECURE_DEV_MODE, InterfaceConfig, router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-async fn app_with(interfaces: InterfaceConfig, login: Arc<Login>) -> (Router, tempfile::TempDir) {
-    app_capped(glossdb_serverd::DEFAULT_ROW_CAP, interfaces, login).await
-}
+use crate::common::{
+    self, app, app_on, body_json, body_text, elicit, expect_ok, get, mcp_on, meta, outcomes,
+    post_query, query, rows, rpc, say, tool, window,
+};
 
-async fn app_capped(
+const INT: &str = "Int32";
+type IntArray = arrow::array::Int32Array;
+
+/// The gated interfaces under `interfaces` and `login`, a data read cut
+/// at `row_cap` rows.
+async fn app_with(
     row_cap: usize,
     interfaces: InterfaceConfig,
-    login: Arc<Login>,
-) -> (Router, tempfile::TempDir) {
-    let (dir, plane) = common::scratch_plane_capped(row_cap).await;
-    let plane = Arc::new(
-        plane.with_pages(
-            glossdb_serverd::skills::served_pages()
-                .expect("the language's documents beside the extension's kits"),
-        ),
-    );
-    (router(plane, interfaces, Access::Gated(login)), dir)
+    login: Arc<glossdb_serverd::Login>,
+) -> common::Served {
+    common::served(row_cap, interfaces, Access::Gated(login)).await
 }
 
-async fn app() -> (Router, tempfile::TempDir) {
-    app_with(InterfaceConfig::default(), common::login()).await
+/// One JSON-RPC POST to the workspace's agent interface under `host`.
+async fn mcp_at(app: &Router, host: &str, payload: Value) -> Response<Body> {
+    mcp_on(app.clone(), "/mcp", host, payload).await
 }
 
-/// The same interfaces over a workspace that already holds one dataset.
-/// `/query` and `/app` are dataset-scoped and 404 on a name the
-/// workspace does not hold — only `/mcp` may bring one into being.
-async fn app_on_fin() -> (Router, tempfile::TempDir) {
-    let (app, dir) = app().await;
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                1,
-                "DECLARE DATASET fin SET (purpose: 'interface test');",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    (app, dir)
+fn initialize() -> Value {
+    json!({
+        "jsonrpc": "2.0", "id": 0, "method": "initialize",
+        "params": {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {},
+            "clientInfo": {"name": "interfaces-test", "version": "0"}
+        }
+    })
 }
 
-async fn body_json(response: Response<Body>) -> Value {
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    serde_json::from_slice(&bytes).unwrap()
+/// A raw `tools/call` request on `/mcp` with `authorization` if given:
+/// for the tests that speak as someone other than `dev-agent`.
+fn raw_call(authorization: Option<String>, statements: &str) -> Request<Body> {
+    let mut request = Request::post("/mcp")
+        .header(header::HOST, "127.0.0.1")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCEPT, "application/json, text/event-stream")
+        .header("mcp-protocol-version", "2026-07-28")
+        .header("mcp-method", "tools/call")
+        .header("mcp-name", "glossql");
+    if let Some(authorization) = authorization {
+        request = request.header(header::AUTHORIZATION, authorization);
+    }
+    request
+        .body(Body::from(
+            common::call_with(meta(), statements, None).to_string(),
+        ))
+        .unwrap()
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
     // The URL is the binding, so a name nobody declared is a missing
-    // resource, not a query that fails oddly three layers down. The
-    // answer names what the workspace does hold — a mistyped dataset
-    // should not require a second request to recover from.
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/nope/app/console/frames/census")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // resource. The answer names what the workspace does hold.
+    let (app, _, _dir) = app_on("fin").await;
+    let response = get(&app, "/nope/app/console/frames/census").await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
-    let response = app
-        .oneshot(
-            Request::post("/nope/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from("SELECT 1"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = post_query(
+        &app,
+        "/nope/query",
+        Some(common::bearer("dev-human")),
+        "SELECT 1",
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = body_json(response).await;
     assert!(body["error"].as_str().unwrap().contains("fin"), "{body}");
@@ -108,55 +93,37 @@ async fn a_dataset_the_workspace_does_not_hold_is_a_404() {
 /// unprocessable, and so is a refused statement that is not one read.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_answers_a_refusal_by_its_class() {
-    let (app, _dir) = app_on_fin().await;
-    let ask = |sql: &'static str| {
-        let app = app.clone();
-        async move {
-            let response = app
-                .oneshot(
-                    Request::post("/fin/query")
-                        .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                        .body(Body::from(sql))
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            let status = response.status();
-            (status, body_json(response).await)
-        }
-    };
-    let (missing, said) = ("SELECT * FROM nope", "nope");
-    let (status, body) = ask(missing).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert!(body["error"].as_str().unwrap().contains(said), "{body}");
-    let (status, body) = ask("SELECT * FROM view_summary('revenue')").await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    let fault = "view_summary";
-    assert!(body["error"].as_str().unwrap().contains(fault), "{body}");
-    let (status, body) = ask("USE nothing").await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
-    assert!(
-        body["error"].as_str().unwrap().contains("nothing"),
-        "{body}"
-    );
+    let (app, _, _dir) = app_on("fin").await;
+    for (sql, status, named) in [
+        ("SELECT * FROM nope", StatusCode::NOT_FOUND, "nope"),
+        (
+            "SELECT * FROM view_summary('revenue')",
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "view_summary",
+        ),
+        ("USE nothing", StatusCode::UNPROCESSABLE_ENTITY, "nothing"),
+    ] {
+        let (answered, body) = query(&app, sql).await;
+        assert_eq!(answered, status, "{sql}: {body}");
+        assert!(body["error"].as_str().unwrap().contains(named), "{body}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_streams_arrow_ipc() {
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from("SELECT 1 + 1 AS two"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
+    let (app, _, _dir) = app_on("fin").await;
+    let response = post_query(
+        &app,
+        "/fin/query",
+        Some(common::bearer("dev-human")),
+        "SELECT 1 + 1 AS two",
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()[header::CONTENT_TYPE], ARROW_STREAM);
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let reader =
         arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
             .unwrap();
@@ -172,50 +139,28 @@ async fn the_query_interface_streams_arrow_ipc() {
 }
 
 /// A read that plans but fails on its first poll — here a cast the
-/// engine only evaluates at execution — is refused with its text. The
-/// alternative is a 200, the schema, and a body that breaks: the
-/// status is set before any byte flows, so it is set on the first
-/// batch, not on the plan.
+/// engine only evaluates at execution — is refused, not answered 200
+/// with a body that breaks: the status is set on the first batch.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_refuses_a_read_the_engine_cannot_start() {
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from("SELECT CAST('x' AS INT) AS n"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-    let body = body_json(response).await;
-    let error = body["error"].as_str().unwrap();
-    assert!(error.contains("'x'"), "{error}");
+    let (app, _, _dir) = app_on("fin").await;
+    let (status, body) = query(&app, "SELECT CAST('x' AS INT) AS n").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("'x'"), "{body}");
 }
 
 /// The interface's gate: a human at the query interface is a standard actor
 /// unless the deployment names them root, so a `SET` that would take
-/// another actor kind is closed with its reason, and so is an `ATTACH`.
+/// another actor kind is closed, and so is an `ATTACH`.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_refuses_engine_settings_to_a_standard_actor() {
-    let (app, _dir) = app_on_fin().await;
+    let (app, _, _dir) = app_on("fin").await;
     for (statement, word) in [
         ("SET VARIABLE glossql_actor = 'human'", "SET"),
         ("ATTACH ':memory:' AS other", "ATTACH"),
     ] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::post("/fin/query")
-                    .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                    .body(Body::from(statement))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert!(response.status().is_client_error(), "{statement}");
-        let body = body_json(response).await;
+        let (status, body) = query(&app, statement).await;
+        assert!(status.is_client_error(), "{statement}");
         let error = body["error"].as_str().unwrap();
         assert!(error.contains(word), "{statement}: {error}");
     }
@@ -223,19 +168,9 @@ async fn the_query_interface_refuses_engine_settings_to_a_standard_actor() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_query_interface_answers_a_statement_sequence_in_json() {
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from("SELECT 1 AS a; SELECT 2 AS b"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_json(response).await;
+    let (app, _, _dir) = app_on("fin").await;
+    let (status, body) = query(&app, "SELECT 1 AS a; SELECT 2 AS b").await;
+    assert_eq!(status, StatusCode::OK);
     let outcomes = body.as_array().unwrap();
     assert_eq!(outcomes.len(), 2);
     assert_eq!(outcomes[0]["rows"][0]["a"], json!(1));
@@ -246,168 +181,94 @@ async fn the_query_interface_answers_a_statement_sequence_in_json() {
 /// the read for a client that has the statement tool and nothing else.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_served_pages_are_rows_of_pages() {
-    let (app, _dir) = app_on_fin().await;
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from(
-                    "SELECT body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'; \
-                     SELECT count(*) AS n FROM pages()",
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_json(response).await;
-    let outcomes = body.as_array().unwrap();
+    let (app, _, _dir) = app_on("fin").await;
+    let (status, body) = query(
+        &app,
+        "SELECT body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'; \
+         SELECT count(*) AS n FROM pages()",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        outcomes[0]["rows"][0]["body"],
+        body[0]["rows"][0]["body"],
         json!(glossdb_serverd::skills::SKILLS[0].body)
     );
     let served = {
         use glossdb_serverd::skills::{DOC_NAMES, PAGES, REFERENCES, SKILLS, VENDORED};
         SKILLS.len() + DOC_NAMES.len() + REFERENCES.len() + PAGES.len() + VENDORED.len()
     };
-    assert_eq!(outcomes[1]["rows"][0]["n"], json!(served));
+    assert_eq!(body[1]["rows"][0]["n"], json!(served));
+}
+
+/// The statements both arrangements write a note with: the agent
+/// interface declares and annotates, a human interface annotates again,
+/// and the glossary then holds one current row per actor kind.
+const NOTE_BY_AGENT: &str = "DECLARE DATASET fin SET (purpose: 'who wrote it');\n\
+     USE fin;\n\
+     DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
+     GLOSS note ON fin AS $${\"value\": \"through the agent interface\"}$$;\n\
+     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';";
+const NOTE_BY_HUMAN: &str = "GLOSS note ON fin AS $${\"value\": \"through the human interface\"}$$;\n\
+     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' ORDER BY actor_kind;";
+
+/// The note's writers, as the agent interface and then a human interface
+/// recorded them, each with `authorization` if given.
+async fn note_writers(app: &Router, authorization: Option<String>) -> (Value, Vec<Value>) {
+    let request = raw_call(authorization.clone(), NOTE_BY_AGENT);
+    let body = expect_ok(app.clone().oneshot(request).await.unwrap()).await;
+    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    let by_agent = outcomes(&body).as_array().unwrap().last().unwrap()["rows"][0].clone();
+    let response = post_query(app, "/fin/query", authorization, NOTE_BY_HUMAN).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_json(response).await;
+    let both = body[1]["rows"]
+        .as_array()
+        .cloned()
+        .unwrap_or_else(|| panic!("{body}"));
+    (by_agent, both)
 }
 
 /// The gate. A bearer token from the issuer names who is speaking; the
-/// interface names with which actor kind. Nothing in the tree signs a token
-/// except the test issuer in `common`.
+/// interface names with which actor kind — never the handshake's
+/// `clientInfo` name, which a client picks for itself. Both rows are
+/// current: the supersession key's third leg is the kind.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_token_names_the_actor_and_the_interface_names_its_kind() {
-    let (app, _dir) = app().await;
-
-    // Over the agent interface: the agent actor kind, the token's subject as the
-    // id — never the handshake's `clientInfo` name, which a client
-    // picks for itself on every request.
-    let request = Request::post("/mcp")
-        .header(header::HOST, "127.0.0.1")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::ACCEPT, "application/json, text/event-stream")
-        .header(header::AUTHORIZATION, common::bearer("ada"))
-        .header("mcp-protocol-version", "2026-07-28")
-        .header("mcp-method", "tools/call")
-        .header("mcp-name", "glossql")
-        .body(Body::from(
-            call_with(
-                meta(),
-                1,
-                "DECLARE DATASET fin SET (purpose: 'token test');\n\
-                 USE fin;\n\
-                 DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
-                 GLOSS note ON fin AS $${\"value\": \"through the agent interface\"}$$;\n\
-                 SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';",
-                None,
-            )
-            .to_string(),
-        ))
-        .unwrap();
-    let body = expect_ok(app.clone().oneshot(request).await.unwrap()).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let outcomes = outcomes_of(&body);
-    let last = outcomes.as_array().unwrap().last().unwrap();
-    assert_eq!(last["rows"][0]["actor_id"], json!("ada"), "{outcomes}");
-    assert_eq!(last["rows"][0]["actor_kind"], json!("agent"), "{outcomes}");
-
-    // The same token over a human interface: the same subject, human
-    // actor kind. Both rows are current — the supersession key's third leg is
-    // the kind, and the interface set it.
-    let response = app
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("ada"))
-                .body(Body::from(
-                    "GLOSS note ON fin AS $${\"value\": \"through the human interface\"}$$;\n\
-                     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' \
-                     ORDER BY actor_kind;",
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_json(response).await;
-    let rows = body[1]["rows"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{body}"));
-    assert_eq!(rows.len(), 2, "{body}");
-    assert_eq!(rows[0]["actor_kind"], json!("agent"), "{body}");
-    assert_eq!(rows[1]["actor_kind"], json!("human"), "{body}");
-    assert!(rows.iter().all(|r| r["actor_id"] == json!("ada")), "{body}");
+    let (app, _, _dir) = app().await;
+    let (by_agent, both) = note_writers(&app, Some(common::bearer("ada"))).await;
+    assert_eq!(by_agent["actor_id"], json!("ada"), "{by_agent}");
+    assert_eq!(by_agent["actor_kind"], json!("agent"), "{by_agent}");
+    let kinds: Vec<&Value> = both.iter().map(|r| &r["actor_kind"]).collect();
+    assert_eq!(kinds, [&json!("agent"), &json!("human")], "{both:?}");
+    assert!(
+        both.iter().all(|r| r["actor_id"] == json!("ada")),
+        "{both:?}"
+    );
 }
 
 /// The explicit open arrangement (`Access::Open`, the
 /// GLOSSDB_INSECURE_OPEN switch): no interface asks for a token, and the
 /// catalog still names who spoke — the well-known dev actor, with the
-/// interface's actor kind. No login and no discovery document are served;
-/// with no 401 to answer, a client is never sent to authenticate.
+/// interface's actor kind. No login and no discovery document are served.
 #[tokio::test(flavor = "multi_thread")]
 async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
-    let (_dir, plane) = common::scratch_plane().await;
-    let app = router(Arc::new(plane), InterfaceConfig::default(), Access::Open);
-
-    // The agent interface, bare: the agent actor kind, the dev actor as the id.
-    let request = Request::post("/mcp")
-        .header(header::HOST, "127.0.0.1")
-        .header(header::CONTENT_TYPE, "application/json")
-        .header(header::ACCEPT, "application/json, text/event-stream")
-        .header("mcp-protocol-version", "2026-07-28")
-        .header("mcp-method", "tools/call")
-        .header("mcp-name", "glossql")
-        .body(Body::from(
-            call_with(
-                meta(),
-                1,
-                "DECLARE DATASET fin SET (purpose: 'open interface test');\n\
-                 USE fin;\n\
-                 DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
-                 GLOSS note ON fin AS $${\"value\": \"through the open agent interface\"}$$;\n\
-                 SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';",
-                None,
-            )
-            .to_string(),
-        ))
-        .unwrap();
-    let body = expect_ok(app.clone().oneshot(request).await.unwrap()).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let outcomes = outcomes_of(&body);
-    let last = outcomes.as_array().unwrap().last().unwrap();
-    assert_eq!(last["rows"][0]["actor_id"], json!(INSECURE_DEV_MODE));
-    assert_eq!(last["rows"][0]["actor_kind"], json!("agent"));
-
-    // A human interface, bare: the same id, the human actor kind — the
-    // supersession key's third leg still works, the interface still sets it.
-    let response = app
-        .clone()
-        .oneshot(
-            Request::post("/fin/query")
-                .body(Body::from(
-                    "GLOSS note ON fin AS $${\"value\": \"through the open human interface\"}$$;\n\
-                     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' \
-                     ORDER BY actor_kind;",
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = body_json(response).await;
-    let rows = body[1]["rows"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{body}"));
-    assert_eq!(rows.len(), 2, "{body}");
-    assert_eq!(rows[0]["actor_kind"], json!("agent"), "{body}");
-    assert_eq!(rows[1]["actor_kind"], json!("human"), "{body}");
+    let (app, _, _dir) = common::served(
+        glossdb_serverd::DEFAULT_ROW_CAP,
+        InterfaceConfig::default(),
+        Access::Open,
+    )
+    .await;
+    let (by_agent, both) = note_writers(&app, None).await;
+    assert_eq!(by_agent["actor_id"], json!(INSECURE_DEV_MODE));
+    assert_eq!(by_agent["actor_kind"], json!("agent"));
+    let kinds: Vec<&Value> = both.iter().map(|r| &r["actor_kind"]).collect();
+    assert_eq!(kinds, [&json!("agent"), &json!("human")], "{both:?}");
     assert!(
-        rows.iter()
+        both.iter()
             .all(|r| r["actor_id"] == json!(INSECURE_DEV_MODE)),
-        "{body}"
+        "{both:?}"
     );
 
-    // Nothing to authenticate with is served: no login, no discovery.
     for path in ["/auth/login", "/.well-known/oauth-protected-resource"] {
         let response = app
             .clone()
@@ -424,17 +285,9 @@ async fn open_access_asks_no_token_and_writes_as_the_dev_actor() {
 /// signature, key, issuer, audience, expiry.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
 
-    let none = app
-        .clone()
-        .oneshot(
-            Request::post("/fin/query")
-                .body(Body::from("SELECT 1"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let none = post_query(&app, "/fin/query", None, "SELECT 1").await;
     assert_eq!(none.status(), StatusCode::UNAUTHORIZED);
     let challenge = none.headers()[header::WWW_AUTHENTICATE]
         .to_str()
@@ -493,16 +346,13 @@ async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
         ),
     ];
     for (why, token) in foreign {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::post("/fin/query")
-                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                    .body(Body::from("SELECT 1"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = post_query(
+            &app,
+            "/fin/query",
+            Some(format!("Bearer {token}")),
+            "SELECT 1",
+        )
+        .await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{why}");
     }
 }
@@ -512,45 +362,34 @@ async fn a_missing_or_foreign_token_is_refused_with_the_discovery_pointer() {
 /// server's canonical URI with `resource=` and the issuer stamp it as
 /// `aud`. A token that names some other resource is refused, and so is
 /// one that names none — whatever application it was minted for, under
-/// either name that claim goes by.
+/// either name that claim goes by (RFC 9068 spells it `client_id`).
 #[tokio::test(flavor = "multi_thread")]
 async fn only_a_token_that_names_this_server_opens_it() {
-    let (app, _dir) = app_on_fin().await;
-    let query = |token: String| {
-        let app = app.clone();
-        async move {
-            app.oneshot(
-                Request::post("/fin/query")
-                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
-                    .body(Body::from("SELECT 1 AS one; SELECT 2 AS two"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap()
-        }
+    let (app, _, _dir) = app_on("fin").await;
+    let status = async |token: String| {
+        post_query(
+            &app,
+            "/fin/query",
+            Some(format!("Bearer {token}")),
+            "SELECT 1 AS one",
+        )
+        .await
+        .status()
     };
-
-    let ours = query(common::token("ada")).await;
-    assert_eq!(ours.status(), StatusCode::OK);
-
-    let no_audience = query(common::token_from_app("ada", common::CLIENT_ID)).await;
-    assert_eq!(no_audience.status(), StatusCode::UNAUTHORIZED);
-
-    // RFC 9068 spells that same application claim `client_id`; neither
-    // spelling holds in for an audience.
-    let rfc_9068 = query(common::token_with(json!({
-        "iss": common::ISSUER, "aud": [], "client_id": common::CLIENT_ID,
-        "sub": "ada", "exp": common::far_future(), "iat": 1
-    })))
-    .await;
-    assert_eq!(rfc_9068.status(), StatusCode::UNAUTHORIZED);
-
-    let elsewhere = query(common::token_with(json!({
-        "iss": common::ISSUER, "aud": "https://elsewhere.example", "azp": common::CLIENT_ID,
-        "sub": "ada", "exp": common::far_future(), "iat": 1
-    })))
-    .await;
-    assert_eq!(elsewhere.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(status(common::token("ada")).await, StatusCode::OK);
+    for token in [
+        common::token_from_app("ada", common::CLIENT_ID),
+        common::token_with(json!({
+            "iss": common::ISSUER, "aud": [], "client_id": common::CLIENT_ID,
+            "sub": "ada", "exp": common::far_future(), "iat": 1
+        })),
+        common::token_with(json!({
+            "iss": common::ISSUER, "aud": "https://elsewhere.example", "azp": common::CLIENT_ID,
+            "sub": "ada", "exp": common::far_future(), "iat": 1
+        })),
+    ] {
+        assert_eq!(status(token).await, StatusCode::UNAUTHORIZED);
+    }
 }
 
 /// A person in a browser holds no token, so a navigation to an interface is
@@ -558,7 +397,7 @@ async fn only_a_token_that_names_this_server_opens_it() {
 /// the 401 it can act on.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_browser_without_a_token_is_sent_to_sign_in() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let response = app
         .oneshot(
             Request::get("/fin/app/console?page=2")
@@ -606,18 +445,16 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
     let token_url = format!("http://{}/token", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, issuer).await.unwrap() });
 
-    let (app, _dir) = app_with(InterfaceConfig::default(), common::login_with(&token_url)).await;
-    expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                1,
-                "DECLARE DATASET fin SET (purpose: 'login test');",
-                None,
-            ),
-        )
-        .await,
+    let (app, _, _dir) = app_with(
+        glossdb_serverd::DEFAULT_ROW_CAP,
+        InterfaceConfig::default(),
+        common::login_with(&token_url),
+    )
+    .await;
+    say(
+        &app,
+        "/mcp",
+        "DECLARE DATASET fin SET (purpose: 'login test');",
     )
     .await;
 
@@ -689,8 +526,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
         .unwrap();
     let status = back.status();
     let headers = back.headers().clone();
-    let said =
-        String::from_utf8_lossy(&to_bytes(back.into_body(), usize::MAX).await.unwrap()).to_string();
+    let said = body_text(back).await;
     assert_eq!(status, StatusCode::SEE_OTHER, "{said}");
     assert_eq!(headers[header::LOCATION], "/fin/app/console");
     let cookies: Vec<String> = headers
@@ -793,7 +629,7 @@ async fn a_browser_signs_in_at_the_issuer_and_comes_back_with_a_cookie() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_login_brings_a_person_back_to_this_server_alone() {
     use base64::Engine as _;
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     // `next` as the browser sends it (the request line is encoded) and
     // the path the pending cookie keeps.
     let cases = [
@@ -846,7 +682,7 @@ async fn the_login_brings_a_person_back_to_this_server_alone() {
 /// no data.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_discovery_document_and_the_assets_answer_without_a_token() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let response = app
         .clone()
         .oneshot(
@@ -893,48 +729,16 @@ async fn the_discovery_document_and_the_assets_answer_without_a_token() {
 /// authenticate would be a platform holding a token.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_probe_answers_without_a_token_in_both_arrangements() {
-    let (gated, _dir) = app().await;
-    let (_dir, plane) = common::scratch_plane().await;
-    let open = router(Arc::new(plane), InterfaceConfig::default(), Access::Open);
+    let (gated, plane, _dir) = app().await;
+    let open = router(plane, InterfaceConfig::default(), Access::Open);
     for app in [gated, open] {
         let response = app
             .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), 1024).await.unwrap();
-        assert_eq!(&body[..], b"ok");
+        assert_eq!(body_text(response).await, "ok");
     }
-}
-
-/// One stateless JSON-RPC POST to /mcp (the 2026-07-28 revision needs no
-/// transport session; json_response mode answers in plain JSON).
-async fn mcp(app: Router, payload: Value) -> Response<Body> {
-    mcp_at(app, "127.0.0.1", payload).await
-}
-
-/// The same call under the `Host` a client would send.
-async fn mcp_at(app: Router, host: &str, payload: Value) -> Response<Body> {
-    mcp_on(app, "/mcp", host, payload).await
-}
-
-fn initialize() -> Value {
-    json!({
-        "jsonrpc": "2.0", "id": 0, "method": "initialize",
-        "params": {
-            "protocolVersion": "2026-07-28",
-            "capabilities": {},
-            "clientInfo": {"name": "interfaces-test", "version": "0"}
-        }
-    })
-}
-
-/// The outcomes of a tool call, one per statement.
-fn outcomes_of(body: &Value) -> Value {
-    let text = body["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap_or_else(|| panic!("{body}"));
-    serde_json::from_str(text).unwrap_or_else(|e| panic!("{e}: {text}"))
 }
 
 /// The agent interface's `Host` guard: the transport's loopback default
@@ -944,59 +748,46 @@ fn outcomes_of(body: &Value) -> Value {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_interface_answers_the_hosts_its_config_names() {
     let public = "glossql-trial.example.azurecontainerapps.io";
-    let (app, _dir) = app().await;
-    let refused = mcp_at(app, public, initialize()).await;
+    let (app, _, _dir) = app().await;
+    let refused = mcp_at(&app, public, initialize()).await;
     assert_eq!(refused.status(), StatusCode::FORBIDDEN);
 
     let mut named = InterfaceConfig::default();
     named.allowed_hosts.push(public.to_string());
-    let (app, _dir) = app_with(named, common::login()).await;
-    let body = expect_ok(mcp_at(app, public, initialize()).await).await;
+    let (app, _, _dir) = app_with(glossdb_serverd::DEFAULT_ROW_CAP, named, common::login()).await;
+    let body = expect_ok(mcp_at(&app, public, initialize()).await).await;
     assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_interface_initializes_and_lists_the_one_tool() {
-    let (app, _dir) = app().await;
-    let body = expect_ok(mcp(app.clone(), initialize()).await).await;
+    let (app, _, _dir) = app().await;
+    let body = expect_ok(mcp_at(&app, "127.0.0.1", initialize()).await).await;
     assert_eq!(body["result"]["serverInfo"]["name"], "glossdb-serverd");
 
-    let body = expect_ok(
-        mcp(
-            app,
-            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"_meta": meta()}}),
-        )
-        .await,
-    )
-    .await;
+    let body = rpc(&app, "/mcp", "tools/list", json!({})).await;
     let tools = body["result"]["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0]["name"], "glossql");
-    // The revision's full tools/list contract, validated by shipping
-    // clients (Claude Code): the SEP-2322
-    // discriminator plus the list-caching fields the interface injects
-    // until rmcp models them.
+    // The revision's tools/list contract as shipping clients validate
+    // it: the SEP-2322 discriminator and the list-caching fields the
+    // interface injects.
     assert_eq!(body["result"]["resultType"], "complete", "{body}");
     assert!(body["result"]["ttlMs"].is_number(), "{body}");
     assert_eq!(body["result"]["cacheScope"], "private", "{body}");
 }
 
-/// The tolerant floor, proven the way real clients arrive (the
-/// 2026-08-27 ChatGPT run): an initialize declaring an older revision
-/// is negotiated down to the library's floor rather than refused, and
-/// a request that stamps no version marker at all — no header, no
-/// `_meta` — is served at the server's own revision, which is what
-/// the spec has a server assume for an absent header. Claude Code
-/// stamps everything and rides the strict path above.
+/// The tolerant floor: an initialize declaring an older revision is
+/// negotiated down to the library's floor rather than refused, and a
+/// request that stamps no version marker at all — no header, no
+/// `_meta` — is served at the server's own revision, which is what the
+/// spec has a server assume for an absent header.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_interface_serves_older_and_unstamped_clients() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
 
-    // An older client's initialize, stamped with its own revision the
-    // way ChatGPT stamps it: answered, at the library's floor. The
-    // exact floor moves with rmcp — when this assert breaks on an
-    // upgrade, the new value is the new floor, and that is the point
-    // of pinning it.
+    // The floor moves with rmcp: when this breaks on an upgrade, the new
+    // value is the new floor.
     let older = Request::post("/mcp")
         .header(header::HOST, "127.0.0.1")
         .header(header::CONTENT_TYPE, "application/json")
@@ -1018,7 +809,6 @@ async fn the_mcp_interface_serves_older_and_unstamped_clients() {
     let body = expect_ok(app.clone().oneshot(older).await.unwrap()).await;
     assert_eq!(body["result"]["protocolVersion"], "2025-11-25", "{body}");
 
-    // A request with no version marker anywhere: served, not refused.
     let bare = Request::post("/mcp")
         .header(header::HOST, "127.0.0.1")
         .header(header::CONTENT_TYPE, "application/json")
@@ -1038,8 +828,8 @@ async fn the_mcp_interface_serves_older_and_unstamped_clients() {
 /// the build embedded.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
-    let (app, _dir) = app().await;
-    let body = expect_ok(mcp(app.clone(), initialize()).await).await;
+    let (app, _, _dir) = app().await;
+    let body = expect_ok(mcp_at(&app, "127.0.0.1", initialize()).await).await;
     assert!(
         body["result"]["capabilities"]["resources"].is_object(),
         "{body}"
@@ -1049,14 +839,7 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         "{body}"
     );
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list", "params": {"_meta": meta()}}),
-        )
-        .await,
-    )
-    .await;
+    let body = rpc(&app, "/mcp", "resources/list", json!({})).await;
     let uris: Vec<&str> = body["result"]["resources"]
         .as_array()
         .unwrap()
@@ -1076,45 +859,26 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         assert!(uris.contains(&uri), "{uri} missing from {uris:?}");
     }
     // A tree page reads back as the file, under the skill's own root.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({"jsonrpc": "2.0", "id": 8, "method": "resources/read",
-                   "params": {"_meta": meta(), "uri": "doc://docs/reference/reads.md"}}),
-        )
-        .await,
-    )
-    .await;
+    let read = async |uri: &str| {
+        rpc(&app, "/mcp", "resources/read", json!({"uri": uri})).await["result"]["contents"][0]
+            .clone()
+    };
     let reads = glossdb_serverd::skills::PAGES
         .iter()
         .find(|p| p.path == "docs/reference/reads.md")
         .expect("the reads reference is embedded");
-    assert_eq!(body["result"]["contents"][0]["text"], json!(reads.body));
-
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({"jsonrpc": "2.0", "id": 4, "method": "resources/read",
-                   "params": {"_meta": meta(), "uri": "skill://glossql/SKILL.md"}}),
-        )
-        .await,
-    )
-    .await;
-    let text = body["result"]["contents"][0]["text"].as_str().unwrap();
-    assert_eq!(text, glossdb_serverd::skills::SKILLS[0].body, "{body}");
     assert_eq!(
-        body["result"]["contents"][0]["mimeType"], "text/markdown",
-        "{body}"
+        read("doc://docs/reference/reads.md").await["text"],
+        json!(reads.body)
     );
+    let skill = read("skill://glossql/SKILL.md").await;
+    assert_eq!(
+        skill["text"],
+        json!(glossdb_serverd::skills::SKILLS[0].body)
+    );
+    assert_eq!(skill["mimeType"], "text/markdown", "{skill}");
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({"jsonrpc": "2.0", "id": 5, "method": "prompts/list", "params": {"_meta": meta()}}),
-        )
-        .await,
-    )
-    .await;
+    let body = rpc(&app, "/mcp", "prompts/list", json!({})).await;
     let prompts = body["result"]["prompts"].as_array().unwrap();
     assert_eq!(
         prompts.len(),
@@ -1128,15 +892,7 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
         "{body}"
     );
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({"jsonrpc": "2.0", "id": 6, "method": "prompts/get",
-                   "params": {"_meta": meta(), "name": "glossql"}}),
-        )
-        .await,
-    )
-    .await;
+    let body = rpc(&app, "/mcp", "prompts/get", json!({"name": "glossql"})).await;
     assert_eq!(
         body["result"]["messages"][0]["content"]["text"],
         glossdb_serverd::skills::SKILLS[0].body,
@@ -1144,108 +900,58 @@ async fn the_mcp_interface_serves_the_skills_as_resources_and_prompts() {
     );
 
     // A URI this interface does not hold is refused, never served as an
-    // empty page. The 2026-07-28 revision spells resource-not-found
-    // as invalid params (rmcp rewrites the older -32002), and the
-    // transport answers the handler's refusal in band: HTTP 200, the
-    // JSON-RPC error as the body.
-    let response = mcp(
-        app,
-        json!({"jsonrpc": "2.0", "id": 7, "method": "resources/read",
-               "params": {"_meta": meta(), "uri": "doc://README.md"}}),
+    // empty page: in band, HTTP 200 with the JSON-RPC error, which the
+    // 2026-07-28 revision spells as invalid params.
+    let body = rpc(
+        &app,
+        "/mcp",
+        "resources/read",
+        json!({"uri": "doc://README.md"}),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["error"]["code"], -32602, "{body}");
-    assert!(
-        body["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("doc://README.md"),
-        "{body}"
-    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
-    let (app, _dir) = app().await;
-    let call = |statements: &str| {
-        json!({
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {
-                "_meta": meta(),
-                "name": "glossql",
-                "arguments": {"statements": statements}
-            }
-        })
-    };
+    let (app, _, _dir) = app().await;
+    let answer = json!([{"name": "answer", "type": INT}]);
 
-    let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer")).await).await;
+    let body = tool(&app, "/mcp", "SELECT 41 + 1 AS answer").await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     // A call's result is complete and carries none of the list's
     // caching fields.
     assert_eq!(body["result"]["resultType"], "complete", "{body}");
     assert!(body["result"].get("ttlMs").is_none(), "{body}");
-    let outcomes = outcomes_of(&body);
-    assert_eq!(outcomes[0]["rows"][0]["answer"], json!(42));
-    assert_eq!(outcomes[0]["row_count"], json!(1));
-    assert_eq!(outcomes[0]["truncated"], json!(false));
-    // Every read carries its shape as (name, type) — and the shape
-    // survives an empty result: the LIMIT 0 rehearsal's whole point
-    // (the workaround otherwise is load a rehearsal
-    // recipe just to DESCRIBE it).
-    assert_eq!(
-        outcomes[0]["columns"],
-        json!([{"name": "answer", "type": INT}]),
-        "{outcomes}"
-    );
-    let body = expect_ok(mcp(app.clone(), call("SELECT 41 + 1 AS answer LIMIT 0")).await).await;
-    let outcomes = outcomes_of(&body);
-    assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
-    assert_eq!(
-        outcomes[0]["columns"],
-        json!([{"name": "answer", "type": INT}]),
-        "{outcomes}"
-    );
-    // … also as one statement of several, the path a PREVIEW takes.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call("SELECT 1 AS a; SELECT 41 + 1 AS answer LIMIT 0"),
-        )
-        .await,
+    let said = outcomes(&body);
+    assert_eq!(said[0]["rows"][0]["answer"], json!(42));
+    assert_eq!(said[0]["row_count"], json!(1));
+    assert_eq!(said[0]["truncated"], json!(false));
+    assert_eq!(said[0]["columns"], answer, "{said}");
+    // Every read carries its shape as (name, type), an empty one too —
+    // alone and as one statement of several, the path a PREVIEW takes.
+    let said = say(&app, "/mcp", "SELECT 41 + 1 AS answer LIMIT 0").await;
+    assert_eq!(said[0]["row_count"], json!(0), "{said}");
+    assert_eq!(said[0]["columns"], answer, "{said}");
+    let said = say(
+        &app,
+        "/mcp",
+        "SELECT 1 AS a; SELECT 41 + 1 AS answer LIMIT 0",
     )
     .await;
-    let outcomes = outcomes_of(&body);
-    assert_eq!(outcomes[1]["row_count"], json!(0), "{outcomes}");
-    assert_eq!(
-        outcomes[1]["columns"],
-        json!([{"name": "answer", "type": INT}]),
-        "{outcomes}"
-    );
+    assert_eq!(said[1]["row_count"], json!(0), "{said}");
+    assert_eq!(said[1]["columns"], answer, "{said}");
 
     // A failed statement comes back as a tool error the agent can read,
     // never a protocol error.
-    let body = expect_ok(mcp(app.clone(), call("USE nothing")).await).await;
-    assert_eq!(body["result"]["isError"], json!(true), "{body}");
+    let body = common::refused(&app, "/mcp", "USE nothing").await;
     let text = body["result"]["content"][0]["text"].as_str().unwrap();
     assert!(text.contains("nothing"), "{text}");
 
-    // A refusal mid-sequence is a tool error too.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call("SELECT 1 AS a; USE nothing; SELECT 2 AS b"),
-        )
-        .await,
-    )
-    .await;
-    assert_eq!(body["result"]["isError"], json!(true), "{body}");
-    // What ran rides beside the refusal, in the usual shape — the
-    // first statement's rows are not discarded with the second's error.
-    let completed = body["result"]["content"][1]["text"].as_str().unwrap();
-    let completed: Value = serde_json::from_str(completed).expect(completed);
+    // A refusal mid-sequence is a tool error too, and what ran rides
+    // beside it in the usual shape.
+    let body = common::refused(&app, "/mcp", "SELECT 1 AS a; USE nothing; SELECT 2 AS b").await;
+    let completed: Value = serde_json::from_str(&window(&body)).unwrap();
     assert_eq!(
         completed["completed"],
         json!([{
@@ -1259,88 +965,53 @@ async fn the_mcp_interface_executes_and_reports_refusals_as_tool_errors() {
 }
 
 /// The bound agent interface: `/{dataset}/mcp` opens every call on the
-/// dataset its URL names, the way `/{dataset}/query` does, so a call
-/// needs no `USE` to read the dataset's relations and gets the
-/// dataset's `next` line on every result. The workspace interface keeps
-/// opening unbound, and a dataset the workspace does not hold is the
-/// same 404 the human interfaces answer.
+/// dataset its URL names, so a call needs no `USE` to read the dataset's
+/// relations and gets the dataset's `next` line on every result. The
+/// workspace interface keeps opening unbound, and a dataset the
+/// workspace does not hold is the same 404 the human interfaces answer.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_dataset_mcp_interface_runs_every_call_on_its_dataset() {
-    let (app, _dir) = app_on_fin().await;
-    let read = |id| call_with(meta(), id, "SELECT dataset FROM current_dataset", None);
+    let (app, _, _dir) = app_on("fin").await;
+    let read = "SELECT dataset FROM current_dataset";
 
-    let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", read(1)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let outcomes = outcomes_of(&body);
+    let bound = tool(&app, "/fin/mcp", read).await;
     assert_eq!(
-        outcomes[0]["rows"][0]["dataset"],
+        outcomes(&bound)[0]["rows"][0]["dataset"],
         json!("fin"),
-        "{outcomes}"
+        "{bound}"
     );
-    let bound_window = body["result"]["content"][1]["text"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert!(window(&bound).contains("next://fin/"), "{bound}");
 
     // `USE` inside a call still moves the statements after it.
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            "127.0.0.1",
-            call_with(meta(), 2, "USE nothing; SELECT 1", None),
-        )
-        .await,
-    )
-    .await;
-    assert_eq!(body["result"]["isError"], json!(true), "{body}");
+    common::refused(&app, "/fin/mcp", "USE nothing; SELECT 1").await;
 
     // The workspace interface opens unbound: the relation serves no row and
-    // the result links to no dataset's `next` page, as the bound one does.
-    let body = expect_ok(mcp(app.clone(), read(3)).await).await;
-    let outcomes = outcomes_of(&body);
-    assert_eq!(outcomes[0]["row_count"], json!(0), "{outcomes}");
-    let window = body["result"]["content"][1]["text"].as_str().unwrap();
-    assert!(bound_window.contains("next://fin/"), "{bound_window}");
-    assert!(!window.contains("next://"), "{window}");
+    // the result links to no dataset's `next` page.
+    let unbound = tool(&app, "/mcp", read).await;
+    assert_eq!(outcomes(&unbound)[0]["row_count"], json!(0), "{unbound}");
+    assert!(!window(&unbound).contains("next://"), "{unbound}");
 
     // The bound interface names its dataset on the one tool and in the
     // handshake's instructions.
-    let list =
-        json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {"_meta": meta()}});
-    let bound = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", list).await).await;
-    let description = bound["result"]["tools"][0]["description"].as_str().unwrap();
+    let listed = rpc(&app, "/fin/mcp", "tools/list", json!({})).await;
+    let description = listed["result"]["tools"][0]["description"]
+        .as_str()
+        .unwrap();
     assert!(description.contains("`fin`"), "{description}");
-    let bound = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", initialize()).await).await;
-    let instructions = bound["result"]["instructions"].as_str().unwrap();
+    let opened = expect_ok(mcp_on(app.clone(), "/fin/mcp", "127.0.0.1", initialize()).await).await;
+    let instructions = opened["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("`fin`"), "{instructions}");
 
-    let response = mcp_on(app, "/nope/mcp", "127.0.0.1", read(6)).await;
+    let response = mcp_on(
+        app,
+        "/nope/mcp",
+        "127.0.0.1",
+        common::call_with(meta(), read, None),
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let body = body_json(response).await;
     assert!(body["error"].as_str().unwrap().contains("fin"), "{body}");
-}
-
-fn call_with(meta_value: Value, id: u64, statements: &str, retry: Option<(&str, Value)>) -> Value {
-    let mut params = json!({
-        "_meta": meta_value,
-        "name": "glossql",
-        "arguments": {"statements": statements}
-    });
-    if let Some((key, answer)) = retry {
-        params["inputResponses"] = json!({ key: answer });
-        params["requestState"] = json!("review:v1");
-    }
-    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params})
-}
-
-/// The sessionless stamp with the elicitation capability advertised.
-fn meta_elicit() -> Value {
-    json!({
-        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-        "io.modelcontextprotocol/clientCapabilities": {"elicitation": {}},
-        "io.modelcontextprotocol/clientInfo": {"name": "interfaces-test", "version": "0"}
-    })
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1350,7 +1021,7 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
     // words, as a box of its own; ticking it stores the same stance
     // and words on that view. The third view is confirmed as stated:
     // the same key holds two different decisions.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'one key, one decision');
         USE fin;
@@ -1371,35 +1042,18 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
             "assumption": "days are the month's own calendar days",
             "basis": "judgment", "confidence": 0.8}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 180, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
-    let open = |id: u64| {
-        let app = app.clone();
-        async move {
-            let body = expect_ok(
-                mcp(
-                    app,
-                    call_with(meta(), id, "SELECT aspect, key FROM open_questions;", None),
-                )
-                .await,
-            )
-            .await;
-            outcomes_of(&body)[0]["rows"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-        }
-    };
+    let open = async || rows(&app, "/mcp", "SELECT aspect, key FROM open_questions;").await;
 
     // One key, disclosed on three views: three rows stand open.
-    assert_eq!(open(181).await.len(), 3);
+    assert_eq!(open().await.len(), 3);
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
 
     // dio asks first (aspect order) and the human corrects it. With
     // nothing yet decided on this key, there is no box to repeat one.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 182, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     let first = &body["result"]["inputRequests"]["loose:fin:dio:days-in-period"];
     assert!(first.is_object(), "{body}");
     let boxes = &first["params"]["requestedSchema"]["properties"];
@@ -1410,17 +1064,10 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
 
     let corrected = json!({"action": "accept",
         "content": {"5_correction": "use a fixed 30-day month"}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                183,
-                review,
-                Some(("loose:fin:dio:days-in-period", corrected)),
-            ),
-        )
-        .await,
+    let body = elicit(
+        &app,
+        review,
+        Some(("loose:fin:dio:days-in-period", corrected)),
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
@@ -1428,7 +1075,7 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
     // dso asks next. The same key is decided on dio, so the form
     // offers that decision back: a box of its own that names the view
     // and carries the person's words.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 184, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     let second = &body["result"]["inputRequests"]["loose:fin:dso:days-in-period"];
     assert!(second.is_object(), "{body}");
     let repeat = &second["params"]["requestedSchema"]["properties"]["3_same_as"];
@@ -1440,55 +1087,29 @@ async fn a_key_decided_on_one_view_is_offered_on_the_next_and_may_be_decided_dif
     // Ticking it replays the stance AND the human's own words.
     let same = json!({"action": "accept",
         "content": {"3_same_as": true}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                185,
-                review,
-                Some(("loose:fin:dso:days-in-period", same)),
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, review, Some(("loose:fin:dso:days-in-period", same))).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
     // dpo asks last and is confirmed as stated: the same key, decided
     // differently on another view.
     let confirmed = json!({"action": "accept", "content": {"1_correct": true}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                188,
-                review,
-                Some(("loose:fin:dpo:days-in-period", confirmed)),
-            ),
-        )
-        .await,
+    let body = elicit(
+        &app,
+        review,
+        Some(("loose:fin:dpo:days-in-period", confirmed)),
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
     // Nothing is open now, and each view carries its own entry.
-    assert!(open(186).await.is_empty());
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                187,
-                "SELECT aspect, stance, note, assumption FROM review_decisions ORDER BY aspect;",
-                None,
-            ),
-        )
-        .await,
+    assert!(open().await.is_empty());
+    let body = tool(
+        &app,
+        "/mcp",
+        "SELECT aspect, stance, note, assumption FROM review_decisions ORDER BY aspect;",
     )
     .await;
-    let outcomes = outcomes_of(&body);
+    let outcomes = outcomes(&body);
     let rows = outcomes[0]["rows"].as_array().unwrap();
     let decided: Vec<(&str, &str)> = rows
         .iter()
@@ -1527,14 +1148,10 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
     // frozen copy would outrank every later correction).
     // The review decision holds the question closed and stands as not
     // yet applied until the agent records the definition again.
-    let (app, _dir) = app().await;
-    let applied = |id: u64| {
-        let app = app.clone();
-        async move {
-            let read = "SELECT key, stance, folded_in FROM review_decisions;";
-            let body = expect_ok(mcp(app, call_with(meta(), id, read, None)).await).await;
-            outcomes_of(&body)[0]["rows"].clone()
-        }
+    let (app, _, _dir) = app().await;
+    let applied = async || {
+        let read = "SELECT key, stance, folded_in FROM review_decisions;";
+        Value::Array(rows(&app, "/mcp", read).await)
     };
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'loose test');
@@ -1548,22 +1165,9 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
             {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
           ]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 60, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                61,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5", None).await;
     assert_eq!(
         body["result"]["resultType"],
         json!("input_required"),
@@ -1582,37 +1186,23 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
     );
 
     let answer = json!({"action": "accept", "content": {"1_correct": true}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                62,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                Some(("loose:fin:dso:per-line", answer)),
-            ),
-        )
-        .await,
+    let body = elicit(
+        &app,
+        "SELECT subject, aspect FROM glossary LIMIT 5",
+        Some(("loose:fin:dso:per-line", answer)),
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
     // The human value is the review decision record alone — the judgment, never
     // the agent's metric definition; the dso aspect stays agent-authored.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                63,
-                "SELECT aspect, body FROM glossary WHERE actor_kind = 'human';",
-                None,
-            ),
-        )
-        .await,
+    let body = tool(
+        &app,
+        "/mcp",
+        "SELECT aspect, body FROM glossary WHERE actor_kind = 'human';",
     )
     .await;
-    let outcomes = outcomes_of(&body);
+    let outcomes = outcomes(&body);
     assert_eq!(outcomes[0]["row_count"], json!(1), "{outcomes}");
     assert_eq!(
         outcomes[0]["rows"][0]["aspect"],
@@ -1628,22 +1218,10 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
     );
 
     // The review decision holds the question closed on the next review…
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                64,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5", None).await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
     assert_eq!(
-        applied(66).await,
+        applied().await,
         json!([{"key": "per-line", "stance": "confirmed", "folded_in": false}])
     );
 
@@ -1654,10 +1232,9 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
           {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "decided-by-person", "confidence": 1.0},
           {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
         ]}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 65, fold_in, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", fold_in).await;
     assert_eq!(
-        applied(67).await,
+        applied().await,
         json!([{"key": "per-line", "stance": "confirmed", "folded_in": true}])
     );
 }
@@ -1669,7 +1246,7 @@ async fn a_confirmed_assumption_is_stored_as_the_persons_decision_and_applied_by
 /// apply it to the view's definition.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_the_agent() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'alternative test');
         USE fin;
@@ -1680,11 +1257,10 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line",
             "basis": "judgment", "alternative": "per order", "confidence": 0.7}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 80, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 81, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     assert_eq!(
         body["result"]["resultType"],
         json!("input_required"),
@@ -1698,19 +1274,7 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     );
 
     let answer = json!({"action": "accept", "content": {"2_rather": true}});
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                82,
-                review,
-                Some(("loose:fin:dso:per-line", answer)),
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, review, Some(("loose:fin:dso:per-line", answer))).await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 
@@ -1721,8 +1285,8 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
         SELECT aspect, key, stance, note, folded_in FROM review_decisions; \
         SELECT aspect, actor_kind FROM glossary WHERE actor_kind = 'human'; \
         SELECT step, asset, state, who, for_view FROM next WHERE step = 'review';";
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 83, stored, None)).await).await;
-    let outcomes = outcomes_of(&body);
+    let body = tool(&app, "/mcp", stored).await;
+    let outcomes = outcomes(&body);
     assert_eq!(
         outcomes[1]["rows"],
         json!([{"aspect": "dso", "key": "per-line", "stance": "corrected",
@@ -1743,7 +1307,7 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     );
 
     // The question is closed: the next review asks nothing.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 84, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 
     // Without an alternative the form has no such field.
@@ -1751,9 +1315,8 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
         GLOSS dpo ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "goods-only", "assumption": "goods only",
             "basis": "judgment", "confidence": 0.7}]}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 85, plain, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let body = expect_ok(mcp(app, call_with(meta_elicit(), 86, review, None)).await).await;
+    say(&app, "/mcp", plain).await;
+    let body = elicit(&app, review, None).await;
     let fields = &body["result"]["inputRequests"]["loose:fin:dpo:goods-only"]["params"]["requestedSchema"]
         ["properties"];
     assert!(fields["1_correct"].is_object(), "{body}");
@@ -1768,7 +1331,7 @@ async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again()
     // next review asks it again. Nobody may opt out of being asked:
     // the question is what the numbers rest on, and the way to make it
     // stop is to answer it, `unclear` included.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'defer test');
         USE fin;
@@ -1778,44 +1341,33 @@ async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again()
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 70, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
-    let mut id = 71;
     for way_out in [
         json!({"action": "decline"}),
         json!({"action": "cancel"}),
         json!({"action": "accept", "content": {}}),
     ] {
-        let body =
-            expect_ok(mcp(app.clone(), call_with(meta_elicit(), id, review, None)).await).await;
+        let body = elicit(&app, review, None).await;
         assert_eq!(
             body["result"]["resultType"],
             json!("input_required"),
             "still open before {way_out}: {body}"
         );
-        let body = expect_ok(
-            mcp(
-                app.clone(),
-                call_with(
-                    meta_elicit(),
-                    id + 1,
-                    review,
-                    Some(("loose:fin:dso:per-line", way_out.clone())),
-                ),
-            )
-            .await,
+        let body = elicit(
+            &app,
+            review,
+            Some(("loose:fin:dso:per-line", way_out.clone())),
         )
         .await;
         assert_ne!(body["result"]["isError"], json!(true), "{way_out}: {body}");
-        id += 2;
     }
 
     // No write in between, and it is asked again every time — a defer
     // buys no quiet, because the claim is still what the numbers rest
     // on.
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), id, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     assert_eq!(
         body["result"]["resultType"],
         json!("input_required"),
@@ -1823,21 +1375,9 @@ async fn a_declined_cancelled_or_empty_form_records_nothing_and_is_asked_again()
     );
 
     // And nothing was recorded by any of the three.
-    let body = expect_ok(
-        mcp(
-            app,
-            call_with(
-                meta(),
-                id + 1,
-                "SELECT count(*) AS n FROM review_decisions;",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = tool(&app, "/mcp", "SELECT count(*) AS n FROM review_decisions;").await;
     assert_eq!(
-        outcomes_of(&body)[0]["rows"][0]["n"],
+        outcomes(&body)[0]["rows"][0]["n"],
         json!(0),
         "a defer records nothing: {body}"
     );
@@ -1849,7 +1389,7 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     // only calls that read the catalog. A load call and a plain data
     // read run uninterrupted even while a question holds open; the
     // review-shaped call carries the form.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'cadence test');
         USE fin;
@@ -1859,21 +1399,13 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 90, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     // A writing call: the question holds, the load runs through.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                91,
-                r#"DECLARE ASPECT note WITH $${"title": "note"}$$ AS FACT;"#,
-                None,
-            ),
-        )
-        .await,
+    let body = elicit(
+        &app,
+        r#"DECLARE ASPECT note WITH $${"title": "note"}$$ AS FACT;"#,
+        None,
     )
     .await;
     assert_ne!(
@@ -1884,14 +1416,7 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
 
     // A plain data read: judging work, not a review — no form either.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(meta_elicit(), 92, "SELECT 1 AS ok", None),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT 1 AS ok", None).await;
     assert_ne!(
         body["result"]["resultType"],
         json!("input_required"),
@@ -1899,19 +1424,7 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
     );
 
     // The review-shaped call carries the form.
-    let body = expect_ok(
-        mcp(
-            app,
-            call_with(
-                meta_elicit(),
-                93,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5", None).await;
     assert_eq!(
         body["result"]["resultType"],
         json!("input_required"),
@@ -1921,49 +1434,26 @@ async fn a_review_form_is_sent_only_on_a_call_that_reads_the_glossary() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_data_read_is_cut_at_the_row_cap_and_a_catalog_read_is_whole() {
-    let (app, _dir) = app_capped(3, InterfaceConfig::default(), common::login()).await;
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({
-                "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                "params": {
-                    "_meta": meta(),
-                    "name": "glossql",
-                    "arguments": {"statements":
-                        "SELECT * FROM (VALUES (1), (2), (3), (4), (5)) AS t(v)"}
-                }
-            }),
-        )
-        .await,
+    let (app, _, _dir) = app_with(3, InterfaceConfig::default(), common::login()).await;
+    let alone = say(
+        &app,
+        "/mcp",
+        "SELECT * FROM (VALUES (1), (2), (3), (4), (5)) AS t(v)",
     )
     .await;
-
-    let outcomes = outcomes_of(&body);
-    assert_eq!(outcomes[0]["rows"].as_array().unwrap().len(), 3);
-    assert_eq!(outcomes[0]["row_count"], json!(3));
-    assert_eq!(outcomes[0]["truncated"], json!(true));
+    assert_eq!(alone[0]["rows"].as_array().unwrap().len(), 3);
+    assert_eq!(alone[0]["row_count"], json!(3));
+    assert_eq!(alone[0]["truncated"], json!(true));
 
     // A data read inside a sequence is cut at the same row and says so:
     // the session that collected it carried the cap in the read's plan.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            json!({
-                "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-                "params": {
-                    "_meta": meta(),
-                    "name": "glossql",
-                    "arguments": {"statements":
-                        "SELECT 1 AS one; \
-                         SELECT * FROM (VALUES (1), (2), (3), (4), (5)) AS t(v) ORDER BY v DESC"}
-                }
-            }),
-        )
-        .await,
+    let outcomes = say(
+        &app,
+        "/mcp",
+        "SELECT 1 AS one; \
+         SELECT * FROM (VALUES (1), (2), (3), (4), (5)) AS t(v) ORDER BY v DESC",
     )
     .await;
-    let outcomes = outcomes_of(&body);
     assert_eq!(outcomes[0]["truncated"], json!(false), "{outcomes}");
     assert_eq!(
         outcomes[1]["rows"],
@@ -1985,15 +1475,13 @@ async fn a_data_read_is_cut_at_the_row_cap_and_a_catalog_read_is_whole() {
         GLOSS unit ON t.d AS $${"value": "EUR"}$$;
         GLOSS unit ON t.e AS $${"value": "EUR"}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 7, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
     for (read, at) in [
         ("SELECT subject FROM glossary;", 0),
         ("USE fin; SELECT subject FROM glossary;", 1),
         ("SELECT subject FROM GLOSSARY(fin, all => true);", 0),
     ] {
-        let body = expect_ok(mcp(app.clone(), call_with(meta(), 8, read, None)).await).await;
-        let outcomes = outcomes_of(&body);
+        let outcomes = say(&app, "/mcp", read).await;
         assert_eq!(
             outcomes[at]["truncated"],
             json!(false),
@@ -2012,7 +1500,7 @@ async fn a_second_review_decision_keeps_the_first() {
     // first. Review decisions accumulate as entries in the human's
     // one review decision value — each append carries the earlier entries along,
     // and no review decision ever touches the agent's body.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'sequential decisions');
         USE fin;
@@ -2025,8 +1513,7 @@ async fn a_second_review_decision_keeps_the_first() {
             {"dimension": "definition", "key": "total-revenue-denominator", "assumption": "total revenue in the denominator", "basis": "judgment", "confidence": 0.7}
           ]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 80, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     // Decide the first (lowest confidence asks first), then the second.
     for key in [
@@ -2034,34 +1521,20 @@ async fn a_second_review_decision_keeps_the_first() {
         "loose:fin:dso:total-revenue-denominator",
     ] {
         let answer = json!({"action": "accept", "content": {"1_correct": true}});
-        let body = expect_ok(
-            mcp(
-                app.clone(),
-                call_with(meta_elicit(), 81, "SELECT 1 AS ok", Some((key, answer))),
-            )
-            .await,
-        )
-        .await;
+        let body = elicit(&app, "SELECT 1 AS ok", Some((key, answer))).await;
         assert_ne!(body["result"]["isError"], json!(true), "{key}: {body}");
     }
 
     // Both review decisions stand — the first did not revert — and
     // the agent's definition is as it was written.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                82,
-                "SELECT key, stance FROM review_decisions ORDER BY key;
+    let body = tool(
+        &app,
+        "/mcp",
+        "SELECT key, stance FROM review_decisions ORDER BY key;
                  SELECT body FROM glossary WHERE actor_kind = 'agent' AND aspect = 'dso';",
-                None,
-            ),
-        )
-        .await,
     )
     .await;
-    let outcomes = outcomes_of(&body);
+    let outcomes = outcomes(&body);
     assert_eq!(
         outcomes[0]["rows"],
         json!([
@@ -2081,19 +1554,7 @@ async fn a_second_review_decision_keeps_the_first() {
     assert_eq!(confidences, [&json!(0.6), &json!(0.7)], "{agent_body}");
 
     // And the review is quiet — nothing re-derives.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta_elicit(),
-                83,
-                "SELECT subject, aspect FROM glossary LIMIT 5",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5", None).await;
     assert_eq!(body["result"]["resultType"], json!("complete"), "{body}");
 }
 
@@ -2105,7 +1566,7 @@ async fn an_unkeyed_assumption_is_never_asked() {
     // It is therefore never asked at all — the catalog still shows it,
     // and the skills make the key part of the disclosure shape. The
     // alternative — pairing on the prose — is forbidden.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'unkeyed assumptions');
         USE fin;
@@ -2113,11 +1574,10 @@ async fn an_unkeyed_assumption_is_never_asked() {
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 130, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     let review = "SELECT subject, aspect FROM glossary LIMIT 5";
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 131, review, None)).await).await;
+    let body = elicit(&app, review, None).await;
     assert_eq!(
         body["result"]["resultType"],
         json!("complete"),
@@ -2127,9 +1587,8 @@ async fn an_unkeyed_assumption_is_never_asked() {
     // The same claim, keyed, does ask.
     let keyed = r#"GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
         "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 132, keyed, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let body = expect_ok(mcp(app.clone(), call_with(meta_elicit(), 133, review, None)).await).await;
+    say(&app, "/mcp", keyed).await;
+    let body = elicit(&app, review, None).await;
     assert!(
         body["result"]["inputRequests"]["loose:fin:dso:per-line"].is_object(),
         "{body}"
@@ -2142,7 +1601,7 @@ async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles
     // assumptions below full confidence, without those on a dimension
     // a measurement settles (`grain`). One call asks the assumptions
     // of one view, the least confident first.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the read library');
         USE fin;
@@ -2154,25 +1613,17 @@ async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles
           "assumptions": [{"dimension": "definition", "key": "goods-only", "assumption": "goods suppliers only", "basis": "judgment", "confidence": 0.4},
                           {"dimension": "grain", "key": "monthly", "assumption": "month grain", "basis": "judgment", "confidence": 0.3}]}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 140, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     // Two rows are open; dpo's `grain` assumption is not among them.
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                141,
-                "SELECT aspect, key FROM open_questions ORDER BY aspect;",
-                None,
-            ),
-        )
-        .await,
+    let body = tool(
+        &app,
+        "/mcp",
+        "SELECT aspect, key FROM open_questions ORDER BY aspect;",
     )
     .await;
     assert_eq!(
-        outcomes_of(&body)[0]["rows"],
+        outcomes(&body)[0]["rows"],
         json!([
             {"aspect": "dpo", "key": "goods-only"},
             {"aspect": "dso", "key": "per-line"}
@@ -2180,19 +1631,7 @@ async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles
         "{body}"
     );
 
-    let body = expect_ok(
-        mcp(
-            app,
-            call_with(
-                meta_elicit(),
-                144,
-                "SELECT subject, aspect FROM glossary LIMIT 5;",
-                None,
-            ),
-        )
-        .await,
-    )
-    .await;
+    let body = elicit(&app, "SELECT subject, aspect FROM glossary LIMIT 5;", None).await;
     // The least confident open assumption picks the view, and only
     // that view's assumptions are asked.
     let asked = body["result"]["inputRequests"].as_object().unwrap();
@@ -2208,7 +1647,7 @@ async fn an_agent_authors_an_app_over_the_tool() {
     // at — it has statements, not a filesystem. Nothing new carries it:
     // the parts travel as glosses, supersession versions each one, and
     // actor kind records whose hand shaped it.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'an agent authors an app');
         USE fin;
@@ -2222,23 +1661,12 @@ async fn an_agent_authors_an_app_over_the_tool() {
         GLOSS app_page ON cash.index AS $${"html": "{% extends \"shell.html\" %}{% block main %}<h1>What stands open</h1>{% endblock %}"}$$;
         GLOSS app_frame ON cash.open AS $${"sql": "SELECT count(*) AS waiting FROM open_questions"}$$;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 150, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
     // The page the agent wrote is served by the app interface.
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/fin/app/cash")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = get(&app, "/fin/app/cash").await;
     assert_eq!(response.status(), StatusCode::OK);
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let html = String::from_utf8(bytes.to_vec()).unwrap();
+    let html = body_text(response).await;
     assert!(html.contains("What stands open"), "{html}");
     assert!(
         html.contains("Monday cash"),
@@ -2246,35 +1674,16 @@ async fn an_agent_authors_an_app_over_the_tool() {
     );
 
     // And its frame runs, over a shipped read, as Arrow IPC.
-    let response = app
-        .clone()
-        .oneshot(
-            Request::get("/fin/app/cash/frames/open")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let response = get(&app, "/fin/app/cash/frames/open").await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()[header::CONTENT_TYPE], ARROW_STREAM);
 
     // A re-gloss supersedes that one part; the rest of the app stands.
     let edit = r#"USE fin;
         GLOSS app_page ON cash.index AS $${"html": "{% extends \"shell.html\" %}{% block main %}<h1>Open work</h1>{% endblock %}"}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 151, edit, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let response = app
-        .oneshot(
-            Request::get("/fin/app/cash")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let html = String::from_utf8(bytes.to_vec()).unwrap();
+    say(&app, "/mcp", edit).await;
+    let response = get(&app, "/fin/app/cash").await;
+    let html = body_text(response).await;
     assert!(html.contains("Open work"), "{html}");
     assert!(!html.contains("What stands open"), "superseded: {html}");
 }
@@ -2285,7 +1694,7 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     // be extended through, how much of each holds, and what is open on
     // it. Not an order to follow — the agent judges what to do next;
     // this only says what the system affords.
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map');
         USE fin;
@@ -2297,24 +1706,14 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
         DECLARE ASPECT ar_tie WITH $${"type": "object"}$$ AS FACT ON DATASET;
         DECLARE TEST ar_tie_test ON ar_tie BY (AGENT, HUMAN);
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 160, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
-    let body = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                161,
-                "SELECT area, existing, open, waiting FROM workspace_status ORDER BY area;",
-                None,
-            ),
-        )
-        .await,
+    let rows = rows(
+        &app,
+        "/mcp",
+        "SELECT area, existing, open, waiting FROM workspace_status ORDER BY area;",
     )
     .await;
-    let outcomes = outcomes_of(&body);
-    let rows = outcomes[0]["rows"].as_array().unwrap();
     let areas: Vec<&str> = rows.iter().filter_map(|r| r["area"].as_str()).collect();
     for expected in [
         "apps",
@@ -2364,65 +1763,38 @@ async fn workspace_status_counts_what_exists_is_open_and_waits_per_area() {
     assert!(open_before >= 1, "{rows:?}");
     let annotate = r#"USE fin;
         GLOSS ar_tie ON fin AS $${"outcome": "the subledger ties to its control account", "tolerance": 0.01}$$;"#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 162, annotate, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let body = expect_ok(
-        mcp(
-            app,
-            call_with(
-                meta(),
-                163,
-                "SELECT open FROM workspace_status WHERE area = 'tests';",
-                None,
-            ),
-        )
-        .await,
+    say(&app, "/mcp", annotate).await;
+    let after = say(
+        &app,
+        "/mcp",
+        "SELECT open FROM workspace_status WHERE area = 'tests';",
     )
     .await;
-    let outcomes = outcomes_of(&body);
     assert_eq!(
-        outcomes[0]["rows"][0]["open"],
+        after[0]["rows"][0]["open"],
         json!(open_before - 1),
-        "{outcomes}"
+        "{after}"
     );
 }
 
-/// Run 4 read `workspace_status` twice in one session and got two
-/// different answers: filtered by `area`, it came back with every row
-/// and reported `aspects` and `functions` as 0 existing, while the same
-/// read unfiltered — and the relations read directly — reported the
-/// real counts. A filter that is silently dropped is bad; one that also
-/// corrupts the counts it returns is worse, so both halves are asserted
-/// here against the same session.
+/// A filter on `workspace_status` binds: it keeps the rows it names,
+/// and their counts are the counts the unfiltered read gives.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'the affordance map, filtered');
         USE fin;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
     "#;
-    let body = expect_ok(mcp(app.clone(), call_with(meta(), 170, setup, None)).await).await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/mcp", setup).await;
 
-    let read = |sql: &'static str, id: u64| {
-        let app = app.clone();
-        async move {
-            let body = expect_ok(mcp(app, call_with(meta(), id, sql, None)).await).await;
-            let text = body["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-            serde_json::from_str::<Value>(&text).unwrap_or(json!([]))
-        }
-    };
-
-    let whole = read(
+    let whole_rows = rows(
+        &app,
+        "/mcp",
         "SELECT area, existing FROM workspace_status ORDER BY area;",
-        171,
     )
     .await;
-    let whole_rows = whole[0]["rows"].as_array().unwrap().clone();
     let existing = |rows: &[Value], name: &str| -> i64 {
         rows.iter()
             .find(|r| r["area"] == json!(name))
@@ -2436,12 +1808,12 @@ async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
     );
 
     // The same question, filtered.
-    let one = read(
+    let one_rows = rows(
+        &app,
+        "/mcp",
         "SELECT area, existing FROM workspace_status WHERE area = 'properties';",
-        172,
     )
     .await;
-    let one_rows = one[0]["rows"].as_array().unwrap().clone();
     assert_eq!(
         one_rows.len(),
         1,
@@ -2454,13 +1826,13 @@ async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
     );
 
     // And a filter that keeps several rows keeps exactly those.
-    let some = read(
+    let some_rows = rows(
+        &app,
+        "/mcp",
         "SELECT area, existing FROM workspace_status \
          WHERE area IN ('tables', 'sources') ORDER BY area;",
-        173,
     )
     .await;
-    let some_rows = some[0]["rows"].as_array().unwrap().clone();
     let areas: Vec<&str> = some_rows
         .iter()
         .filter_map(|r| r["area"].as_str())
@@ -2473,17 +1845,10 @@ async fn a_filter_on_workspace_status_keeps_its_rows_and_their_counts() {
 /// that needs none.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_instructions_of_an_empty_workspace_name_workspace_status() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     // A call refreshes the summary; the opening rides initialize.
-    expect_ok(
-        mcp(
-            app.clone(),
-            call_with(meta(), 1, "SELECT * FROM datasets;", None),
-        )
-        .await,
-    )
-    .await;
-    let body = expect_ok(mcp(app.clone(), initialize()).await).await;
+    tool(&app, "/mcp", "SELECT * FROM datasets;").await;
+    let body = expect_ok(mcp_at(&app, "127.0.0.1", initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("workspace_status"), "{instructions}");
 }
@@ -2494,38 +1859,18 @@ async fn the_instructions_of_an_empty_workspace_name_workspace_status() {
 /// server's, and carries none of the engine's error-class prefixes.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interfaces() {
-    let (app, _dir) = app_on_fin().await;
+    let (app, _, _dir) = app_on("fin").await;
     // A metric with nine whole months: the expected ranges have a
     // request to send, and the call is where the refusal comes from.
     let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
                    DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
                    GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
-    let body = expect_ok(
-        common::mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            "127.0.0.1",
-            call_with(meta(), 1, setup, None),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/fin/mcp", setup).await;
 
     let measure = "SELECT metric_ranges() FROM fin";
-    let response = app
-        .clone()
-        .oneshot(
-            Request::post("/fin/query")
-                .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                .body(Body::from(measure))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    let answered = body_json(response).await;
+    let (status, answered) = query(&app, measure).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let reason = answered["error"].as_str().unwrap().to_string();
     assert!(
         reason.contains(glossdb_serverd::engine::SERVICE_URL),
@@ -2533,16 +1878,7 @@ async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interf
     );
     assert!(!reason.contains("Error:"), "{reason}");
 
-    let body = expect_ok(
-        common::mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            "127.0.0.1",
-            call_with(meta(), 2, measure, None),
-        )
-        .await,
-    )
-    .await;
+    let body = tool(&app, "/fin/mcp", measure).await;
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
     assert_eq!(
         body["result"]["content"][0]["text"],
@@ -2555,7 +1891,7 @@ async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interf
 /// function once per kind; a page with nothing to list is not served.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_functions_page_lists_each_function_once() {
-    let (_dir, plane) = common::scratch_plane().await;
+    let (_, plane, _dir) = app().await;
     let pages = glossdb_serverd::functions::pages(&plane).await.unwrap();
     let uris: Vec<&str> = pages.iter().map(|p| p.uri.as_str()).collect();
     assert_eq!(uris, ["doc://functions/interface.md"]);
@@ -2581,27 +1917,13 @@ async fn the_functions_page_lists_each_function_once() {
 /// call that moves nothing carries neither.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_call_that_moves_the_summary_carries_its_counts() {
-    let (app, _dir) = app().await;
+    let (app, _, _dir) = app().await;
     // The first call composes the summary this interface compares with.
-    expect_ok(
-        mcp(
-            app.clone(),
-            call_with(meta(), 1, "SELECT * FROM datasets;", None),
-        )
-        .await,
-    )
-    .await;
-    let moved = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(
-                meta(),
-                2,
-                "DECLARE DATASET fin SET (purpose: 'the summary');",
-                None,
-            ),
-        )
-        .await,
+    tool(&app, "/mcp", "SELECT * FROM datasets;").await;
+    let moved = tool(
+        &app,
+        "/mcp",
+        "DECLARE DATASET fin SET (purpose: 'the summary');",
     )
     .await;
     let summary = &moved["result"]["_meta"][glossdb_serverd::SUMMARY_META];
@@ -2615,14 +1937,7 @@ async fn a_call_that_moves_the_summary_carries_its_counts() {
         "{moved}"
     );
 
-    let read = expect_ok(
-        mcp(
-            app.clone(),
-            call_with(meta(), 3, "SELECT * FROM datasets;", None),
-        )
-        .await,
-    )
-    .await;
+    let read = tool(&app, "/mcp", "SELECT * FROM datasets;").await;
     assert!(
         read["result"]["_meta"]
             .get(glossdb_serverd::SUMMARY_META)
@@ -2642,44 +1957,23 @@ async fn a_call_that_moves_the_summary_carries_its_counts() {
 /// engine's error-class wrappers before it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refusal_from_a_function_body_carries_its_code_and_its_reason_once() {
-    let (app, _dir) = app_on_fin().await;
+    let (app, _, _dir) = app_on("fin").await;
     let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
                    DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
                    GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
-    let body = expect_ok(
-        common::mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            "127.0.0.1",
-            call_with(meta(), 1, setup, None),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+    say(&app, "/fin/mcp", setup).await;
 
     // A measurement the extension runs, and a read whose macro refuses.
-    for (id, statement, code) in [
-        (2, "SELECT metric_plan() FROM fin.spend", "not_a_plan"),
+    for (statement, code) in [
+        ("SELECT metric_plan() FROM fin.spend", "not_a_plan"),
         (
-            3,
             "SELECT * FROM metric_series(world := 'dream')",
             "unknown_world",
         ),
     ] {
-        let response = app
-            .clone()
-            .oneshot(
-                Request::post("/fin/query")
-                    .header(header::AUTHORIZATION, common::bearer("dev-human"))
-                    .body(Body::from(statement))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        let answered = body_json(response).await;
+        let (status, answered) = query(&app, statement).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(answered["code"], json!(code), "{answered}");
         let reason = answered["error"].as_str().unwrap().to_string();
         let after_prefix = reason.strip_prefix("glossql: ").unwrap_or(&reason);
@@ -2688,16 +1982,7 @@ async fn a_refusal_from_a_function_body_carries_its_code_and_its_reason_once() {
             "the reason begins at the refusal: {reason}"
         );
 
-        let body = expect_ok(
-            common::mcp_on(
-                app.clone(),
-                "/fin/mcp",
-                "127.0.0.1",
-                call_with(meta(), id, statement, None),
-            )
-            .await,
-        )
-        .await;
+        let body = tool(&app, "/fin/mcp", statement).await;
         assert_eq!(body["result"]["isError"], json!(true), "{body}");
         assert_eq!(
             body["result"]["_meta"][glossdb_serverd::REFUSAL_META]["code"],

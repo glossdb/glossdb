@@ -6,12 +6,11 @@
 
 use std::sync::Arc;
 
-use arrow::array::Float64Array;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, Response, StatusCode, header};
 use glossdb_apps::engine::{Actor, ActorKind};
-use glossdb_apps::engine::{Caller, Plane, Service};
+use glossdb_apps::engine::{Caller, Plane, Service, Session};
 use tower::ServiceExt;
 
 /// The server's own URI the pages are told.
@@ -47,16 +46,7 @@ async fn workspace_on(service: Option<Service>) -> (Router, Arc<Plane>, tempfile
     .unwrap();
 
     let plane = Arc::new(open_plane(dir.path(), service).await);
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let session = builder(&plane).await;
     session
         .execute(&format!(
             "DECLARE DATASET perf SET (purpose: 'app interface test');\n\
@@ -188,43 +178,113 @@ fn current_tab(page: &str) -> String {
     hrefs(marked[0]).remove(0)
 }
 
-async fn values(response: Response<Body>) -> Vec<f64> {
-    assert_eq!(
-        response.headers()[header::CONTENT_TYPE],
-        "application/vnd.apache.arrow.stream"
-    );
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let reader =
-        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .unwrap();
-    let mut out = Vec::new();
-    for batch in reader {
-        let batch = batch.unwrap();
-        let index = batch.schema().index_of("value").unwrap();
-        let column = batch
-            .column(index)
-            .as_any()
-            .downcast_ref::<Float64Array>()
-            .unwrap()
-            .clone();
-        out.extend(column.iter().map(|v| v.unwrap()));
+/// A channel on the workspace as `kind` `id`, bound to `dataset` if given.
+async fn channel(plane: &Plane, kind: ActorKind, id: &str, dataset: Option<&str>) -> Arc<Session> {
+    plane
+        .channel(
+            Actor {
+                kind,
+                id: id.into(),
+            },
+            dataset,
+        )
+        .await
+        .unwrap()
+}
+
+/// The agent the workspace was built by, unbound.
+async fn builder(plane: &Plane) -> Arc<Session> {
+    channel(plane, ActorKind::Agent, "builder", None).await
+}
+
+/// A frame as the browser reads it: its schema, and each row's cells as
+/// they display, under their columns.
+struct Frame {
+    schema: arrow::datatypes::SchemaRef,
+    rows: Vec<Vec<String>>,
+}
+
+impl Frame {
+    fn read(bytes: &[u8]) -> Frame {
+        let reader =
+            arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes), None).unwrap();
+        let schema = reader.schema();
+        let mut rows = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            for i in 0..batch.num_rows() {
+                rows.push(
+                    batch
+                        .columns()
+                        .iter()
+                        .map(|c| arrow::util::display::array_value_to_string(c, i).unwrap())
+                        .collect(),
+                );
+            }
+        }
+        Frame { schema, rows }
     }
-    out
+
+    fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Every cell of `column`, in the frame's row order.
+    fn col(&self, column: &str) -> Vec<&str> {
+        let index = self
+            .schema
+            .index_of(column)
+            .unwrap_or_else(|_| panic!("no column {column} in {:?}", self.schema));
+        self.rows.iter().map(|r| r[index].as_str()).collect()
+    }
+
+    /// The cell of `column` in the row whose `key` cell is `value`.
+    fn cell(&self, key: &str, value: &str, column: &str) -> &str {
+        let at = self
+            .col(key)
+            .iter()
+            .position(|v| *v == value)
+            .unwrap_or_else(|| panic!("no row with {key} = {value}: {:?}", self.rows));
+        self.col(column)[at]
+    }
+}
+
+/// The frame a response streams, after insisting it is one.
+async fn frame(response: Response<Body>) -> Frame {
+    let status = response.status();
+    let kind = response.headers().get(header::CONTENT_TYPE).cloned();
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    assert_eq!(
+        kind.as_ref().and_then(|k| k.to_str().ok()),
+        Some("application/vnd.apache.arrow.stream")
+    );
+    Frame::read(&bytes)
+}
+
+/// The frame's `value` column as numbers.
+async fn values(response: Response<Body>) -> Vec<f64> {
+    let frame = frame(response).await;
+    frame
+        .col("value")
+        .iter()
+        .map(|v| v.parse().unwrap())
+        .collect()
+}
+
+async fn row_count(response: Response<Body>) -> usize {
+    frame(response).await.len()
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_manifest_orders_the_tabs() {
     let (app, plane, _dir) = workspace().await;
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let session = builder(&plane).await;
     let page = r#"{% extends \"shell.html\" %}{% block main %}x{% endblock %}"#;
     session
         .execute(&format!(
@@ -330,16 +390,7 @@ async fn pages_render_and_frames_stream() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_release_gates_what_is_served() {
     let (app, plane, _dir) = workspace().await;
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let session = channel(&plane, ActorKind::Agent, "builder", Some("perf")).await;
     let doubled = r#"GLOSS app_frame ON board.monthly AS $${"sql": "SELECT month, sum(value) * 2 AS value FROM ledger GROUP BY month ORDER BY month"}$$;"#;
 
     // No release: the draft serves at the plain URL.
@@ -432,16 +483,7 @@ async fn unknown_paths_and_write_frames_are_refused() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_page_body_is_markup_not_script() {
     let (app, plane, _dir) = workspace().await;
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let session = builder(&plane).await;
     let planted = "<script>fetch('/perf/query', {method: 'POST', body: 'DROP TABLE ledger'})\
                    </script><button onclick='alert(1)'>x</button>";
     session
@@ -572,16 +614,7 @@ async fn a_glossed_part_may_not_take_a_builtin_name() {
     // requirement, so one frame under the built-in's name would resolve
     // the whole app to that single file and 404 every page the console
     // ships.
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "author".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let session = channel(&plane, ActorKind::Agent, "author", None).await;
     session
         .execute(
             r#"USE perf;
@@ -605,55 +638,12 @@ async fn a_glossed_part_may_not_take_a_builtin_name() {
     );
 }
 
-async fn row_count(response: Response<Body>) -> usize {
-    assert_eq!(
-        response.headers()[header::CONTENT_TYPE],
-        "application/vnd.apache.arrow.stream"
-    );
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let reader =
-        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .unwrap();
-    reader.map(|b| b.unwrap().num_rows()).sum()
-}
-
-/// Every cell of the frame, flattened to one string — for asserting a
-/// rendered value is present without caring which column carries it.
-async fn body_text(response: Response<Body>) -> String {
-    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let reader =
-        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .unwrap();
-    let mut out = String::new();
-    for batch in reader {
-        let batch = batch.unwrap();
-        for column in batch.columns() {
-            for i in 0..batch.num_rows() {
-                if let Ok(v) = arrow::util::display::array_value_to_string(column, i) {
-                    out.push_str(&v);
-                    out.push('\n');
-                }
-            }
-        }
-    }
-    out
-}
-
 /// The same shapes on DuckDB, the metrics kit's way: the metric is a
 /// view whose columns carry the vocabulary — the period and the value
 /// glossed by role, the additivity on the value, the slice ranked — and
 /// the period column profiled.
 async fn seed_model_shapes(plane: &Arc<Plane>) {
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -714,16 +704,7 @@ fn assert_classic(dt: &arrow::datatypes::DataType, frame: &str, field: &str) {
 async fn a_review_decision_is_signed_with_the_callers_own_name() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
     human
         .execute(shipped_review_decision_declaration())
         .await
@@ -796,16 +777,8 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
                 ));
                 continue;
             }
-            let reader = arrow_ipc::reader::StreamReader::try_new(
-                std::io::Cursor::new(bytes.to_vec()),
-                None,
-            )
-            .unwrap();
-            for field in reader.schema().fields() {
+            for field in Frame::read(&bytes).schema.fields() {
                 assert_classic(field.data_type(), stem, field.name());
-            }
-            for batch in reader {
-                batch.unwrap();
             }
         }
     }
@@ -899,25 +872,25 @@ async fn a_second_dataset_does_not_multiply_a_views_rows() {
 
     let metric = get(&app, "/perf/app/console/frames/view?view=dso").await;
     assert_eq!(metric.status(), StatusCode::OK);
-    let served = body_text(metric).await;
-    assert_eq!(served.lines().filter(|l| l.starts_with("dso")).count(), 1);
+    let served = frame(metric).await;
+    assert_eq!(served.col("aspect"), ["dso"]);
     // The formula the seed wrote, not the empty-state prose. Counting
     // rows alone is how the face came to render nothing in every real
     // workspace: the fixture wrote a formula no skill ever taught an
     // agent to write, so the join returned a row and the value was null
     // everywhere but here.
-    assert!(
-        served.contains("ar[end of w] / revenue[w] * days[w]"),
-        "the formula face served no formula:\n{served}"
+    assert_eq!(
+        served.col("formula"),
+        ["ar[end of w] / revenue[w] * days[w]"]
     );
     // Unit and meaning come from the `definitions` registry, never the
     // aspect blob — a declaration cannot be superseded, and exactly
     // this field goes stale there.
     // The seed's blob carries no unit, so a face reading `x-unit` shows
     // nothing and this fails.
-    assert!(
-        served.contains("receivables outstanding expressed in days of revenue"),
-        "the metric face served no meaning:\n{served}"
+    assert_eq!(
+        served.col("meaning"),
+        ["receivables outstanding expressed in days of revenue"]
     );
     let assumptions = get(&app, "/perf/app/console/frames/assumptions?view=dso").await;
     assert_eq!(assumptions.status(), StatusCode::OK);
@@ -934,47 +907,32 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
 
     // Seeded state: the agent's definition of dso with its formula. No
     // row of the open list says a person decided something.
-    let decided = |body: &str| body.matches("\ndecided\n").count();
-    let before = get(&app, "/perf/app/console/frames/next_rows").await;
-    assert_eq!(before.status(), StatusCode::OK);
-    assert_eq!(decided(&body_text(before).await), 0);
+    let decided = async || {
+        let rows = frame(get(&app, "/perf/app/console/frames/next_rows").await).await;
+        rows.col("state")
+            .iter()
+            .filter(|s| **s == "decided")
+            .count()
+    };
+    assert_eq!(decided().await, 0);
 
     // The human's answer is stored on their channel: newer than the
     // recorded dso gloss.
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
     human
         .execute(r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;"#)
         .await
         .unwrap();
-    let after = body_text(get(&app, "/perf/app/console/frames/next_rows").await).await;
     assert_eq!(
-        decided(&after),
+        decided().await,
         1,
-        "the person's formula waits for the agent:\n{after}"
+        "the person's formula waits for the agent"
     );
 
     // The agent re-records the materialization — the wait clears.
     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -984,11 +942,10 @@ async fn a_persons_newer_formula_waits_on_the_agent_until_the_definition_is_reco
         )
         .await
         .unwrap();
-    let cleared = body_text(get(&app, "/perf/app/console/frames/next_rows").await).await;
     assert_eq!(
-        decided(&cleared),
+        decided().await,
         0,
-        "recording the definition again closes the row:\n{cleared}"
+        "recording the definition again closes the row"
     );
 }
 
@@ -1010,16 +967,7 @@ async fn the_metric_frame_serves_the_winning_value_once() {
 
     // The human answers the formula, then supersedes the metric gloss
     // itself — both through their session channel.
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
     human
         .execute(
             r#"GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * 360"}}}$$;
@@ -1035,11 +983,12 @@ async fn the_metric_frame_serves_the_winning_value_once() {
     // assumptions ledger keeps serving the agent's working record —
     // its two disclosed assumptions — never a blend of the two bodies.
     let metric = get(&app, "/perf/app/console/frames/view?view=dso").await;
-    let served = body_text(metric).await;
-    assert_eq!(served.lines().filter(|l| l.starts_with("dso")).count(), 1);
-    assert!(
-        served.contains("ar[end of w] / revenue[w] * 360"),
-        "the human's formula must outrank the agent's:\n{served}"
+    let served = frame(metric).await;
+    assert_eq!(served.col("aspect"), ["dso"]);
+    assert_eq!(
+        served.col("formula"),
+        ["ar[end of w] / revenue[w] * 360"],
+        "the human's formula outranks the agent's"
     );
     let assumptions = get(&app, "/perf/app/console/frames/assumptions?view=dso").await;
     assert_eq!(
@@ -1063,16 +1012,7 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     // put words in the workspace's mouth.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
     human
         .execute(shipped_review_decision_declaration())
         .await
@@ -1126,16 +1066,14 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
         0,
         "the decision closes its question"
     );
-    let settled = body_text(get(&app, "/perf/app/console/frames/settled").await).await;
-    assert!(
-        settled.contains("/perf/app/console/p/views?view=dso\n"),
-        "the link carries the dataset the app is mounted under:\n{settled}"
-    );
-    assert!(settled.contains("per order, not per line"), "{settled}");
-    assert!(settled.contains("corrected"), "{settled}");
-    let assumptions =
-        body_text(get(&app, "/perf/app/console/frames/assumptions?view=dso").await).await;
-    assert!(assumptions.contains("corrected"), "{assumptions}");
+    let settled = frame(get(&app, "/perf/app/console/frames/settled").await).await;
+    // the link carries the dataset the app is mounted under
+    assert_eq!(settled.col("link"), ["/perf/app/console/p/views?view=dso"]);
+    assert_eq!(settled.col("stance"), ["corrected"]);
+    assert!(settled.col("note")[0].contains("per order, not per line"));
+    let assumptions = frame(get(&app, "/perf/app/console/frames/assumptions?view=dso").await).await;
+    assert_ne!(assumptions.cell("what", "per line", "decision"), "");
+    assert_eq!(assumptions.cell("what", "grain-preserving", "decision"), "");
 
     // The same post again: the question no longer derives, so the interface
     // refuses instead of writing a second review decision from a stale page —
@@ -1163,16 +1101,7 @@ async fn an_unclear_review_decision_closes_the_question_without_taking_a_side() 
     // its own question), never an applied decision.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let human = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "human".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let human = channel(&plane, ActorKind::Human, "human", Some("perf")).await;
     human
         .execute(shipped_review_decision_declaration())
         .await
@@ -1201,13 +1130,10 @@ async fn an_unclear_review_decision_closes_the_question_without_taking_a_side() 
         row_count(get(&app, "/perf/app/console/frames/open").await).await,
         0
     );
-    let settled = body_text(get(&app, "/perf/app/console/frames/settled").await).await;
-    assert!(
-        settled.contains("/perf/app/console/p/views?view=dso\n"),
-        "the link carries the dataset the app is mounted under:\n{settled}"
-    );
-    assert!(settled.contains("unclear"), "{settled}");
-    assert!(settled.contains("which lines?"), "{settled}");
+    let settled = frame(get(&app, "/perf/app/console/frames/settled").await).await;
+    assert_eq!(settled.col("link"), ["/perf/app/console/p/views?view=dso"]);
+    assert_eq!(settled.col("stance"), ["unclear"]);
+    assert!(settled.col("note")[0].contains("which lines?"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1219,16 +1145,7 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
     // state column reading `current`).
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -1244,29 +1161,30 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
     // The result computes at read — the detector's query answers over
     // the dso metric definition's value.
 
-    let tests = get(&app, "/perf/app/console/frames/tests").await;
-    let status = tests.status();
-    if status != StatusCode::OK {
-        let body = to_bytes(tests.into_body(), usize::MAX).await.unwrap();
-        panic!("tests frame: {status} — {}", String::from_utf8_lossy(&body));
-    }
-    let tests = body_text(tests).await;
+    let tests = frame(get(&app, "/perf/app/console/frames/tests").await).await;
     assert_eq!(
-        tests.matches("?test=dso_test\n").count(),
+        tests
+            .col("link")
+            .iter()
+            .filter(|l| **l == "?test=dso_test")
+            .count(),
         1,
-        "one row for the test with a scoring function, linked to its page; the test without one is not listed:\n{tests}"
+        "one row for the test with a scoring function, linked to its page"
     );
 
     // The test's own frames: how it scores (the function and the
     // threshold), then every result.
-    let test = body_text(get(&app, "/perf/app/console/frames/test?test=dso_test").await).await;
-    assert!(test.contains("fixed_check"), "{test}");
-    assert!(test.contains("0.9"), "the threshold:\n{test}");
+    let test = frame(get(&app, "/perf/app/console/frames/test?test=dso_test").await).await;
+    let scoring = test.col("scoring")[0];
+    assert!(
+        scoring.contains("fixed_check") && scoring.contains("0.9"),
+        "{scoring}"
+    );
     let results =
-        body_text(get(&app, "/perf/app/console/frames/test_results?test=dso_test").await).await;
-    assert!(results.contains("the dataset\n"), "the asset:\n{results}");
-    assert!(results.contains("orange\n"), "{results}");
-    assert!(results.contains("0.42\n"), "the score:\n{results}");
+        frame(get(&app, "/perf/app/console/frames/test_results?test=dso_test").await).await;
+    assert_eq!(results.col("asset"), ["the dataset"]);
+    assert_eq!(results.col("state"), ["orange"]);
+    assert_eq!(results.col("score"), ["0.42"]);
 
     // A value test: the kit's detector over a value two actors
     // disagree on. Its results list every column with its
@@ -1279,20 +1197,12 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
         )
         .await
         .unwrap();
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "ada".into(),
-            },
-            None,
-        )
+    channel(&plane, ActorKind::Human, "ada", None)
         .await
-        .unwrap()
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash"}$$;"#)
         .await
         .unwrap();
-    let values = body_text(
+    let values = frame(
         get(
             &app,
             "/perf/app/console/frames/test_results?test=value_test",
@@ -1300,13 +1210,16 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
         .await,
     )
     .await;
+    let assets = values.col("asset");
     assert!(
-        values.contains("ledger.value\n") && values.contains("ledger.month\n"),
-        "one result per annotated column:\n{values}"
+        assets.contains(&"ledger.value") && assets.contains(&"ledger.month"),
+        "one result per annotated column: {assets:?}"
     );
+    // both values of the column that differs, the person's first
+    let seen = values.cell("asset", "ledger.value", "seen");
     assert!(
-        values.find("the cash").unwrap() < values.find("the money").unwrap(),
-        "both values of the column that differs, the person's first:\n{values}"
+        seen.find("the cash").unwrap() < seen.find("the money").unwrap(),
+        "{seen}"
     );
     let points = get(&app, "/perf/app/console/frames/test_points?test=value_test").await;
     assert_eq!(
@@ -1329,26 +1242,15 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let measures = get(&app, "/perf/app/console/frames/measures?stopped=0").await;
-    assert_eq!(measures.status(), StatusCode::OK);
-    let measures = body_text(measures).await;
-    assert!(measures.contains("dso\n"), "{measures}");
-    assert!(
-        !measures.contains("cleaned\n") && !measures.contains("payables\n"),
-        "three declared views, the series, the fact and the relation — the measures frame lists the series:\n{measures}"
-    );
+    // three declared views: the measures frame lists the series alone
+    let measures = frame(get(&app, "/perf/app/console/frames/measures?stopped=0").await).await;
+    assert_eq!(measures.col("name"), ["dso"]);
 
     // The views list: the relation with its link carrying the kind,
     // and neither the series nor the fact.
-    let views = get(&app, "/perf/app/console/frames/views?stopped=0").await;
-    assert_eq!(views.status(), StatusCode::OK);
-    let views = body_text(views).await;
-    assert!(views.contains("cleaned\n"), "{views}");
-    assert!(views.contains("?view=cleaned&kind=relation\n"), "{views}");
-    assert!(
-        !views.contains("dso\n") && !views.contains("payables\n"),
-        "{views}"
-    );
+    let views = frame(get(&app, "/perf/app/console/frames/views?stopped=0").await).await;
+    assert_eq!(views.col("name"), ["cleaned"]);
+    assert_eq!(views.col("link"), ["?view=cleaned&kind=relation"]);
 
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(latest.status(), StatusCode::OK);
@@ -1360,12 +1262,9 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
 
     // The facts list: the fact with its one value, as of the load
     // of the table its metric definition reads, linked with its kind.
-    let facts = get(&app, "/perf/app/console/frames/facts?stopped=0").await;
-    assert_eq!(facts.status(), StatusCode::OK);
-    let facts = body_text(facts).await;
-    assert!(facts.contains("payables\n"), "{facts}");
-    assert!(facts.contains("?view=payables&kind=scalar\n"), "{facts}");
-    assert!(!facts.contains("dso\n"), "a series is not a fact:\n{facts}");
+    let facts = frame(get(&app, "/perf/app/console/frames/facts?stopped=0").await).await;
+    assert_eq!(facts.col("name"), ["payables"], "a series is not a fact");
+    assert_eq!(facts.col("link"), ["?view=payables&kind=scalar"]);
 
     // The fact's tile frame: a row for the fact, none for the series,
     // so the tile renders only where there is a number.
@@ -1450,16 +1349,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
     // the same numbers — and the results measured the data's columns,
     // which the gloss did not touch, so they still stand and the
     // banner stays silent: glossing work does not churn the catalog.
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
+    builder(&plane).await
         .execute(r#"USE perf; GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;"#)
         .await
         .unwrap();
@@ -1520,16 +1410,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_plan_is_served_beside_its_metric() {
     let (app, plane, _dir) = workspace().await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
+    builder(&plane).await
         .execute(
             r#"USE perf;
                DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
@@ -1545,12 +1426,10 @@ async fn the_plan_is_served_beside_its_metric() {
         .unwrap();
     let measures = get(&app, "/perf/app/console/frames/measures?stopped=0").await;
     assert_eq!(row_count(measures).await, 1, "the plan is no metric");
-    let plan = get(&app, "/perf/app/console/frames/plan?view=dso").await;
-    assert_eq!(plan.status(), StatusCode::OK);
-    let text = body_text(plan).await;
-    assert!(text.contains("-12.5") && text.contains("2026"), "{text}");
-    let plan = get(&app, "/perf/app/console/frames/plan?view=dso").await;
-    assert_eq!(row_count(plan).await, 3, "two months and the year");
+    let plan = frame(get(&app, "/perf/app/console/frames/plan?view=dso").await).await;
+    assert_eq!(plan.len(), 3, "two months and the year");
+    assert_eq!(plan.cell("label", "2026-01", "variance"), "-12.5");
+    assert_eq!(plan.cell("label", "2026", "grain"), "year");
     let trend = get(
         &app,
         "/perf/app/console/frames/trend?view=dso&grain=month&span=24",
@@ -1581,16 +1460,8 @@ async fn the_plan_is_served_beside_its_metric() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_measurements() {
     let (app, plane, _dir) = workspace_with_service().await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
+    builder(&plane)
         .await
-        .unwrap()
         .execute(
             r#"USE perf;
                DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
@@ -1614,25 +1485,16 @@ async fn a_defined_metric_serves_its_series_and_a_remeasure_runs_the_preview_mea
 
     // The undated measure is listed beside the metric, though it
     // serves no series.
-    let measures = get(&app, "/perf/app/console/frames/measures?stopped=0").await;
-    assert_eq!(measures.status(), StatusCode::OK);
-    let measures = body_text(measures).await;
-    assert!(
-        measures.contains("dso\n") && measures.contains("undated\n"),
-        "{measures}"
-    );
+    let measures = frame(get(&app, "/perf/app/console/frames/measures?stopped=0").await).await;
+    assert_eq!(measures.col("name"), ["dso", "undated"]);
 
     // The server profiled `dso.month` after the write: the series serves.
     let latest = get(&app, "/perf/app/console/frames/latest").await;
     assert_eq!(row_count(latest).await, 1, "the one series' newest period");
-    let banner = get(&app, "/perf/app/console/frames/remeasure").await;
-    assert_eq!(banner.status(), StatusCode::OK);
-    let banner = body_text(banner).await;
     // The expected ranges wait for a run; with no plan and no scenario
     // the forecast and the estimate are not needed.
-    assert!(banner.contains("metric_ranges"), "{banner}");
-    assert!(!banner.contains("metric_forecast"), "{banner}");
-    assert!(!banner.contains("temporal"), "{banner}");
+    let banner = frame(get(&app, "/perf/app/console/frames/remeasure").await).await;
+    assert_eq!(banner.col("functions"), ["metric_ranges"]);
     let response = app
         .clone()
         .oneshot(
@@ -1692,24 +1554,25 @@ async fn the_export_tab_lists_tables_and_reads() {
     assert!(page.contains("/perf/query"), "{page}");
 
     // The loaded table with its shape and its two files.
-    let tables = body_text(get(&app, "/perf/app/console/frames/tables").await).await;
-    assert!(tables.contains("ledger\n"), "{tables}");
-    assert!(tables.contains("\n3\n"), "{tables}");
-    assert!(tables.contains("/perf/app/export/ledger.csv\n"), "{tables}");
-    assert!(
-        tables.contains("/perf/app/export/ledger.parquet\n"),
-        "{tables}"
-    );
+    let tables = frame(get(&app, "/perf/app/console/frames/tables").await).await;
+    assert_eq!(tables.col("name"), ["ledger"]);
+    assert_eq!(tables.col("rows"), ["3"]);
+    assert_eq!(tables.col("csv"), ["/perf/app/export/ledger.csv"]);
+    assert_eq!(tables.col("parquet"), ["/perf/app/export/ledger.parquet"]);
 
     // The served reads as their relations, with the definition's
     // meaning beside them, the kind as the chip, and the files.
-    let reads = body_text(get(&app, "/perf/app/console/frames/reads?stopped=0").await).await;
-    let relation = |name: &str| format!("\n{name}\n");
-    assert!(reads.contains(&relation("dso")), "{reads}");
-    assert!(reads.contains("receivables outstanding"), "{reads}");
-    assert!(reads.contains("metric\n"), "{reads}");
-    assert!(reads.contains("/perf/app/export/read.dso.csv\n"), "{reads}");
-    assert!(reads.contains(&relation("payables")), "{reads}");
+    let reads = frame(get(&app, "/perf/app/console/frames/reads?stopped=0").await).await;
+    assert!(reads.col("read").contains(&"payables"));
+    assert_eq!(
+        reads.cell("read", "dso", "what"),
+        "receivables outstanding expressed in days of revenue"
+    );
+    assert_eq!(reads.cell("read", "dso", "chip"), "metric");
+    assert_eq!(
+        reads.cell("read", "dso", "csv"),
+        "/perf/app/export/read.dso.csv"
+    );
 
     // A dataset with nothing loaded serves empty frames, and its page
     // renders.
@@ -1758,16 +1621,7 @@ async fn a_table_downloads_as_csv_and_parquet() {
     // read back by the engine itself.
     let file = dir.path().join("ledger-export.parquet");
     std::fs::write(&file, &bytes).unwrap();
-    let session = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "t".into(),
-            },
-            Some("perf"),
-        )
-        .await
-        .unwrap();
+    let session = channel(&plane, ActorKind::Human, "t", Some("perf")).await;
     let (schema, batches) = session
         .batches_with_schema(
             &format!("SELECT * FROM read_parquet('{}')", file.display()),
@@ -1848,16 +1702,7 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
     // served fields descend from.
     let (app, plane, dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(&format!(
             "USE perf;\n\
@@ -1873,33 +1718,17 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
     // Nodes: the two tables' columns in order, and the metric definition's
     // served fields under the metric; a metric definition with only an
     // aggregate (payables) has no field to show.
-    let nodes = get(&app, "/perf/app/console/frames/lineage_nodes").await;
-    assert_eq!(nodes.status(), StatusCode::OK);
-    let bytes = to_bytes(nodes.into_body(), usize::MAX).await.unwrap();
-    let reader =
-        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .unwrap();
-    let mut rows: Vec<(String, String, String, String)> = Vec::new();
-    for batch in reader {
-        let batch = batch.unwrap();
-        let col = |name: &str| {
-            batch
-                .column(batch.schema().index_of(name).unwrap())
-                .as_any()
-                .downcast_ref::<arrow::array::StringArray>()
-                .unwrap()
-                .clone()
-        };
-        let (node, kind, c, role) = (col("node"), col("kind"), col("col"), col("tag"));
-        for i in 0..batch.num_rows() {
-            rows.push((
-                node.value(i).into(),
-                kind.value(i).into(),
-                c.value(i).into(),
-                role.value(i).into(),
-            ));
-        }
-    }
+    let nodes = frame(get(&app, "/perf/app/console/frames/lineage_nodes").await).await;
+    let rows: Vec<(&str, &str, &str, &str)> = (0..nodes.len())
+        .map(|i| {
+            (
+                nodes.col("node")[i],
+                nodes.col("kind")[i],
+                nodes.col("col")[i],
+                nodes.col("tag")[i],
+            )
+        })
+        .collect();
     let has = |node: &str, col: &str| rows.iter().any(|r| r.0 == node && r.2 == col);
     assert!(has("ledger", "month"), "{rows:?}");
     assert!(has("ledger", "cohort"), "{rows:?}");
@@ -1927,32 +1756,16 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
     );
 
     // The edges: the declared relationships and the view's reads.
-    let edges = get(&app, "/perf/app/console/frames/lineage_edges").await;
-    assert_eq!(edges.status(), StatusCode::OK);
-    let bytes = to_bytes(edges.into_body(), usize::MAX).await.unwrap();
-    let reader =
-        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .unwrap();
-    let mut edges: Vec<(String, String, String)> = Vec::new();
-    for batch in reader {
-        let batch = batch.unwrap();
-        let col = |name: &str| {
-            batch
-                .column(batch.schema().index_of(name).unwrap())
-                .as_any()
-                .downcast_ref::<arrow::array::StringArray>()
-                .unwrap()
-                .clone()
-        };
-        let (src, dst, kind) = (col("src"), col("dst"), col("kind"));
-        for i in 0..batch.num_rows() {
-            edges.push((
-                src.value(i).into(),
-                dst.value(i).into(),
-                kind.value(i).into(),
-            ));
-        }
-    }
+    let edges = frame(get(&app, "/perf/app/console/frames/lineage_edges").await).await;
+    let edges: Vec<(String, String, String)> = (0..edges.len())
+        .map(|i| {
+            (
+                edges.col("src")[i].to_string(),
+                edges.col("dst")[i].to_string(),
+                edges.col("kind")[i].to_string(),
+            )
+        })
+        .collect();
     assert!(
         edges.contains(&(
             "ledger.cohort".into(),
@@ -2059,16 +1872,7 @@ async fn a_stopped_view_folds_under_the_lists() {
     // the same frame, `stopped` picking the side.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
+    builder(&plane).await
         .execute(
             r#"USE perf;
                DECLARE ASPECT old_dso WITH $${"title": "Old DSO", "x-kind": "metric"}$$ AS VIEW;
@@ -2077,27 +1881,25 @@ async fn a_stopped_view_folds_under_the_lists() {
         .await
         .unwrap();
 
-    let served = body_text(get(&app, "/perf/app/console/frames/measures?stopped=0").await).await;
-    assert!(served.contains("dso\n"), "{served}");
-    assert!(
-        !served.contains("old_dso"),
-        "a stopped metric is not between the served:\n{served}"
+    let served = frame(get(&app, "/perf/app/console/frames/measures?stopped=0").await).await;
+    assert_eq!(
+        served.col("name"),
+        ["dso"],
+        "a stopped metric is not served"
     );
-    let stopped = body_text(get(&app, "/perf/app/console/frames/measures?stopped=1").await).await;
-    assert!(stopped.contains("old_dso\n"), "{stopped}");
-    assert!(
-        stopped.contains("superseded by dso, which reads the cohort\n"),
-        "the author's reason in place of the axes:\n{stopped}"
+    let stopped = frame(get(&app, "/perf/app/console/frames/measures?stopped=1").await).await;
+    assert_eq!(
+        stopped.col("name"),
+        ["old_dso"],
+        "the fold holds the stopped"
     );
     assert!(
-        !stopped.contains("\ndso\n"),
-        "the served metric is not in the fold:\n{stopped}"
+        stopped.col("axes")[0].contains("superseded by dso, which reads the cohort"),
+        "the author's reason in place of the axes"
     );
 
-    let reads = body_text(get(&app, "/perf/app/console/frames/reads?stopped=1").await).await;
-    let relation = |name: &str| format!("\n{name}\n");
-    assert!(reads.contains(&relation("old_dso")), "{reads}");
-    assert!(!reads.contains(&relation("dso")), "{reads}");
+    let reads = frame(get(&app, "/perf/app/console/frames/reads?stopped=1").await).await;
+    assert_eq!(reads.col("read"), ["old_dso"]);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2108,19 +1910,16 @@ async fn a_table_view_serves_its_columns_and_the_tables_it_reads() {
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
-    let fields =
-        body_text(get(&app, "/perf/app/console/frames/view_fields?view=cleaned").await).await;
-    assert!(
-        fields.contains("month\namount\ncohort\n"),
-        "every served column in the view's order:\n{fields}"
+    let fields = frame(get(&app, "/perf/app/console/frames/view_fields?view=cleaned").await).await;
+    assert_eq!(fields.col("field"), ["month", "amount", "cohort"]);
+    // the column a renamed field descends from
+    assert_eq!(fields.cell("field", "amount", "sources"), "ledger.value");
+    let tables = frame(get(&app, "/perf/app/console/frames/view_tables?view=cleaned").await).await;
+    assert_eq!(
+        tables.col("tables"),
+        ["ledger"],
+        "the one table the view reads"
     );
-    assert!(
-        fields.contains("ledger.value\n"),
-        "the column a renamed field descends from:\n{fields}"
-    );
-    let tables =
-        body_text(get(&app, "/perf/app/console/frames/view_tables?view=cleaned").await).await;
-    assert_eq!(tables, "ledger\n", "the one table the view reads");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2133,16 +1932,7 @@ async fn the_catalog_frames_serve_the_vocabulary_the_terms_the_relations_and_the
     // tables with their columns, and the sources.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -2151,16 +1941,7 @@ async fn the_catalog_frames_serve_the_vocabulary_the_terms_the_relations_and_the
         )
         .await
         .unwrap();
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "ada".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap()
+    channel(&plane, ActorKind::Human, "ada", None).await
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash", "term": "Booked value"}$$;"#)
         .await
         .unwrap();
@@ -2169,86 +1950,74 @@ async fn the_catalog_frames_serve_the_vocabulary_the_terms_the_relations_and_the
     // the required assets with a value and who may annotate; a metric definition; a
     // measurement with the function that stored it; the app's own
     // folded apart.
-    let facts = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=fact").await).await;
-    assert!(facts.contains("role\n"), "{facts}");
-    assert!(facts.contains("?aspect=role\n"), "{facts}");
+    let vocabulary = async |kind: &str| {
+        frame(
+            get(
+                &app,
+                &format!("/perf/app/console/frames/vocabulary?kind={kind}"),
+            )
+            .await,
+        )
+        .await
+    };
+    let facts = vocabulary("fact").await;
+    assert_eq!(facts.cell("aspect", "role", "link"), "?aspect=role");
     assert!(
-        !facts.contains("app_frame"),
-        "the app's own fold apart:\n{facts}"
+        !facts.col("aspect").contains(&"app_frame"),
+        "the app's own fold apart"
     );
-    let own = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=own").await).await;
-    assert!(own.contains("app_frame\n"), "{own}");
-    let queries = body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=view").await).await;
-    assert!(queries.contains("dso\n"), "{queries}");
-    let measurements =
-        body_text(get(&app, "/perf/app/console/frames/vocabulary?kind=measurement").await).await;
-    assert!(
-        measurements.contains("temporal_profile\n"),
-        "{measurements}"
-    );
-    // The function that stored the profile: the quality kit's.
-    let lands = "temporal\n";
-    assert!(
-        measurements.contains(lands),
-        "the function that lands it:\n{measurements}"
+    assert!(vocabulary("own").await.col("aspect").contains(&"app_frame"));
+    assert!(vocabulary("view").await.col("aspect").contains(&"dso"));
+    // a measurement with the function that stored it: the quality kit's
+    let measurements = vocabulary("measurement").await;
+    assert_eq!(
+        measurements.cell("aspect", "temporal_profile", "actors"),
+        "temporal"
     );
 
     // The terms: the views first by alphabet with the column's term
     // among them; the person's word wins and is marked, the when on
     // hover.
-    let terms = body_text(get(&app, "/perf/app/console/frames/terms").await).await;
-    assert!(terms.contains("Booked value\n"), "{terms}");
-    assert!(
-        terms.contains("the cash\n"),
-        "the person's word over the agent's:\n{terms}"
+    let terms = frame(get(&app, "/perf/app/console/frames/terms").await).await;
+    // the person's word over the agent's, marked
+    assert_eq!(terms.cell("term", "Booked value", "meaning"), "the cash");
+    assert_eq!(terms.cell("term", "Booked value", "mcls"), "v-decided");
+    // a term opens its column; a view its page, under the dataset
+    assert_eq!(
+        terms.cell("term", "Booked value", "link"),
+        "/perf/app/console/p/glossary?column=ledger.value"
     );
-    assert!(!terms.contains("the money\n"), "{terms}");
-    assert!(terms.contains("v-decided\n"), "{terms}");
-    assert!(
-        terms.contains("/perf/app/console/p/glossary?column=ledger.value\n"),
-        "a term opens its column:\n{terms}"
+    assert_eq!(
+        terms.cell("name", "cleaned", "link"),
+        "/perf/app/console/p/views?view=cleaned&kind=relation"
     );
-    assert!(
-        terms.contains("/perf/app/console/p/views?view=cleaned&kind=relation\n"),
-        "a view's page, under the dataset:\n{terms}"
-    );
-    assert!(!terms.contains("\nplan\n"), "a plan is no term:\n{terms}");
+    assert!(!terms.col("kind").contains(&"plan"), "a plan is no term");
 
-    let relations = get(&app, "/perf/app/console/frames/relations").await;
-    assert_eq!(relations.status(), StatusCode::OK);
-    let relations = body_text(relations).await;
-    // Column by column: the tables first, then the views, then the
-    // metrics; the fact serves no rows to browse and is listed too.
-    assert!(
-        relations.contains("ledger\ncleaned\ndso\n"),
-        "the loaded table, the view, the metric:\n{relations}"
-    );
-    assert!(
-        relations.contains("table\nview\n"),
-        "each named by its kind:\n{relations}"
-    );
-    assert!(
-        relations.contains("?sql=SELECT * FROM ledger LIMIT 50\n"),
-        "the pick is a read in the URL:\n{relations}"
+    // The tables first, then the views, then the metrics, each named by
+    // its kind; the fact serves no rows to browse and is listed too. The
+    // pick is a read in the URL.
+    let relations = frame(get(&app, "/perf/app/console/frames/relations").await).await;
+    assert_eq!(relations.col("name")[..3], ["ledger", "cleaned", "dso"]);
+    assert_eq!(relations.col("kind")[..3], ["table", "view", "metric"]);
+    assert_eq!(
+        relations.cell("name", "ledger", "link"),
+        "?sql=SELECT * FROM ledger LIMIT 50"
     );
 
     // The tables: one row per loaded table, its columns as lines, the
     // name opening the table's page.
-    let columns = body_text(get(&app, "/perf/app/console/frames/columns").await).await;
-    assert!(columns.contains("ledger\n"), "the loaded table:\n{columns}");
+    let columns = frame(get(&app, "/perf/app/console/frames/columns").await).await;
+    assert_eq!(columns.col("name"), ["ledger"]);
+    assert_eq!(columns.col("link"), ["?table=ledger"]);
+    // every column of it as a line, the judged role on one
+    let lines = columns.col("lines")[0];
     assert!(
-        columns.contains("month") && columns.contains("measure"),
-        "every column of it as a line, the judged role on one:\n{columns}"
+        lines.contains("month") && lines.contains("measure"),
+        "{lines}"
     );
-    assert!(columns.contains("?table=ledger\n"), "{columns}");
 
-    let conventions = get(&app, "/perf/app/console/frames/conventions").await;
-    assert_eq!(conventions.status(), StatusCode::OK);
-    let conventions = body_text(conventions).await;
-    assert!(
-        conventions.contains("erp\n"),
-        "the recipe's source is listed:\n{conventions}"
-    );
+    let conventions = frame(get(&app, "/perf/app/console/frames/conventions").await).await;
+    assert_eq!(conventions.col("source"), ["erp"], "the recipe's source");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2259,16 +2028,7 @@ async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
     // value under it, the required subjects without one by name.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -2277,47 +2037,30 @@ async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
         )
         .await
         .unwrap();
-    plane
-        .channel(
-            Actor {
-                kind: ActorKind::Human,
-                id: "ada".into(),
-            },
-            None,
-        )
+    channel(&plane, ActorKind::Human, "ada", None)
         .await
-        .unwrap()
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the cash"}$$;"#)
         .await
         .unwrap();
 
     // The table.
-    let head = body_text(get(&app, "/perf/app/console/frames/table_head?table=ledger").await).await;
-    assert!(head.contains("one ledger line\n"), "{head}");
-    let cols =
-        body_text(get(&app, "/perf/app/console/frames/table_columns?table=ledger").await).await;
-    assert!(
-        cols.starts_with("month\ncohort\nvalue\n"),
-        "the columns in order:\n{cols}"
-    );
-    assert!(
-        cols.contains("the cash\n"),
-        "the person's meaning wins:\n{cols}"
-    );
-    assert!(cols.contains("v-decided\n"), "{cols}");
-    assert!(cols.contains("month\n"), "{cols}");
-    assert!(cols.contains("?column=ledger.value\n"), "{cols}");
-    let loads =
-        body_text(get(&app, "/perf/app/console/frames/table_loads?table=ledger").await).await;
-    // The load names the source.
-    assert!(loads.contains("erp"), "{loads}");
-    assert!(
-        loads.contains("read_csv('ledger.csv')"),
-        "the recipe's SQL:\n{loads}"
-    );
+    let head = frame(get(&app, "/perf/app/console/frames/table_head?table=ledger").await).await;
+    assert_eq!(head.col("entity"), ["one ledger line"]);
+    assert_eq!(head.col("source"), ["erp"]);
+    let cols = frame(get(&app, "/perf/app/console/frames/table_columns?table=ledger").await).await;
+    assert_eq!(cols.col("name"), ["month", "cohort", "value"]);
+    // the person's meaning wins
+    assert_eq!(cols.cell("name", "value", "meaning"), "the cash");
+    assert_eq!(cols.cell("name", "value", "mcls"), "v-decided");
+    assert_eq!(cols.cell("name", "value", "link"), "?column=ledger.value");
+    let loads = frame(get(&app, "/perf/app/console/frames/table_loads?table=ledger").await).await;
+    // the load names the source, and the recipe's SQL
+    let said = loads.col("text").join("\n");
+    assert!(said.contains("erp"), "{said}");
+    assert!(said.contains("read_csv('ledger.csv')"), "{said}");
 
     // The column: every value, the outranked one on record.
-    let head = body_text(
+    let head = frame(
         get(
             &app,
             "/perf/app/console/frames/column_head?column=ledger.value",
@@ -2325,10 +2068,11 @@ async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
         .await,
     )
     .await;
-    assert!(head.starts_with("ledger\nvalue\n"), "{head}");
-    assert!(head.contains("the cash\n"), "{head}");
-    assert!(head.contains("?table=ledger\n"), "{head}");
-    let values = body_text(
+    assert_eq!(head.col("table_name"), ["ledger"]);
+    assert_eq!(head.col("name"), ["value"]);
+    assert_eq!(head.col("meaning"), ["the cash"]);
+    assert_eq!(head.col("link_table"), ["?table=ledger"]);
+    let values = frame(
         get(
             &app,
             "/perf/app/console/frames/column_values?column=ledger.value",
@@ -2339,21 +2083,19 @@ async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
     // Both values on the meaning, the person's first; the kit's test
     // requires the role on every column, and the unfilled role value leads
     // the list.
-    let lead = "role\nmeaning\nmeaning\n";
+    assert_eq!(values.col("aspect")[..3], ["role", "meaning", "meaning"]);
+    assert_eq!(values.col("value")[1..3], ["the cash", "the money"]);
     assert!(
-        values.starts_with(lead),
-        "both annotations on the meaning, the person's first:\n{values}"
+        values.col("mark_title")[1].contains("ada"),
+        "the writer's name"
     );
-    assert!(values.contains("the cash\nthe money\n"), "{values}");
-    assert!(values.contains("ada"), "the writer's name:\n{values}");
 
     // The aspect: the declaration, then every value and every
     // required subject by name.
-    let head =
-        body_text(get(&app, "/perf/app/console/frames/aspect_head?aspect=meaning").await).await;
-    assert!(head.starts_with("meaning\n"), "{head}");
-    assert!(head.contains("meaning_test"), "{head}");
-    let values = body_text(
+    let head = frame(get(&app, "/perf/app/console/frames/aspect_head?aspect=meaning").await).await;
+    assert_eq!(head.col("name"), ["meaning"]);
+    assert!(head.col("guard")[0].contains("meaning_test"));
+    let values = frame(
         get(
             &app,
             "/perf/app/console/frames/aspect_values?aspect=meaning",
@@ -2361,13 +2103,20 @@ async fn the_frames_of_a_table_a_column_and_an_aspect_serve_their_values() {
         .await,
     )
     .await;
+    // annotated first, then missing by name
+    let subjects = values.col("subject");
+    assert_eq!(subjects[0], "ledger.value");
+    assert_eq!(values.col("value")[0], "the cash");
     assert!(
-        values.starts_with("ledger.value\n"),
-        "annotated first, then missing by name:\n{values}"
+        subjects
+            .windows(2)
+            .any(|w| w == ["ledger.cohort", "ledger.month"]),
+        "{subjects:?}"
     );
-    assert!(values.contains("ledger.cohort\nledger.month\n"), "{values}");
-    assert!(values.contains("the cash\n"), "{values}");
-    assert!(values.contains("?column=ledger.cohort\n"), "{values}");
+    assert_eq!(
+        values.cell("subject", "ledger.cohort", "link"),
+        "?column=ledger.cohort"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2376,17 +2125,18 @@ async fn the_tree_links_the_catalogs_objects_and_the_pages_the_bar_does_not() {
     // opens — the source, the table and its columns, and the pages
     // that have no tab in the bar.
     let (app, _plane, _dir) = workspace().await;
-    let tree = body_text(get(&app, "/perf/app/console/frames/tree").await).await;
-    for line in [
-        "/perf/app/console/p/glossary?source=erp\n",
-        "/perf/app/console/p/glossary?table=ledger\n",
-        "/perf/app/console/p/glossary?column=ledger.value\n",
-        "/perf/app/console/p/history\n",
-        "/perf/app/console/p/lineage\n",
-        "/perf/app/console/p/review#decisions\n",
-        "/perf/app/console/p/query\n",
+    let tree = frame(get(&app, "/perf/app/console/frames/tree").await).await;
+    let links = tree.col("link");
+    for link in [
+        "/perf/app/console/p/glossary?source=erp",
+        "/perf/app/console/p/glossary?table=ledger",
+        "/perf/app/console/p/glossary?column=ledger.value",
+        "/perf/app/console/p/history",
+        "/perf/app/console/p/lineage",
+        "/perf/app/console/p/review#decisions",
+        "/perf/app/console/p/query",
     ] {
-        assert!(tree.contains(line), "{line:?} in the tree:\n{tree}");
+        assert!(links.contains(&link), "{link} in the tree: {links:?}");
     }
 }
 
@@ -2463,16 +2213,17 @@ async fn a_source_has_its_three_tabs_and_serves_its_load_queries_and_loads() {
         assert!(links.iter().any(|l| l == tab), "{tab}:\n{page}");
     }
     let recipes =
-        body_text(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
-    assert!(
-        recipes.contains("ledger\n"),
-        "the source loads ledger:\n{recipes}"
+        frame(get(&app, "/perf/app/console/frames/source_recipes?source=erp").await).await;
+    assert_eq!(
+        recipes.col("table_name"),
+        ["ledger"],
+        "the source loads ledger"
     );
-    let loads =
-        body_text(get(&app, "/perf/app/console/frames/source_loads?source=erp").await).await;
-    assert!(
-        loads.contains("ledger\n"),
-        "ledger was loaded from it:\n{loads}"
+    let loads = frame(get(&app, "/perf/app/console/frames/source_loads?source=erp").await).await;
+    assert_eq!(
+        loads.col("table_name"),
+        ["ledger"],
+        "ledger was loaded from it"
     );
 }
 
@@ -2482,16 +2233,7 @@ async fn the_graph_serves_each_table_as_its_entity() {
     // name, and each column with what it carries — role, additivity,
     // unit, the grain, the time axis.
     let (app, plane, _dir) = workspace().await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(
             r#"USE perf;
@@ -2502,57 +2244,47 @@ async fn the_graph_serves_each_table_as_its_entity() {
         )
         .await
         .unwrap();
-    let nodes = body_text(get(&app, "/perf/app/console/frames/lineage_nodes").await).await;
-    for line in [
-        "one booking\n",
-        "measure",
-        "additive",
-        "EUR",
-        "/perf/app/console/p/glossary?table=ledger\n",
-    ] {
-        assert!(nodes.contains(line), "{line:?} in the nodes:\n{nodes}");
-    }
+    let nodes = frame(get(&app, "/perf/app/console/frames/lineage_nodes").await).await;
+    assert_eq!(nodes.cell("col", "value", "sub"), "one booking");
+    assert_eq!(nodes.cell("col", "value", "role"), "measure");
+    let detail = nodes.cell("col", "value", "detail");
+    assert!(
+        detail.contains("additive") && detail.contains("EUR"),
+        "{detail}"
+    );
+    assert_eq!(
+        nodes.cell("col", "value", "link"),
+        "/perf/app/console/p/glossary?table=ledger"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_history_lists_loads_annotations_and_declarations_newest_first() {
     let (app, plane, _dir) = workspace().await;
-    let agent = plane
-        .channel(
-            Actor {
-                kind: ActorKind::Agent,
-                id: "builder".into(),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    let agent = builder(&plane).await;
     agent
         .execute(r#"USE perf; GLOSS meaning ON ledger.value AS $${"value": "the money"}$$;"#)
         .await
         .unwrap();
-    let all = body_text(get(&app, "/perf/app/console/frames/history?kind=&object=").await).await;
-    for line in ["load\n", "annotation\n", "declaration\n", "the money\n"] {
-        assert!(all.contains(line), "{line:?} in the history:\n{all}");
+    let all = frame(get(&app, "/perf/app/console/frames/history?kind=&object=").await).await;
+    let kinds = all.col("kind");
+    for kind in ["load", "annotation", "declaration"] {
+        assert!(kinds.contains(&kind), "{kind} in the history: {kinds:?}");
     }
+    assert!(all.col("summary").iter().any(|s| s.ends_with("the money")));
     // The newest first: the annotation on the column was written after
     // the table's load query and its load.
+    let links = all.col("link");
+    let at = |link: &str| links.iter().position(|l| *l == link).unwrap();
     assert!(
-        all.find("/perf/app/console/p/glossary?column=ledger.value\n")
-            .unwrap()
-            < all
-                .find("/perf/app/console/p/glossary?table=ledger\n")
-                .unwrap(),
-        "{all}"
+        at("/perf/app/console/p/glossary?column=ledger.value")
+            < at("/perf/app/console/p/glossary?table=ledger"),
+        "{links:?}"
     );
     // Filters narrow by kind and by object; a table includes its columns.
-    let loads =
-        body_text(get(&app, "/perf/app/console/frames/history?kind=load&object=").await).await;
-    assert!(
-        loads.contains("load\n") && !loads.contains("annotation\n"),
-        "{loads}"
-    );
-    let ledger = body_text(
+    let loads = frame(get(&app, "/perf/app/console/frames/history?kind=load&object=").await).await;
+    assert_eq!(loads.col("kind"), ["load"]);
+    let ledger = frame(
         get(
             &app,
             "/perf/app/console/frames/history?kind=annotation&object=ledger",
@@ -2560,5 +2292,5 @@ async fn the_history_lists_loads_annotations_and_declarations_newest_first() {
         .await,
     )
     .await;
-    assert!(ledger.contains("ledger.value\n"), "{ledger}");
+    assert!(ledger.col("object").contains(&"ledger.value"));
 }

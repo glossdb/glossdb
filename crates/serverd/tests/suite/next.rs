@@ -5,78 +5,16 @@
 //! check kind, asset and state, and that a row's statement names the
 //! asset and the property of the fixture.
 
-use std::sync::Arc;
-
 use axum::Router;
-use axum::body::Body;
-use axum::http::Response;
-use glossdb_serverd::{Access, InterfaceConfig, router};
 use serde_json::{Value, json};
 
-use crate::common::{self, expect_ok, meta};
+use crate::common::{self, rows, say, tool, window};
 
-async fn app() -> (Router, tempfile::TempDir) {
-    let (dir, plane) = common::scratch_plane().await;
-    let plane = Arc::new(
-        plane.with_pages(
-            glossdb_serverd::skills::served_pages()
-                .expect("the language's documents beside the extension's kits"),
-        ),
-    );
-    (
-        router(
-            plane,
-            InterfaceConfig::default(),
-            Access::Gated(common::login()),
-        ),
-        dir,
-    )
-}
-
-fn call(id: u64, statements: &str) -> Value {
-    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
-           "params": {"_meta": meta(), "name": "glossql", "arguments": {"statements": statements}}})
-}
-
-async fn mcp_on(app: Router, path: &str, payload: Value) -> Response<Body> {
-    common::mcp_on(app, path, "127.0.0.1", payload).await
-}
-
-/// Statements on the dataset's interface; the outcomes, and a panic on a refusal.
-async fn say(app: &Router, statements: &str) -> Value {
-    let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(1, statements)).await).await;
-    assert_ne!(
-        body["result"]["isError"],
-        json!(true),
-        "`{statements}`: {body}"
-    );
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    serde_json::from_str(text).unwrap()
-}
-
-/// A refused statement's text on the dataset's interface.
-async fn refused(app: &Router, statements: &str) -> String {
-    let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(1, statements)).await).await;
-    assert_eq!(
-        body["result"]["isError"],
-        json!(true),
-        "`{statements}` was not refused: {body}"
-    );
-    body["result"]["content"][0]["text"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
-}
-
-/// The rows of one read on the dataset's interface.
-async fn rows(app: &Router, sql: &str) -> Vec<Value> {
-    let outcomes = say(app, sql).await;
-    outcomes[0]["rows"].as_array().cloned().unwrap_or_default()
-}
+const FIN: &str = "/fin/mcp";
 
 /// The rows of `next` under "test", in the list's order.
 async fn open_tests(app: &Router) -> Vec<Value> {
-    rows(app, "SELECT * FROM next WHERE step = 'test'").await
+    rows(app, FIN, "SELECT * FROM next WHERE step = 'test'").await
 }
 
 fn text(row: &Value, key: &str) -> String {
@@ -84,32 +22,23 @@ fn text(row: &Value, key: &str) -> String {
 }
 
 /// A workspace with the dataset `fin` and a daily ledger loaded.
-async fn fin() -> (Router, tempfile::TempDir) {
-    let (app, dir) = app().await;
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/mcp",
-            call(0, "DECLARE DATASET fin SET (purpose: 'the next steps');"),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
+async fn fin() -> common::Served {
+    let served = common::app_on("fin").await;
     say(
-        &app,
+        &served.0,
+        FIN,
         "CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, \
          (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund \
          FROM range(120) r(i)",
     )
     .await;
-    (app, dir)
+    served
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_closes_it() {
-    let (app, _dir) = fin().await;
-    let all = rows(&app, "SELECT * FROM next").await;
+    let (app, _, _dir) = fin().await;
+    let all = rows(&app, FIN, "SELECT * FROM next").await;
     // A table is there and no view: one row of kind "integrate", with
     // the statements that define one. Nothing is asked about a table no
     // view reads, and the preview rows stay out while no model
@@ -123,20 +52,20 @@ async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_c
 
     // A view is a metric, a single value or a table. Only a metric needs
     // a series; the other two leave nothing to integrate.
-    say(
-        &app,
+    say(&app, FIN,
         r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
            GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, upper(fund) AS fund FROM fin.ledger"}$$;
            DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
            GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
     )
     .await;
-    let integrate = rows(&app, "SELECT * FROM next WHERE step = 'integrate'").await;
+    let integrate = rows(&app, FIN, "SELECT * FROM next WHERE step = 'integrate'").await;
     assert!(integrate.is_empty(), "{integrate:?}");
     // A table and a single value have no series: their summary rows
     // carry neither `applicable` nor a period column, a floor or a window.
     let summary = rows(
         &app,
+        FIN,
         "SELECT * FROM view_summary() WHERE view IN ('ledger_clean', 'ledger_rows')",
     )
     .await;
@@ -156,7 +85,7 @@ async fn a_dataset_without_a_view_has_one_open_row_and_a_table_or_single_value_c
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
-    let (app, _dir) = fin().await;
+    let (app, _, _dir) = fin().await;
     // A table view with a test of the team's own: the property holds
     // the expectation, annotated on the view, and the check returns the
     // same property. The check measures the share of rows outside the
@@ -164,8 +93,7 @@ async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
     // and the list carries a row of kind "test" for the view. The
     // table's own columns are asked to be described, as a table is
     // handed over with them.
-    say(
-        &app,
+    say(&app, FIN,
         r#"DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
            GLOSS ledger_clean ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
            DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
@@ -194,14 +122,14 @@ async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
     );
     // The expectation is set on the view. The list asks for it on no
     // other asset the view reads.
-    let asked = rows(
-        &app,
+    let asked = rows(&app, FIN,
         "SELECT asset, statement FROM next WHERE step = 'describe' AND contains(statement, 'fund_coded')",
     )
     .await;
     assert!(asked.is_empty(), "{asked:?}");
     let described = rows(
         &app,
+        FIN,
         "SELECT * FROM next WHERE step = 'describe' AND asset = 'fin.ledger_clean'",
     )
     .await;
@@ -215,13 +143,12 @@ async fn a_test_declared_on_a_table_view_opens_a_row_while_it_is_red() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_metric_walks_its_tests_from_the_definition_to_green() {
-    let (app, _dir) = fin().await;
+    let (app, _, _dir) = fin().await;
 
     // Defined: the write answers with the metric's row, the server runs
     // the built-in tests, and the additivity test says the columns owe
     // their roles. One table scanned: nothing to fan out, no join to check.
-    let outcomes = say(
-        &app,
+    let outcomes = say(&app, FIN,
         r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
@@ -231,6 +158,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     assert_eq!(written["applicable"], json!(false), "{outcomes}");
     let tests = rows(
         &app,
+        FIN,
         "SELECT test, state FROM view_tests() WHERE view = 'spend' ORDER BY test",
     )
     .await;
@@ -261,6 +189,7 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
     // ran the tests again after each call, and the additivity is open.
     say(
         &app,
+        FIN,
         r#"GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
            GLOSS role ON spend.value AS $${"value": "measure"}$$;
            GLOSS role ON spend.fund AS $${"value": "dimension"}$$;
@@ -274,34 +203,40 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
         text(&open[0], "statement").contains("GLOSS additivity ON fin.spend.value"),
         "{open:?}"
     );
-    let refusal = refused(
+    // The series is refused, and the refusal names the column it waits on.
+    let refusal = common::refused(
         &app,
+        FIN,
         "SELECT period, value FROM metric_series() WHERE metric = 'spend'",
     )
     .await;
-    assert!(refusal.contains("fin.spend.value"), "{refusal}");
+    let reason = refusal["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(reason.contains("fin.spend.value"), "{refusal}");
 
     // Annotated: every test is green and nothing is open under
     // "test"; the series serves at its finest grain and coarser.
     say(
         &app,
+        FIN,
         r#"GLOSS additivity ON spend.value AS $${"value": "additive"}$$;"#,
     )
     .await;
     let open = open_tests(&app).await;
     assert!(open.is_empty(), "{open:?}");
-    let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
+    let cells = rows(&app, FIN, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
 
     // A stopped metric is no longer served, and the list says that no
     // metric is defined.
     say(
         &app,
+        FIN,
         r#"GLOSS spend ON fin AS $${"stopped": "the ledger is not booked before 2024"}$$;"#,
     )
     .await;
     let integrate = rows(
         &app,
+        FIN,
         "SELECT asset, state FROM next WHERE step = 'integrate'",
     )
     .await;
@@ -312,21 +247,17 @@ async fn a_metric_walks_its_tests_from_the_definition_to_green() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_page_carries_the_test_and_its_statement() {
-    let (app, _dir) = fin().await;
-    say(
-        &app,
+    let (app, _, _dir) = fin().await;
+    say(&app, FIN,
         r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            json!({"jsonrpc": "2.0", "id": 5, "method": "resources/read",
-                   "params": {"_meta": meta(), "uri": "next://fin/test"}}),
-        )
-        .await,
+    let body = common::rpc(
+        &app,
+        FIN,
+        "resources/read",
+        json!({"uri": "next://fin/test"}),
     )
     .await;
     let page = body["result"]["contents"][0]["text"]
@@ -339,19 +270,17 @@ async fn the_next_page_carries_the_test_and_its_statement() {
 
     // Every result on the dataset's interface closes with the link to
     // the page of the first open row's kind of work.
-    let body = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(6, "SELECT 1 AS one")).await).await;
-    let window = body["result"]["content"][1]["text"].as_str().unwrap();
-    assert!(window.contains("next://fin/describe"), "{window}");
+    let closing = window(&tool(&app, FIN, "SELECT 1 AS one").await);
+    assert!(closing.contains("next://fin/describe"), "{closing}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
-    let (app, _dir) = fin().await;
+    let (app, _, _dir) = fin().await;
     // The definition says which column is the time, which the measure
     // and how it adds up, and which slice it: the server writes the
     // column annotations, profiles the time column and runs the tests.
-    let outcomes = say(
-        &app,
+    let outcomes = say(&app, FIN,
         r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#,
     )
@@ -366,6 +295,7 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     // no column the metric does not read.
     let describe = rows(
         &app,
+        FIN,
         "SELECT state, statement FROM next WHERE step = 'describe' AND asset = 'fin.ledger'",
     )
     .await;
@@ -376,18 +306,17 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
         statement.contains("GLOSS meaning ON fin.ledger.amount"),
         "{statement}"
     );
-    let cells = rows(&app, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
+    let cells = rows(&app, FIN, "SELECT period, value FROM metric_series() WHERE metric = 'spend' AND dimension = '' ORDER BY period").await;
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
-    let (app, _dir) = fin().await;
+    let (app, _, _dir) = fin().await;
     // What an earlier session left: a daily rate marked additive, and a
     // monthly metric that sums the daily rates. Both are wrong numbers;
     // the additivity test reads how each value is computed.
-    say(
-        &app,
+    say(&app, FIN,
         r#"DECLARE ASPECT amount_per_booking WITH $${"title": "Amount per booking"}$$ AS VIEW;
            GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "additive"}}$$;
            DECLARE ASPECT amount_per_booking_month WITH $${"title": "Amount per booking, monthly"}$$ AS VIEW;
@@ -398,6 +327,7 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
     // the metric's current definition, to edit and record.
     let open = rows(
         &app,
+        FIN,
         "SELECT asset, state, statement FROM next WHERE step = 'test' ORDER BY asset",
     )
     .await;
@@ -416,8 +346,7 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
         "{fix}"
     );
     // Marked a ratio with its two halves, the daily metric is done.
-    say(
-        &app,
+    say(&app, FIN,
         r#"GLOSS amount_per_booking ON fin AS $${"sql": "SELECT booked::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.ledger GROUP BY 1", "time": "period", "measure": {"column": "value", "additivity": "ratio", "numerator": "num", "denominator": "den"}}$$;"#,
     )
     .await;
@@ -428,8 +357,7 @@ async fn a_ratio_marked_additive_is_red_and_so_is_the_metric_that_sums_it() {
 
 /// The rows of `next` under "describe" for the bookings table.
 async fn bookings_rows(app: &Router) -> Vec<Value> {
-    rows(
-        app,
+    rows(app, FIN,
         "SELECT state, cause FROM next WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
     )
     .await
@@ -442,7 +370,7 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     // "describe" gives the cause: the row counts of the two loads and
     // the columns whose profile moved. The server profiles the columns
     // a metric reads itself.
-    let (app, dir) = fin().await;
+    let (app, _, dir) = fin().await;
     let file = dir.path().join("bookings.csv");
     let head =
         "booked,amount,fund\n2024-01-01,10,general\n2024-01-02,20,water\n2024-02-01,30,parks\n";
@@ -451,14 +379,14 @@ async fn a_changed_load_is_named_with_what_it_changed() {
                 CAST(amount AS DOUBLE) AS amount, fund FROM read_csv('bookings.csv')$$;";
     say(
         &app,
+        FIN,
         &format!(
             "DECLARE SOURCE erp SET (type: csv, location: '{}'); {load}",
             dir.path().display()
         ),
     )
     .await;
-    say(
-        &app,
+    say(&app, FIN,
         r#"DECLARE ASPECT booked_amount WITH $${"title": "Booked amount"}$$ AS VIEW;
            GLOSS booked_amount ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, fund, sum(amount) AS value FROM fin.bookings GROUP BY 1, 2", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
            GLOSS meaning ON fin.bookings.fund AS $${"value": "the fund a booking is charged to"}$$;"#,
@@ -474,6 +402,7 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     std::fs::write(&file, format!("{head}2024-03-01,40,roads\n")).unwrap();
     say(
         &app,
+        FIN,
         &load.replace(", fund FROM", ", upper(fund) AS fund FROM"),
     )
     .await;
@@ -488,6 +417,7 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     assert!(cause.contains("fund"), "{cause}");
     let loads = rows(
         &app,
+        FIN,
         "SELECT rows FROM imports_history WHERE table_name = 'bookings' ORDER BY begin_snapshot",
     )
     .await;
@@ -501,26 +431,19 @@ async fn a_changed_load_is_named_with_what_it_changed() {
 /// read, not after it.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_line_counts_the_rows_the_same_call_lists() {
-    let (app, _dir) = fin().await;
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/fin/mcp",
-            call(
-                1,
-                r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
-                   SELECT step, who FROM next"#,
-            ),
-        )
-        .await,
+    let (app, _, _dir) = fin().await;
+    let body = tool(
+        &app,
+        FIN,
+        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
+           SELECT step, who FROM next"#,
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    let outcomes: Value =
-        serde_json::from_str(body["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    let outcomes = common::outcomes(&body);
     let listed = outcomes[2]["rows"].as_array().unwrap();
-    let window = body["result"]["content"][1]["text"].as_str().unwrap();
+    let window = window(&body);
     let line = window
         .lines()
         .find_map(|l| l.strip_prefix("next:"))
@@ -549,40 +472,18 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
 /// snapshot too, so the rows the next call serves are read again.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_rows_follow_a_write_made_beside_the_interface() {
-    let (_dir, plane) = common::scratch_plane().await;
-    let plane = Arc::new(
-        plane.with_pages(
-            glossdb_serverd::skills::served_pages()
-                .expect("the language's documents beside the extension's kits"),
-        ),
-    );
-    let app = router(
-        Arc::clone(&plane),
-        InterfaceConfig::default(),
-        Access::Gated(common::login()),
-    );
-    let body = expect_ok(
-        mcp_on(
-            app.clone(),
-            "/mcp",
-            call(0, "DECLARE DATASET fin SET (purpose: 'the next steps');"),
-        )
-        .await,
-    )
-    .await;
-    assert_ne!(body["result"]["isError"], json!(true), "{body}");
-    say(&app, "CREATE TABLE fin.ledger AS SELECT 1 AS amount").await;
+    let (app, plane, _dir) = common::app_on("fin").await;
+    say(&app, FIN, "CREATE TABLE fin.ledger AS SELECT 1 AS amount").await;
     let next_line = |body: &Value| -> String {
-        let window = body["result"]["content"][1]["text"].as_str().unwrap();
-        window
+        window(body)
             .lines()
             .find(|l| l.starts_with("next:"))
-            .unwrap_or_else(|| panic!("{window}"))
+            .unwrap_or_else(|| panic!("{body}"))
             .to_string()
     };
     // twice the same call, nothing written between: the same line
-    let first = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(1, "SELECT 1 AS x")).await).await;
-    let again = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(2, "SELECT 1 AS x")).await).await;
+    let first = tool(&app, FIN, "SELECT 1 AS x").await;
+    let again = tool(&app, FIN, "SELECT 1 AS x").await;
     assert!(next_line(&first).contains("integrate 1"), "{first}");
     assert_eq!(next_line(&first), next_line(&again));
     // a view defined on the engine's own channel, beside the interface
@@ -597,6 +498,6 @@ async fn the_next_rows_follow_a_write_made_beside_the_interface() {
         )
         .await
         .expect("the view is defined");
-    let after = expect_ok(mcp_on(app.clone(), "/fin/mcp", call(3, "SELECT 1 AS x")).await).await;
+    let after = tool(&app, FIN, "SELECT 1 AS x").await;
     assert!(!next_line(&after).contains("integrate"), "{after}");
 }
