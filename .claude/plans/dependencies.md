@@ -13,6 +13,7 @@ new clause. `DEPENDS ON` is built and provisional.
 | The extension's own table functions report what they read (`GLOSSARY()`, `dataset_cells`), so a body that reads the catalog through them no longer records "everything" | Medium | the extension (`glossql_runner.cpp:961-1071`) | Second | |
 | Catalog dependencies at the grain the matrix names | High: it changes `SPEC.md` §5 and §6 | the extension, the spec, the kits | Third | |
 | A content version for a table, so a reload of the same rows outdates nothing | Low: DuckLake's change feed gives it | the extension (`PartsSQL`) | With the third | |
+| A property that carries a test's expectation is required only where it is annotated. Today `GLOSSARY()` reports it as missing on every other asset of its kind; the kits ignore that, six console frames do not (`vocabulary`, `aspect_head`, `aspect_values`, `column_values`, `measured`, `unmeasured`) | Medium: it changes what "required" means in `SPEC.md` §5 | the extension (`GLOSSARY()`), the console frames | With the third | |
 | The 13 places where spec, docs or comments contradict the code are corrected with each step | Low | both repositories | With each step | |
 
 ## The matrix: what is outdated by what, today
