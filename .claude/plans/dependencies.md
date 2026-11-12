@@ -11,7 +11,7 @@ reverted.
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
 | The project lead agrees or changes "The design" below | — | this file | Next | |
-| The catalog's relations are kept by DuckLake: tables in the catalogue database with DuckLake's row id and begin and end snapshot, in place of `seq`, the store version and `snapshot_id` on glossary rows. Removing an annotation appends a row | High: every read and write of the extension's store; `SPEC.md` §5 | the extension (`glossql_store.cpp`, `glossql_runner.cpp`) | First | |
+| The catalog's relations stay our own tables in the catalogue database (Postgres or a DuckDB file) and take DuckLake's pattern for its own catalogue tables: each row has a begin and an end marker from a number that two writers cannot share. This replaces `seq` and the store version. Removing an annotation sets the end marker; no row is deleted | High: every read and write of the extension's store; `SPEC.md` §5 | the extension (`glossql_store.cpp`, `glossql_runner.cpp`) | First | |
 | One key rule for a stored result and a kept read: the text and the versions of the relations its plan reads | Medium | the extension (`PartsSQL`, `Cached`) | Second | |
 | The glossary and the test results are queries over those relations, so a plan names what it reads and no result records "everything" | Medium | the extension, the kits | With the second | |
 | A response of the model service is kept under a hash of the request | Medium | the extension (`glossql_service.cpp`) | Third | |
@@ -60,83 +60,66 @@ Measured on the Formula 1 workspace (9 tables, 5 views, 3 metrics):
 | An annotation on a table a view scans: 12 checks one after another, each refilling the glossary | 6.0 s |
 | Eight reads of `next` at once, wall time | 0.80 s |
 
-## What DuckLake does (DuckDB 2.0.0, measured on scratch lakes)
+## What DuckLake does with its own catalogue tables
 
-DuckLake stores a small write to a table in its catalogue database and
-makes a snapshot of it (data inlining; on by default up to 10 rows per
-write). The same results on a DuckDB file and on Postgres 18 as the
-catalogue, unless two numbers are given.
+Read on scratch lakes (DuckDB 2.0.0; a DuckDB file and Postgres 18 as
+the catalogue):
 
-| | Result |
-|---|---|
-| 200 single-row writes | 0.5 s / 1.1 s, 200 snapshots, no Parquet file |
-| 400 writes from 8 connections | 2.9 s / 4.3 s, no error, 600 distinct row ids |
-| A row's `rowid` and `snapshot_id` | set at commit; the same after a flush to Parquet and after older snapshots expire |
-| A function stores a result while another transaction is open | both commit; the open one does not see the result until it ends |
-| Two transactions insert into one table | both commit |
-| A delete beside an insert or a delete on the same table | the later commit fails with a conflict |
-| A delete | the row gets an end snapshot; older versions still read it |
-| A flush to Parquet | a snapshot of its own (`flushed_inlined`); no automatic flush |
-| Expiring snapshots | explicit only; the change log of the expired snapshots is gone, the rows stay |
-| Author, message and a free field per commit | `set_commit_message` |
-| A read of 55 scans, planned / run | 3 ms / 17 ms; plain tables 2 ms / 6 ms |
+- Every row of `ducklake_table`, `ducklake_view`, `ducklake_tag` and
+  the others has `begin_snapshot` and `end_snapshot`. A replaced or
+  removed row gets an end; it is not overwritten or deleted.
+- The number is the id of the commit's snapshot. `ducklake_snapshot`
+  has a primary key on it, so two commits cannot share one; the later
+  one is tried again.
+- `ducklake_snapshot_changes` says per snapshot what changed, with an
+  author, a message and a free field.
+- Expiring snapshots is explicit. It removes the change log of the
+  expired snapshots; the server does not do it and closes the call to
+  agents.
 
-Two versions of a table follow, and they differ:
-
-- **The last snapshot that changed it**, from the change log. A flush
-  moves it though no row changed. Expiry removes it. The parts of data
-  tables use this today.
-- **The highest `snapshot_id` of its rows.** A flush and expiry leave
-  it as it was. A delete does not move it.
+Ruled out by the project lead: storing the catalog's relations as
+DuckLake tables (inlined or in Parquet).
 
 ## The design
 
-1. **DuckLake keeps the catalog's relations.** They stay catalogue
-   tables; DuckLake adds the row id and the begin and end snapshot.
-   Every write is a commit. The commit carries who wrote and why.
-2. **Catalog relations are append only.** Removing an annotation
-   appends a row that says so. Then concurrent writers do not
-   conflict, and the version of a relation is the highest
-   `snapshot_id` of its rows. The newest annotation is the one with
-   the highest `rowid`.
-3. **One key rule.** A result is valid for the text that computed it
-   and the versions of the relations its plan read. Example: a profile
-   of `results.grid`, computed by `column_profile` when `results` was
-   at 41, holds while the function's text is the same and `results` is
-   at 41. A load into `races` does not touch it. Nothing is
-   invalidated: a changed relation gives another key, and old entries
-   leave by LRU.
-4. **A plan names what it reads.** The glossary and the test results
-   are queries over the relations. A check that reads annotations is
-   keyed on `glossary`; a stored result moves `measurements` only.
-5. **A response of the model service is kept by content.** The key is
-   a hash of the route, the request body and the service's version.
-   The body carries the series, so an identical reload is a hit. This
-   is the action cache of build systems.
-6. **The grain is the relation.** Finer grains (per dataset, per
-   property) come when a measurement asks for them.
+1. **The catalog's relations stay our tables in the catalogue
+   database**, beside DuckLake's. Each row gets a begin marker when it
+   is written and an end marker when it is replaced or removed.
+2. **The number comes from one source two writers cannot share.**
+   Which source is the open point below.
+3. **The version of a relation** is the highest begin or end marker of
+   its rows. A removal moves it, because it sets an end.
+4. **A kept read is keyed by** its text, its parameters, the dataset
+   and the versions of the relations and data tables its plan reads.
+   A changed relation gives another key; old entries leave by LRU.
+5. **A plan names what it reads.** The glossary and the test results
+   are queries over the relations.
+6. **A response of the model service is kept by content.** The key is
+   a hash of the route and the request body, plus the service's
+   version from the answer.
 
 ## Open
 
-- The version of a data table: the change log (today) or the highest
-  `snapshot_id` of its rows. The second costs a scan of a large table
-  and misses deletes; the first is lost when snapshots expire. The
-  server does not expire snapshots and closes the call to agents.
+- **Where the number comes from.** A catalog write makes no snapshot,
+  so the lake's snapshot id is not it. Candidates: a sequence in the
+  catalogue database; a counter row updated in the write's
+  transaction. Not verified: how each behaves through DuckDB's
+  Postgres attachment, and whether the write and the number are one
+  transaction there.
+- The glossary as of a version of the data needs the lake's snapshot
+  on each row beside the marker, as glossary rows have today.
 - A miss still costs the planning of a large read (0.3 to 0.4 s).
   Making `next` and `view_tests()` smaller is separate work.
 - An identical reload still changes a table's version.
-- Not measured: `next` itself over lake-kept relations; a working
-  day's number of snapshots on a real workspace.
 
 ## Next issue (draft)
 
-**DuckLake keeps the catalog's relations.** What it buys: a version
-per relation that the storage guarantees, unique row order under
-concurrent writes, the glossary as of a version of the data by time
-travel. What is there: the store's relations and `Inner::Seq`
-(`glossql_store.cpp`), `StoreVersionSQL` (`:1677`), `PartsSQL`
-(`:389`), the delete (`:1031`); the scratch measurements above. Done
-when: the eleven relations are DuckLake tables; `seq`, the store
-version and `snapshot_id` on glossary rows are gone; `DELETE FROM
-glossary` appends; a test writes annotations from 8 connections and
-finds one order; `SPEC.md` §5 says the same; both suites pass.
+**Begin and end markers on the catalog's relations.** What it buys: a
+version per relation and one order of rows under concurrent writes.
+What is there: `Inner::Seq`, `StoreVersionSQL` (`:1677`), `PartsSQL`
+(`:389`), the delete (`:1031`) in `glossql_store.cpp`; the
+reproduction of duplicate `seq`. Done when: the open point on the
+number is answered by a test on both catalogues; the eleven relations
+carry the markers; `seq` and the store version are gone; `DELETE FROM
+glossary` sets an end; a test writes annotations from 8 connections
+and finds one order; both suites pass.
