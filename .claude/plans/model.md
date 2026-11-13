@@ -36,12 +36,25 @@ The edges are one relation the catalog serves (`from`, `to`, `kind`).
 This relation is the lineage a person or an agent reads. Finer, later:
 `reads` per output column of a view, from the SQL as JSON.
 
-## 4. A function declares what it reads
+## 4. A function's body says what it reads
 
-A function has an output, the property it returns (`RETURNS`, as
-today), and an input signature, which the language had until August
-(`ACCEPTS`) and lost when a body became SQL. Each input is a **what**
-and a **where**:
+A function has an output, the property it returns (`RETURNS`). Its
+inputs are not declared a second time: the body is SQL, and SQL reads
+what it needs. That was the ruling of August, when `ACCEPTS` was
+retired ("a body composes its context inline"), and it stands.
+
+What went wrong since is where the inputs were taken from: the bound
+query plan, in which macros are expanded and constants are gone. They
+are taken from the body as written instead. DuckDB serves any SQL as
+JSON (`json_serialize_sql`); the reads of a body are the table
+functions and relations in that tree (tried on five shipped bodies:
+0.03 s, every read listed). The engine derives the list when the
+function is declared and stores it with the function, as JSON anyone
+can read.
+
+For the list to be exact, a body reads statements through a small
+set of read functions whose arguments are the **what** and the
+**where**, as constants:
 
 | What | |
 |---|---|
@@ -59,13 +72,13 @@ and a **where**:
 | its metric | the metric a plan plans |
 | the dataset | everything in the subject's dataset |
 
-The engine hands a running function the rows its signature names and
-no others; a body that reads anything else is refused. So what a
-function can see and what its result depends on are the same list,
-and it is in the catalog for anyone to read.
+The engine hands a running function the rows those reads name and no
+others; a body that reaches the catalog any other way is refused at
+its declaration. So what a function can see and what its result
+depends on are the same list.
 
-No rule about how far a function may reach is needed, and nothing is
-derived from the body's query plan.
+No rule about how far a function may reach is needed, and there is
+no grammar to add.
 
 ## 5. When a result is current
 
@@ -90,7 +103,7 @@ outdated" names the declared input that differs.
 - What only an actor can state (an annotation, a decision, a preview
   measurement): `next` lists it.
 
-## 7. The shipped functions, with their signature
+## 7. The shipped functions, with what each reads
 
 | Function | On | Reads |
 |---|---|---|
@@ -108,28 +121,36 @@ outdated" names the declared input that differs.
 The detectors (`value_entropy`, `rate_tolerance`, `range_breach`,
 `plan_gap`) read the property of the test they run for, on itself.
 
-Every function that stays fits the six places. The one that does not
-is retired below.
+| `additivity_evidence` | column | data, `role` and the relationships of the dataset |
+| `outlier_profile` | column | data of itself |
+
+`additivity_evidence` decides stock or flow for a measure from
+another table: movements summed from an event table that
+relationships align with the measure's table, directly, through a
+shared key, or through a document or master table. That path is
+found in the data, so its honest place is the dataset. No view needs
+its result, so nothing computes it by itself; an agent runs it before
+annotating additivity.
 
 ## 8. What goes overboard
 
 | What | Why |
 |---|---|
-| `additivity_evidence` | no test, read or frame uses its result; it follows relationships up to three steps and reads `role` on the whole dataset; it is the only function the six places cannot express |
 | `forecast_exists`, `scenario_exists` | the preview tests work out their state without them |
 | `fan_out_check` and `validity_check` as two | they split one question; one function |
 | The inputs digest the outlook kit computes and stores by hand | section 5 replaces it |
-| Inputs derived from a body's query plan; the lineage computed in C++ with its three widenings | section 4 replaces them |
-| `outlier_profile` | only two console frames read it; to decide |
+| Inputs derived from a body's bound query plan; the lineage computed in C++ with its three widenings | section 4 replaces them |
 
-## 9. For the project lead
+## 9. Next, before code
 
-- **The form of the signature is grammar.** It goes through the
-  corpus: two or three spellings of the same real functions, shown
-  as forks. This page fixes only its content: what, and where.
+- **A spike in the corpus's manner**: the read functions written
+  down (name, the what, the where), and three shipped bodies written
+  with them (`additivity_check`, `orphan_check`, `fan_out_check`).
+  Checked: each body parses, its JSON lists exactly the reads of
+  section 7, and it returns what the body returns today.
 - **`its sources` is coarser than one check needs**: `fan_out_check`
   reads the profile of the join columns only. A seventh place, the
-  columns it joins on, would make it exact. I would start with six.
+  columns it joins on, would make it exact. Start with six.
 - **The preview measurements stay on the dataset** for now: one
   service call scores all metrics together. Per metric is the outlook
   issue.
