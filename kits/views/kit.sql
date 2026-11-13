@@ -108,7 +108,7 @@ cols AS (
   WHERE c.table_name IN (SELECT metric FROM views)),
 annotated AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
-  -- one read per property, so that a result depends on these five alone
+  -- one read per property: a result reads the stored results of these five alone
   FROM (FROM glossql_glossary(current_schema(), 'role', false)
         UNION ALL FROM glossql_glossary(current_schema(), 'additivity', false)
         UNION ALL FROM glossql_glossary(current_schema(), 'dimension', false)

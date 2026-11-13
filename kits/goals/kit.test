@@ -552,3 +552,93 @@ query T
 SELECT run FROM results_due() WHERE function = 'fund_named';
 ----
 SELECT fund_named_check() FROM side.ledger_clean
+
+# --- a check on a metric depends on the annotations of what the metric reads: an annotation on a
+# table no metric reads computes nothing, a role on a column one metric scans computes that metric's check
+
+statement ok
+DECLARE DATASET grid SET (purpose: 'two metrics over one table');
+
+statement ok
+USE grid;
+
+statement ok
+CREATE TABLE grid.results AS SELECT DATE '2024-01-01' + (i % 40)::INTEGER AS date, i % 7 AS driver_id, (i % 10)::DOUBLE AS points FROM range(400) t(i);
+
+statement ok
+CREATE TABLE grid.circuits AS SELECT i AS circuit_id, 'circuit ' || i AS name FROM range(5) t(i);
+
+statement ok
+DECLARE ASPECT points WITH $${"title": "Points"}$$ AS VIEW;
+
+statement ok
+GLOSS points ON grid AS $${"sql": "SELECT date AS period, sum(points) AS value FROM grid.results GROUP BY 1"}$$;
+
+statement ok
+DECLARE ASPECT entries WITH $${"title": "Entries"}$$ AS VIEW;
+
+statement ok
+GLOSS entries ON grid AS $${"sql": "SELECT date AS period, count(driver_id) AS value FROM grid.results GROUP BY 1"}$$;
+
+statement ok
+GLOSS role ON points.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON points.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON points.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS role ON entries.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON entries.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON entries.value AS $${"value": "additive"}$$;
+
+statement ok
+SELECT column_profile() FROM grid.results.date;
+
+statement ok
+SELECT column_profile() FROM grid.results.driver_id;
+
+statement ok
+SELECT column_profile() FROM grid.results.points;
+
+statement ok
+SELECT temporal() FROM grid.entries.period;
+
+statement ok
+SELECT temporal() FROM grid.points.period;
+
+statement ok
+SELECT relationship_coherence() FROM grid;
+
+statement ok
+SELECT additivity_check(), fan_out_check(), orphan_check(), validity_check() FROM grid.entries;
+
+statement ok
+SELECT additivity_check(), fan_out_check(), orphan_check(), validity_check() FROM grid.points;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+statement ok
+GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+statement ok
+GLOSS role ON results.driver_id AS $${"value": "dimension"}$$;
+
+query T
+SELECT run FROM results_due();
+----
+SELECT additivity_check() FROM grid.entries
