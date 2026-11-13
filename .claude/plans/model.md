@@ -1,8 +1,8 @@
 # The model: what a result depends on
 
-One page to agree on before more code. It replaces the design
-sentences of `dependencies.md` once agreed, and then goes into
-`SPEC.md` §6. Marked *(to verify)* where I have not read the code.
+One page to agree on before more code. Once agreed it replaces the
+design sentences of `dependencies.md` and goes into `SPEC.md` §6. The
+function table is verified against each function's body.
 
 ## 1. Assets are the nodes
 
@@ -16,111 +16,120 @@ sentences of `dependencies.md` once agreed, and then goes into
 
 ## 2. Statements hang on one asset
 
-- An **annotation**: asset, property, actor, value. Written by an
-  agent or a person.
+- An **annotation**: asset, property, actor, value. Written.
 - A **result**: asset, function, value or error. Computed.
 
-**A statement is stored on the asset it is about.** Two results break
-this today and are the cause of a patch: `relationship_coherence` is
-one result on the dataset for all relationships, and
-`metric_forecast` one on the dataset for all metrics. In the model
-each is one result per relationship and per metric.
+A statement is stored on the asset it is about. One result breaks
+this today: `relationship_coherence` is one result on the dataset
+for all relationships. It becomes one per relationship.
 
 ## 3. Edges, each with a kind
 
 | Kind | From → to | Comes from |
 |---|---|---|
 | `contains` | dataset → table, view, relationship; table or view → column | the lake's catalog |
-| `reads` | view → column it scans or joins on; view → view it reads | the view's SQL, resolved (`glossql_views_scans`, `glossql_views_joins`) |
+| `reads` | view → the tables and columns it scans and joins on; view → view | the view's SQL, resolved |
 | `relates` | relationship → its two columns | `DECLARE RELATIONSHIP` |
 | `plans` | plan → the metric it plans | the plan's declaration |
 
-Later, finer: `reads` from one output column of a view to the input
-columns of its expression, from the SQL as JSON
-(`json_serialize_sql`).
+The edges are one relation the catalog serves (`from`, `to`, `kind`).
+This relation is the lineage a person or an agent reads. Finer, later:
+`reads` per output column of a view, from the SQL as JSON.
 
-The edges are one relation the catalog serves: `from`, `to`, `kind`.
-Lineage, as a person or an agent reads it, is this relation.
+## 4. A function declares what it reads
 
-## 4. The reach of an asset
+A function has an output, the property it returns (`RETURNS`, as
+today), and an input signature, which the language had until August
+(`ACCEPTS`) and lost when a body became SQL. Each input is a **what**
+and a **where**:
 
-What a result on asset X may read, and so depends on:
+| What | |
+|---|---|
+| data | the rows of a table or the cells of a view |
+| a property | the annotations of that property |
+| a function | the results of that function |
+| the definition | a view's SQL and what it reads |
 
-1. X, what X contains, and what contains X up to its table or view
-   (a column reaches its table; not the dataset's other tables).
-2. From there, along `reads` and `plans`, as far as they go.
-3. The relationships that touch a column reached so far, and the
-   column and table at their other end. One step, not further.
-4. A result on the dataset reaches everything in the dataset.
+| Where, from the function's subject | |
+|---|---|
+| itself | the subject |
+| its columns | what it contains |
+| its sources | the tables and columns a view reads |
+| its relationships | the relationships between its sources, or that touch it |
+| its metric | the metric a plan plans |
+| the dataset | everything in the subject's dataset |
 
-While a function runs it sees the annotations and results of its
-reach and nothing else. So the rule cannot be broken by a function's
-SQL; a read outside the reach returns no rows.
+The engine hands a running function the rows its signature names and
+no others; a body that reads anything else is refused. So what a
+function can see and what its result depends on are the same list,
+and it is in the catalog for anyone to read.
+
+No rule about how far a function may reach is needed, and nothing is
+derived from the body's query plan.
 
 ## 5. When a result is current
 
-A result on X is current while all four hold:
+A result is current while each declared input is as it was read:
 
-- **Data**: each table it scanned has the DuckLake version it had.
-- **Statements**: the annotations and results it read in its reach
-  hold the same values, and those results are current themselves.
-- **Rules**: its function, its property and the definitions of the
-  views in its reach are as they were declared.
-- **Reach**: the edges that gave its reach are the same.
+- data: the table has the DuckLake version it had (for a view, each
+  table it reads);
+- annotations and results: they hold the same values, and those
+  results are current;
+- the definition, and the function's and the property's own
+  declarations: as they were declared;
+- the edges that say where (a view's sources, a relationship's
+  columns): the same.
 
-Otherwise it is outdated: served and marked. Nothing flips a mark;
-the result is computed again, or the change is undone.
-
-"Why is this outdated" has one answer form: the statement, table,
-rule or edge that differs, and the path from X to it.
+Otherwise it is outdated: served and marked. It becomes current by
+being computed again, or by the change being undone. "Why is this
+outdated" names the declared input that differs.
 
 ## 6. Who brings it current
 
-- A result a view needs: the server, after a write
-  (`results_due()`).
-- A statement only an actor can make (an annotation, a decision, a
-  preview measurement): `next` lists it.
+- A result a view needs: the server, after a write (`results_due()`).
+- What only an actor can state (an annotation, a decision, a preview
+  measurement): `next` lists it.
 
-## 7. Each shipped function in the model
+## 7. The shipped functions, with their signature
 
-| Function | On | Reads in its reach |
+| Function | On | Reads |
 |---|---|---|
-| `column_profile`, `outlier_profile`, `temporal` | column | the table's rows |
-| `additivity_evidence` | column | `role` on the tables one relationship away *(one step: to verify)* |
-| `detect_derivations`, `detect_hierarchies` | table | the table's rows and columns |
-| `relationship_coherence` | relationship (today: dataset) | the rows of its two tables |
-| `detect_relationships`, `detect_definition_collisions` | dataset | everything |
-| `additivity_check` | view | the view's definition; `role`, `additivity`, `dimension`, `time_grains`, `temporal_profile` on the columns it reads; for a plan, its metric |
-| `fan_out_check` | view | `column_profile` of the columns it reads and joins on |
-| `orphan_check` | view | `relationship_coherence` of the relationships between the columns it joins on |
-| `validity_check` | view | *(to verify)* |
-| `metric_ranges`, `metric_forecast`, `metric_scenario` (preview) | metric (today: dataset) | the metric's series; the scenario its levers |
-| `metric_plan` (preview) | plan | its metric's forecast and series |
+| `column_profile`, `temporal` | column | data of itself |
+| `detect_hierarchies`, `detect_derivations` | table | data of itself |
+| `detect_relationships` | dataset | data of the dataset's tables |
+| `relationship_coherence` | relationship (today: dataset) | data of itself: the key and date columns of its two tables |
+| `detect_definition_collisions` | dataset | data, definitions, `role` and `additivity` of the dataset's views |
+| `additivity_check` | view | definition of itself; `role`, `additivity`, `dimension`, `time_grains` on its columns; `temporal` on its columns |
+| `fan_out_check`, `validity_check` | view | definition of itself; `validity` on its sources; `column_profile` on its sources |
+| `orphan_check` | view | definition of itself; `relationship_coherence` on its relationships |
+| `metric_ranges`, `metric_forecast`, `metric_scenario` (preview) | dataset | data and definitions of the dataset's metrics; `time_grains`, `lever` and the scenarios on the dataset; `temporal` on the dataset |
+| `metric_plan` (preview) | plan | data of itself; data of its metric; `metric_forecast` on the dataset |
+
+The detectors (`value_entropy`, `rate_tolerance`, `range_breach`,
+`plan_gap`) read the property of the test they run for, on itself.
+
+Every function that stays fits the six places. The one that does not
+is retired below.
 
 ## 8. What goes overboard
 
-- The three widenings in the extension's `ClosureOf`: results on the
-  dataset in every view's reach, the relationship component taken
-  whole, the dataset as fallback for a relationship.
-- The reach computed in C++: it becomes a recursive query over the
-  edges.
-- One result on the dataset for all relationships, and for all
-  metrics' forecasts.
+| What | Why |
+|---|---|
+| `additivity_evidence` | no test, read or frame uses its result; it follows relationships up to three steps and reads `role` on the whole dataset; it is the only function the six places cannot express |
+| `forecast_exists`, `scenario_exists` | the preview tests work out their state without them |
+| `fan_out_check` and `validity_check` as two | they split one question; one function |
+| The inputs digest the outlook kit computes and stores by hand | section 5 replaces it |
+| Inputs derived from a body's query plan; the lineage computed in C++ with its three widenings | section 4 replaces them |
+| `outlier_profile` | only two console frames read it; to decide |
 
-## 9. One question left open
+## 9. For the project lead
 
-**How a result knows which properties it read.** Rule 5 says "the
-annotations it read". Today the extension takes the properties from
-the function's SQL where a read names one as a constant
-(`glossql_glossary(…, 'role')`); a read that names none counts every
-property in the reach (measured: `meaning` on a scanned table
-computes two results where none is right).
-
-- **A. Keep reading it from the SQL** and make each kit read name
-  its property. No grammar. A kit author who writes a read without a
-  property gets a correct but coarse dependency.
-- **B. The function declares the properties it reads**, and sees only
-  those. Exact and visible in the catalog. It is grammar, so it goes
-  through the corpus and the project lead.
-
-I would take A now and keep B for when a customer writes functions.
+- **The form of the signature is grammar.** It goes through the
+  corpus: two or three spellings of the same real functions, shown
+  as forks. This page fixes only its content: what, and where.
+- **`its sources` is coarser than one check needs**: `fan_out_check`
+  reads the profile of the join columns only. A seventh place, the
+  columns it joins on, would make it exact. I would start with six.
+- **The preview measurements stay on the dataset** for now: one
+  service call scores all metrics together. Per metric is the outlook
+  issue.
