@@ -95,7 +95,8 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- window_periods, additivity, additivity_state, dims, columns (the view's
 -- columns by name). It reads the views'
 -- definitions, role, additivity, dimension and time_grains, and the
--- temporal profiles. A view whose definition serves no view has no row.
+-- temporal profiles, on the dataset's metrics: a plan is no row here
+-- (plan_axes()). A view whose definition serves no view has no row.
 --===------------------------------------------------------------------===--
 
 -- series_reason(…) and plan_reason(…): why a view serves no series, NULL
@@ -268,13 +269,13 @@ ORDER BY view;
 CREATE OR REPLACE MACRO main.view_axes() AS TABLE
 WITH defs AS MATERIALIZED (
   SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition('the dataset')),
+  FROM definition('the dataset''s metrics')),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          property AS aspect, value, state
-  FROM (FROM annotations('role', 'the dataset') UNION ALL FROM annotations('additivity', 'the dataset')
-        UNION ALL FROM annotations('dimension', 'the dataset') UNION ALL FROM annotations('time_grains', 'the dataset'))
+  FROM (FROM annotations('role', 'the dataset''s metrics') UNION ALL FROM annotations('additivity', 'the dataset''s metrics')
+        UNION ALL FROM annotations('dimension', 'the dataset''s metrics') UNION ALL FROM annotations('time_grains', 'the dataset''s metrics'))
   WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -298,7 +299,7 @@ profiles AS (
          CASE WHEN json_extract_string(value, '$.applicable') = 'true'
                    AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
               THEN json_extract_string(value, '$.granularity') END AS grain_detected
-  FROM results('temporal', 'the dataset') WHERE value IS NOT NULL),
+  FROM results('temporal', 'the dataset''s metrics') WHERE value IS NOT NULL),
 rows_ AS (
   SELECT ch.*,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
@@ -313,26 +314,34 @@ rows_ AS (
 judged AS (
   SELECT *, main.series_reason(ds, metric, stopped, true, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
          coalesce(kind, '') NOT IN ('scalar', 'relation') AS series
-  FROM rows_ WHERE coalesce(kind, '') <> 'plan'),
-plans AS (
-  SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.columns,
-         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
-         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
-         m.metric IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
-         m.period_column AS of_period, m.value_column AS of_value, m.numerator, m.denominator, m.additivity, m.additivity_state
-  FROM rows_ p
-  LEFT JOIN (SELECT metric, list(col ORDER BY pos) AS cols FROM cols GROUP BY metric) pc ON pc.metric = p.metric
-  LEFT JOIN judged m ON m.metric = p.plan_of
-  WHERE p.kind = 'plan')
+  FROM rows_ WHERE coalesce(kind, '') <> 'plan')
 SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
        additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns
 FROM judged
-UNION ALL
-SELECT metric, kind, plan_of, covers, stopped, reason IS NULL, reason, period_column, value_column, numerator, denominator, covers, NULL,
-       additivity, additivity_state, []::VARCHAR[], list_transform(columns, lambda c: c.name)
+ORDER BY view;
+
+-- plan_axes(): the same for each plan of the dataset: view, kind,
+-- plan_of, covers, stopped, applicable, reason, its period and value
+-- columns, its metric's additivity, the grain it covers as floor. It reads
+-- every view's definition, and its metric's through view_axes().
+CREATE OR REPLACE MACRO main.plan_axes() AS TABLE
+WITH defs AS MATERIALIZED (
+  SELECT split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
+  FROM definition('the dataset') WHERE kind = 'plan'),
+pc AS (SELECT d.metric, list(c.name ORDER BY c.position) AS cols FROM defs d, unnest(d.columns) t(c) GROUP BY d.metric),
+m AS MATERIALIZED (FROM main.view_axes()),
+plans AS (
+  SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.columns,
+         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
+         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
+         m.view IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
+         m.period_column AS of_period, m.value_column AS of_value, m.numerator, m.denominator, m.additivity, m.additivity_state
+  FROM defs p LEFT JOIN pc ON pc.metric = p.metric LEFT JOIN m ON m.view = p.plan_of)
+SELECT metric AS view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason, period_column, value_column, numerator, denominator,
+       covers AS floor, NULL::INTEGER AS window_periods, additivity, additivity_state, []::VARCHAR[] AS dims, list_transform(columns, lambda c: c.name) AS columns
 FROM (SELECT *, main.plan_reason(stopped, plan_of, of_declared, true, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason FROM plans)
 ORDER BY view;
 
@@ -387,7 +396,7 @@ WITH asked AS MATERIALIZED (
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
-  SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM asked)),
+  SELECT * FROM dataset_cells(current_schema(), 'metrics') WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
   SELECT c."table" AS metric, c.rn,
          max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,

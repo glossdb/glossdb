@@ -162,13 +162,16 @@ SELECT (SELECT count(*) FROM results_due() WHERE function = 'metric_ranges'),
 statement ok
 SELECT metric_ranges() FROM ops;
 
+statement ok
+SELECT metric_forecast() FROM ops;
+
 query I
 SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
 ----
 0
 
-# a plan is declared and defined: the ranges read the dataset's definitions, the plan's among them, and are due;
-# the plan makes the forecast a measurement the dataset needs
+# a plan is declared and defined: the ranges and the forecast read the dataset's metrics, which a plan is not
+# one of, and stay current; the plan's own comparison is what is due
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
@@ -176,22 +179,24 @@ statement ok
 GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw"}$$;
 
 query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+SELECT name, stored, due FROM outlook_due() WHERE stored ORDER BY name;
 ----
-metric_forecast	false	true
-metric_ranges	true	true
+metric_forecast	true	false
+metric_ranges	true	false
 
 query T
-SELECT statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%' ORDER BY statement;
+SELECT statement FROM next WHERE asset LIKE 'ops%' AND statement LIKE 'SELECT metric_%' ORDER BY statement;
 ----
-SELECT metric_forecast() FROM ops;
-SELECT metric_ranges() FROM ops;
+SELECT metric_plan() FROM ops.orders_target;
 
+# an annotation on the plan's column leaves them current too
 statement ok
-SELECT metric_ranges() FROM ops;
+GLOSS role ON orders_target.value AS $${"value": "measure"}$$;
 
-statement ok
-SELECT metric_forecast() FROM ops;
+query I
+SELECT count(*) FROM outlook_due() WHERE stored AND due;
+----
+0
 
 statement ok
 SELECT metric_plan() FROM ops.orders_target;

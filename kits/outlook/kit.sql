@@ -39,7 +39,7 @@ edges AS (
   SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
          count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
            > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
-  FROM dataset_cells(current_schema(), 'views') c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
+  FROM dataset_cells(current_schema(), 'metrics') c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
   GROUP BY c."table")
 SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
 WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
@@ -116,7 +116,7 @@ WITH bodies AS (
   SELECT property AS scenario, value AS body FROM annotations('x-kind scenario', 'the dataset') WHERE NOT contains(asset, '.')),
 axes AS MATERIALIZED (SELECT view, kind, applicable, columns FROM main.view_axes()),
 facts AS (
-  SELECT (SELECT coalesce(list(split_part(asset, '.', 2) || '.' || split_part(asset, '.', 3)), []) FROM annotations('lever', 'the dataset')
+  SELECT (SELECT coalesce(list(split_part(asset, '.', 2) || '.' || split_part(asset, '.', 3)), []) FROM annotations('lever', 'the dataset''s metrics')
           WHERE state = 'current' AND (value->>'value') = 'true') AS set_levers,
          (SELECT coalesce(list(view), []) FROM axes WHERE applicable AND coalesce(kind, '') NOT IN ('plan', 'scalar', 'relation')) AS served,
          (SELECT coalesce(list(view || '.' || c), []) FROM axes, unnest(columns) t(c)) AS columns),
@@ -655,7 +655,7 @@ lever_rows AS (
          max(CASE WHEN c."column" = l.col THEN TRY_CAST(c.val AS DOUBLE) END) AS at_row
   FROM (SELECT DISTINCT scenario, lever, metric, col FROM lv) l
   JOIN axes a ON a.metric = l.metric
-  JOIN dataset_cells(current_schema(), 'views') c ON c."table" = l.metric AND c."column" IN (a.period_column, l.col)
+  JOIN dataset_cells(current_schema(), 'metrics') c ON c."table" = l.metric AND c."column" IN (a.period_column, l.col)
   GROUP BY l.scenario, l.lever, c.rn),
 lever_series AS (
   SELECT r.scenario, r.lever, date_trunc(a.floor, r.instant) AS period, avg(r.at_row) AS value
@@ -998,7 +998,7 @@ ORDER BY l.scenario, metric, lever;
 CREATE OR REPLACE MACRO main.plan_rows() AS TABLE
 WITH p AS (
   SELECT a.view AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.additivity
-  FROM main.view_axes() a WHERE a.kind = 'plan' AND a.applicable),
+  FROM main.plan_axes() a WHERE a.applicable),
 rows_ AS (
   SELECT p.plan, p.metric, p.additivity, p.covers,
          max(CASE WHEN c."column" = p.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -1231,7 +1231,7 @@ DECLARE ASPECT metric_plan WITH $${
 }$$ AS MEASUREMENT ON TABLE;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
-  WITH named AS (SELECT kind, applicable, reason FROM main.view_axes() WHERE view = split_part($subject, '.', 2)),
+  WITH named AS (SELECT kind, applicable, reason FROM main.plan_axes() WHERE view = split_part($subject, '.', 2)),
   refusal AS (
     SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM named WHERE kind = 'plan')
                 THEN error('not_a_plan: ' || $subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')
