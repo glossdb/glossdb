@@ -206,6 +206,94 @@ SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_
 ----
 0
 
+# a plan's comparison reads the plan itself, its metric and the forecast: a second plan, defined, defined again
+# and annotated, leaves the first plan's current
+statement ok
+DECLARE ASPECT orders_stretch WITH $${"title": "Orders stretch", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
+
+statement ok
+GLOSS orders_stretch ON ops AS $${"sql": "SELECT month, orders * 1.2 AS value FROM ops.orders_raw"}$$;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
+statement ok
+GLOSS orders_stretch ON ops AS $${"sql": "SELECT month, orders * 1.3 AS value FROM ops.orders_raw"}$$;
+
+statement ok
+GLOSS meaning ON orders_stretch.value AS $${"value": "the stretch goal"}$$;
+
+query T
+SELECT DISTINCT subject FROM glossql_outdated() WHERE function = 'metric_plan' ORDER BY ALL;
+----
+ops.orders_stretch
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
+# a view beside them that defines no metric leaves both current
+statement ok
+CREATE VIEW ops.staffing_raw AS SELECT month, staff FROM ops.orders_raw;
+
+query I
+SELECT count(*) FROM glossql_outdated() WHERE function = 'metric_plan';
+----
+0
+
+statement ok
+DROP VIEW ops.staffing_raw;
+
+# a change to the metric both plans compare against makes both due
+statement ok
+GLOSS dimension ON orders.price AS $${"value": "none"}$$;
+
+query TT
+SELECT DISTINCT subject, input FROM glossql_outdated() WHERE function = 'metric_plan' AND reason = 'changed' ORDER BY ALL;
+----
+ops.orders_stretch	annotations(dimension, its metric)
+ops.orders_target	annotations(dimension, its metric)
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_target;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
+# a metric declared beside them: the forecast reads the dataset's metrics, and both plans read the stored
+# forecast, so they are due through it
+statement ok
+DECLARE ASPECT staffing WITH $${"title": "Staffing"}$$ AS VIEW;
+
+statement ok
+GLOSS staffing ON ops AS $${"sql": "SELECT month, staff AS value FROM ops.orders_raw"}$$;
+
+query TTT
+SELECT DISTINCT subject, input, reason FROM glossql_outdated() WHERE function = 'metric_plan' ORDER BY ALL;
+----
+ops.orders_stretch	results(metric_forecast, its dataset)	outdated
+ops.orders_target	results(metric_forecast, its dataset)	outdated
+
+statement ok
+GLOSS staffing ON ops AS $${"stopped": "not a metric of this test"}$$;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_target;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
+
 # an annotation the measurements do not read leaves them current: nothing is due
 statement ok
 GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;

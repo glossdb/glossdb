@@ -31,18 +31,20 @@ CREATE OR REPLACE MACRO main.service_soft(path, body) AS glossql_service(path, b
 -- all read it, so they drop the same period.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.partial_periods(g) AS TABLE
+CREATE OR REPLACE MACRO main.partial_periods_of(metrics_at, g) AS TABLE
 WITH axes AS (
   SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
-  FROM main.view_axes() WHERE applicable AND coalesce(kind, '') <> 'plan'),
+  FROM main.view_axes_of(metrics_at) WHERE applicable AND coalesce(kind, '') <> 'plan'),
 edges AS (
   SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
          count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
            > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
-  FROM dataset_cells(current_schema(), 'metrics') c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
+  FROM dataset_cells(current_schema(), metrics_at) c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
   GROUP BY c."table")
 SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
 WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
+
+CREATE OR REPLACE MACRO main.partial_periods(g) AS TABLE FROM main.partial_periods_of('the dataset''s metrics', g);
 
 CREATE OR REPLACE MACRO main.complete_series(g) AS TABLE
 WITH s AS (
@@ -655,7 +657,7 @@ lever_rows AS (
          max(CASE WHEN c."column" = l.col THEN TRY_CAST(c.val AS DOUBLE) END) AS at_row
   FROM (SELECT DISTINCT scenario, lever, metric, col FROM lv) l
   JOIN axes a ON a.metric = l.metric
-  JOIN dataset_cells(current_schema(), 'metrics') c ON c."table" = l.metric AND c."column" IN (a.period_column, l.col)
+  JOIN dataset_cells(current_schema(), 'the dataset''s metrics') c ON c."table" = l.metric AND c."column" IN (a.period_column, l.col)
   GROUP BY l.scenario, l.lever, c.rn),
 lever_series AS (
   SELECT r.scenario, r.lever, date_trunc(a.floor, r.instant) AS period, avg(r.at_row) AS value
@@ -995,15 +997,15 @@ ORDER BY l.scenario, metric, lever;
 -- medians ahead) under the metric, for metric_series(world := …).
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.plan_rows() AS TABLE
+CREATE OR REPLACE MACRO main.plan_rows_of(plans_at, metrics_at) AS TABLE
 WITH p AS (
   SELECT a.view AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.additivity
-  FROM main.plan_axes() a WHERE a.applicable),
+  FROM main.plan_axes_of(plans_at, metrics_at) a WHERE a.applicable),
 rows_ AS (
   SELECT p.plan, p.metric, p.additivity, p.covers,
          max(CASE WHEN c."column" = p.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
          max(CASE WHEN c."column" = p.value_column THEN TRY_CAST(c.val AS DOUBLE) END) AS value
-  FROM dataset_cells(current_schema(), 'views') c JOIN p ON p.plan = c."table"
+  FROM dataset_cells(current_schema(), plans_at) c JOIN p ON p.plan = c."table"
   GROUP BY p.plan, p.metric, p.additivity, p.covers, c.rn),
 gaps AS (
   SELECT plan, min(gap) AS gap
@@ -1015,8 +1017,12 @@ SELECT r.plan, r.metric, r.additivity, r.covers, r.instant, r.value,
                                WHEN g.gap >= 28 THEN 'month' WHEN g.gap >= 7 THEN 'week' ELSE 'day' END) AS grain
 FROM rows_ r LEFT JOIN gaps g USING (plan);
 
-CREATE OR REPLACE MACRO main.plan_grains() AS TABLE
-SELECT DISTINCT plan, metric, additivity, grain FROM main.plan_rows();
+CREATE OR REPLACE MACRO main.plan_rows() AS TABLE FROM main.plan_rows_of('the dataset', 'the dataset''s metrics');
+
+CREATE OR REPLACE MACRO main.plan_grains_of(plans_at, metrics_at) AS TABLE
+SELECT DISTINCT plan, metric, additivity, grain FROM main.plan_rows_of(plans_at, metrics_at);
+
+CREATE OR REPLACE MACRO main.plan_grains() AS TABLE FROM main.plan_grains_of('the dataset', 'the dataset''s metrics');
 
 CREATE OR REPLACE MACRO main.plan_cells(at_grain) AS TABLE
 SELECT r.plan, r.metric, coalesce(at_grain, r.grain) AS grain, date_trunc(coalesce(at_grain, r.grain), r.instant) AS period,
@@ -1083,26 +1089,28 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 -- service's share for such a range), origin (the forecast's). A period
 -- is complete once the metric's last complete
 -- period reaches its end (complete_series()). Computed at read;
--- metric_plan stores it per plan.
+-- metric_plan stores it per plan. plan_points_of(plans_at, metrics_at)
+-- is the same over the plans and the metrics of the places it names:
+-- metric_plan reads its own plan, 'itself', and 'its metric'.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.plan_points() AS TABLE
-WITH prow AS MATERIALIZED (SELECT * FROM main.plan_rows()),
+CREATE OR REPLACE MACRO main.plan_points_of(plans_at, metrics_at) AS TABLE
+WITH prow AS MATERIALIZED (SELECT * FROM main.plan_rows_of(plans_at, metrics_at)),
 g AS (
   SELECT pg.plan, pg.metric, pg.additivity, pg.grain, m.floor AS metric_floor
   FROM (SELECT DISTINCT plan, metric, additivity, grain FROM prow) pg
-  JOIN main.view_axes() m ON m.view = pg.metric WHERE m.applicable),
+  JOIN main.view_axes_of(metrics_at) m ON m.view = pg.metric WHERE m.applicable),
 floor_cells AS MATERIALIZED (
-  SELECT metric, period, value, num, den, additivity FROM main.actual_series(unclaimed := 'skip')
+  SELECT metric, period, value, num, den, additivity FROM main.actual_series_of(metrics_at, unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual'),
 -- edge: the last period with a value; origin: the last complete one, the period before where the data ends inside the
 -- edge's; first_actual: where the served actuals begin (the series serves a window of periods, not the whole history)
 edges AS (SELECT metric, max(period) AS edge, min(period) AS first_actual FROM floor_cells WHERE value IS NOT NULL GROUP BY metric),
 origins AS (
   SELECT e.metric, e.edge, e.first_actual,
-         CASE WHEN EXISTS (SELECT 1 FROM main.partial_periods(NULL) pp WHERE pp.metric = e.metric AND pp.period = e.edge)
+         CASE WHEN EXISTS (SELECT 1 FROM main.partial_periods_of(metrics_at, NULL) pp WHERE pp.metric = e.metric AND pp.period = e.edge)
               THEN e.edge - main.grain_step(m.floor) ELSE e.edge END AS origin
-  FROM edges e JOIN main.view_axes() m ON m.view = e.metric),
+  FROM edges e JOIN main.view_axes_of(metrics_at) m ON m.view = e.metric),
 cells AS (
   -- the plan's cells at its own grain and at the year
   SELECT r.plan, r.metric, gr.step_grain AS grain, date_trunc(gr.step_grain, r.instant) AS period,
@@ -1168,7 +1176,7 @@ fp AS MATERIALIZED (
   SELECT u.m.metric AS metric, u.m.grain AS grain, u.m.origin::TIMESTAMP AS origin, p.p.step AS step, p.p.span AS span, p.p.to_go AS to_go,
          p.p.period::TIMESTAMP AS period, p.p.p10 AS p10, p.p.p50 AS p50, p.p.p90 AS p90, p.p.service_80 AS held_80,
          CASE WHEN p.p.service_80 IS NOT NULL THEN 'service' END AS held_from
-  FROM results('metric_forecast', 'the dataset') f, unnest(main.forecast_metrics(f.value)) u(m), unnest(u.m.points) p(p)
+  FROM results('metric_forecast', 'its dataset') f, unnest(main.forecast_metrics(f.value)) u(m), unnest(u.m.points) p(p)
   WHERE f.value IS NOT NULL AND u.m.applicable AND p.p.step IS NOT NULL),
 -- the range a row is held against: the step's at the metric's own grain; at a coarser grain, for a stock the range of the
 -- last period of the metric's grain inside it, for a flow that has begun the total that runs to the period's end
@@ -1207,6 +1215,8 @@ SELECT plan, metric, grain, period,
 FROM ranged
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
+CREATE OR REPLACE MACRO main.plan_points() AS TABLE FROM main.plan_points_of('the dataset', 'the dataset''s metrics');
+
 --===------------------------------------------------------------------===--
 -- metric_plan: the plan judged, as a measurement on the plan — the rows
 -- plan_points() serves for it as of the data, with the origin of the
@@ -1231,14 +1241,14 @@ DECLARE ASPECT metric_plan WITH $${
 }$$ AS MEASUREMENT ON TABLE;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
-  WITH named AS (SELECT kind, applicable, reason FROM main.plan_axes() WHERE view = split_part($subject, '.', 2)),
+  WITH named AS (SELECT kind, applicable, reason FROM main.plan_axes_of('itself', 'its metric') WHERE view = split_part($subject, '.', 2)),
   refusal AS (
     SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM named WHERE kind = 'plan')
                 THEN error('not_a_plan: ' || $subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')
                 WHEN EXISTS (SELECT 1 FROM named WHERE NOT applicable)
                 THEN error('plan_not_served: ' || $subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
-  pts AS (SELECT * FROM main.plan_points() WHERE plan = split_part($subject, '.', 2)),
-  own AS (SELECT metric, grain FROM main.plan_grains() WHERE plan = split_part($subject, '.', 2))
+  pts AS (SELECT * FROM main.plan_points_of('itself', 'its metric') WHERE plan = split_part($subject, '.', 2)),
+  own AS (SELECT metric, grain FROM main.plan_grains_of('itself', 'its metric') WHERE plan = split_part($subject, '.', 2))
   SELECT coalesce((SELECT r FROM refusal)::VARCHAR, split_part($subject, '.', 2)) AS plan,
          (SELECT any_value(metric) FROM own) AS metric,
          (SELECT any_value(grain) FROM own) AS grain,

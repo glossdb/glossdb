@@ -266,16 +266,16 @@ SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, rea
 FROM judged_plans
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes() AS TABLE
+CREATE OR REPLACE MACRO main.view_axes_of(metrics_at) AS TABLE
 WITH defs AS MATERIALIZED (
   SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition('the dataset''s metrics')),
+  FROM definition(metrics_at)),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          property AS aspect, value, state
-  FROM (FROM annotations('role', 'the dataset''s metrics') UNION ALL FROM annotations('additivity', 'the dataset''s metrics')
-        UNION ALL FROM annotations('dimension', 'the dataset''s metrics') UNION ALL FROM annotations('time_grains', 'the dataset''s metrics'))
+  FROM (FROM annotations('role', metrics_at) UNION ALL FROM annotations('additivity', metrics_at)
+        UNION ALL FROM annotations('dimension', metrics_at) UNION ALL FROM annotations('time_grains', metrics_at))
   WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -299,7 +299,7 @@ profiles AS (
          CASE WHEN json_extract_string(value, '$.applicable') = 'true'
                    AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
               THEN json_extract_string(value, '$.granularity') END AS grain_detected
-  FROM results('temporal', 'the dataset''s metrics') WHERE value IS NOT NULL),
+  FROM results('temporal', metrics_at) WHERE value IS NOT NULL),
 rows_ AS (
   SELECT ch.*,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
@@ -323,16 +323,25 @@ SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN rea
 FROM judged
 ORDER BY view;
 
+CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the dataset''s metrics');
+
+-- view_axes_of(metrics_at) reads the metrics of the place metrics_at
+-- names, a constant: view_axes() the dataset's metrics, a plan's own
+-- comparison its metric ('its metric').
+--
 -- plan_axes(): the same for each plan of the dataset: view, kind,
 -- plan_of, covers, stopped, applicable, reason, its period and value
 -- columns, its metric's additivity, the grain it covers as floor. It reads
 -- every view's definition, and its metric's through view_axes().
-CREATE OR REPLACE MACRO main.plan_axes() AS TABLE
+-- plan_axes_of(plans_at, metrics_at) reads the plans and the metrics of
+-- the places they name: a plan's own comparison reads 'itself' and 'its
+-- metric'.
+CREATE OR REPLACE MACRO main.plan_axes_of(plans_at, metrics_at) AS TABLE
 WITH defs AS MATERIALIZED (
   SELECT split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition('the dataset') WHERE kind = 'plan'),
+  FROM definition(plans_at) WHERE kind = 'plan'),
 pc AS (SELECT d.metric, list(c.name ORDER BY c.position) AS cols FROM defs d, unnest(d.columns) t(c) GROUP BY d.metric),
-m AS MATERIALIZED (FROM main.view_axes()),
+m AS MATERIALIZED (FROM main.view_axes_of(metrics_at)),
 plans AS (
   SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.columns,
          CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
@@ -344,6 +353,8 @@ SELECT metric AS view, kind, plan_of, covers, stopped, reason IS NULL AS applica
        covers AS floor, NULL::INTEGER AS window_periods, additivity, additivity_state, []::VARCHAR[] AS dims, list_transform(columns, lambda c: c.name) AS columns
 FROM (SELECT *, main.plan_reason(stopped, plan_of, of_declared, true, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason FROM plans)
 ORDER BY view;
+
+CREATE OR REPLACE MACRO main.plan_axes() AS TABLE FROM main.plan_axes_of('the dataset', 'the dataset''s metrics');
 
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 SELECT * REPLACE (
@@ -389,14 +400,14 @@ WHERE false;
 
 -- actual_series(grain, unclaimed): the actual world alone, which a
 -- function's body reads: through view_axes(), and no stored result.
-CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
+CREATE OR REPLACE MACRO main.actual_series_of(metrics_at, grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_axes() m
+  FROM main.view_axes_of(metrics_at) m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
-  SELECT * FROM dataset_cells(current_schema(), 'metrics') WHERE "table" IN (SELECT metric FROM asked)),
+  SELECT * FROM dataset_cells(current_schema(), metrics_at) WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
   SELECT c."table" AS metric, c.rn,
          max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -484,6 +495,9 @@ SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, ad
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL
 ORDER BY metric, dimension, member, period;
+
+CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
+FROM main.actual_series_of('the dataset''s metrics', grain := grain, unclaimed := unclaimed, world := world);
 
 CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
 SELECT * FROM main.actual_series(grain := grain, unclaimed := unclaimed, world := world)
