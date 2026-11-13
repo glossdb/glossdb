@@ -3,22 +3,18 @@
 How glossdb knows that a stored result is still valid, and who brings
 it current. It works as a build system does.
 
-1. **Lineage is the model.** A function runs on a subject: a column,
-   a table, a view or the dataset. Its result depends on that subject
-   and its lineage, and on nothing else: for a view, its columns, its
-   definition and the tables and columns it scans and joins on; for a
-   table, the tables its relationships connect it to; for the
-   dataset, everything in it. While a function runs it sees the
-   glossary and the results of that lineage only, so the rule holds
-   by construction.
-2. **A stored result keeps what it read** (`inputs`): the lineage it
-   was drawn from, a digest of the glossary and result rows in it as
-   they held, and DuckLake's version of each table and view. Nobody
-   declares them.
-3. **A result is current while those rows hold the same** and each
-   table and view has that version. Otherwise it is outdated: served
-   and marked. A result that read an outdated result is outdated. A
-   change that is undone makes it current again.
+The model is `model.md`, agreed with the project lead. In three
+sentences:
+
+1. **A function's body says what it reads**, through three read
+   functions whose arguments are a what and a where on the lineage's
+   edges: `annotations(property, where)`, `results(function, where)`,
+   `definition(where)`. The list is taken from the body as written
+   (its JSON) when the function is declared, and stored with it.
+2. **A stored result keeps what those reads returned**, as a digest,
+   and DuckLake's version of each table it scanned.
+3. **A result is current while those hold the same**, and no result
+   it read is outdated. Otherwise it is outdated: served and marked.
 4. **One read says what is due**: `results_due()` lists the results a
    dataset's views want that are missing or outdated, with the
    statement that computes each, an input before what reads it.
@@ -31,15 +27,30 @@ it current. It works as a build system does.
 A result no view wants is not due. Nothing else decides what is
 computed: no second list, no flag.
 
-## Open, in risk order
+## Building the model, in this order
+
+Each step ends with both suites passing and the Formula 1
+measurement repeated.
+
+| # | Step | What it touches | State |
+|---|---|---|---|
+| 1 | The edges as one relation; the three read functions and the places (itself, its columns, its sources, the columns it joins on, its relationships, its metric, the dataset); the reads of a body taken from its JSON at declaration and stored with the function | the extension | next |
+| 2 | `relationship_coherence` stores one result per relationship; the bodies of the extension's kits and of the views kit read through the read functions; `fan_out_check` and `validity_check` are one; a test holds every shipped body to the read functions | the extension's kits, `kits/views/kit.sql`, both suites | |
+| 3 | The outlook kit's bodies the same; its hand-made inputs digest, `forecast_exists` and `scenario_exists` go | `kits/outlook/kit.sql` | |
+| 4 | A result's inputs are what its reads returned; the inputs derived from the bound plan, the lineage computed in C++ and the filter on what a running function sees go | the extension | |
+| 5 | `SPEC.md` §6 says the model; `docs/inputs.md` | the extension; the project lead reviews | |
+
+Done when, on the Formula 1 workspace: `meaning` on a table two
+metrics scan computes 0 results (2 today); `role` on a column one
+metric serves computes 1; an annotation outside every metric
+computes 0.
+
+## Open after that, in risk order
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| An annotation of any property on an asset in a metric's lineage outdates its `additivity_check`, also a property the check does not read (`meaning` on a scanned table: 2 results computed, 0 expected). The kit read of the views' definitions names no property | Medium: wrong grain, one level left | `kits/views/kit.sql` (`view_rows()`), the extension: a read keyed by subject and property | Next | drafted below |
-| The lineage is wider than what is read in three places: a view's lineage holds the results stored on the dataset, a plan holds its metric, a table holds every table its relationships reach (on connected data, the whole dataset) | Medium | the extension (`ClosureOf`, `glossql_runner.cpp`) | After | |
 | A view's lineage is per view. Per output column (`value` is `sum(points)`) it is finer; the parsed SQL as JSON (`json_serialize_sql`) gives the expression of each column | Low | the extension or a kit read | After | |
 | What a currency check costs with the digests is not measured. A write that computes nothing takes 0.64 s, of which `next` 0.38 s and `results_due()` 0.10 s twice | Medium until measured | the extension, `kits/goals/kit.sql`, `crates/serverd/src/mcp.rs` | After | |
-| `SPEC.md` §5.2, §5.3, §6 and `docs/inputs.md` are edited for the model as built | Low; the project lead reviews | the extension, commits `9b7a121` to `b3c1b8b` | Before the pull request | |
 | An outdated result no view needs, and an outdated annotation on an asset no view reads, are listed nowhere and nobody is asked to bring them current | Low | `kits/goals/kit.sql` (`next`) | Open | |
 | An identical reload moves the table's version: the merge updates every matched row, the replace builds a new table | Low: results are computed once more | the extension (`glossql_runner.cpp`) | When measured as a cost | |
 | The preview measurements are due by the outlook kit's own rule (`outlook_due()`), listed by `next`; a response of the model service is kept under a hash of the request and the service's version | Medium | `kits/outlook/kit.sql`, the extension's service call | With the outlook issue (`harness.md`) | |
@@ -104,14 +115,14 @@ Postgres case is read, not run).
 
 ## Next issue (draft)
 
-**A result is outdated by the properties it read, not by any property
-in its lineage.** What it buys: an annotation of `meaning` on a table
-a metric scans computes nothing; today it computes `additivity_check`
-for each metric that scans it. What is there: `view_rows()`
-(`kits/views/kit.sql`) reads the views' definition rows from the
-glossary with no property named, so the result's digest covers every
-property in the lineage; the reads that name a property are digested
-per property already. Done when: the read of a view's definition is
-keyed by the view; on the Formula 1 workspace `meaning` on
-`f1.standings` computes 0 results and `role` on `f1.results.points`
-still computes 1.
+**The edges and the read functions.** What it buys: a function's
+body can say what it reads in three calls, and the catalog serves
+the lineage as one relation a person or an agent can query. What is
+there: the spike's `reads.sql`, `bodies.sql` and `extract.sql`
+(scratch); `glossql_views_scans`, `glossql_views_joins`,
+`glossql_views_lineage`, `glossql_columns`, the relationships. Done
+when: `edges` serves `contains`, `reads`, `relates` and `plans` for
+a dataset; the three read functions return one row per asset of the
+place for the subject of the running function; a function's row in
+the catalog carries the reads taken from its body; the spike's three
+bodies return what today's return on the kits' fixtures.

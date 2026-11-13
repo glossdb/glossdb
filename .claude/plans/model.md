@@ -68,6 +68,7 @@ set of read functions whose arguments are the **what** and the
 | itself | the subject |
 | its columns | what it contains |
 | its sources | the tables and columns a view reads |
+| the columns it joins on | the two sides of each join in a view |
 | its relationships | the relationships between its sources, or that touch it |
 | its metric | the metric a plan plans |
 | the dataset | everything in the subject's dataset |
@@ -112,8 +113,8 @@ outdated" names the declared input that differs.
 | `detect_relationships` | dataset | data of the dataset's tables |
 | `relationship_coherence` | relationship (today: dataset) | data of itself: the key and date columns of its two tables |
 | `detect_definition_collisions` | dataset | data, definitions, `role` and `additivity` of the dataset's views |
-| `additivity_check` | view | definition of itself; `role`, `additivity`, `dimension`, `time_grains` on its columns; `temporal` on its columns |
-| `fan_out_check`, `validity_check` | view | definition of itself; `validity` on its sources; `column_profile` on its sources |
+| `additivity_check` | view | definition of itself; `role` and `additivity` on its columns |
+| `fan_out_check`, `validity_check` | view | definition of itself; `validity` on its sources; `column_profile` on the columns it joins on |
 | `orphan_check` | view | definition of itself; `relationship_coherence` on its relationships |
 | `metric_ranges`, `metric_forecast`, `metric_scenario` (preview) | dataset | data and definitions of the dataset's metrics; `time_grains`, `lever` and the scenarios on the dataset; `temporal` on the dataset |
 | `metric_plan` (preview) | plan | data of itself; data of its metric; `metric_forecast` on the dataset |
@@ -141,16 +142,25 @@ annotating additivity.
 | The inputs digest the outlook kit computes and stores by hand | section 5 replaces it |
 | Inputs derived from a body's bound query plan; the lineage computed in C++ with its three widenings | section 4 replaces them |
 
-## 9. Next, before code
+## 9. Tried on real functions
 
-- **A spike in the corpus's manner**: the read functions written
-  down (name, the what, the where), and three shipped bodies written
-  with them (`additivity_check`, `orphan_check`, `fan_out_check`).
-  Checked: each body parses, its JSON lists exactly the reads of
-  section 7, and it returns what the body returns today.
-- **`its sources` is coarser than one check needs**: `fan_out_check`
-  reads the profile of the join columns only. A seventh place, the
-  columns it joins on, would make it exact. Start with six.
-- **The preview measurements stay on the dataset** for now: one
-  service call scores all metrics together. Per metric is the outlook
-  issue.
+A spike (scratch, no repository changed) wrote three read functions,
+`annotations(property, where)`, `results(function, where)` and
+`definition(where)`, and `additivity_check`, `orphan_check` and
+`fan_out_check` with them alone:
+
+- the same row as today's bodies on 13 views, 39 of 39, red cases
+  included; one difference, where the model is right: a relationship
+  declared after the coherence check ran is "not applicable, no
+  result", where today it reads green;
+- the JSON of each body lists exactly its reads, macros followed;
+- the inputs of one metric changed for `role` on its own column and
+  for a profile computed again with another value, and for nothing
+  else tried.
+
+What stays beside the reads: a result that read an outdated result
+is outdated. A macro with fixed reads inside is shared logic as
+before. While every function is ours, a test of our suite holds each
+body to the read functions; the refusal at declaration comes when a
+customer writes functions. `definition` is DuckDB's own binding of
+the view against the catalog, as the extension does it today.
