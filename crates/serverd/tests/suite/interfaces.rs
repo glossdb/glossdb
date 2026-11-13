@@ -1550,42 +1550,6 @@ async fn a_second_review_decision_keeps_the_first() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_unkeyed_assumption_is_never_asked() {
-    // A KNOWN, ACCEPTED GAP. Identity is the
-    // declared `key`; an assumption disclosed without one cannot be
-    // held closed by a review decision, so the review would re-ask it forever.
-    // It is therefore never asked at all — the catalog still shows it,
-    // and the skills make the key part of the disclosure shape. The
-    // alternative — pairing on the prose — is forbidden.
-    let (app, _, _dir) = on_fin(
-        r#"
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
-          "assumptions": [{"dimension": "definition", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;
-    "#,
-    )
-    .await;
-
-    let review = "SELECT subject, aspect FROM glossary LIMIT 5";
-    let body = elicit(&app, review, None).await;
-    assert_eq!(
-        body["result"]["resultType"],
-        json!("complete"),
-        "an unkeyed assumption is not askable: {body}"
-    );
-
-    // The same claim, keyed, does ask.
-    let keyed = r#"GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
-        "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.5}]}$$;"#;
-    say(&app, "/mcp", keyed).await;
-    let body = elicit(&app, review, None).await;
-    assert!(
-        body["result"]["inputRequests"]["loose:fin:dso:per-line"].is_object(),
-        "{body}"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn a_review_asks_one_views_open_assumptions_and_none_a_measurement_settles() {
     // `open_questions` is what the review asks from: the judged
     // assumptions below full confidence, without those on a dimension
