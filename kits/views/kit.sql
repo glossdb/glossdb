@@ -86,11 +86,48 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- (metric_plan over the plan) in measurements_to_run until one exists, as a
 -- metric's row lists the profile over its period column.
 --
--- view_rows(): the same rows, a plan's measurements_to_run empty. A
--- function's body reads this one: it reads no stored result, so what the
--- body stores depends on the annotations it names and not on whether
--- metric_plan's results are current.
+-- view_rows(): the same rows, a plan's measurements_to_run empty.
+--
+-- view_axes(): what a function's body reads of the same, through the read
+-- functions alone (the lineage kit's), on the subject's dataset: one row
+-- per served view — view, kind, plan_of, covers, stopped, applicable,
+-- reason, period_column, value_column, numerator, denominator, floor,
+-- window_periods, additivity, additivity_state, dims, columns (the view's
+-- columns by name). It reads the views'
+-- definitions, role, additivity, dimension and time_grains, and the
+-- temporal profiles. A view whose definition serves no view has no row.
 --===------------------------------------------------------------------===--
+
+-- series_reason(…) and plan_reason(…): why a view serves no series, NULL
+-- where it does; view_rows() and view_axes() judge alike.
+CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS
+  CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
+       WHEN NOT served THEN 'the definition serves no view'
+       WHEN kind IN ('scalar', 'relation') THEN NULL
+       WHEN period_column IS NULL AND len(period_cols) > 1 THEN
+            list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period: name it so in the SQL, or annotate role attribute on the others'
+       WHEN period_column IS NULL THEN
+            'no column carries role timestamp: annotate the period column, GLOSS role ON ' || ds || '.' || metric || '.<column> AS $${"value": "timestamp"}$$'
+       WHEN value_column IS NULL AND len(measure_cols) > 1 THEN
+            list_aggregate(measure_cols, 'string_agg', ' and ') || ' carry role measure; the value is the column named value: name it so in the SQL, or annotate role attribute on the others'
+       WHEN value_column IS NULL THEN
+            'no column carries role measure: annotate the value column, GLOSS role ON ' || ds || '.' || metric || '.<column> AS $${"value": "measure"}$$'
+       WHEN floor IS NULL AND NOT profiled THEN
+            'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || ds || '.' || metric || '.' || period_column || ', or annotate time_grains with a floor'
+       WHEN floor IS NULL THEN
+            'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
+  END;
+
+CREATE OR REPLACE MACRO main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS
+  CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
+       WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
+       WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no VIEW aspect declares on this dataset'
+       WHEN NOT served THEN 'the metric definition serves no view'
+       WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
+       WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
+       WHEN period_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_period, 'period') || ' (its metric''s period) nor period'
+       WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
+  END;
 
 CREATE OR REPLACE MACRO main.view_rows() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
@@ -192,22 +229,7 @@ rows_ AS (
   LEFT JOIN without_role u ON u.metric = ch.metric),
 judged AS (
   SELECT *,
-    CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-         WHEN NOT served THEN 'the definition serves no view'
-         WHEN kind IN ('scalar', 'relation') THEN NULL
-         WHEN period_column IS NULL AND len(period_cols) > 1 THEN
-              list_aggregate(period_cols, 'string_agg', ' and ') || ' carry role timestamp; the period is the column named period: name it so in the SQL, or annotate role attribute on the others'
-         WHEN period_column IS NULL THEN
-              'no column carries role timestamp: annotate the period column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "timestamp"}$$'
-         WHEN value_column IS NULL AND len(measure_cols) > 1 THEN
-              list_aggregate(measure_cols, 'string_agg', ' and ') || ' carry role measure; the value is the column named value: name it so in the SQL, or annotate role attribute on the others'
-         WHEN value_column IS NULL THEN
-              'no column carries role measure: annotate the value column, GLOSS role ON ' || ds.dataset || '.' || metric || '.<column> AS $${"value": "measure"}$$'
-         WHEN floor IS NULL AND NOT profiled THEN
-              'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || ds.dataset || '.' || metric || '.' || period_column || ', or annotate time_grains with a floor'
-         WHEN floor IS NULL THEN
-              'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds.dataset || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
-    END AS reason,
+    main.series_reason(ds.dataset, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || metric || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
   FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
@@ -226,15 +248,7 @@ plans AS (
   WHERE p.kind = 'plan'),
 judged_plans AS (
   SELECT *,
-    CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-         WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
-         WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no VIEW aspect declares on this dataset'
-         WHEN NOT served THEN 'the metric definition serves no view'
-         WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
-         WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
-         WHEN period_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_period, 'period') || ' (its metric''s period) nor period'
-         WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
-    END AS reason
+    main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason
   FROM plans)
 SELECT metric AS view, kind, plan_of, covers, stopped,
        CASE WHEN series THEN reason IS NULL END AS applicable, reason,
@@ -249,6 +263,77 @@ SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, rea
        additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
        []::VARCHAR[], true
 FROM judged_plans
+ORDER BY view;
+
+CREATE OR REPLACE MACRO main.view_axes() AS TABLE
+WITH defs AS MATERIALIZED (
+  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
+  FROM definition('the dataset')),
+cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
+annotated AS MATERIALIZED (
+  SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
+         property AS aspect, value, state
+  FROM (FROM annotations('role', 'the dataset') UNION ALL FROM annotations('additivity', 'the dataset')
+        UNION ALL FROM annotations('dimension', 'the dataset') UNION ALL FROM annotations('time_grains', 'the dataset'))
+  WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
+claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
+roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
+picked AS (
+  SELECT d.metric,
+         (SELECT list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (metric, col)
+          WHERE r.metric = d.metric AND r.role = 'timestamp') AS period_cols,
+         (SELECT list(r.col ORDER BY CASE WHEN r.col = 'value' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (metric, col)
+          WHERE r.metric = d.metric AND r.role = 'measure') AS measure_cols,
+         (SELECT list(r.col ORDER BY CASE x.value->>'value' WHEN 'primary' THEN 0 WHEN 'supporting' THEN 1 ELSE 2 END, c.pos)
+          FROM roles r JOIN cols c USING (metric, col) LEFT JOIN claims x ON x.aspect = 'dimension' AND x.metric = r.metric AND x.col = r.col
+          WHERE r.metric = d.metric AND r.role = 'dimension' AND coalesce(x.value->>'value', '') <> 'none') AS dims
+  FROM defs d),
+chosen AS (
+  SELECT d.*, p.period_cols, p.measure_cols, coalesce(p.dims, []::VARCHAR[]) AS dims,
+         CASE WHEN len(p.period_cols) = 1 OR p.period_cols[1] = 'period' THEN p.period_cols[1] END AS period_column,
+         CASE WHEN len(p.measure_cols) = 1 OR p.measure_cols[1] = 'value' THEN p.measure_cols[1] END AS value_column
+  FROM defs d JOIN picked p USING (metric)),
+profiles AS (
+  SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
+         CASE WHEN json_extract_string(value, '$.applicable') = 'true'
+                   AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
+              THEN json_extract_string(value, '$.granularity') END AS grain_detected
+  FROM results('temporal', 'the dataset') WHERE value IS NOT NULL),
+rows_ AS (
+  SELECT ch.*,
+         CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
+         CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'numerator' END AS numerator,
+         CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'denominator' END AS denominator,
+         coalesce(CASE WHEN a.state IN ('current', 'stale') THEN a.state ELSE 'conflict' END, 'none') AS additivity_state,
+         coalesce(t.value->>'floor', pr.grain_detected) AS floor, t.value->'windows' AS windows, pr.metric IS NOT NULL AS profiled
+  FROM chosen ch
+  LEFT JOIN annotated a ON a.aspect = 'additivity' AND a.metric = ch.metric AND a.col = ch.value_column
+  LEFT JOIN claims t ON t.aspect = 'time_grains' AND t.metric = ch.metric AND t.col = ch.period_column
+  LEFT JOIN profiles pr ON pr.metric = ch.metric AND pr.col = ch.period_column),
+judged AS (
+  SELECT *, main.series_reason(ds, metric, stopped, true, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
+         coalesce(kind, '') NOT IN ('scalar', 'relation') AS series
+  FROM rows_ WHERE coalesce(kind, '') <> 'plan'),
+plans AS (
+  SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.columns,
+         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
+         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
+         m.metric IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
+         m.period_column AS of_period, m.value_column AS of_value, m.numerator, m.denominator, m.additivity, m.additivity_state
+  FROM rows_ p
+  LEFT JOIN (SELECT metric, list(col ORDER BY pos) AS cols FROM cols GROUP BY metric) pc ON pc.metric = p.metric
+  LEFT JOIN judged m ON m.metric = p.plan_of
+  WHERE p.kind = 'plan')
+SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
+       CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
+       CASE WHEN series THEN floor END AS floor,
+       CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
+       additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns
+FROM judged
+UNION ALL
+SELECT metric, kind, plan_of, covers, stopped, reason IS NULL, reason, period_column, value_column, numerator, denominator, covers, NULL,
+       additivity, additivity_state, []::VARCHAR[], list_transform(columns, lambda c: c.name)
+FROM (SELECT *, main.plan_reason(stopped, plan_of, of_declared, true, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason FROM plans)
 ORDER BY view;
 
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
@@ -294,11 +379,11 @@ SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimensi
 WHERE false;
 
 -- actual_series(grain, unclaimed): the actual world alone, which a
--- function's body reads: it reads no stored result, as the other worlds do.
+-- function's body reads: through view_axes(), and no stored result.
 CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_rows() m
+  FROM main.view_axes() m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (

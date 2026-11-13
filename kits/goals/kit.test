@@ -46,21 +46,14 @@ SELECT count(*) FROM results_due();
 0
 
 # every shipped measurement reads the catalog through the read functions alone, with constant arguments:
-# no catalog reached directly, no what or where built at run. The known exceptions, by name: the
-# outlook kit's measurements (preview), and additivity_evidence, whose primitive reads the roles and
-# the relationships at its bind
-query TT
-SELECT DISTINCT f.name, f.declared_by
+# no catalog reached directly, no what or where built at run
+query I
+SELECT count(*)
 FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
 WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
-  AND (r.kind = 'catalog' OR NOT coalesce(r.constant, true))
-ORDER BY ALL;
+  AND (r.kind = 'catalog' OR NOT coalesce(r.constant, true));
 ----
-additivity_evidence	kit:quality
-metric_forecast	kit:outlook
-metric_plan	kit:outlook
-metric_ranges	kit:outlook
-metric_scenario	kit:outlook
+0
 
 # with no table in the dataset, the list has one row: a source to connect and a table to load
 query TTT
@@ -174,32 +167,28 @@ SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_
 ----
 0
 
-# a plan is declared and defined, and a column the metric does not read is annotated: the catalog moved, so the
-# stale rule marks the stored ranges, and nothing they read changed, so they are not due; the plan makes the forecast due
+# a plan is declared and defined: the ranges read the dataset's definitions, the plan's among them, and are due;
+# the plan makes the forecast a measurement the dataset needs
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
 statement ok
 GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw"}$$;
 
-statement ok
-GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
-
-query T
-SELECT current FROM TESTS() WHERE test = 'range_test';
-----
-false
-
 query TTT
 SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
 ----
 metric_forecast	false	true
-metric_ranges	true	false
+metric_ranges	true	true
 
 query T
-SELECT statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+SELECT statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%' ORDER BY statement;
 ----
 SELECT metric_forecast() FROM ops;
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_ranges() FROM ops;
 
 statement ok
 SELECT metric_forecast() FROM ops;
@@ -207,22 +196,26 @@ SELECT metric_forecast() FROM ops;
 statement ok
 SELECT metric_plan() FROM ops.orders_target;
 
-# an assumption added to the plan and one added to the metric leave the SQL as it is: nothing is due
-statement ok
-GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "target", "assumption": "the target is ten percent over the orders", "basis": "the sales plan", "confidence": 0.7}]}$$;
-
-statement ok
-GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "taken", "assumption": "an order counts in the month it is taken", "basis": "the order date", "confidence": 0.7}]}$$;
-
-query I
-SELECT count(*) FROM outlook_measurements() WHERE due;
-----
-0
-
 query I
 SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
 ----
 0
+
+# an assumption added to the metric is part of the definition the measurements read: they are due
+statement ok
+GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "taken", "assumption": "an order counts in the month it is taken", "basis": "the order date", "confidence": 0.7}]}$$;
+
+query TT
+SELECT name, due FROM outlook_measurements() ORDER BY name;
+----
+metric_forecast	true
+metric_ranges	true
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
 
 # the table is loaded again with a month more: the ranges and the forecast read it, and are due
 statement ok
@@ -276,7 +269,7 @@ SELECT metric_ranges() FROM ops;
 statement ok
 SELECT metric_forecast() FROM ops;
 
-# a scenario is annotated: its estimate is due, and the ranges and the forecast are not
+# a scenario is annotated: its estimate is due
 statement ok
 GLOSS lever ON orders.price AS $${"value": true, "basis": "the list price"}$$;
 
@@ -287,41 +280,42 @@ statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
 
 query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+SELECT name, stored, due FROM outlook_measurements() WHERE name = 'metric_scenario';
 ----
-metric_forecast	true	false
-metric_ranges	true	false
 metric_scenario	false	true
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+statement ok
+SELECT metric_forecast() FROM ops;
 
 statement ok
 SELECT metric_scenario() FROM ops;
 
-query TT
-SELECT state, current FROM TESTS() WHERE test = 'scenario_test';
+query TTT
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
 ----
-green	true
+metric_forecast	true	false
+metric_ranges	true	false
+metric_scenario	true	false
 
-# the scenario's factor changes: its own estimate is due, alone
+# the scenario's factor changes: its estimate is due
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
 
 query T
-SELECT name FROM outlook_measurements() WHERE due;
+SELECT due FROM outlook_measurements() WHERE name = 'metric_scenario';
 ----
-metric_scenario
+true
 
-# a scenario whose only period is loaded already is estimated for nothing: its test has no result, and `next` asks
-# its author for a period ahead, with the scenario's statement
+# a scenario whose only period is loaded already is estimated for nothing, and `next` asks its author for a
+# period ahead, with the scenario's statement
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-01": 0.9}, "basis": "a cut in January"}]}$$;
 
 statement ok
 SELECT metric_scenario() FROM ops;
-
-query I
-SELECT count(*) FROM TESTS() WHERE test = 'scenario_test';
-----
-0
 
 query TTT
 SELECT step, asset, state FROM next WHERE contains(statement, 'GLOSS price_cut ON ops');

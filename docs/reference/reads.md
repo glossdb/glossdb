@@ -190,7 +190,7 @@ Stored results of the model service, read back as SQL
 | `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
 | `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `held_80`, `held_from`, `origin` |
-| `plan_stored()` | the stored comparison: the columns of `plan_points()` without `origin`, with `plan_grain`, `forecast_run`, `forecast_origin`, `computed_at` |
+| `plan_stored()` | the stored comparison: the columns of `plan_points()` without `origin`, with `plan_grain`, `forecast_origin`, `computed_at` |
 
 - `forecast_points()`: a row with `span` is a total over that many
   periods, running to the end of `to_go` (`month`, `quarter`, `year`).
@@ -207,4 +207,4 @@ Stored results of the model service, read back as SQL
   lever as planned; `effect` is `value` minus `baseline`.
 - `outlook_measurements()`: `name`, `stored`, `due`: the preview
   functions the dataset needs; `due` is true where none is stored or
-  what the function reads changed since its result.
+  the stored result is out of date.

@@ -18,16 +18,16 @@ its statement:
 | `metric_ranges (preview)` | once a metric is served |
 | `metric_forecast (preview)` | once a plan has a definition or a scenario can be estimated |
 | `metric_scenario (preview)` | once a scenario is annotated and its levers hold |
-| `plan_test (preview)` | once per plan, and after each new forecast or a change to the plan |
+| `plan_test (preview)` | once per plan, and again once its comparison is out of date |
 | `scenario_test (preview)` | a scenario you can fix: no period ahead, every factor 1, a column that is no lever |
 
 The server does not run them for you. `next` lists a function again
-when what it reads changed: a load of a table the metric scans, a
-change to the metric's SQL, columns, grain or additivity, and for a
-scenario its levers and factors. Another view, a new plan, an
-assumption or an annotation the series does not read leaves the
-stored results as they are. Run them in this order: expected ranges,
-forecast, scenario, then each plan. A call took 2 to 6 seconds on one
+once its stored result is out of date: what it read changed. Each
+reads the dataset's views, their data and definitions, and the
+`role`, `additivity`, `dimension` and `time_grains` on their columns;
+the scenario estimate the scenarios and the levers too, the plan
+comparison the stored forecast. Run them in this order: expected
+ranges, forecast, scenario, then each plan. A call took 2 to 6 seconds on one
 metric (measured).
 
 Each function reads the metric's series inside its window, 48 months

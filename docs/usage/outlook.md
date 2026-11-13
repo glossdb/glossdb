@@ -19,9 +19,11 @@ stored as a measurement and read back as SQL.
 
 The columns of each read:
 [reads](../reference/reads.md#the-outlook-kit-preview). The four tests
-are rows of `TESTS(<dataset>)` and `TESTS(<dataset>.<plan>)`, and of
-`view_tests()` under the metric: a plan's test shows under the metric
-it plans.
+are rows of `view_tests()` under the metric: a plan's test shows under
+the metric it plans. `range_test` and `plan_test` are rows of
+`TESTS(<dataset>)` and `TESTS(<dataset>.<plan>)` too, judged by a
+detector; `forecast_test` and `scenario_test` have no detector, and
+`view_tests()` works out their state.
 
 The examples are from one run against a model service: New York
 subway service per month. The metric `trains_run` is the trains that
@@ -40,24 +42,22 @@ the statement to run:
   scenario reads how often they held. It runs without either too;
   `next` does not list it then.
 - `metric_scenario` once a scenario is annotated and its levers hold.
-- `metric_plan` once per plan, and again after each new forecast or a
-  change to the plan.
+- `metric_plan` once per plan, and again once its comparison is out of
+  date.
 
 The server does not run them itself. A stored result is due again
-when something it reads changed:
+once it is out of date, by the rule every stored result follows: what
+it read changed. `next` and `outlook_measurements()` list it then.
+What each one reads:
 
-| Result | Due again after |
+| Result | Reads |
 |---|---|
-| expected ranges, forecast | a load of a table a metric scans; a change to a metric's SQL, its time or value column, its grain or its additivity |
-| scenario estimate | the same for the metrics its levers are on; a change to a scenario's levers or factors |
-| plan comparison | a new forecast; a change to the plan's SQL or a load of its table |
+| expected ranges, forecast | the dataset's views: their data and definitions, `role`, `additivity`, `dimension` and `time_grains` on their columns, the period columns' temporal profiles |
+| scenario estimate | the same, the scenarios and the `lever` annotations |
+| plan comparison | the same, and the stored forecast |
 
-Other changes leave them as they are: another view, a new plan, an
-assumption added to a definition, an annotation the series does not
-read. `TESTS()` reads `current = false` after any change to the
-catalog; `next` and `outlook_measurements()` list a function only
-when it is due. Run the expected ranges and the forecast first, then
-the scenarios, then each plan.
+Run the expected ranges and the forecast first, then the scenarios,
+then each plan.
 
 All of them read the metric's series: the newest periods inside the
 metric's window, 48 months by default ([views](views.md)). A longer
@@ -277,10 +277,9 @@ not estimated.
   nothing is stored, and `next` keeps the function listed.
 - Too little history: the function runs and stores a reason per
   metric. Read `applicable` and `reason` in the feature's read. A
-  result with no number in it is not green: `range_test`,
-  `forecast_test` and `scenario_test` have no row in `TESTS()` then,
-  and `view_tests()` shows the test as `not_applicable` with the
-  reason. `next` lists nothing for it, since nobody can add history.
+  result with no number in it is not green: `range_test` has no row in
+  `TESTS()` then, and `view_tests()` shows the test as
+  `not_applicable` with the reason. `next` lists nothing for it, since nobody can add history.
 - A scenario that cannot be estimated for a reason its author can
   settle (no period ahead, every factor 1, a column that is no lever)
   shows as `not_run`, and `next` lists it with the statement to change.
