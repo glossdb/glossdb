@@ -34,10 +34,10 @@ measurement repeated.
 
 | # | Step | What it touches | State |
 |---|---|---|---|
-| 1 | The edges as one relation; the three read functions and the places (itself, its columns, its sources, the columns it joins on, its relationships, its metric, the dataset); the reads of a body taken from its JSON at declaration and stored with the function | the extension | next |
-| 2 | `relationship_coherence` stores one result per relationship; the bodies of the extension's kits and of the views kit read through the read functions; `fan_out_check` and `validity_check` are one; a test holds every shipped body to the read functions | the extension's kits, `kits/views/kit.sql`, both suites | |
-| 3 | The outlook kit's bodies the same; its hand-made inputs digest, `forecast_exists` and `scenario_exists` go | `kits/outlook/kit.sql` | |
-| 4 | A result's inputs are what its reads returned; the inputs derived from the bound plan, the lineage computed in C++ and the filter on what a running function sees go | the extension | |
+| 1 | The edges as one relation; the three read functions and the places (itself, its columns, its sources, the columns it joins on, its relationships, its metric, the dataset); the reads of a body taken from its JSON at declaration and stored with the function | the extension | built |
+| 2 | `relationship_coherence` stores one result per relationship; the bodies of the extension's kits and of the views kit read through the read functions; `fan_out_check` and `validity_check` are one; a test holds every shipped body to the read functions | the extension's kits, `kits/views/kit.sql`, both suites | built |
+| 3 | The outlook kit's bodies the same; its hand-made inputs digest, `forecast_exists` and `scenario_exists` go | `kits/outlook/kit.sql` | built |
+| 4 | A result's inputs are what its reads returned; the inputs derived from the bound plan, the lineage computed in C++ and the filter on what a running function sees go | the extension | in work |
 | 5 | `SPEC.md` §6 says the model; `docs/inputs.md` | the extension; the project lead reviews | |
 
 Done when, on the Formula 1 workspace: `meaning` on a table two

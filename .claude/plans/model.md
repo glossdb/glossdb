@@ -116,8 +116,9 @@ outdated" names the declared input that differs.
 | `additivity_check` | view | definition of itself; `role` and `additivity` on its columns |
 | `fan_out_check`, `validity_check` | view | definition of itself; `validity` on its sources; `column_profile` on the columns it joins on |
 | `orphan_check` | view | definition of itself; `relationship_coherence` on its relationships |
-| `metric_ranges`, `metric_forecast`, `metric_scenario` (preview) | dataset | data and definitions of the dataset's metrics; `time_grains`, `lever` and the scenarios on the dataset; `temporal` on the dataset |
-| `metric_plan` (preview) | plan | data of itself; data of its metric; `metric_forecast` on the dataset |
+| `metric_ranges`, `metric_forecast` (preview) | dataset | data and definitions of the dataset's views; `role`, `additivity`, `dimension` and `time_grains` on the dataset; `temporal` on the dataset |
+| `metric_scenario` (preview) | dataset | the same, and `lever` and the scenario properties on the dataset |
+| `metric_plan` (preview) | plan | the same as `metric_ranges`, and `metric_forecast` on the dataset |
 
 The detectors (`value_entropy`, `rate_tolerance`, `range_breach`,
 `plan_gap`) read the property of the test they run for, on itself.
