@@ -580,14 +580,17 @@ WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 -- are, so a kit that adds a test adds no branch anywhere else.
 --
 -- gloss_statement(aspect, subject, body): the annotation statement.
--- redefine_statement(view, body): the statement that records a view's
--- definition again, to edit and send; view is its path, body the
--- definition's annotation as a function's body reads it from definition().
+-- redefine_statement(view): the statement that records a view's
+-- definition again, to edit and send, as a function's body writes it:
+-- the definition is the annotation that defines the view, which a body
+-- does not read (definition() serves its SQL), so it is marked <the
+-- current definition>, and view_tests() fills it from the catalog when
+-- it serves the fix (with_definition()).
 CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
   'GLOSS ' || a || ' ON ' || subj || ' AS $$' || body || '$$;';
 
-CREATE OR REPLACE MACRO main.redefine_statement(v, body) AS
-  main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), coalesce(body::VARCHAR, '<the current definition>'));
+CREATE OR REPLACE MACRO main.redefine_statement(v) AS
+  main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), '<the current definition>');
 
 -- view_redefine(ds, m): the same statement for metric m of dataset ds,
 -- read from the catalog, for the reads the interfaces serve (`next`)
@@ -596,6 +599,15 @@ CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
     (SELECT g.body::VARCHAR FROM main.glossary g
      WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.begin_snapshot DESC LIMIT 1),
     '<the current definition>'));
+
+-- with_definition(evidence, view): a check's stored result with its fix's
+-- statement that records the view's definition again filled with the
+-- definition as it is now
+CREATE OR REPLACE MACRO main.with_definition(evidence, v) AS
+  CASE WHEN contains(evidence->>'fix', main.redefine_statement(v))
+       THEN json_merge_patch(evidence, json_object('fix', replace(evidence->>'fix', main.redefine_statement(v),
+                                                                  main.view_redefine(split_part(v, '.', 1), split_part(v, '.', 2)))))
+       ELSE evidence END;
 
 -- validity: an effective-dated table (a slowly changing dimension, type 2):
 -- each row holds from valid_from to valid_to, and a key repeats once per
@@ -667,7 +679,7 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
   state AS (
     SELECT n.tables > 0 AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled)) AS applicable,
            EXISTS (SELECT 1 FROM repeating) AS fans, EXISTS (SELECT 1 FROM undated) AS versions,
-           (SELECT redefine_statement(view, body) FROM d) AS redefine
+           (SELECT redefine_statement(view) FROM d) AS redefine
     FROM n)
   SELECT state.applicable,
          CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
@@ -717,7 +729,7 @@ DECLARE ASPECT additivity_check WITH $${
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH d AS (SELECT * FROM definition('itself') WHERE body IS NOT NULL),
+  WITH d AS (SELECT * FROM definition('itself') WHERE sql IS NOT NULL OR stopped IS NOT NULL),
   cols AS (SELECT c.name AS col, c.position AS pos, c.shape FROM d, unnest(d.columns) t(c)),
   roles AS (SELECT substr(asset, length($subject) + 2) AS col, value->>'value' AS role
             FROM annotations('role', 'its columns') WHERE state IN ('current', 'stale') AND value IS NOT NULL),
@@ -731,7 +743,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
            CASE WHEN coalesce(d.kind, '') IN ('scalar', 'plan') THEN []::VARCHAR[]
                 ELSE coalesce((SELECT list(main.gloss_statement('role', $subject || '.' || col, '{"value": "<key|measure|dimension|timestamp|attribute>"}') ORDER BY pos)
                                FROM cols WHERE col NOT IN (SELECT col FROM roles)), []::VARCHAR[]) END AS missing,
-           redefine_statement(d.view, d.body) AS redefine
+           redefine_statement(d.view) AS redefine
     FROM d, measures m),
   v AS (
     SELECT a.*,
@@ -875,7 +887,7 @@ expected AS (
   JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
 evidence AS (
-  SELECT subject, aspect, value FROM main.measurements WHERE dataset = current_schema()
+  SELECT subject, aspect, main.with_definition(value::JSON, subject) AS value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
 own AS (
   SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,

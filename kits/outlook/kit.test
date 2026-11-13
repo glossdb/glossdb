@@ -314,6 +314,28 @@ SELECT count(*) FROM forecast_coverage();
 ----
 0
 
+# --- an annotation the preview measurements do not read leaves them as they were, the forecast current and the
+# ranges due already: no read of theirs names it
+query TT
+SELECT name, due FROM outlook_due() WHERE stored ORDER BY name;
+----
+metric_forecast	false
+metric_ranges	true
+
+statement ok
+GLOSS meaning ON fin.ledger AS $${"value": "one booking"}$$;
+
+query TT
+SELECT name, due FROM outlook_due() WHERE stored ORDER BY name;
+----
+metric_forecast	false
+metric_ranges	true
+
+query I
+SELECT count(*) FROM glossql_outdated() WHERE function IN ('metric_ranges', 'metric_forecast') AND input LIKE 'annotations(meaning%';
+----
+0
+
 # --- run again from the same origin (an annotation the forecast reads moved, its totals did not), the forecast
 # is a second run and still one point per metric, origin, step and span
 

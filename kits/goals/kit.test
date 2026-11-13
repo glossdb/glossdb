@@ -201,21 +201,37 @@ SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_
 ----
 0
 
-# an assumption added to the metric is part of the definition the measurements read: they are due
+# an annotation the measurements do not read leaves them current: nothing is due
+statement ok
+GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
+
+query I
+SELECT count(*) FROM outlook_measurements() WHERE due;
+----
+0
+
+query T
+SELECT current FROM TESTS() WHERE test = 'range_test';
+----
+true
+
+# an assumption added to the plan and one added to the metric leave the SQL as it is: the definition the
+# measurements read holds, and nothing is due
+statement ok
+GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "target", "assumption": "the target is ten percent over the orders", "basis": "the sales plan", "confidence": 0.7}]}$$;
+
 statement ok
 GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "taken", "assumption": "an order counts in the month it is taken", "basis": "the order date", "confidence": 0.7}]}$$;
 
-query TT
-SELECT name, due FROM outlook_measurements() ORDER BY name;
+query I
+SELECT count(*) FROM outlook_measurements() WHERE due;
 ----
-metric_forecast	true
-metric_ranges	true
+0
 
-statement ok
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_forecast() FROM ops;
+query I
+SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+----
+0
 
 # the table is loaded again with a month more: the ranges and the forecast read it, and are due
 statement ok
@@ -269,7 +285,7 @@ SELECT metric_ranges() FROM ops;
 statement ok
 SELECT metric_forecast() FROM ops;
 
-# a scenario is annotated: its estimate is due
+# a scenario is annotated: its estimate is due, and the ranges and the forecast, which do not read it, are not
 statement ok
 GLOSS lever ON orders.price AS $${"value": true, "basis": "the list price"}$$;
 
@@ -280,15 +296,11 @@ statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
 
 query TTT
-SELECT name, stored, due FROM outlook_measurements() WHERE name = 'metric_scenario';
+SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
 ----
+metric_forecast	true	false
+metric_ranges	true	false
 metric_scenario	false	true
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_forecast() FROM ops;
 
 statement ok
 SELECT metric_scenario() FROM ops;
@@ -300,14 +312,14 @@ metric_forecast	true	false
 metric_ranges	true	false
 metric_scenario	true	false
 
-# the scenario's factor changes: its estimate is due
+# the scenario's factor changes: its own estimate is due, alone
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
 
 query T
-SELECT due FROM outlook_measurements() WHERE name = 'metric_scenario';
+SELECT name FROM outlook_measurements() WHERE due;
 ----
-true
+metric_scenario
 
 # a scenario whose only period is loaded already is estimated for nothing, and `next` asks its author for a
 # period ahead, with the scenario's statement
@@ -675,8 +687,18 @@ SELECT count(*) FROM results_due();
 ----
 0
 
+# a role on a column a metric reads: no check reads role on a metric's sources, so nothing is due
 statement ok
 GLOSS role ON results.driver_id AS $${"value": "dimension"}$$;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+# a role on a column of the metric: the additivity check reads role on its columns, and is due
+statement ok
+GLOSS role ON entries.value AS $${"value": "dimension"}$$;
 
 query T
 SELECT run FROM results_due();
