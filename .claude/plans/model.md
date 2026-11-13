@@ -70,13 +70,15 @@ set of read functions whose arguments are the **what** and the
 | its sources | the tables and columns a view reads |
 | the columns it joins on | the two sides of each join in a view |
 | its relationships | the relationships between its sources, or that touch it |
-| its metric | the metric a plan plans |
+| its metric | the metric a plan plans, and its columns |
+| its dataset | the subject's dataset itself |
+| the dataset's metrics | the metrics of the subject's dataset, without the plans |
 | the dataset | everything in the subject's dataset |
 
-The engine hands a running function the rows those reads name and no
-others; a body that reaches the catalog any other way is refused at
-its declaration. So what a function can see and what its result
-depends on are the same list.
+A body that reaches the catalog any other way gets an input
+`unnamed`, and its result is outdated once stored. A test of each
+suite holds the shipped bodies to the read functions; the refusal at
+declaration comes when a customer writes functions.
 
 No rule about how far a function may reach is needed, and there is
 no grammar to add.
@@ -85,8 +87,8 @@ no grammar to add.
 
 A result is current while each declared input is as it was read:
 
-- data: the table has the DuckLake version it had (for a view, each
-  table it reads);
+- data: the table has the DuckLake version it had (for a view, the
+  view and each table and view it reads);
 - annotations and results: they hold the same values, and those
   results are current;
 - the definition, and the function's and the property's own
@@ -116,9 +118,9 @@ outdated" names the declared input that differs.
 | `additivity_check` | view | definition of itself; `role` and `additivity` on its columns |
 | `fan_out_check`, `validity_check` | view | definition of itself; `validity` on its sources; `column_profile` on the columns it joins on |
 | `orphan_check` | view | definition of itself; `relationship_coherence` on its relationships |
-| `metric_ranges`, `metric_forecast` (preview) | dataset | data and definitions of the dataset's views; `role`, `additivity`, `dimension` and `time_grains` on the dataset; `temporal` on the dataset |
-| `metric_scenario` (preview) | dataset | the same, and `lever` and the scenario properties on the dataset |
-| `metric_plan` (preview) | plan | the same as `metric_ranges`, and `metric_forecast` on the dataset |
+| `metric_ranges`, `metric_forecast` (preview) | dataset | data and definitions of the dataset's metrics; `role`, `additivity`, `dimension` and `time_grains` on them; `temporal` on them |
+| `metric_scenario` (preview) | dataset | the same, and `lever` on the metrics and the scenario properties on the dataset |
+| `metric_plan` (preview) | plan | data, definition and annotations of itself and of its metric; `temporal` on its metric; `metric_forecast` on its dataset |
 
 The detectors (`value_entropy`, `rate_tolerance`, `range_breach`,
 `plan_gap`) read the property of the test they run for, on itself.
