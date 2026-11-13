@@ -119,7 +119,7 @@ GLOSS unit ON orders.amount AS $${"value": "EUR"}$$;
 GLOSS additivity ON orders.amount AS $${"value": "additive", "basis": "one amount per order"}$$;
 
 DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
-SELECT relationship_coherence() FROM shop;
+SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id;
 ```
 
 The measurement finds the defect: 1 of 12 orders has no customer
@@ -206,8 +206,8 @@ with its state:
 SELECT test, subject, state, score FROM view_tests();
 ```
 
-`orphan_test` is red; `fan_out_test`, `measure_additivity_test` and
-`validity_test` are green. The `statement` column of `next` carries
+`orphan_test` is red; `join_test` and `measure_additivity_test` are
+green. The `statement` column of `next` carries
 the fix: repair the load, or accept the rate with a reason.
 
 ## 6. Review

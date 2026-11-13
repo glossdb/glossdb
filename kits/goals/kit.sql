@@ -10,8 +10,9 @@
 -- of date when an input it read has another version now (the catalog's
 -- `inputs`), or a result it read is out of date. A check that failed is
 -- a result with its error, due again once it is out of date. What a metric needs: the profile of each column it reads or
--- joins on, the relationship check of its dataset, and the tests on it
--- and on what it reads. A profile and the relationship check come first:
+-- joins on, the check of each relationship between the tables it scans,
+-- and the tests on it and on what it reads. A profile and the relationship
+-- checks come first:
 -- the tests read them, and so does a measurement a metric's row names as
 -- not run (the grain of its period column). The server computes these
 -- after each write. A preview measurement calls the model service and is
@@ -27,6 +28,15 @@ columns AS (
   FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
   UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
   UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
+-- the relationships between the tables a metric scans, each checked on its own
+scanned AS (
+  SELECT DISTINCT s.view, s.table_name FROM glossql_views_scans(current_schema()) s
+  WHERE s.view IN (SELECT view FROM metrics)),
+relationships AS (
+  SELECT DISTINCT r.left_side || ' ' || r.op || ' ' || r.right_side AS rel
+  FROM main.relationships r JOIN scanned l ON l.table_name = regexp_extract(r.left_side, '^([^.]+\.[^.]+)\.', 1)
+  JOIN scanned p ON p.view = l.view AND p.table_name = regexp_extract(r.right_side, '^([^.]+\.[^.]+)\.', 1)
+  WHERE r.dataset = current_schema()),
 -- a stored result is current while its inputs are, a failure too: a check that failed is not
 -- run again until something it read moves
 stored AS (
@@ -40,9 +50,9 @@ SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
        'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
 FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
 UNION ALL
-SELECT 2, 'relationship_coherence', ds.d, 'SELECT relationship_coherence() FROM ' || ds.d
-FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_coherence'
-WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
+SELECT DISTINCT 2, 'relationship_coherence', r.rel, 'SELECT relationship_coherence() FROM ' || r.rel
+FROM relationships r LEFT JOIN stored s ON s.subject = r.rel AND s.aspect = 'relationship_coherence'
+WHERE NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 3, t.aspect, t.subject, t.run
 FROM main.view_tests_without_preview() t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect

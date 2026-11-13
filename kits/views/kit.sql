@@ -5,6 +5,7 @@
 -- grain. What an actor must learn about these words is the
 -- glossql-modeling skill (skills/glossql-modeling/references/).
 --
+--   FROM glossql_kit('kits/lineage/kit.sql');
 --   FROM glossql_kit('kits/kpi/kit.sql');
 --   FROM glossql_kit('kits/quality/kit.sql');
 --   FROM glossql_kit('kits/views/kit.sql');
@@ -452,22 +453,23 @@ UNION ALL
 SELECT view, NULL, NULL, NULL, 'the view definition does not plan' FROM lineage WHERE field IS NULL
 ORDER BY view, table_name NULLS LAST, field NULLS FIRST;
 
---===------------------------------------------------------------------===------------------------------------------------------------------===--
+--===------------------------------------------------------------------===--
 -- The built-in tests on a metric: what can break its number, checked
--- against its lineage and the evidence the quality kit stored, never
--- against the data again. fan_out_check is join fan-out, orphan_check
--- referential integrity on the declared joins, additivity_check the
--- additivity of the value, validity_check an effective-dated table read
--- without its validity dates. Each is a measurement over the metric's
--- view, `SELECT <check>() FROM <dataset>.<metric>`, whose breach_rate
--- rate_tolerance scores: 0 is green. A check whose evidence is not
--- stored yet says so in `reason` and serves no rate, which reads
--- yellow; a metric over one table cannot fan out and has no join to
--- check. A person who accepts a result records a tolerance at or above
--- it on the metric; their value outranks the agent's. `x-subject:
--- view` marks a test view_tests() expects on every metric, run or
--- not, and the test the server runs itself after a call that defined
--- the metric, annotated its columns or loaded a table it scans.
+-- against its definition and the evidence the quality kit stored, never
+-- against the data again. join_check is a join that repeats rows,
+-- orphan_check referential integrity on the declared joins,
+-- additivity_check the additivity of the value. Each is a measurement
+-- over the metric's view, `SELECT <check>() FROM <dataset>.<metric>`,
+-- whose breach_rate rate_tolerance scores: 0 is green. A check whose
+-- evidence is not stored yet says so in `reason` and serves no rate,
+-- which reads yellow; a metric over one table cannot fan out and has no
+-- join to check. A person who accepts a result records a tolerance at or
+-- above it on the metric; their value outranks the agent's. `x-subject:
+-- view` marks a test view_tests() expects on every metric, run or not,
+-- and the test the server runs itself after a call that defined the
+-- metric, annotated its columns or loaded a table it scans. Each body
+-- reads the catalog through the read functions of the lineage kit
+-- alone (annotations(), results(), definition()).
 --
 -- view_reads_of(ds, m): the tables and columns metric m of dataset ds
 -- descends from, through its view's lineage; none when it does not plan.
@@ -493,199 +495,22 @@ WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 -- are, so a kit that adds a test adds no branch anywhere else.
 --
 -- gloss_statement(aspect, subject, body): the annotation statement.
--- view_redefine(ds, m): the statement that records metric m's
--- current definition again, to edit and send.
+-- redefine_statement(view, body): the statement that records a view's
+-- definition again, to edit and send; view is its path, body the
+-- definition's annotation as a function's body reads it from definition().
 CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
   'GLOSS ' || a || ' ON ' || subj || ' AS $$' || body || '$$;';
 
+CREATE OR REPLACE MACRO main.redefine_statement(v, body) AS
+  main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), coalesce(body::VARCHAR, '<the current definition>'));
+
+-- view_redefine(ds, m): the same statement for metric m of dataset ds,
+-- read from the catalog, for the reads the interfaces serve (`next`)
 CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
   main.gloss_statement(m, ds, coalesce(
     (SELECT g.body::VARCHAR FROM main.glossary g
      WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.begin_snapshot DESC LIMIT 1),
     '<the current definition>'));
-
--- fan_out_check: the metric joins two tables on columns whose values
--- repeat on both sides, so the join multiplies rows. The join columns
--- come from the definition's own plan (glossql_views_joins), and whether
--- a column repeats from its stored column_profile, which the server runs
--- for a metric's join columns. A side the definition reduces to one row
--- per value before the join (grouped by the join columns, DISTINCT on
--- them, or the latest row per value by row_number() = 1) does not repeat,
--- whatever its table holds. A metric that joins nothing cannot fan out.
-DECLARE ASPECT fan_out_check WITH $${
-  "description": "A join in the view must not multiply rows. Fails where the view joins two tables on columns whose values repeat on both sides.",
-  "type": "object", "x-subject": "view",
-  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "breach_rate": {"type": ["number", "null"]},
-                 "pairs": {"type": ["array", "null"], "items": {"type": "string"}},
-                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE;
-
-DECLARE FUNCTION fan_out_check FOR GLOBAL AS $$
-  WITH reads AS (SELECT table_name FROM main.view_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
-  n AS (SELECT count(*) AS tables FROM reads),
-  -- a join on an effective-dated table repeats its key by design: the
-  -- validity test judges that join
-  dated AS (
-    SELECT g.subject AS table_path
-    FROM glossql_glossary(split_part($subject, '.', 1), 'validity', false) g
-    WHERE g.value IS NOT NULL),
-  joins AS (
-    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced
-    FROM glossql_views_joins(split_part($subject, '.', 1)) j
-    WHERE j.view = split_part($subject, '.', 2)
-      AND regexp_replace(j.left_column, '\.[^.]*$', '') <> regexp_replace(j.right_column, '\.[^.]*$', '')
-      AND regexp_replace(j.left_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)
-      AND regexp_replace(j.right_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)),
-  profiles AS (
-    SELECT subject, try_cast(json_extract(value, '$.distinct') AS BIGINT) AS distinct_values,
-           round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
-    FROM main.measurements
-    WHERE dataset = split_part($subject, '.', 1) AND function = 'column_profile'),
-  judged AS (
-    SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
-           NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
-    FROM joins j LEFT JOIN profiles l ON l.subject = j.left_column LEFT JOIN profiles r ON r.subject = j.right_column),
-  unprofiled AS (
-    SELECT string_agg(c, ', ' ORDER BY c) AS columns
-    FROM (SELECT left_column AS c FROM judged WHERE NOT profiled AND left_column NOT IN (SELECT subject FROM profiles)
-          UNION SELECT right_column FROM judged WHERE NOT profiled AND right_column NOT IN (SELECT subject FROM profiles))),
-  repeating AS (
-    SELECT regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') AS pair
-    FROM judged WHERE repeats)
-  SELECT n.tables > 0 AND NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled) AS applicable,
-         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
-              WHEN EXISTS (SELECT 1 FROM judged WHERE NOT profiled) THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled) END AS reason,
-         CASE WHEN n.tables = 0 OR EXISTS (SELECT 1 FROM judged WHERE NOT profiled) THEN NULL
-              WHEN EXISTS (SELECT 1 FROM judged WHERE repeats) THEN 1.0 ELSE 0.0 END AS breach_rate,
-         (SELECT list(pair ORDER BY pair) FROM repeating) AS pairs,
-         CASE WHEN EXISTS (SELECT 1 FROM repeating)
-              THEN split_part($subject, '.', 2) || ' joins on ' || (SELECT string_agg(pair, ', ' ORDER BY pair) FROM repeating)
-                   || ', and the values repeat on both sides, so each match multiplies rows' END AS finding,
-         CASE WHEN EXISTS (SELECT 1 FROM repeating)
-              THEN '-- make one side of the join one row per value: join through the table that holds the key once, or keep one row per key in a subquery (the latest row per key, or GROUP BY the key). Then record the definition again:' || chr(10)
-                   || main.view_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) || chr(10)
-                   || '-- where one of the tables holds a row per version, say so and the validity test names the fix:' || chr(10)
-                   || '-- ' || main.gloss_statement('validity', '<table>', '{"valid_from": "<column>", "valid_to": "<column>"}') || chr(10)
-                   || '-- where the join is meant as it is, accept it with the reason:' || chr(10)
-                   || '-- ' || main.gloss_statement('fan_out_check', $subject, '{"tolerance": 1.0, "basis": "<why the join is meant>"}') END AS fix
-  FROM n
-$$ RETURNS fan_out_check;
-
-DECLARE TEST fan_out_test ON fan_out_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
-
--- additivity_check: the metric's value column says how it adds up over
--- time and members (additive sums, semi-additive keeps the period's last
--- level, a ratio divides its summed numerator by its summed denominator),
--- and that agrees with how the column is computed: the lineage's shape says
--- a ratio, an average or a distinct count, none of which may be summed.
-DECLARE ASPECT additivity_check WITH $${
-  "description": "The view adds its value up the way the value allows. Fails where a ratio, an average or a distinct count is summed.",
-  "type": "object", "x-subject": "view",
-  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
-                 "shape": {"type": ["string", "null"]},
-                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE;
-
-DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH a AS (SELECT * FROM main.view_rows() WHERE view = split_part($subject, '.', 2)),
-  ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
-  computed AS (SELECT max(l.shape) AS shape FROM glossql_views_lineage(split_part($subject, '.', 1)) l JOIN a ON l.view = a.view AND l."column" = a.value_column)
-  SELECT ok.applicable,
-         CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM a WHERE coalesce(kind, '') IN ('scalar', 'relation')),
-                                                  'the definition does not say yet which column is the time and which the measure') END AS reason,
-         CASE WHEN ok.applicable THEN (SELECT CASE WHEN additivity IS NULL OR additivity_state <> 'current' THEN 1.0
-                                                   WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive') THEN 1.0
-                                                   WHEN computed.shape = 'distinct' AND additivity = 'additive' THEN 1.0
-                                                   ELSE 0.0 END FROM a) END AS breach_rate,
-         (SELECT additivity FROM a) AS additivity,
-         computed.shape AS shape,
-         CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
-              WHEN additivity IS NULL OR additivity_state <> 'current'
-                THEN value_column || ' of ' || view || ' does not say how it adds up, which a total and a coarser time grain need'
-              WHEN computed.shape = 'distinct' AND additivity = 'additive'
-                THEN value_column || ' of ' || view || ' is a distinct count marked additive: distinct counts do not add up, so a total and a coarser time grain are wrong'
-              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
-                THEN value_column || ' of ' || view || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
-                     || ' marked ' || additivity || ': its rows are summed, so a total and a coarser time grain are wrong' END FROM a) END AS finding,
-         CASE WHEN NOT ok.applicable
-              THEN (SELECT CASE WHEN len(coalesce(missing, [])) > 0 THEN list_aggregate(missing, 'string_agg', chr(10))
-                                ELSE main.view_redefine(split_part($subject, '.', 1), view) END FROM a)
-              ELSE (SELECT CASE
-              WHEN additivity IS NULL OR additivity_state <> 'current'
-                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
-                       '{"value": "<additive|semi-additive|ratio|non-additive>", "basis": "<why, in the business''s words>"}')
-              WHEN computed.shape = 'distinct' AND additivity = 'additive'
-                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
-                       '{"value": "non-additive", "basis": "a distinct count"}')
-              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
-                THEN '-- serve the numerator and the denominator beside the value and say so in "measure": {"column": "' || value_column
-                     || '", "additivity": "ratio", "numerator": "<column>", "denominator": "<column>"}. Then record the definition again:' || chr(10)
-                     || main.view_redefine(split_part($subject, '.', 1), view) || chr(10)
-                     || '-- where the number is right as it is, accept it with the reason:' || chr(10)
-                     || '-- ' || main.gloss_statement('additivity_check', $subject, '{"tolerance": 1.0, "basis": "<why it may be summed>"}') END FROM a) END AS fix
-  FROM ok, computed
-$$ RETURNS additivity_check;
-
-DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
-
--- orphan_check: the share of rows on a declared edge between two tables the
--- metric scans whose key finds no parent, from the stored coherence result
--- (relationship_coherence' newest on the dataset); an inner join drops
--- them, an outer join counts them under no member. Where no edge is
--- declared between the tables a metric scans there is nothing to check.
-DECLARE ASPECT orphan_check WITH $${
-  "description": "Referential integrity on the relationships the view joins over: the share of rows whose key finds no parent row.",
-  "type": "object", "x-subject": "view",
-  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "breach_rate": {"type": ["number", "null"]},
-                 "edges": {"type": ["array", "null"], "items": {"type": "object"}},
-                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE;
-
-DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
-  WITH reads AS (SELECT table_name FROM main.view_scans_of(split_part($subject, '.', 1), split_part($subject, '.', 2))),
-  n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
-  declared AS (
-    SELECT 1 FROM main.relationships r
-    WHERE r.dataset = split_part($subject, '.', 1)
-      AND split_part(r.left_side, '.', 2) IN (SELECT table_name FROM reads)
-      AND split_part(r.right_side, '.', 2) IN (SELECT table_name FROM reads)
-      AND split_part(r.left_side, '.', 2) <> split_part(r.right_side, '.', 2)),
-  coherence AS (
-    SELECT value FROM main.measurements
-    WHERE dataset = split_part($subject, '.', 1) AND function = 'relationship_coherence' AND subject = split_part($subject, '.', 1)),
-  edges AS (
-    SELECT json_extract_string(j, '$.relationship') AS relationship, try_cast(json_extract(j, '$.orphan_rate') AS DOUBLE) AS orphan_rate
-    FROM coherence, unnest(coalesce(json_extract(coherence.value, '$.relationships')::JSON[], [])) t(j)),
-  mine AS (
-    SELECT * FROM edges
-    WHERE split_part(split_part(relationship, ' ', 1), '.', 2) IN (SELECT table_name FROM reads)
-      AND split_part(split_part(relationship, ' ', 3), '.', 2) IN (SELECT table_name FROM reads))
-  SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
-              WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
-              ELSE EXISTS (SELECT 1 FROM coherence) END AS applicable,
-         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): nothing to check'
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM coherence) THEN 'no coherence result is stored: run relationship_coherence() over the dataset' END AS reason,
-         CASE WHEN n.tables = 1 THEN 0.0
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
-              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM coherence) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
-         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges,
-         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
-                   || ' find no parent: an inner join drops them, an outer join counts them under no member' END AS finding,
-         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
-                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
-  FROM n
-$$ RETURNS orphan_check;
-
-DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 -- validity: an effective-dated table (a slowly changing dimension, type 2):
 -- each row holds from valid_from to valid_to, and a key repeats once per
@@ -697,46 +522,227 @@ DECLARE ASPECT validity WITH $${
                  "open_end": {"type": "string"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
--- validity_check: the metric scans an effective-dated table and reads both
--- of its validity columns, in its join, its filter or its select list; a
--- scan that reads neither or one joins every version of a key, and the
--- number counts a row once per version.
-DECLARE ASPECT validity_check WITH $${
-  "description": "A view that reads a table with validity dates reads both dates. Fails where it reads one or none, so a key counts once per version.",
+-- join_check: a join in the metric repeats rows. Two ways: the metric
+-- joins two tables on columns whose values repeat on both sides, so each
+-- match multiplies rows (join fan-out); or it reads an effective-dated
+-- table without bounding both validity dates, so a key counts once per
+-- version. The join columns come from the definition's own plan, whether
+-- a column repeats from its stored column_profile, which the server runs
+-- for a metric's join columns. A side the definition reduces to one row
+-- per value before the join (grouped by the join columns, DISTINCT on
+-- them, or the latest row per value by row_number() = 1) does not repeat,
+-- whatever its table holds. A join on an effective-dated table repeats its
+-- key by design: its validity dates judge it. A metric that joins nothing
+-- and reads no effective-dated table cannot repeat rows.
+DECLARE ASPECT join_check WITH $${
+  "description": "A join in the view must not repeat rows. Fails where the view joins two tables on columns whose values repeat on both sides, or reads a table with validity dates without bounding both, so a key counts once per version.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
+                 "pairs": {"type": ["array", "null"], "items": {"type": "string"}},
                  "tables": {"type": ["array", "null"], "items": {"type": "string"}},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
-DECLARE FUNCTION validity_check FOR GLOBAL AS $$
-  WITH scans AS (
-    SELECT split_part(s.table_name, '.', 2) AS table_name, s.columns
-    FROM glossql_views_scans(split_part($subject, '.', 1)) s
-    WHERE s.view = split_part($subject, '.', 2) AND split_part(s.table_name, '.', 1) = split_part($subject, '.', 1)),
+DECLARE FUNCTION join_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  scans AS (
+    SELECT DISTINCT r.table_name, r.columns FROM d, unnest(d.reads) t(r)
+    WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
+  n AS (SELECT count(*) AS tables FROM scans),
   dated AS (
-    SELECT split_part(g.subject, '.', 2) AS table_name, g.value->>'valid_from' AS valid_from, g.value->>'valid_to' AS valid_to
-    FROM glossql_glossary(split_part($subject, '.', 1), 'validity', false) g
-    WHERE g.value IS NOT NULL),
+    SELECT asset AS table_path, value->>'valid_from' AS valid_from, value->>'valid_to' AS valid_to
+    FROM annotations('validity', 'its sources') WHERE value IS NOT NULL),
   undated AS (
-    SELECT DISTINCT s.table_name || ' (' || d.valid_from || ', ' || d.valid_to || ')' AS scan
-    FROM scans s JOIN dated d USING (table_name)
-    WHERE NOT (list_contains(s.columns, d.valid_from) AND list_contains(s.columns, d.valid_to)))
-  SELECT EXISTS (SELECT 1 FROM scans) AS applicable,
-         CASE WHEN NOT EXISTS (SELECT 1 FROM scans) THEN 'reads no loaded table: not a metric, or its definition does not plan' END AS reason,
-         CASE WHEN EXISTS (SELECT 1 FROM scans) THEN CASE WHEN EXISTS (SELECT 1 FROM undated) THEN 1.0 ELSE 0.0 END END AS breach_rate,
+    SELECT DISTINCT split_part(s.table_name, '.', 2) || ' (' || x.valid_from || ', ' || x.valid_to || ')' AS scan
+    FROM scans s JOIN dated x ON x.table_path = s.table_name
+    WHERE NOT (list_contains(s.columns, x.valid_from) AND list_contains(s.columns, x.valid_to))),
+  joins AS (
+    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced
+    FROM d, unnest(d.joins) t(j)
+    WHERE regexp_replace(j.left_column, '\.[^.]*$', '') <> regexp_replace(j.right_column, '\.[^.]*$', '')
+      AND regexp_replace(j.left_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)
+      AND regexp_replace(j.right_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)),
+  profiles AS (
+    SELECT asset AS subject, try_cast(json_extract(value, '$.distinct') AS BIGINT) AS distinct_values,
+           round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
+    FROM results('column_profile', 'the columns it joins on') WHERE value IS NOT NULL OR error IS NOT NULL),
+  judged AS (
+    SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
+           NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
+    FROM joins j LEFT JOIN profiles l ON l.subject = j.left_column LEFT JOIN profiles r ON r.subject = j.right_column),
+  unprofiled AS (
+    SELECT string_agg(c, ', ' ORDER BY c) AS columns
+    FROM (SELECT left_column AS c FROM judged WHERE NOT profiled AND left_column NOT IN (SELECT subject FROM profiles)
+          UNION SELECT right_column FROM judged WHERE NOT profiled AND right_column NOT IN (SELECT subject FROM profiles))),
+  repeating AS (
+    SELECT regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') AS pair
+    FROM judged WHERE repeats),
+  state AS (
+    SELECT n.tables > 0 AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled)) AS applicable,
+           EXISTS (SELECT 1 FROM repeating) AS fans, EXISTS (SELECT 1 FROM undated) AS versions,
+           (SELECT redefine_statement(view, body) FROM d) AS redefine
+    FROM n)
+  SELECT state.applicable,
+         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
+              WHEN NOT state.applicable THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled) END AS reason,
+         CASE WHEN NOT state.applicable THEN NULL WHEN state.fans OR state.versions THEN 1.0 ELSE 0.0 END AS breach_rate,
+         (SELECT list(pair ORDER BY pair) FROM repeating) AS pairs,
          (SELECT list(scan ORDER BY scan) FROM undated) AS tables,
-         CASE WHEN EXISTS (SELECT 1 FROM undated)
-              THEN split_part($subject, '.', 2) || ' reads ' || (SELECT string_agg(scan, ', ' ORDER BY scan) FROM undated)
-                   || ' without bounding both validity dates, so a row counts once per version' END AS finding,
-         CASE WHEN EXISTS (SELECT 1 FROM undated)
-              THEN '-- bound both validity dates by the period (valid_from <= period AND valid_to > period). Then record the definition again:' || chr(10)
-                   || main.view_redefine(split_part($subject, '.', 1), split_part($subject, '.', 2)) END AS fix
-$$ RETURNS validity_check;
+         nullif(concat_ws('; ',
+           CASE WHEN state.fans
+                THEN split_part($subject, '.', 2) || ' joins on ' || (SELECT string_agg(pair, ', ' ORDER BY pair) FROM repeating)
+                     || ', and the values repeat on both sides, so each match multiplies rows' END,
+           CASE WHEN state.versions
+                THEN split_part($subject, '.', 2) || ' reads ' || (SELECT string_agg(scan, ', ' ORDER BY scan) FROM undated)
+                     || ' without bounding both validity dates, so a row counts once per version' END), '') AS finding,
+         CASE WHEN state.fans OR state.versions THEN concat_ws(chr(10),
+           CASE WHEN state.fans
+                THEN '-- make one side of the join one row per value: join through the table that holds the key once, or keep one row per key in a subquery (the latest row per key, or GROUP BY the key).' END,
+           CASE WHEN state.versions
+                THEN '-- bound both validity dates by the period (valid_from <= period AND valid_to > period).' END,
+           '-- Then record the definition again:',
+           state.redefine,
+           CASE WHEN state.fans
+                THEN '-- where one of the tables holds a row per version, say so, and this check judges the join by its validity dates:' || chr(10)
+                     || '-- ' || main.gloss_statement('validity', '<table>', '{"valid_from": "<column>", "valid_to": "<column>"}') END,
+           '-- where the join is meant as it is, accept it with the reason:',
+           '-- ' || main.gloss_statement('join_check', $subject, '{"tolerance": 1.0, "basis": "<why the join is meant>"}')) END AS fix
+  FROM n, state
+$$ RETURNS join_check;
 
-DECLARE TEST validity_test ON validity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+DECLARE TEST join_test ON join_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- additivity_check: the metric's value column says how it adds up over
+-- time and members (additive sums, semi-additive keeps the period's last
+-- level, a ratio divides its summed numerator by its summed denominator),
+-- and that agrees with how the column is computed: the lineage's shape says
+-- a ratio, an average or a distinct count, none of which may be summed. The
+-- value is the column annotated role measure, the one named value where
+-- several are.
+DECLARE ASPECT additivity_check WITH $${
+  "description": "The view adds its value up the way the value allows. Fails where a ratio, an average or a distinct count is summed.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
+                 "shape": {"type": ["string", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself') WHERE body IS NOT NULL),
+  cols AS (SELECT c.name AS col, c.position AS pos, c.shape FROM d, unnest(d.columns) t(c)),
+  roles AS (SELECT substr(asset, length($subject) + 2) AS col, value->>'value' AS role
+            FROM annotations('role', 'its columns') WHERE state IN ('current', 'stale') AND value IS NOT NULL),
+  adds AS (SELECT substr(asset, length($subject) + 2) AS col, value, state
+           FROM annotations('additivity', 'its columns') WHERE state <> 'missing'),
+  measures AS (SELECT list(col ORDER BY CASE WHEN col = 'value' THEN 0 ELSE 1 END, pos) AS cols
+               FROM roles JOIN cols USING (col) WHERE role = 'measure'),
+  a AS (
+    SELECT split_part($subject, '.', 2) AS view, d.kind,
+           CASE WHEN len(m.cols) = 1 OR m.cols[1] = 'value' THEN m.cols[1] END AS value_column,
+           CASE WHEN coalesce(d.kind, '') IN ('scalar', 'plan') THEN []::VARCHAR[]
+                ELSE coalesce((SELECT list(main.gloss_statement('role', $subject || '.' || col, '{"value": "<key|measure|dimension|timestamp|attribute>"}') ORDER BY pos)
+                               FROM cols WHERE col NOT IN (SELECT col FROM roles)), []::VARCHAR[]) END AS missing,
+           redefine_statement(d.view, d.body) AS redefine
+    FROM d, measures m),
+  v AS (
+    SELECT a.*,
+           (SELECT CASE WHEN state IN ('current', 'stale') THEN value->>'value' END FROM adds WHERE adds.col = a.value_column) AS additivity,
+           coalesce((SELECT CASE WHEN state IN ('current', 'stale') THEN state ELSE 'conflict' END FROM adds WHERE adds.col = a.value_column), 'none') AS additivity_state
+    FROM a),
+  ok AS (SELECT EXISTS (SELECT 1 FROM v WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
+  computed AS (SELECT max(cols.shape) AS shape FROM cols JOIN v ON cols.col = v.value_column)
+  SELECT ok.applicable,
+         CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM v WHERE coalesce(kind, '') IN ('scalar', 'relation')),
+                                                  'the definition does not say yet which column is the time and which the measure') END AS reason,
+         CASE WHEN ok.applicable THEN (SELECT CASE WHEN additivity IS NULL OR additivity_state <> 'current' THEN 1.0
+                                                   WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive') THEN 1.0
+                                                   WHEN computed.shape = 'distinct' AND additivity = 'additive' THEN 1.0
+                                                   ELSE 0.0 END FROM v) END AS breach_rate,
+         (SELECT additivity FROM v) AS additivity,
+         computed.shape AS shape,
+         CASE WHEN NOT ok.applicable THEN NULL ELSE (SELECT CASE
+              WHEN additivity IS NULL OR additivity_state <> 'current'
+                THEN value_column || ' of ' || view || ' does not say how it adds up, which a total and a coarser time grain need'
+              WHEN computed.shape = 'distinct' AND additivity = 'additive'
+                THEN value_column || ' of ' || view || ' is a distinct count marked additive: distinct counts do not add up, so a total and a coarser time grain are wrong'
+              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
+                THEN value_column || ' of ' || view || ' is ' || CASE computed.shape WHEN 'ratio' THEN 'a ratio' ELSE 'an average' END
+                     || ' marked ' || additivity || ': its rows are summed, so a total and a coarser time grain are wrong' END FROM v) END AS finding,
+         CASE WHEN NOT ok.applicable
+              THEN (SELECT CASE WHEN len(coalesce(missing, [])) > 0 THEN list_aggregate(missing, 'string_agg', chr(10)) ELSE redefine END FROM v)
+              ELSE (SELECT CASE
+              WHEN additivity IS NULL OR additivity_state <> 'current'
+                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
+                       '{"value": "<additive|semi-additive|ratio|non-additive>", "basis": "<why, in the business''s words>"}')
+              WHEN computed.shape = 'distinct' AND additivity = 'additive'
+                THEN main.gloss_statement('additivity', $subject || '.' || value_column,
+                       '{"value": "non-additive", "basis": "a distinct count"}')
+              WHEN computed.shape IN ('ratio', 'average') AND additivity IN ('additive', 'semi-additive')
+                THEN '-- serve the numerator and the denominator beside the value and say so in "measure": {"column": "' || value_column
+                     || '", "additivity": "ratio", "numerator": "<column>", "denominator": "<column>"}. Then record the definition again:' || chr(10)
+                     || redefine || chr(10)
+                     || '-- where the number is right as it is, accept it with the reason:' || chr(10)
+                     || '-- ' || main.gloss_statement('additivity_check', $subject, '{"tolerance": 1.0, "basis": "<why it may be summed>"}') END FROM v) END AS fix
+  FROM ok, computed
+$$ RETURNS additivity_check;
+
+DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- orphan_check: the share of rows on a declared relationship between two
+-- tables the metric scans whose key finds no parent, from the coherence
+-- result stored on each relationship (relationship_coherence); an inner
+-- join drops them, an outer join counts them under no member. Where no
+-- relationship is declared between the tables a metric scans there is
+-- nothing to check; where one has no coherence result yet, the check is not
+-- applicable until it has.
+DECLARE ASPECT orphan_check WITH $${
+  "description": "Referential integrity on the relationships the view joins over: the share of rows whose key finds no parent row.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "edges": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  reads AS (SELECT DISTINCT split_part(r.table_name, '.', 2) AS table_name FROM d, unnest(d.reads) t(r)
+            WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
+  n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
+  rels AS (
+    SELECT asset AS relationship, value,
+           regexp_extract(asset, '^[^.]+\.([^.]+)\.', 1) AS left_table,
+           regexp_extract(asset, ' <?-> [^.]+\.([^.]+)\.', 1) AS right_table
+    FROM results('relationship_coherence', 'its relationships')),
+  declared AS (SELECT * FROM rels WHERE left_table <> right_table),
+  mine AS (SELECT relationship, try_cast(json_extract(value, '$.orphan_rate') AS DOUBLE) AS orphan_rate FROM rels WHERE value IS NOT NULL)
+  SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
+              WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
+              ELSE NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) END AS applicable,
+         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): nothing to check'
+              WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM declared WHERE value IS NULL)
+                THEN 'no coherence result is stored for ' || (SELECT string_agg(relationship, ', ' ORDER BY relationship) FROM declared WHERE value IS NULL)
+                     || ': run relationship_coherence() over each' END AS reason,
+         CASE WHEN n.tables = 1 THEN 0.0
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
+         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges,
+         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
+              THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
+                   || ' find no parent: an inner join drops them, an outer join counts them under no member' END AS finding,
+         CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
+              THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
+                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
+  FROM n
+$$ RETURNS orphan_check;
+
+DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
 -- view_tests(): every test on each metric of the bound dataset and on

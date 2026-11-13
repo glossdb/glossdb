@@ -20,6 +20,9 @@ statement ok
 PRAGMA glossql;
 
 statement ok
+FROM glossql_kit('{GLOSSQL_KITS}/lineage/kit.sql');
+
+statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok
@@ -346,7 +349,7 @@ SELECT count(DISTINCT metric) FROM metric_series();
 # --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its additivity
 
 statement ok
-SELECT fan_out_check() FROM fin.spend;
+SELECT join_check() FROM fin.spend;
 
 statement ok
 SELECT orphan_check() FROM fin.spend;
@@ -357,10 +360,9 @@ SELECT additivity_check() FROM fin.spend;
 query TTTT
 SELECT test, declared_by, state, run FROM view_tests() WHERE view = 'spend' ORDER BY test;
 ----
-fan_out_test	kit:views	green	SELECT fan_out_check() FROM fin.spend
+join_test	kit:views	green	SELECT join_check() FROM fin.spend
 measure_additivity_test	kit:views	green	SELECT additivity_check() FROM fin.spend
 orphan_test	kit:views	green	SELECT orphan_check() FROM fin.spend
-validity_test	kit:views	not_run	SELECT validity_check() FROM fin.spend
 
 # a single value and a stopped definition have no tests of this kind
 query I
@@ -382,15 +384,15 @@ statement ok
 GLOSS noted_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.lines l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
 
 statement ok
-SELECT fan_out_check() FROM fin.noted_spend;
+SELECT join_check() FROM fin.noted_spend;
 
 statement ok
 SELECT orphan_check() FROM fin.noted_spend;
 
 query TTT
-SELECT test, state, (json_extract_string(evidence, '$.reason')) IS NOT NULL FROM view_tests() WHERE view = 'noted_spend' AND test IN ('fan_out_test', 'orphan_test') ORDER BY test;
+SELECT test, state, (json_extract_string(evidence, '$.reason')) IS NOT NULL FROM view_tests() WHERE view = 'noted_spend' AND test IN ('join_test', 'orphan_test') ORDER BY test;
 ----
-fan_out_test	yellow	true
+join_test	yellow	true
 orphan_test	green	true
 
 # the profiles are stored: the check's result predates them and says so, and the next run reads them
@@ -401,15 +403,15 @@ statement ok
 SELECT column_profile() FROM fin.notes.line_id;
 
 query TT
-SELECT state, current FROM view_tests() WHERE view = 'noted_spend' AND test = 'fan_out_test';
+SELECT state, current FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
 ----
 yellow	false
 
 statement ok
-SELECT fan_out_check() FROM fin.noted_spend;
+SELECT join_check() FROM fin.noted_spend;
 
 query TTT
-SELECT state, current, json_extract_string(evidence, '$.pairs') FROM view_tests() WHERE view = 'noted_spend' AND test = 'fan_out_test';
+SELECT state, current, json_extract_string(evidence, '$.pairs') FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
 ----
 red	true	["lines.line_id ~ notes.line_id"]
 
@@ -427,16 +429,69 @@ statement ok
 GLOSS noted_spend_latest ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.notes n JOIN (SELECT * FROM fin.lines QUALIFY row_number() OVER (PARTITION BY line_id ORDER BY booked DESC) = 1) l ON n.line_id = l.line_id GROUP BY ALL"}$$;
 
 statement ok
-SELECT fan_out_check() FROM fin.noted_spend_grouped;
+SELECT join_check() FROM fin.noted_spend_grouped;
 
 statement ok
-SELECT fan_out_check() FROM fin.noted_spend_latest;
+SELECT join_check() FROM fin.noted_spend_latest;
 
 query TT
-SELECT view, state FROM view_tests() WHERE view LIKE 'noted_spend_%' AND test = 'fan_out_test' ORDER BY view;
+SELECT view, state FROM view_tests() WHERE view LIKE 'noted_spend_%' AND test = 'join_test' ORDER BY view;
 ----
 noted_spend_grouped	green
 noted_spend_latest	green
+
+# referential integrity on the relationships the metric joins over: one coherence result per relationship
+statement ok
+CREATE TABLE fin.customers AS SELECT i AS customer_id, 'c' || i AS name FROM range(80) r(i);
+
+statement ok
+CREATE TABLE fin.regions AS SELECT i AS region_id FROM range(5) r(i);
+
+statement ok
+CREATE TABLE fin.orders AS SELECT i AS order_id, i % 100 AS customer_id, i % 5 AS region_id, DATE '2024-01-01' + INTERVAL (i) DAY AS booked, 10.0 AS amount FROM range(200) r(i);
+
+statement ok
+DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
+
+statement ok
+DECLARE ASPECT customer_sales WITH $${"title": "Customer sales"}$$ AS VIEW;
+
+statement ok
+GLOSS customer_sales ON fin AS $${"sql": "SELECT date_trunc('month', o.booked)::DATE AS period, sum(o.amount) AS value, c.name FROM fin.orders o JOIN fin.customers c ON c.customer_id = o.customer_id JOIN fin.regions g ON g.region_id = o.region_id GROUP BY ALL"}$$;
+
+statement ok
+SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id;
+
+statement ok
+SELECT orphan_check() FROM fin.customer_sales;
+
+query TT
+SELECT state, json_extract_string(evidence, '$.edges[0].relationship') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
+----
+red	fin.orders.customer_id -> fin.customers.customer_id
+
+# a relationship declared after its check ran has no result yet: the check is not applicable until it has
+statement ok
+DECLARE RELATIONSHIP orders.region_id -> regions.region_id;
+
+statement ok
+SELECT orphan_check() FROM fin.customer_sales;
+
+query TT
+SELECT state, json_extract_string(evidence, '$.applicable') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
+----
+yellow	false
+
+statement ok
+SELECT relationship_coherence() FROM orders.region_id -> regions.region_id;
+
+statement ok
+SELECT orphan_check() FROM fin.customer_sales;
+
+query TT
+SELECT state, json_extract_string(evidence, '$.breach_rate') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
+----
+red	0.2
 
 # a built-in test that is red brings its finding and its fix
 query I
@@ -460,10 +515,10 @@ statement ok
 GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id GROUP BY ALL"}$$;
 
 statement ok
-SELECT validity_check() FROM fin.priced_spend;
+SELECT join_check() FROM fin.priced_spend;
 
 query TT
-SELECT state, json_extract_string(evidence, '$.tables') FROM view_tests() WHERE view = 'priced_spend' AND test = 'validity_test';
+SELECT state, json_extract_string(evidence, '$.tables') FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
 ----
 red	["prices (valid_from, valid_to)"]
 
@@ -471,10 +526,10 @@ statement ok
 GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id AND p.valid_from <= l.booked AND p.valid_to > l.booked GROUP BY ALL"}$$;
 
 statement ok
-SELECT validity_check() FROM fin.priced_spend;
+SELECT join_check() FROM fin.priced_spend;
 
 query T
-SELECT state FROM view_tests() WHERE view = 'priced_spend' AND test = 'validity_test';
+SELECT state FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
 ----
 green
 
@@ -506,20 +561,20 @@ statement ok
 GLOSS all_lines ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*) AS value FROM (SELECT booked, line_id FROM fin.lines UNION ALL SELECT DATE '2024-01-01', line_id FROM fin.notes) GROUP BY ALL"}$$;
 
 statement ok
-SELECT fan_out_check() FROM fin.all_lines;
+SELECT join_check() FROM fin.all_lines;
 
 query T
-SELECT state FROM view_tests() WHERE view = 'all_lines' AND test = 'fan_out_test';
+SELECT state FROM view_tests() WHERE view = 'all_lines' AND test = 'join_test';
 ----
 green
 
 # an accepted rate is no conflict: the tolerance the test offers settles it
 statement ok
-GLOSS fan_out_check ON fin.noted_spend AS $${"tolerance": 1.0, "basis": "every note of a line is counted on purpose"}$$;
+GLOSS join_check ON fin.noted_spend AS $${"tolerance": 1.0, "basis": "every note of a line is counted on purpose"}$$;
 
 query T
-SELECT state FROM view_tests() WHERE view = 'noted_spend' AND test = 'fan_out_test'
-UNION ALL SELECT state FROM GLOSSARY(fin.noted_spend) WHERE aspect = 'fan_out_check';
+SELECT state FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test'
+UNION ALL SELECT state FROM GLOSSARY(fin.noted_spend) WHERE aspect = 'join_check';
 ----
 green
 current

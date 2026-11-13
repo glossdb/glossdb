@@ -69,7 +69,7 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
     )
     .await;
     let defined = states().await;
-    for test in ["fan_out_test", "orphan_test", "validity_test"] {
+    for test in ["join_test", "orphan_test"] {
         assert_eq!(state(&defined, test), "green", "{defined:?}");
     }
     assert_eq!(state(&defined, "measure_additivity_test"), "yellow");

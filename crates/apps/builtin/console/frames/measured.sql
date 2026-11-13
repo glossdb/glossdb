@@ -7,7 +7,8 @@ WITH m AS (
   FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.current),
 rels AS (
-  SELECT unnest(json_extract(body, '$.relationships')::JSON[]) AS rel FROM m WHERE aspect = 'relationship_coherence'),
+  SELECT body AS rel FROM m
+  WHERE aspect = 'relationship_coherence' AND json_extract_string(body, '$.relationship') IS NOT NULL),
 coherence AS (
   SELECT 'relationship_coherence' AS aspect,
          CAST(count(*) AS VARCHAR) || CASE WHEN count(*) = 1 THEN ' join' ELSE ' joins' END AS subjects,

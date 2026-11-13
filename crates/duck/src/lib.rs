@@ -709,7 +709,7 @@ fn share() -> Option<PathBuf> {
 /// The engine's pieces and where they are.
 struct Pieces {
     extension: PathBuf,
-    /// The extension's kits: the language's examples, kpi and quality.
+    /// The extension's kits: the language's examples, lineage, kpi and quality.
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
@@ -777,6 +777,7 @@ impl Config {
             extension: pieces.extension,
             kits: vec![
                 pieces.kits.join("core/kit.sql"),
+                pieces.glossql_kits.join("lineage/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("views/kit.sql"),

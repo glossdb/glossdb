@@ -86,9 +86,10 @@ annotation shows in `next`; a wrong one does not.
   after must be equal, or the join repeats rows.
 
 After `DECLARE RELATIONSHIP`, annotate its `meaning`, with what the
-orphans are. `relationship_coherence()` measures each declared
-relationship's orphan rate; the server runs it for the built-in
-tests. Its `temporal` list compares the date columns of the two
+orphans are. `relationship_coherence()` measures one declared
+relationship's orphan rate, run over its pair path
+(`SELECT relationship_coherence() FROM orders.customer_id ->
+customers.customer_id`); the server runs it for the built-in tests. Its `temporal` list compares the date columns of the two
 tables, up to three per side, over the joined rows: `precedes_rate`
 is the share of rows whose date in the referring table
 (`child_column`) lies before the date in the table referred to
@@ -109,7 +110,7 @@ data settles the rest. Run the function; do not ask.
 | what a column holds: nulls, distinct values, range | `SELECT column_profile() FROM t.c` |
 | outliers in a numeric column | `SELECT outlier_profile() FROM t.c` |
 | a date column's grain, span and gaps | `SELECT temporal() FROM t.c` |
-| which columns join, and how well | `SELECT detect_relationships() FROM <dataset>`, then `relationship_coherence()` |
+| which columns join, and how well | `SELECT detect_relationships() FROM <dataset>`, then `relationship_coherence()` per relationship |
 | whether a column is computed from others (a = b × c) | `SELECT detect_derivations() FROM t` |
 | hierarchies among a table's columns | `SELECT detect_hierarchies() FROM t` |
 | a level or a movement, where an event table exists | `SELECT additivity_evidence() FROM t.c` |

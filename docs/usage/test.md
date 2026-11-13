@@ -15,21 +15,21 @@ data. It has a state, and the state is read again after each load.
 
 ## The built-in tests
 
-Each metric gets four tests, on the tables its definition scans:
+Each metric gets three tests, on the tables its definition scans:
 
 | Test | Checks | Red when |
 |---|---|---|
-| `fan_out_test` | join fan-out | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows |
+| `join_test` | join fan-out, and effective-dated tables (annotated `validity` with `valid_from`, `valid_to`) | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without bounding both validity dates, so a row counts once per version |
 | `orphan_test` | referential integrity on the declared relationships between the scanned tables | rows find no parent; the score is the highest orphan rate |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
-| `validity_test` | an effective-dated table (annotated `validity` with `valid_from`, `valid_to`) | the definition reads it without bounding both validity dates |
 
 The server runs them after a call that defines the metric, annotates
 its columns or loads a table it scans. They read the definition's
 lineage and stored measurements: `column_profile()` on the join
-columns, `relationship_coherence()` on the dataset. A test whose
-evidence is missing is `yellow` and its `reason` names the
-measurement to run. The four run on metrics. A table and a single
+columns, `relationship_coherence()` on each declared relationship
+between the scanned tables. A test whose evidence is missing is
+`yellow` and its `reason` names the measurement to run. The three run
+on metrics. A table and a single
 value carry the tests on what they read and the tests you declare on
 them.
 

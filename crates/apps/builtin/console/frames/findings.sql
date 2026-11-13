@@ -65,8 +65,8 @@ orphaned AS (
          json_extract(rel, '$.orphans')::BIGINT AS orphans,
          json_extract(rel, '$.filled')::BIGINT AS filled,
          written_at
-  FROM (SELECT unnest(json_extract(m.body, '$.relationships')::JSON[]) AS rel, m.written_at
-        FROM measured m WHERE m.aspect = 'relationship_coherence')
+  FROM (SELECT m.body AS rel, m.written_at
+        FROM measured m WHERE m.aspect = 'relationship_coherence' AND json_extract_string(m.body, '$.relationship') IS NOT NULL)
   WHERE json_extract(rel, '$.orphans')::BIGINT > 0),
 orphans AS (
   SELECT 'measured' AS chip, '' AS scls,

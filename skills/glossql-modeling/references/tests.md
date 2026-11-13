@@ -33,17 +33,17 @@ your own, the annotation that records an accepted rate.
 The server runs these on each metric after a call that defines it,
 annotates it or its columns, or loads a table it reads. It also runs
 what they read: a profile of each column the metric reads, and the
-relationship check of the dataset.
+check of each relationship between the tables it scans.
 
 | Test | Red when | The usual fix |
 |---|---|---|
-| `fan_out_test` | the metric joins two tables on columns whose values repeat on both sides, so the join multiplies rows | reduce one side to one row per key before the join |
+| `join_test` | the metric joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
 | `orphan_test` | rows on a declared relationship the metric uses find no parent: an inner join drops them, an outer join counts them under no member | fix the load (trim, pad, cast the key), or load the missing parents |
-| `validity_test` | the metric reads an effective-dated table without both of its validity dates, so a row counts once per version | bound both dates in the join |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
 
 `orphan_test` reads declared relationships only: declare the joins a
-view uses. `validity_test` needs the table marked as effective-dated:
+view uses. `join_test` judges a join on an effective-dated table by its
+validity dates once the table is marked as such:
 
 ```glossql
 GLOSS validity ON price_list AS $${"valid_from": "valid_from", "valid_to": "valid_to"}$$;

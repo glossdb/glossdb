@@ -23,6 +23,9 @@ statement ok
 FROM glossql_kit('{KITS}/core/kit.sql');
 
 statement ok
+FROM glossql_kit('{GLOSSQL_KITS}/lineage/kit.sql');
+
+statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok
@@ -42,6 +45,23 @@ SELECT count(*) FROM results_due();
 ----
 0
 
+# every shipped measurement reads the catalog through the read functions alone, with constant arguments:
+# no catalog reached directly, no what or where built at run. The known exceptions, by name: the
+# outlook kit's measurements (preview), and additivity_evidence, whose primitive reads the roles and
+# the relationships at its bind
+query TT
+SELECT DISTINCT f.name, f.declared_by
+FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
+WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
+  AND (r.kind = 'catalog' OR NOT coalesce(r.constant, true))
+ORDER BY ALL;
+----
+additivity_evidence	kit:quality
+metric_forecast	kit:outlook
+metric_plan	kit:outlook
+metric_ranges	kit:outlook
+metric_scenario	kit:outlook
+
 # with no table in the dataset, the list has one row: a source to connect and a table to load
 query TTT
 SELECT step, state, who FROM next;
@@ -56,7 +76,7 @@ goals	current
 query I
 SELECT count(*) FROM kits;
 ----
-6
+7
 
 # --- the preview measurements in `next`: listed where the dataset needs them, due again when what they read
 # changed and only then; the model service is stood in for
@@ -613,14 +633,40 @@ SELECT temporal() FROM grid.entries.period;
 statement ok
 SELECT temporal() FROM grid.points.period;
 
+# the relationship check is due per relationship between the tables a metric scans, a new one too
 statement ok
-SELECT relationship_coherence() FROM grid;
+CREATE TABLE grid.drivers AS SELECT i AS driver_id FROM range(7) t(i);
 
 statement ok
-SELECT additivity_check(), fan_out_check(), orphan_check(), validity_check() FROM grid.entries;
+DECLARE ASPECT driver_points WITH $${"title": "Points of known drivers"}$$ AS VIEW;
 
 statement ok
-SELECT additivity_check(), fan_out_check(), orphan_check(), validity_check() FROM grid.points;
+GLOSS driver_points ON grid AS $${"sql": "SELECT r.date AS period, sum(r.points) AS value FROM grid.results r JOIN grid.drivers d ON d.driver_id = r.driver_id GROUP BY 1"}$$;
+
+statement ok
+DECLARE RELATIONSHIP results.driver_id -> drivers.driver_id;
+
+query TT
+SELECT subject, run FROM results_due() WHERE function = 'relationship_coherence';
+----
+grid.results.driver_id -> grid.drivers.driver_id	SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id
+
+statement ok
+SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id;
+
+query I
+SELECT count(*) FROM results_due() WHERE function = 'relationship_coherence';
+----
+0
+
+statement ok
+GLOSS driver_points ON grid AS $${"stopped": "not a metric of this test"}$$;
+
+statement ok
+SELECT additivity_check(), join_check(), orphan_check() FROM grid.entries;
+
+statement ok
+SELECT additivity_check(), join_check(), orphan_check() FROM grid.points;
 
 query I
 SELECT count(*) FROM results_due();

@@ -66,7 +66,7 @@ change.
 ```glossql
 SELECT column_profile() FROM staff.department;
 SELECT detect_relationships() FROM hr;
-SELECT relationship_coherence() FROM hr;
+SELECT relationship_coherence() FROM staff.department -> departments.code;
 ```
 
 | Function | Over | Returns |
@@ -78,7 +78,7 @@ SELECT relationship_coherence() FROM hr;
 | `detect_hierarchies()` | a table | columns that determine other columns |
 | `detect_derivations()` | a table | numeric columns computed from two others |
 | `detect_relationships()` | a dataset | candidate keys between tables |
-| `relationship_coherence()` | a dataset | per declared relationship: `filled`, `orphans`, `orphan_rate` |
+| `relationship_coherence()` | a declared relationship | `filled`, `orphans`, `orphan_rate`, and the dates of the two tables compared |
 | `detect_definition_collisions()` | a dataset | views that compute the same thing |
 
 A detection proposes; a declaration is yours to make.

@@ -8,9 +8,10 @@ coh AS (
   SELECT json_extract_string(rel, '$.relationship') AS rel,
          json_extract(rel, '$.orphans')::BIGINT AS orphans,
          json_extract(rel, '$.filled')::BIGINT AS filled
-  FROM (SELECT unnest(json_extract(g.body, '$.relationships')::JSON[]) AS rel
+  FROM (SELECT g.body AS rel
         FROM GLOSSARY(all => true) g
-        WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence')),
+        WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence'
+          AND json_extract_string(g.body, '$.relationship') IS NOT NULL)),
 m AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind,
          row_number() OVER (PARTITION BY g.subject
