@@ -509,3 +509,46 @@ SELECT (SELECT count(*) FROM next WHERE step = 'describe' AND contains(statement
        (SELECT count(*) FROM next WHERE step = 'describe' AND asset = 'side.ledger_clean' AND contains(statement, 'side.ledger_clean.fund'));
 ----
 0	1
+
+# --- a check that fails is stored with its error: not due again after a write it did not read, due again once what it read moves
+
+statement ok
+DECLARE ASPECT fund_named WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
+
+statement ok
+DECLARE FUNCTION fund_named_check FOR side AS $$SELECT CASE WHEN count(*) FILTER (WHERE fund IS NULL) > 0 THEN error('fund_missing: a row names no fund') ELSE 0.0 END AS breach_rate, count(*) AS rows FROM side.ledger_clean$$ RETURNS fund_named;
+
+statement ok
+DECLARE TEST fund_named_test ON fund_named BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+
+statement ok
+GLOSS fund_named ON ledger_clean AS $${"outcome": "every row names its fund", "tolerance": 0.0, "basis": "a booking without a fund cannot be reported"}$$;
+
+statement ok
+INSERT INTO side.ledger SELECT booked, amount, NULL FROM side.ledger LIMIT 1;
+
+statement error
+SELECT fund_named_check() FROM ledger_clean;
+----
+fund_missing
+
+query TT
+SELECT current, error IS NOT NULL FROM GLOSSARY(ledger_clean, all => true) WHERE aspect = 'fund_named' AND actor = 'function';
+----
+true	true
+
+statement ok
+CREATE TABLE side.unrelated AS SELECT 1 AS x;
+
+query I
+SELECT count(*) FROM results_due() WHERE function = 'fund_named';
+----
+0
+
+statement ok
+INSERT INTO side.ledger SELECT booked, amount, 'water' FROM side.ledger LIMIT 1;
+
+query T
+SELECT run FROM results_due() WHERE function = 'fund_named';
+----
+SELECT fund_named_check() FROM side.ledger_clean

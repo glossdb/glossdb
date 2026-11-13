@@ -33,7 +33,7 @@ CREATE OR REPLACE MACRO main.service_soft(path, body) AS glossql_service(path, b
 CREATE OR REPLACE MACRO main.partial_periods(g) AS TABLE
 WITH axes AS (
   SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
-  FROM main.view_summary() WHERE applicable AND coalesce(kind, '') <> 'plan'),
+  FROM main.view_rows() WHERE applicable AND coalesce(kind, '') <> 'plan'),
 edges AS (
   SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
          count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
@@ -46,7 +46,7 @@ WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_gr
 CREATE OR REPLACE MACRO main.complete_series(g) AS TABLE
 WITH s AS (
   SELECT metric, period, value, additivity, max(period) OVER (PARTITION BY metric) AS last
-  FROM main.metric_series(grain := g, unclaimed := 'skip')
+  FROM main.actual_series(grain := g, unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual' AND value IS NOT NULL)
 SELECT s.metric, s.period, s.value, s.additivity FROM s
 WHERE NOT (s.period = s.last
@@ -82,10 +82,16 @@ CREATE OR REPLACE MACRO main.scenarios() AS TABLE
 WITH declared AS (
   SELECT name FROM (SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) AS rn FROM main.aspects)
   WHERE rn = 1 AND kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario'),
+-- the annotation in force on the dataset, a person's before an agent's: read from the
+-- annotations themselves, since the scenarios' names are known only here and a
+-- glossary read names one property or every one, every function's results with them
+annotated AS (
+  SELECT g.aspect, g.body::JSON AS body FROM main.glossary g
+  WHERE g.dataset = current_schema() AND g.subject = current_schema() AND g.actor_kind IN ('human', 'agent')
+  QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
 bodies AS (
-  SELECT d.name AS scenario, g.value AS body
-  FROM declared d LEFT JOIN glossql_glossary(current_schema(), NULL, false) g
-    ON g.aspect = d.name AND g.subject = current_schema() AND g.state = 'current'),
+  SELECT d.name AS scenario, g.body
+  FROM declared d LEFT JOIN annotated g ON g.aspect = d.name),
 levers AS (
   SELECT b.scenario, u.l."column" AS lever, split_part(u.l."column", '.', 1) AS metric, substr(u.l."column", length(split_part(u.l."column", '.', 1)) + 2) AS col,
          u.l.factor AS factor, u.l.basis AS basis
@@ -94,11 +100,11 @@ levers AS (
 judged AS (
   SELECT l.*,
          CASE WHEN l.lever IS NULL OR l.col = '' THEN 'a lever names a served metric''s column, <metric>.<column>'
-              WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), NULL, false) g
-                               WHERE g.subject = current_schema() || '.' || l.lever AND g.aspect = 'lever' AND g.state = 'current'
+              WHEN NOT EXISTS (SELECT 1 FROM glossql_glossary(current_schema(), 'lever', false) g
+                               WHERE g.subject = current_schema() || '.' || l.lever AND g.state = 'current'
                                  AND (g.value->>'value') = 'true')
                 THEN l.lever || ' is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric''s view'
-              WHEN NOT EXISTS (SELECT 1 FROM main.view_summary() a WHERE a.view = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
+              WHEN NOT EXISTS (SELECT 1 FROM main.view_rows() a WHERE a.view = l.metric AND a.applicable AND coalesce(a.kind, '') NOT IN ('plan', 'scalar', 'relation'))
                 THEN l.metric || ' is no served metric of this dataset'
               WHEN NOT EXISTS (SELECT 1 FROM glossql_columns(current_schema()) c WHERE c.table_name = l.metric AND c.column_name = l.col)
                 THEN l.metric || ' serves no column named ' || l.col
@@ -133,7 +139,7 @@ SELECT m.view, m.kind, m.plan_of, m.stopped, m.applicable,
                      coalesce(m.numerator, ''), coalesce(m.denominator, ''), coalesce(m.floor, ''), coalesce(m.window_periods::VARCHAR, ''),
                      coalesce(m.additivity, ''), coalesce(l.loads, ''))) AS inputs,
        coalesce(l.tracked, true) AS tracked
-FROM main.view_summary() m LEFT JOIN defs d USING (view) LEFT JOIN loads l USING (view);
+FROM main.view_rows() m LEFT JOIN defs d USING (view) LEFT JOIN loads l USING (view);
 
 CREATE OR REPLACE MACRO main.outlook_inputs() AS TABLE
 WITH v AS MATERIALIZED (SELECT * FROM main.view_inputs()),
@@ -207,7 +213,7 @@ SELECT a.metric, a.additivity, coalesce(c.months, 0) AS months,
               THEN a.metric || ' is served by ' || a.floor || ', and expected ranges are computed by month'
             WHEN c.metric IS NULL THEN main.no_series_reason(a.metric, a.value_column, a.additivity, a.additivity_state, 'month')
             WHEN c.months < 7 THEN 'a backtest needs seven complete months, and ' || a.metric || ' has ' || c.months END AS reason
-FROM (SELECT * RENAME (view AS metric) FROM main.view_summary()) a LEFT JOIN counted c USING (metric)
+FROM (SELECT * RENAME (view AS metric) FROM main.view_rows()) a LEFT JOIN counted c USING (metric)
 WHERE coalesce(a.kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample', 'scenario')
 ORDER BY a.metric;
 
@@ -384,7 +390,7 @@ ORDER BY metric, point_seq NULLS FIRST;
 
 CREATE OR REPLACE MACRO main.forecast_request() AS TABLE
 WITH axes AS (
-  SELECT * RENAME (view AS metric) FROM main.view_summary() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
+  SELECT * RENAME (view AS metric) FROM main.view_rows() WHERE coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'scenario')),
 series AS (SELECT metric, period, value FROM main.complete_series(NULL)),
 hist AS (
   SELECT metric, count(*) AS n, max(period) AS origin, list({'period': period, 'value': value} ORDER BY period) AS history
@@ -683,7 +689,7 @@ CREATE OR REPLACE MACRO main.scenario_request() AS TABLE
 WITH lv AS (
   SELECT s.scenario, u.l.lever AS lever, u.l.metric AS metric, u.l."column" AS col, u.l.factor AS factor
   FROM main.scenarios() s, unnest(s.levers) AS u(l) WHERE s.applicable),
-axes AS (SELECT view AS metric, floor, period_column, additivity FROM main.view_summary() WHERE applicable),
+axes AS (SELECT view AS metric, floor, period_column, additivity FROM main.view_rows() WHERE applicable),
 series AS (SELECT metric, period, value FROM main.complete_series(NULL)),
 origins AS (SELECT metric, max(period) AS origin, count(*) AS history FROM series GROUP BY metric),
 -- the lever's series: the mean of the column per period at the metric's floor
@@ -1053,7 +1059,7 @@ ORDER BY l.scenario, metric, lever;
 CREATE OR REPLACE MACRO main.plan_rows() AS TABLE
 WITH p AS (
   SELECT a.view AS plan, a.plan_of AS metric, a.covers, a.period_column, a.value_column, a.additivity
-  FROM main.view_summary() a WHERE a.kind = 'plan' AND a.applicable),
+  FROM main.view_rows() a WHERE a.kind = 'plan' AND a.applicable),
 rows_ AS (
   SELECT p.plan, p.metric, p.additivity, p.covers,
          max(CASE WHEN c."column" = p.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -1084,7 +1090,7 @@ GROUP BY r.plan, r.metric, coalesce(at_grain, r.grain), date_trunc(coalesce(at_g
 
 CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 WITH named AS (
-  SELECT a.view AS plan, a.applicable, a.reason FROM main.view_summary() a WHERE a.kind = 'plan' AND a.view = p),
+  SELECT a.view AS plan, a.applicable, a.reason FROM main.view_rows() a WHERE a.kind = 'plan' AND a.view = p),
 refusal AS (
   SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario') THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario')
               WHEN w = 'scenario' AND s IS NULL THEN error('scenario_not_named: metric_series(world := ''scenario'') names the scenario it serves, scenario := ''<name>'' — a scenario is a FACT aspect declared with x-kind scenario, annotated with a factor per period on declared levers')
@@ -1110,7 +1116,7 @@ forecast_world AS (
 scenario_world AS (
   SELECT sp.metric, 'scenario' AS world, '' AS dimension, '' AS member, sp.period, sp.value,
          NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(a.additivity, 'none') AS additivity
-  FROM main.scenario_points(s) sp LEFT JOIN main.view_summary() a ON a.view = sp.metric
+  FROM main.scenario_points(s) sp LEFT JOIN main.view_rows() a ON a.view = sp.metric
   WHERE w = 'scenario' AND sp.applicable AND sp.value IS NOT NULL AND (g IS NULL OR g = sp.grain))
 SELECT * FROM plan_world
 UNION ALL SELECT * FROM forecast_world
@@ -1145,9 +1151,9 @@ WITH prow AS MATERIALIZED (SELECT * FROM main.plan_rows()),
 g AS (
   SELECT pg.plan, pg.metric, pg.additivity, pg.grain, m.floor AS metric_floor
   FROM (SELECT DISTINCT plan, metric, additivity, grain FROM prow) pg
-  JOIN main.view_summary() m ON m.view = pg.metric WHERE m.applicable),
+  JOIN main.view_rows() m ON m.view = pg.metric WHERE m.applicable),
 floor_cells AS MATERIALIZED (
-  SELECT metric, period, value, num, den, additivity FROM main.metric_series(unclaimed := 'skip')
+  SELECT metric, period, value, num, den, additivity FROM main.actual_series(unclaimed := 'skip')
   WHERE dimension = '' AND world = 'actual'),
 -- edge: the last period with a value; origin: the last complete one, the period before where the data ends inside the
 -- edge's; first_actual: where the served actuals begin (the series serves a window of periods, not the whole history)
@@ -1156,7 +1162,7 @@ origins AS (
   SELECT e.metric, e.edge, e.first_actual,
          CASE WHEN EXISTS (SELECT 1 FROM main.partial_periods(NULL) pp WHERE pp.metric = e.metric AND pp.period = e.edge)
               THEN e.edge - main.grain_step(m.floor) ELSE e.edge END AS origin
-  FROM edges e JOIN main.view_summary() m ON m.view = e.metric),
+  FROM edges e JOIN main.view_rows() m ON m.view = e.metric),
 cells AS (
   -- the plan's cells at its own grain and at the year
   SELECT r.plan, r.metric, gr.step_grain AS grain, date_trunc(gr.step_grain, r.instant) AS period,
@@ -1308,7 +1314,7 @@ DECLARE ASPECT metric_plan WITH $${
 }$$ AS MEASUREMENT ON TABLE;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
-  WITH named AS (SELECT kind, applicable, reason FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
+  WITH named AS (SELECT kind, applicable, reason FROM main.view_rows() WHERE view = split_part($subject, '.', 2)),
   refusal AS (
     SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM named WHERE kind = 'plan')
                 THEN error('not_a_plan: ' || $subject || ' is not a plan: metric_plan() compares a plan, a VIEW aspect declared with x-kind plan and x-plan-of <metric>, with the actual and the forecast')

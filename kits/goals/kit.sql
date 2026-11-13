@@ -8,7 +8,8 @@
 -- are missing or out of date, each with the statement that computes it,
 -- in the order to run them: ord, function, subject, run. A result is out
 -- of date when an input it read has another version now (the catalog's
--- `inputs`). What a metric needs: the profile of each column it reads or
+-- `inputs`), or a result it read is out of date. A check that failed is
+-- a result with its error, due again once it is out of date. What a metric needs: the profile of each column it reads or
 -- joins on, the relationship check of its dataset, and the tests on it
 -- and on what it reads. A profile and the relationship check come first:
 -- the tests read them, and so does a measurement a metric's row names as
@@ -26,8 +27,10 @@ columns AS (
   FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
   UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
   UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
+-- a stored result is current while its inputs are, a failure too: a check that failed is not
+-- run again until something it read moves
 stored AS (
-  SELECT subject, aspect, bool_and(current) AS current
+  SELECT subject, aspect, bool_and(current) AS current, bool_or(error IS NOT NULL) AS failed
   FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
 SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
 FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
@@ -42,8 +45,9 @@ FROM ds LEFT JOIN stored s ON s.subject = ds.d AND s.aspect = 'relationship_cohe
 WHERE EXISTS (SELECT 1 FROM metrics) AND NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 3, t.aspect, t.subject, t.run
-FROM main.view_tests_without_preview() t
-WHERE t.run <> '' AND (t.state = 'not_run' OR NOT t.current);
+FROM main.view_tests_without_preview() t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
+WHERE t.run <> '' AND NOT coalesce(s.current AND s.failed, false)
+  AND (t.state = 'not_run' OR NOT t.current OR NOT coalesce(s.current, true));
 
 --===------------------------------------------------------------------===--
 -- load_changes(): per table of the bound dataset loaded more than once,

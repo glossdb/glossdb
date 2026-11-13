@@ -84,9 +84,14 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- plan's row lists the comparison the outlook kit measures on the plan
 -- (metric_plan over the plan) in measurements_to_run until one exists, as a
 -- metric's row lists the profile over its period column.
+--
+-- view_rows(): the same rows, a plan's measurements_to_run empty. A
+-- function's body reads this one: it reads no stored result, so what the
+-- body stores depends on the annotations it names and not on whether
+-- metric_plan's results are current.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.view_summary() AS TABLE
+CREATE OR REPLACE MACRO main.view_rows() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
@@ -103,9 +108,13 @@ cols AS (
   WHERE c.table_name IN (SELECT metric FROM views)),
 annotated AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
-  FROM glossql_glossary(current_schema(), NULL, false)
-  WHERE aspect IN ('role', 'additivity', 'dimension', 'time_grains', 'temporal_profile')
-    AND len(string_split(subject, '.')) >= 3
+  -- one read per property, so that a result depends on these five alone
+  FROM (FROM glossql_glossary(current_schema(), 'role', false)
+        UNION ALL FROM glossql_glossary(current_schema(), 'additivity', false)
+        UNION ALL FROM glossql_glossary(current_schema(), 'dimension', false)
+        UNION ALL FROM glossql_glossary(current_schema(), 'time_grains', false)
+        UNION ALL FROM glossql_glossary(current_schema(), 'temporal_profile', false))
+  WHERE len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -237,12 +246,17 @@ UNION ALL
 SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, NULL AS grain_detected, covers AS floor, NULL AS window_periods,
        additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
-       CASE WHEN reason IS NULL AND NOT EXISTS (SELECT 1 FROM main.measurements m
-                                                WHERE m.dataset = current_schema() AND m.function = 'metric_plan'
-                                                  AND m.subject = current_schema() || '.' || judged_plans.metric)
-            THEN ['metric_plan over ' || current_schema() || '.' || metric] ELSE []::VARCHAR[] END,
-       true
+       []::VARCHAR[], true
 FROM judged_plans
+ORDER BY view;
+
+CREATE OR REPLACE MACRO main.view_summary() AS TABLE
+SELECT * REPLACE (
+         CASE WHEN kind = 'plan' AND applicable AND NOT EXISTS (
+                SELECT 1 FROM main.measurements m
+                WHERE m.dataset = current_schema() AND m.function = 'metric_plan' AND m.subject = current_schema() || '.' || v.view)
+              THEN ['metric_plan over ' || current_schema() || '.' || v.view] ELSE measurements_to_run END AS measurements_to_run)
+FROM main.view_rows() v
 ORDER BY view;
 
 --===------------------------------------------------------------------===--
@@ -278,10 +292,12 @@ SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimensi
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
 
-CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
+-- actual_series(grain, unclaimed): the actual world alone, which a
+-- function's body reads: it reads no stored result, as the other worlds do.
+CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_summary() m
+  FROM main.view_rows() m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
@@ -372,6 +388,10 @@ member_cells AS (
 SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, additivity
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL
+ORDER BY metric, dimension, member, period;
+
+CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
+SELECT * FROM main.actual_series(grain := grain, unclaimed := unclaimed, world := world)
 UNION ALL
 SELECT metric, world, dimension, member, period, value, num, den, additivity
 FROM main.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
@@ -571,7 +591,7 @@ DECLARE ASPECT additivity_check WITH $${
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
-  WITH a AS (SELECT * FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
+  WITH a AS (SELECT * FROM main.view_rows() WHERE view = split_part($subject, '.', 2)),
   ok AS (SELECT EXISTS (SELECT 1 FROM a WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
   computed AS (SELECT max(l.shape) AS shape FROM glossql_views_lineage(split_part($subject, '.', 1)) l JOIN a ON l.view = a.view AND l."column" = a.value_column)
   SELECT ok.applicable,

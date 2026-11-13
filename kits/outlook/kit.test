@@ -185,10 +185,23 @@ false
 statement ok
 SELECT metric_ranges() FROM fin;
 
+# the backtest read the period column's profile, which the load outdated too: out of date until the profile is computed again
+query T
+SELECT current FROM TESTS() WHERE test = 'range_test';
+----
+false
+
+statement ok
+SELECT temporal() FROM spend.period;
+
+statement ok
+SELECT metric_ranges() FROM fin;
+
+# the refusal without a service, the first backtest, and one after each change
 query IT
 SELECT count(*), bool_and(current) FROM measurements_history m, TESTS() a WHERE m.function = 'metric_ranges' AND a.test = 'range_test';
 ----
-2	true
+4	true
 
 # --- the forecast: a monthly metric, twelve months ahead from the last period with a value, the quarter and the year to go
 
@@ -447,10 +460,31 @@ false
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
+# the judgement read the forecast and the period columns' profiles, which the load outdated too: out of date until they are computed again, inputs first
+query T
+SELECT current FROM TESTS() WHERE test = 'plan_test';
+----
+false
+
+statement ok
+SELECT temporal() FROM spend.period;
+
+statement ok
+SELECT temporal() FROM sales.period;
+
+statement ok
+SELECT temporal() FROM balance.period;
+
+statement ok
+SELECT metric_forecast() FROM fin;
+
+statement ok
+SELECT metric_plan() FROM fin.sales_budget;
+
 query IT
 SELECT count(*), bool_and(current) FROM measurements_history m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_test';
 ----
-2	true
+3	true
 
 # the preview features' findings are served only where a model service is named
 query I
@@ -699,17 +733,17 @@ SELECT state, (evidence->>'reason') IS NOT NULL FROM view_tests() WHERE test = '
 ----
 not_applicable	true
 
-# --- metric_plan() on a view that is not a plan is refused by name, and stores nothing
+# --- metric_plan() on a view that is not a plan is refused by name, and stored as a failure: its error and no value
 
 statement error
 SELECT metric_plan() FROM fin.sales;
 ----
 not_a_plan
 
-query I
-SELECT count(*) FROM measurements WHERE function = 'metric_plan' AND subject = 'fin.sales';
+query IT
+SELECT count(*), bool_and(value IS NULL AND error LIKE '%not_a_plan%') FROM measurements WHERE function = 'metric_plan' AND subject = 'fin.sales';
 ----
-0
+1	true
 
 # --- a plan is compared with the actual only where the actuals cover the period: hires begins in October 2024,
 # a plan for the whole of 2024 has no actual for the year or for September, and one for October
