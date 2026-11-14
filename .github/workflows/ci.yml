@@ -36,7 +36,7 @@ jobs:
         with:
           shared-key: ci
           cache-on-failure: true
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2
         with:
           tool: cargo-nextest,cargo-deny,cargo-machete
       # libduckdb-sys unpacks DuckDB's sources once under target/duckdb-sources/<hash>,
