@@ -728,7 +728,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // what the frame's expansion resolves. A `catalog` frame reads the
     // glossary and can change under a review decision; a `data` frame
     // cannot, so the browser's store keeps it across decisions. The
-    // class is about what a frame serves: the cube's facts (`axes`) are
+    // class is about what a frame serves: a metric's row (`axes`) is
     // catalog, its cells (`slices`, `latest`, `drivers`) are data, and
     // the trend, which joins the stored forecast, is catalog.
     let (app, plane, _dir) = workspace().await;
@@ -1120,9 +1120,9 @@ async fn the_tests_frame_serves_results_not_the_vocabulary() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
-    // The views page end to end from the cube: nothing is
+    // The views page end to end from the metric reads: nothing is
     // planted — the frames read `metric_series()` and `view_summary()`,
-    // which build the cube from the metric definition and the judged results
+    // which build the series from the metric definition and the judged results
     // the workspace carries. The measures list is the catalog, its numbers a
     // data frame joined in the browser by the metric's name; the
     // picker lists the admitted axis, a picked slice serves its
@@ -1227,7 +1227,7 @@ async fn the_metric_frames_serve_the_series_its_slices_and_its_drivers() {
         "cohort a moved between the two months; cohort b has one period"
     );
 
-    // A gloss moves the data version: the cube rebuilds at the next read
+    // A gloss moves the data version: the series is built again at the next read
     // with the same numbers.
     builder(&plane).await
         .execute(r#"USE perf; GLOSS definitions ON perf AS $${"definitions": {"dso": {"meaning": "receivables outstanding expressed in days of revenue", "unit": "days", "owner": "Finance", "source": "KPI handbook v3", "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;"#)

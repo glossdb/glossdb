@@ -81,7 +81,7 @@ computed: no second list, no flag.
 Server at `0493fef`: 115 tests pass. Extension at `4c325dd`: its SQL
 suite passes with 2885 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
-the confirmed findings are fixed, each with a test. glossval's cube
+the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
 import path agrees with a fresh load. On the server on
 127.0.0.1:8080 with the Formula 1 data (9 tables, 4 metrics), each

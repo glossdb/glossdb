@@ -116,7 +116,7 @@
   // review decision's 204, and the stale-tab 409 whose cause is someone else's
   // write), and it classifies every frame it serves: `catalog` frames
   // read the glossary somewhere in their expansion, `data` frames
-  // provably do not — so the cube's cells, the trend and the slices
+  // provably do not — so the metric's cells, the trend and the slices
   // survive a review decision untouched, in cache and on screen. Capture phase, so the
   // evictions land before any panel's own listener refetches. Specs
   // stay: they are static files.
