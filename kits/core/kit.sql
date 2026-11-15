@@ -213,8 +213,9 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   -- use where the test is set: each asset that carries its expectation
   -- as an annotation is open until a result is stored there. A kit's
   -- check on a view (x-subject view) is in use on each view that is
-  -- defined (x-subject metric: on each metric), and open there until its
-  -- result is stored. A
+  -- defined (x-subject metric: on each metric; with x-set-by, on those
+  -- where the property it names is annotated on the view or a column),
+  -- and open there until its result is stored. A
   -- descriptive table or column property is in use on what the views
   -- read: each loaded table a view descends from when the
   -- property takes tables, else each such column, where a WHEN holds
@@ -238,7 +239,8 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   -- SQL (a check on a metric, on each metric), until a result of the
   -- check is stored on the view
   view_checks AS (
-    SELECT DISTINCT a.name, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only
+    SELECT DISTINCT a.name, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
+           json_extract_string(a.schema, '$.x-set-by') AS set_by
     FROM (SELECT DISTINCT aspect FROM main.tests) t
     JOIN newest_aspects a ON a.name = t.aspect
     WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
@@ -252,7 +254,10 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     WHERE json_extract_string(body, '$.sql') IS NOT NULL),
   open_view_checks AS (
     SELECT v.dataset, v.view, c.name FROM defined_views v JOIN view_checks c ON v.metric OR NOT c.metrics_only
-    WHERE NOT EXISTS (SELECT 1 FROM main.measurements m
+    WHERE (c.set_by IS NULL OR EXISTS (
+             SELECT 1 FROM main.glossary g
+             WHERE g.dataset = v.dataset AND g.aspect = c.set_by AND split_part(g.subject, '.', 2) = v.view))
+      AND NOT EXISTS (SELECT 1 FROM main.measurements m
                       WHERE m.dataset = v.dataset AND m.subject = v.dataset || '.' || v.view AND m.aspect = c.name)),
   -- where a test is set and no check has run: the expectation is
   -- annotated on the asset and no result is stored there
@@ -375,6 +380,17 @@ DECLARE ASPECT recipe_change WITH $${
   "type": "object", "required": ["table", "sql", "reason"],
   "properties": {"table": {"type": "string"}, "sql": {"type": "string"},
                  "reason": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+-- What a source sends at each delivery, stated on the table loaded from
+-- it: `full`, the complete state, so a row a file lacks is gone at the
+-- source; `incremental`, only new and changed rows. A person's
+-- annotation confirms or corrects the agent's. load_modes() (the goals
+-- kit) holds each table's newest load against it.
+DECLARE ASPECT delivery WITH $${
+  "description": "What the source sends at each delivery: the complete state (full), or only new and changed rows (incremental).",
+  "type": "object", "required": ["value"],
+  "properties": {"value": {"enum": ["full", "incremental"]}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 -- Review decisions: each answer a person gives in the review, the

@@ -579,7 +579,8 @@ ORDER BY f.metric;
 -- bound dataset, or of one, comes from, read off the view's SQL. One row
 -- per target column, per branch of the union the view's rows come from
 -- (1 where it has none) and per source column: view, target_column,
--- branch, system (the source the source table is loaded from), source_table,
+-- branch, system (the system of record the source table states, else the
+-- source it is loaded from), source_table,
 -- source_column, alias (where the view reads the table more than once),
 -- condition (what the view's joins and filters require of that read of the
 -- table alone), expression (the branch's derivation), literals (the codes
@@ -593,7 +594,13 @@ ORDER BY f.metric;
 CREATE OR REPLACE MACRO main.column_mapping(for_view := NULL) AS TABLE
 WITH views AS (
   SELECT m.view FROM main.view_summary() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
-systems AS (SELECT "from" AS t, "to" AS system FROM main.loaded_from_edges(current_schema()))
+-- a table's system of record, where an annotation names one, else its load's source
+stated AS (
+  SELECT subject AS t, value->>'value' AS system FROM glossql_glossary(current_schema(), 'system_of_record', false)
+  WHERE value IS NOT NULL AND state IN ('current', 'stale')),
+systems AS (
+  SELECT l."from" AS t, coalesce(s.system, l."to") AS system
+  FROM main.loaded_from_edges(current_schema()) l LEFT JOIN stated s ON s.t = l."from")
 SELECT m.view, m."column" AS target_column, m.branch, s.system,
        split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
        m.alias, m.condition, m.derivation AS expression, m.literals, m.complete
@@ -616,7 +623,9 @@ WHERE m.view IN (SELECT view FROM views);
 -- person who accepts a result records a tolerance at or above it on the
 -- view; their value outranks the agent's. `x-subject: view` marks a test
 -- view_tests() expects on every view, run or not, `x-subject: metric` one
--- it expects on every metric; the server runs each itself after a call
+-- it expects on every metric; `x-set-by: <property>` beside either one
+-- it expects only where the view or one of its columns carries an
+-- annotation of that property; the server runs each itself after a call
 -- that defined the view, annotated what the check reads or loaded a
 -- table it scans. Each body reads the catalog through the read functions
 -- of the lineage kit alone (annotations(), results(), definition()).
@@ -945,7 +954,9 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 -- measures it, as role_test does, and on a result about the dataset or a
 -- view with no tests, which an actor stores and the server does not
 -- compute after a write). The tests marked x-subject view appear on
--- every view, run or not, those marked x-subject metric on every metric.
+-- every view, run or not, those marked x-subject metric on every metric,
+-- those marked x-set-by too only where the property it names is
+-- annotated on the view or on one of its columns.
 -- Each view carries the tests on what it reads and the tests declared on
 -- it; a plan and a sample have none of these, and a test on a result
 -- about one carries the plan or the sample as its view. A test on the
@@ -967,10 +978,16 @@ authors AS (
 -- a kit's check on each view (x-subject view), or on each metric alone
 -- (x-subject metric: a check that needs a measure)
 expected AS (
-  SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only
+  SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
+         json_extract_string(a.schema, '$.x-set-by') AS set_by
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
   JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
+-- the views that carry an annotation of a property on themselves or on a column
+set_on AS (
+  SELECT DISTINCT g.aspect, split_part(g.subject, '.', 2) AS view FROM main.glossary g
+  WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
+    AND g.aspect IN (SELECT set_by FROM expected WHERE set_by IS NOT NULL)),
 evidence AS (
   SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
@@ -979,7 +996,8 @@ own AS (
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
-  FROM all_views m JOIN expected e ON m.metric OR NOT e.metrics_only
+  FROM all_views m JOIN expected e ON (m.metric OR NOT e.metrics_only)
+   AND (e.set_by IS NULL OR EXISTS (SELECT 1 FROM set_on o WHERE o.aspect = e.set_by AND o.view = m.view))
   LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
   LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect),
 reads AS (

@@ -58,6 +58,19 @@ Declaring it loads the table, typed as the SQL types it.
   column, or a comma-separated list). Each load then merges by it. The
   result must carry each key once, or the load is refused and names a
   key. Without a key each load replaces the table.
+- **Choose by what the source sends**, and state it on the table
+  (`GLOSS delivery ON <table> AS $${"value": "full|incremental",
+  "basis": "…"}$$`); a person confirms or corrects it.
+
+  | The source sends | Load | What it costs |
+  |---|---|---|
+  | its complete state, or you do not know | without a key | each load writes the whole table again |
+  | only new and changed rows | with a key | identical rows write nothing; a row deleted at the source stays |
+
+  `next` lists a keyed load whose file carried at least 90% of the
+  table's keys and missed some (`keys missing`), and a load without a
+  key of 100,000 rows or more that changed at most 1% of them
+  (`unchanged`), each with the statement that fixes it.
 - **Declared again with other SQL**, the load query replaces the old
   one and loads the table again. The annotations stay; those on a
   column the new load changed read `stale`.
@@ -75,7 +88,7 @@ The acknowledgement says what happened: `loaded fleet.readings: 48210
 rows, 0 dropped (new)`. The `imports` table keeps each load:
 
 ```sql
-SELECT table_name, mode, rows, dropped_rows_count, imported_at FROM imports_history ORDER BY begin_snapshot DESC
+SELECT table_name, mode, rows, source_rows, changed_rows, dropped_rows_count, imported_at FROM imports_history ORDER BY begin_snapshot DESC
 ```
 
 ## CSV files

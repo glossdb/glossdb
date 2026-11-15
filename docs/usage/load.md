@@ -85,10 +85,13 @@ loaded logistics.deliveries: 48210 rows, 0 dropped (new)
 
 `imports` keeps one row per load: `table_name`, `mode` (`replace` or
 `merge`), `rows`, `dropped_rows_count`, `lineage` (each column's
-expression over the source's columns), `snapshot_id`, `imported_at`.
+expression over the source's columns), `snapshot_id`, `imported_at`,
+`source_rows` (the rows the load query returned) and `changed_rows`
+(the rows the load inserted, updated or removed against the table
+before it).
 
 ```sql
-SELECT table_name, mode, rows, dropped_rows_count, imported_at FROM imports;
+SELECT table_name, mode, rows, source_rows, changed_rows, dropped_rows_count, imported_at FROM imports;
 ```
 
 ## Load again
@@ -107,6 +110,41 @@ statement.
   the table by that key. A result that carries a key twice is refused.
 - Declaring a load query again with changed SQL replaces it and loads
   again. Unchanged, it does nothing.
+
+## A full load or a keyed load
+
+Choose by what the source sends.
+
+| The source sends | Load | What it costs |
+|---|---|---|
+| its complete state each time, or you do not know | without a key: the table is the file | each load writes the whole table again, changed or not. Measured: 1,000,000 identical rows of ten columns write 89 MB of Parquet |
+| only new and changed rows | with a key (`SET (key: …)`) | a load writes only the rows that changed; identical rows write nothing. A row the source deletes stays in the table |
+
+State what the source sends on the table. A person can confirm or
+correct it:
+
+```glossql
+GLOSS delivery ON logistics.deliveries AS $${"value": "incremental", "basis": "the export holds the deliveries changed since the last run"}$$;
+```
+
+`load_modes()` holds the newest load of each table against the load
+before it. `next` lists two cases as `integrate` rows:
+
+- **`keys missing`**: a keyed load whose file carried at least 90% of
+  the keys the table held, and missed some. The source likely sends
+  its complete state, so rows deleted at the source stay in the table.
+  The fix loads without the key. A `must` where `delivery` is `full`,
+  a `should` otherwise.
+- **`unchanged`**: a load without a key of at least 100,000 rows that
+  changed at most 1% of them. The row names the key to merge by: the
+  load query's key, the table's `entity` grain, else a column whose
+  profile is filled and unique. A `should`, and only where `delivery`
+  is not `full`.
+
+The numbers come from public data: a complete monthly file of EIA-860M
+carries 99.84% to 99.99% of the generators of the month before; a
+yearly filing of FERC Form 1 carries 3.7% to 13.2% of the rows filed
+before it.
 
 Annotations stay across loads. An annotation on a column the new load
 redefined, retyped or dropped reads `stale`

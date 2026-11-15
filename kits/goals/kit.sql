@@ -102,6 +102,97 @@ SELECT l.tbl AS table_name, 'loaded again: ' || l.rows || ' rows, ' || l.rows_be
 FROM loads l LEFT JOIN changed c USING (tbl)
 WHERE l.newest AND l.rows_before IS NOT NULL;
 
+--===------------------------------------------------------------------===--
+-- load_modes(): per table of the bound dataset, its newest load held
+-- against the load before it and against what the source sends (the
+-- `delivery` annotation on the table): table_name (<dataset>.<table>),
+-- mode (replace or merge), delivery (full, incremental, or NULL where
+-- nobody stated it), rows (after the load), rows_before, source_rows
+-- (what the file carried), changed_rows, keys_carried (of a merge: the
+-- keys the table held before that the file carried), keys_missed (of a
+-- merge: the keys the table holds that the file did not carry), key (the
+-- key a whole replace could merge by: the recipe's, the table's `entity`
+-- grain, else a column whose stored profile is filled and unique), state,
+-- level, open, statement. state is NULL where the load says nothing:
+--   keys missing  a merge whose file carried at least 90% of the keys the
+--     table held and missed some: the source likely sends its complete
+--     state, and a row it no longer sends is kept here. must where the
+--     delivery is stated full, should otherwise.
+--   unchanged  a whole replace of at least 100,000 rows that changed at
+--     most 1% of them, where the delivery is not stated full: a keyed
+--     load would write only the changed rows. should.
+-- The numbers, measured: a complete monthly file of EIA-860M carries
+-- 99.84% to 99.99% of the generators of the month before; a yearly
+-- filing of FERC Form 1 in the new system carries 3.7% to 13.2% of the
+-- rows filed before. A replace of 1,000,000 identical rows of ten
+-- columns writes 89 MB of Parquet, 100,000 rows 9 MB; a merge of the same
+-- rows writes nothing. Each needs a stored load before the newest.
+--===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.load_modes() AS TABLE
+WITH loads AS (
+  SELECT table_name, mode, rows, source_rows, changed_rows, end_snapshot IS NULL AS newest,
+         lag(rows) OVER (PARTITION BY table_name ORDER BY begin_snapshot) AS rows_before
+  FROM main.imports_history WHERE dataset = current_schema()),
+stated AS (
+  SELECT subject, value->>'value' AS delivery FROM glossql_glossary(current_schema(), 'delivery', false)
+  WHERE value IS NOT NULL AND state IN ('current', 'stale')),
+grains AS (
+  SELECT subject, from_json(value->'grain', '["VARCHAR"]') AS grain FROM glossql_glossary(current_schema(), 'entity', false)
+  WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
+unique_columns AS (
+  SELECT array_to_string(string_split(subject, '.')[1:2], '.') AS tbl, min(split_part(subject, '.', 3)) AS col
+  FROM main.measurements
+  WHERE dataset = current_schema() AND function = 'column_profile' AND value IS NOT NULL
+    AND (value->>'total')::BIGINT > 0 AND (value->>'distinct')::BIGINT = (value->>'total')::BIGINT
+    AND (value->>'null_ratio')::DOUBLE = 0
+  GROUP BY 1),
+recipe AS (
+  SELECT current_schema() || '.' || table_name AS tbl, table_name, source, sql,
+         nullif(json_extract_string(settings, '$.key'), '') AS key
+  FROM main.recipes WHERE dataset = current_schema()),
+judged AS (
+  SELECT current_schema() || '.' || l.table_name AS table_name, l.mode, d.delivery, l.rows, l.rows_before,
+         l.source_rows, l.changed_rows,
+         CASE WHEN l.mode = 'merge' THEN l.source_rows - (l.rows - l.rows_before) END AS keys_carried,
+         CASE WHEN l.mode = 'merge' THEN l.rows - l.source_rows END AS keys_missed,
+         coalesce(r.key, array_to_string(g.grain, ', '), u.col) AS key, r.table_name AS recipe_table, r.source, r.sql
+  FROM loads l
+  LEFT JOIN stated d ON d.subject = current_schema() || '.' || l.table_name
+  LEFT JOIN grains g ON g.subject = current_schema() || '.' || l.table_name
+  LEFT JOIN unique_columns u ON u.tbl = current_schema() || '.' || l.table_name
+  LEFT JOIN recipe r ON r.tbl = current_schema() || '.' || l.table_name
+  WHERE l.newest AND l.rows_before IS NOT NULL),
+stated_state AS (
+  SELECT *,
+         CASE WHEN mode = 'merge' AND rows_before > 0 AND keys_missed > 0 AND keys_carried >= 0.9 * rows_before THEN 'keys missing'
+              WHEN mode = 'replace' AND rows >= 100000 AND changed_rows IS NOT NULL AND changed_rows <= 0.01 * rows
+                   AND delivery IS DISTINCT FROM 'full' THEN 'unchanged' END AS state
+  FROM judged)
+SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows, keys_carried, keys_missed, key, state,
+       CASE WHEN state = 'keys missing' AND delivery = 'full' THEN 'must' WHEN state IS NOT NULL THEN 'should' END AS level,
+       CASE state
+         WHEN 'keys missing'
+         THEN 'the newest load of ' || table_name || ' merged a file that carried ' || keys_carried || ' of the ' || rows_before
+              || ' keys the table held and missed ' || keys_missed || ': a row gone at the source is kept here'
+              || CASE WHEN delivery = 'full' THEN ', and the source is stated to send its complete state' ELSE '' END
+         WHEN 'unchanged'
+         THEN 'the newest load of ' || table_name || ' replaced ' || rows || ' rows and changed ' || changed_rows
+              || ' of them: a keyed load writes only the changed rows' END AS open,
+       CASE state
+         WHEN 'keys missing'
+         THEN '-- where each file holds the complete state, load without the key: the table is then the file' || chr(10)
+              || 'DECLARE RECIPE ' || recipe_table || ' ON ' || current_schema() || ' FROM ' || source || ' AS $$' || sql || '$$;'
+              || CASE WHEN delivery = 'full' THEN ''
+                      ELSE chr(10) || '-- where the source sends only new and changed rows, state it:' || chr(10)
+                           || 'GLOSS delivery ON ' || table_name || ' AS $${"value": "incremental", "basis": "<what the source sends>"}$$;' END
+         WHEN 'unchanged'
+         THEN '-- a keyed load keeps a row the file no longer carries: merge by the key only where rows are not deleted at the source, and state what it sends:' || chr(10)
+              || 'DECLARE RECIPE ' || recipe_table || ' ON ' || current_schema() || ' FROM ' || source
+              || ' SET (key: ' || CASE WHEN key IS NULL THEN '<key column>' WHEN contains(key, ',') THEN '''' || key || '''' ELSE key END
+              || ') AS $$' || sql || '$$;' || chr(10)
+              || 'GLOSS delivery ON ' || table_name || ' AS $${"value": "<full|incremental>", "basis": "<what the source sends>"}$$;' END AS statement
+FROM stated_state;
+
 -- next: what is open on the bound dataset, read from the states the
 -- catalog holds. One row per asset, state and level: level, ord, kind,
 -- asset, state, who (agent or person), open (the finding), for_view (the
@@ -187,6 +278,7 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN name = 'entity'
                 THEN '{"value": "<what one row is>", "role": "<fact|dimension>", "grain": ["<key column>"], "time_axis": "<date column, where the rows are events>"}'
                 WHEN name = 'meaning' THEN '{"value": "<one sentence>"}'
+                WHEN json_extract(schema, '$.examples[0]') IS NOT NULL THEN json_extract(schema, '$.examples[0]')::VARCHAR
                 WHEN json_extract(schema, '$.properties.value.enum') IS NOT NULL
                 THEN '{"value": "<' || array_to_string(json_extract_string(schema, '$.properties.value.enum[*]'), '|') || '>"}'
                 WHEN json_extract(schema, '$.properties.value') IS NOT NULL
@@ -237,6 +329,19 @@ CREATE OR REPLACE VIEW main.next AS
         SELECT 1 FROM summary m, ds WHERE g.subject = ds.d || '.' || m.view AND coalesce(m.kind, '') <> 'relation'))
       AND NOT (g.state = 'conflict' AND EXISTS (
         SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))
+    UNION ALL
+    -- a column property asked per table (x-asked: per table): once a
+    -- column of a table or a view carries it, each other column is asked
+    SELECT ds.d || '.' || c.table_name || '.' || c.column_name, a.name, 'missing', x.views, ds.d || '.' || c.table_name,
+           CASE WHEN x.asset IS NOT NULL THEN 'should' ELSE 'could' END, false, false,
+           'GLOSS ' || a.name || ' ON ' || ds.d || '.' || c.table_name || '.' || c.column_name || ' AS $$' || coalesce(s.shape, '<value>') || '$$;'
+    FROM (SELECT DISTINCT name FROM main.aspects WHERE json_extract_string(schema, '$.x-asked') = 'per table') a
+    JOIN stated s ON s.name = a.name CROSS JOIN ds CROSS JOIN glossql_columns(current_schema()) c
+    LEFT JOIN reach x ON x.asset = ds.d || '.' || c.table_name || '.' || c.column_name
+    WHERE EXISTS (SELECT 1 FROM main.glossary w WHERE w.dataset = ds.d AND w.aspect = a.name AND w.actor_kind IN ('agent', 'human')
+                    AND starts_with(w.subject, ds.d || '.' || c.table_name || '.'))
+      AND NOT EXISTS (SELECT 1 FROM main.glossary w WHERE w.dataset = ds.d AND w.aspect = a.name
+                        AND w.subject = ds.d || '.' || c.table_name || '.' || c.column_name)
     UNION ALL
     -- a metric's served column with no role: the statement its summary
     -- row names (`missing`, empty for every other view), on the view's own
@@ -325,6 +430,10 @@ CREATE OR REPLACE VIEW main.next AS
     FROM vt t LEFT JOIN accepts k ON k.test = t.test
     LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect
     WHERE t.state <> 'green'),
+  -- a load that does not fit what the source sends (load_modes())
+  s_loads AS (
+    SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''), '', l.statement
+    FROM main.load_modes() l LEFT JOIN reach x ON x.asset = l.table_name WHERE l.state IS NOT NULL),
   s_review AS (
     SELECT 'must', 2, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
@@ -390,6 +499,6 @@ CREATE OR REPLACE VIEW main.next AS
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
-    SELECT * FROM s_load UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
+    SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
     UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_results)
   ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state;
