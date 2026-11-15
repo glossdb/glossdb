@@ -56,19 +56,21 @@ or the dataset's endpoint):
 
 ```
 status: done — order_value: served, sliced by region
-next: describe 5 · test 1 · waiting for a person 1
-first: test sales.order_value (red): orphan_test: 4.6% of rows … find no parent (next://sales/test)
+next: must test 1 · should describe 5 · waiting for a person 1
+first: must test sales.order_value (red): orphan_test: 4.6% of rows … find no parent (next://sales/test)
 ```
 
 - `status:` says whether the last statement ran or was refused. For a
   view definition it adds whether the view is served and what its
   columns still need.
-- `next:` counts the open rows of `next` per kind of work:
-  `integrate`, `describe`, `test`, `review`. The assumptions that
-  wait for a person are counted apart. `first:` is the first open row
-  and the resource that lists the rows of its kind. A read of `next` in the same call
-  lists the rows counted: the built-in tests of what the call wrote
-  run before its next read.
+- `next:` counts the rows of `next` that must be done, then those
+  that should, per kind of work: `integrate`, `describe`, `test`,
+  `review`. `must 0` says the work on the dataset is complete. The
+  `could` rows are not counted. The assumptions that wait for a person
+  are counted apart. `first:` is the first row that must be done, else
+  the first that should, and the resource that lists the rows of its
+  kind. A read of `next` in the same call lists the rows counted: the
+  built-in tests of what the call wrote run before its next read.
 - `window:` appears on a call that reads `metric_series()`: the read
   serves each metric's newest periods, `window_periods` in
   `view_summary()`, and not its whole history.
@@ -89,7 +91,7 @@ first: test sales.order_value (red): orphan_test: 4.6% of rows … find no paren
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
 | `doc://functions/interface.md` | the functions a statement can call, each once: the kits' reads and the declared functions |
-| `next://<dataset>/<kind>` | the open rows of one kind of work (`integrate`, `describe`, `test`, `review`) with cause and statement; `next://<dataset>` serves every open row, most urgent first |
+| `next://<dataset>/<kind>` | the open rows of one kind of work (`integrate`, `describe`, `test`, `review`), each with its level, cause and statement; `next://<dataset>` serves every open row, by level |
 
 The same pages are rows of `pages()` (`uri`, `title`, `body`), for a
 client that reads no resources:

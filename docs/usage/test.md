@@ -11,7 +11,6 @@ data. It has a state, and the state is read again after each load.
 | `red` | does not hold |
 | `error` | the detector failed; the text is in `error` (`TESTS()`) |
 | `not_run` | expected on a view and not run yet (`view_tests()`) |
-| `not_applicable` | a preview test whose result holds no number for the metric, with the reason in `evidence` (`view_tests()`) |
 
 ## The built-in tests
 
@@ -43,11 +42,13 @@ SELECT view, test, subject, state, score, run FROM view_tests();
 `view_tests()` lists each test on each view and on the tables and
 columns it reads, worst first. `evidence` holds the check's result,
 `run` the statement that runs it again; it is empty for a test that
-compares annotations, which no function measures. The preview tests
-(`range_test`, `forecast_test`, `scenario_test`, `plan_test`) are
-rows too, under the metric, with an empty `run`: the server does not
-call the model service by itself ([outlook](outlook.md)). `TESTS()`
-is the language's own read, for any asset:
+compares annotations, which no function measures. A test on a result
+about the dataset as a whole or about a plan is a row too, with an
+empty `run`: an actor stores that result, and the server does not
+compute it after a write. The preview tests `range_test` and
+`plan_test` come in this way once their result is stored
+([outlook](outlook.md)). `TESTS()` is the language's own read, for
+any asset:
 
 ```glossql
 SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';
@@ -57,12 +58,14 @@ SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';
 
 A built-in test's result carries `finding`, one sentence on what is
 wrong and what it does to the number, and `fix`, the statement that
-settles it. `next` serves both, for a test on a view, a table or a
-column. A red test of your own without a `fix` gets the check to run
-again and the annotation that records an accepted rate:
+settles it. `next` serves both, for a test on a view, a table, a
+column or the dataset, whatever kit declared it. A red test is a
+`must`: served data is wrong. A test not run, yellow, orange or failed
+is a `should`. A red test of your own without a `fix` gets the check
+to run again and the annotation that records an accepted rate:
 
 ```sql
-SELECT asset, state, open, cause, statement FROM next WHERE step = 'test';
+SELECT level, asset, state, open, cause, statement FROM next WHERE kind = 'test';
 ```
 
 ```

@@ -111,11 +111,14 @@ SELECT subject, aspect, actor, body, written_at, current FROM GLOSSARY(staff.fte
 
 ## What is still missing
 
-`next` lists the required annotations nobody wrote, on the assets
-your views read, with the statement that writes each:
+`next` lists the required annotations nobody wrote, with the
+statement that writes each. On the assets your views read or serve
+they are `should`; on the tables and columns no view reads they are
+`could`, written when a person asks. Two values that conflict are a
+`must`:
 
 ```sql
-SELECT asset, state, open, statement FROM next WHERE step = 'describe';
+SELECT level, asset, state, open, statement FROM next WHERE kind = 'describe';
 ```
 
 Annotations are append-only. A new value from the same kind of actor

@@ -71,13 +71,13 @@ the correction says. `next` lists it as a `review` row, with the
 statement to edit:
 
 ```sql
-SELECT asset, state, who, open, statement FROM next WHERE step = 'review';
+SELECT level, asset, state, who, open, statement FROM next WHERE kind = 'review';
 ```
 
-| `state` | `who` | Meaning |
-|---|---|---|
-| `waiting` | person | questions open on this view |
-| `decided` | agent | a decision the definition does not carry yet |
+| `level` | `state` | `who` | Meaning |
+|---|---|---|---|
+| `should` | `waiting` | person | questions open on this view |
+| `must` | `decided` | agent | a decision the definition does not carry yet |
 
 `review_decisions` shows each decision and whether it is applied:
 

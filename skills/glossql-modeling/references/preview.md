@@ -8,41 +8,45 @@ read back as rows. The examples ran on a dataset of subway service:
 the metric `trains_run` per month, actuals loaded through August
 2025, and a timetable loaded a year further.
 
-## What `next` lists, and the order
+## Functions you may run
 
-With a model service, `next` lists each function that is due, with
-its statement:
+They are functions you run when the person asks for a range, a
+forecast, a plan comparison or a scenario. They are not steps of the
+work on a dataset: the server runs none of them, and `next` asks for
+none of them.
 
-| Row of `next` | Listed |
-|---|---|
-| `metric_ranges (preview)` | once a metric is served |
-| `metric_forecast (preview)` | once a plan has a definition or a scenario can be estimated |
-| `metric_scenario (preview)` | once a scenario is annotated and its levers hold |
-| `plan_test (preview)` | once per plan, and again once its comparison is out of date |
-| `scenario_test (preview)` | a scenario you can fix: no period ahead, every factor 1, a column that is no lever |
+| Function | Run on | Once |
+|---|---|---|
+| `metric_ranges()` | the dataset | a metric is served |
+| `metric_forecast()` | the dataset | a metric is served |
+| `metric_scenario()` | the dataset | a scenario is annotated and its levers hold |
+| `metric_plan()` | a plan | the forecast is stored |
 
-The server does not run them for you. `next` lists a function again
-once its stored result is out of date: what it read changed. Each
-reads the dataset's views, their data and definitions, and the
-`role`, `additivity`, `dimension` and `time_grains` on their columns;
-the scenario estimate the scenarios and the levers too, the plan
-comparison the stored forecast. Run them in this order: expected
-ranges, forecast, scenario, then each plan. A call took 2 to 6 seconds on one
-metric (measured).
+Run them in this order: expected ranges, forecast, scenario, then
+each plan. A call took 2 to 6 seconds on one metric (measured).
+
+Once a result is stored, `next` lists it as any stored result:
+
+- `range_test` or `plan_test` red: a `must` row with the result's own
+  finding and fix.
+- The result out of date (what it read changed): a `should` row with
+  the statement that computes it again. Each reads the dataset's
+  views, their data and definitions, and the `role`, `additivity`,
+  `dimension` and `time_grains` on their columns; the scenario
+  estimate the scenarios and the levers too, the plan comparison the
+  stored forecast.
 
 Each function reads the metric's series inside its window, 48 months
 by default (`time-grains.md`), up to the last complete period: where
 the rows are finer than the metric's grain, the period the data ends
 inside is left out. Where a metric has too little history, the
 function still runs and stores a reason: read `applicable` and
-`reason` in the feature's read. Its test is then not green:
-`view_tests()` shows it as `not_applicable`, and `next` lists nothing
-you could do. Without a model service the functions are refused with
-a reason that names `GLOSSDB_SERVICE_URL`, the server's setting, and
-`next` lists no preview row.
+`reason` in the feature's read. Without a model service the functions
+are refused with a reason that names `GLOSSDB_SERVICE_URL`, the
+server's setting.
 
-The four tests are rows of `view_tests()` under the metric; a plan's
-test shows under the metric it plans.
+`range_test` is a row of `view_tests()` on the dataset, with no view;
+`plan_test` on the plan.
 
 ## Expected ranges
 
@@ -67,11 +71,13 @@ that cannot be negative its lower bound can still lie below zero.
 August 2025 was 73,479 in a range of 69,225 to 78,245, `pit` 0.50.
 The test `range_test` is red where the newest month's `pit` is below
 0.01 or above 0.99; `range_result()` is the run in one row. `next`
-then names the value and the range. A change in the business and a
-defect in the data look the same here. Fix a defect in the load or
-the definition. Tell a person about a real change: add an assumption
-with the key `range-<period>` to the metric's definition, as the
-statement in `next` shows. The row then waits for the person.
+then has a `must` row that names the value and the range. A change in
+the business and a defect in the data look the same here. Fix a
+defect in the load or the definition. Tell a person about a real
+change: add an assumption with the key `range-<period>` to the
+metric's definition, as the statement in `next` shows. The assumption
+then waits for the person; the test stays red until the newest month
+lies inside its range.
 
 ## Forecasts
 
@@ -167,9 +173,8 @@ SELECT metric_scenario() FROM subway;
 The metric needs 26 periods of history. The scenario must name a
 period after the metric's last complete period and a factor other
 than 1. After a load that covers its periods it returns a reason and
-no estimate, and `next` lists `scenario_test (preview)` with the
-scenario's statement: give it later periods. `scenarios()` checks
-each scenario before you run it.
+no estimate: give it later periods. `scenarios()` checks each
+scenario before you run it.
 
 ```sql
 SELECT metric, period, low, value, high, baseline, effect, held_80, held_from, sign, confidence, applicable, reason

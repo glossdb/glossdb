@@ -48,30 +48,42 @@ A call on a dataset adds `next:` and `first:`:
 
 ```text
 status: done
-next: describe 2 · test 1 · waiting for a person 1
-first: test logistics.parcels_delivered (red): orphan_test: 10.0% of rows … find no parent (next://logistics/test)
+next: must test 1 · should describe 2 · waiting for a person 1
+first: must test logistics.parcels_delivered (red): orphan_test: 10.0% of rows … find no parent (next://logistics/test)
 ```
 
-`next:` counts what is open on the dataset per kind of work, and the
-assumptions that wait for a person apart. `first:` is the first open
-row. A call on the workspace endpoint without `USE` has neither. Two
+`next:` counts what must and what should be done on the dataset, per
+kind of work, and the assumptions that wait for a person apart.
+`first:` is the first row that must be done, else the first that
+should. A call on the workspace endpoint without `USE` has neither. Two
 more lines appear when they apply: `summary:` after a call that
 changed what waits in the workspace (assumptions for a person,
 decisions to apply), and `window:` after a read of `metric_series()`.
 Read the list after a piece of work, in a call of its own:
 
 ```sql
-SELECT step, asset, state, open, cause, statement FROM next
+SELECT level, kind, asset, state, open, cause, statement FROM next WHERE level <> 'could'
 ```
 
-`step` is the row's kind of work. Each row has a statement that
-closes it; `<…>` marks what you fill in. `cause` says what the newest
-load changed. The list is ordered by urgency, not by kind: a red test
-comes first, then what a load changed or a person decided, then what
-is missing. The list covers what your views read and serve. The work on
-a dataset is complete when no row has `who = 'agent'`; rows that wait
-for a person do not hold you back. The list is context: what the
-person asked for decides what you work on.
+`kind` is the row's kind of work. Each row has a statement that opens
+it; `<…>` marks what you fill in. `cause` says what the newest load
+changed. `level` says how much the row matters:
+
+- `must`: served data is wrong or cannot be served. A red test, a view
+  that serves nothing, a conflict between two values, a decision a
+  person made that the definition does not carry yet.
+- `should`: the layer is incomplete for what is served. A missing or
+  outdated annotation on what a view reads or serves, a test not run,
+  an assumption waiting for a person, a stored result out of date.
+- `could`: what sits beside it, such as the tables no view reads. Read
+  it on request: `SELECT kind, asset, open, statement FROM next WHERE
+  level = 'could'`.
+
+The list is ordered by level, then by what blocks other work. The
+work on a dataset is complete when no `must` row is open; the `should`
+rows make the layer complete. Rows that wait for a person do not hold
+you back. The list is context: what the person asked for decides what
+you work on.
 
 ## Integrate: connect a source, load tables
 
@@ -311,7 +323,7 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 
 | Read | Gives |
 |---|---|
-| `next` | what is open on the dataset, most urgent first; `step` is the kind of work |
+| `next` | what is open on the dataset: `level` (`must`, `should`, `could`), `kind` (the kind of work), the statement that opens it |
 | `view_summary()` | one row per view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
 | `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `formula`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |

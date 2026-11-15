@@ -124,11 +124,11 @@ SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id
 
 The measurement finds the defect: 1 of 12 orders has no customer
 (`"orphans":1,"orphan_rate":0.0833…`). Each result now ends with the
-open work:
+open work. Nothing is served yet, so a view must be defined:
 
 ```
-next: integrate 1
-first: integrate shop (missing): no view is defined (a table, a single value or a metric) (next://shop/integrate)
+next: must integrate 1 · should 0
+first: must integrate shop (missing): no view is defined (a table, a single value or a metric) (next://shop/integrate)
 ```
 
 ## 3. Integrate: define three views
@@ -191,12 +191,13 @@ month, January to June: 200.5, 210, 225.25, 235, 140, 220.
 
 ## 5. Test
 
-The server ran the built-in tests when the metric was defined. One is
-red, and `next` puts it first:
+The server ran the built-in tests when the views were defined. The
+orphan test is red on the table and on the metric that reads it. A red
+test is a `must`, and `next` puts it first:
 
 ```
-next: describe 5 · test 1 · waiting for a person 1
-first: test shop.order_value (red): orphan_test: 8.3% of rows on shop.orders.customer_id -> shop.customers.customer_id find no parent: an inner join drops them, an outer join keeps them with empty parent columns (next://shop/test)
+next: must test 2 · should describe 5 · waiting for a person 1
+first: must test shop.order_value (red): orphan_test: 8.3% of rows on shop.orders.customer_id -> shop.customers.customer_id find no parent: an inner join drops them, an outer join keeps them with empty parent columns (next://shop/test)
 ```
 
 Order `O10` is missing from May: the inner join dropped it. Each test
@@ -212,13 +213,15 @@ the fix: repair the load, or accept the rate with a reason.
 
 ## 6. Review
 
-Two things wait for a person: the red test, and the assumption in
+Two things wait for a person: the red tests, and the assumption in
 `shipped_orders`. A person answers in the console
 (`http://127.0.0.1:8080/shop/app`) or with statements over the query
 endpoint, which writes as a person:
 
 ```glossql
 GLOSS orphan_check ON shop.order_value AS $${"tolerance": 0.1,
+  "basis": "C9 is a walk-in customer without a master record"}$$;
+GLOSS orphan_check ON shop.shipped_orders AS $${"tolerance": 0.1,
   "basis": "C9 is a walk-in customer without a master record"}$$;
 GLOSS review_decision ON shop AS $${"decisions": [
   {"aspect": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
@@ -229,16 +232,22 @@ GLOSS review_decision ON shop AS $${"decisions": [
 curl -s -X POST --data-binary @6-review.sql http://127.0.0.1:8080/shop/query
 ```
 
-The test is green at the accepted rate, with the reason stored. The
-decision goes back to the agent as a row of `next`:
+The tests are green at the accepted rate, with the reason stored. The
+decision goes back to the agent as a `must` row of `next`:
 
 ```
 review shop.shipped_orders (decided): a person decided shipped-only (confirmed): cancelled orders are not revenue; the definition does not carry it yet
 ```
 
 The agent records the definition again with that assumption at
-confidence 1.0, and the row closes. What remains in `next` is
-`describe` rows: the columns nobody annotated yet.
+confidence 1.0, and the row closes. No `must` is left, so the work on
+the dataset is complete. What remains are `should` rows, the columns
+the views read that nobody described yet, and on request the `could`
+rows, the columns no view reads:
+
+```
+next: must 0 · should describe 5
+```
 
 ## Where next
 

@@ -38,8 +38,10 @@ question goes to a person; the decision is kept). They are kinds of
 work, not stages. A view needs a loaded table, a test needs
 something defined, and a review needs an open question. Lineage
 results from the other four, and a view can be queried once it is
-defined. `next` labels each open row with its kind and orders the
-rows by urgency ([reads](reference/reads.md)).
+defined. `next` labels each open row with its kind and a level: what
+must be done (served data is wrong or cannot be served), what should
+(the layer is incomplete for what is served) and what could
+([reads](reference/reads.md)).
 
 ## Operate and extend
 

@@ -21,10 +21,12 @@ false when the data changed after the result was stored. `run` is the
 statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
-preview test calls the model service. `TESTS(asset)` gives the same
-states for any asset. A test that is not green is a `test` row of
-`next`, on a view, a table or a column alike: `open` is the test's
-name and its finding, `statement` its fix. Where the check returns no
+test on a result an actor stores (about the dataset, or a plan) is
+not run by the server. `TESTS(asset)` gives the same states for any
+asset. A test that is not green is a `test` row of `next`, on a view,
+a table, a column or the dataset alike: `must` where it is red,
+`should` otherwise. `open` is the test's name and its finding,
+`statement` its fix. Where the check returns no
 `fix`, the statement is the check to run again and, for a red test of
 your own, the annotation that records an accepted rate.
 

@@ -137,9 +137,8 @@ datasets.
 | Data | export as CSV or Parquet; a query pane for reads |
 
 The console reads, with one write: a review decision. The server
-computes the results a view needs after each write; a preview
-measurement that is due is a row of `next`, with the statement that
-runs it.
+computes the results a view needs after each write. Its overview
+lists what must and what should be done, as `next` does.
 
 ## Data apps
 

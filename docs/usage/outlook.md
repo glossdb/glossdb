@@ -7,23 +7,25 @@ computed by a model service, named once as `GLOSSDB_SERVICE_URL`
 no model. A plan reads without the service; its comparison with the
 forecast needs a stored forecast.
 
-Each feature is a function you run on the dataset. The result is
-stored as a measurement and read back as SQL.
+Each feature is a function you may run on the dataset when a person
+asks for it. The result is stored as a measurement and read back as
+SQL. The features are a kit, `kits/outlook`; a server opened without
+it serves the rest unchanged.
 
 | Feature | Run | Read | Test |
 |---|---|---|---|
 | Expected ranges | `SELECT metric_ranges() FROM <dataset>` | `range_points()`, `range_result()` | `range_test` |
-| Forecast | `SELECT metric_forecast() FROM <dataset>` | `forecast_points()`, `forecast_coverage()`, `metric_series(world := 'forecast')` | `forecast_test` |
+| Forecast | `SELECT metric_forecast() FROM <dataset>` | `forecast_points()`, `forecast_coverage()`, `metric_series(world := 'forecast')` | |
 | Plan | `SELECT metric_plan() FROM <dataset>.<plan>` | `plan_points()`, `metric_series(world := 'plan', plan := '<name>')` | `plan_test` |
-| Scenario | `SELECT metric_scenario() FROM <dataset>` | `scenario_points('<name>')`, `scenario_levers('<name>')`, `metric_series(world := 'scenario', scenario := '<name>')` | `scenario_test` |
+| Scenario | `SELECT metric_scenario() FROM <dataset>` | `scenario_points('<name>')`, `scenario_levers('<name>')`, `metric_series(world := 'scenario', scenario := '<name>')` | |
 
 The columns of each read:
-[reads](../reference/reads.md#the-outlook-kit-preview). The four tests
-are rows of `view_tests()` under the metric: a plan's test shows under
-the metric it plans. `range_test` and `plan_test` are rows of
-`TESTS(<dataset>)` and `TESTS(<dataset>.<plan>)` too, judged by a
-detector; `forecast_test` and `scenario_test` have no detector, and
-`view_tests()` works out their state.
+[reads](../reference/reads.md#the-outlook-kit-preview). `range_test`
+and `plan_test` are rows of `TESTS(<dataset>)` and
+`TESTS(<dataset>.<plan>)`, judged by a detector over the stored
+result, and rows of `view_tests()`: the range test on the dataset,
+with no view, the plan's test on the plan. The stored result carries
+the `finding` and the `fix` of a red one.
 
 The examples are from one run against a model service: New York
 subway service per month. The metric `trains_run` is the trains that
@@ -31,24 +33,24 @@ ran, with the actuals loaded through August 2025. The timetable is
 loaded through August 2026. Each call took 2 to 6 seconds for this
 one metric with the service on the same machine (measured).
 
-## When each one is due
+## When to run each one
 
-Where a service is named, `next` lists what is due, each row with
-the statement to run:
+They are functions you run when a person asks for a range, a forecast,
+a plan comparison or a scenario. The server runs none of them after a
+write, and `next` does not ask for them.
 
 - `metric_ranges` once a metric is served.
-- `metric_forecast` once a plan has a definition or a scenario can be
-  estimated: the plan is held against the forecast's ranges, and the
-  scenario reads how often they held. It runs without either too;
-  `next` does not list it then.
+- `metric_forecast` once a metric is served. A plan is held against
+  the forecast's ranges, and a scenario reads how often they held.
 - `metric_scenario` once a scenario is annotated and its levers hold.
-- `metric_plan` once per plan, and again once its comparison is out of
-  date.
+- `metric_plan` once per plan.
 
-The server does not run them itself. A stored result is due again
-once it is out of date, by the rule every stored result follows: what
-it read changed. `next` and `outlook_measurements()` list it then.
-What each one reads:
+Once a result is stored, `next` lists it as any stored result. A red
+test on it (`range_test`, `plan_test`) is a `must` row with the
+result's own finding and fix. A result that is out of date is a
+`should` row with the statement that computes it again. A result is
+out of date by the rule every stored result follows: what it read
+changed. What each one reads:
 
 | Result | Reads |
 |---|---|
@@ -89,8 +91,8 @@ zero.
 `trains_run` was 73,479 in August 2025, in a range of 69,225 to
 78,245, with `pit` 0.50. `pit` says where the actual fell in the
 range: 0.5 is the middle. `range_test` is red where the newest month
-has a `pit` below 0.01 or above 0.99. `next` then names the metric,
-the value and the range. Cut at April 2020 the same metric was
+has a `pit` below 0.01 or above 0.99. `next` then has a `must` row
+that names the metric, the value and the range. Cut at April 2020 the same metric was
 21,236 against a range of 52,760 to 74,873, and the test was red.
 
 A measured limitation (preview): the ranges are narrower than their
@@ -103,8 +105,8 @@ as proof of a defect.
 A defect in the data and a real change look the same here. Fix a
 defect in the load or the definition. State a real change as an
 assumption with the key `range-<period>` in the metric's definition;
-`next` gives the statement. The finding then waits for a person and
-leaves `next`.
+the row in `next` gives the statement. The test stays red until the
+newest month lies inside its range again.
 
 ## Forecasts
 
@@ -198,8 +200,8 @@ to 2024 read `complete`.
 `metric_plan()` stores the comparison with the forecast it used. On a
 view that is not a plan it is refused and stores nothing.
 `plan_test` is red where a period lies outside the range. For a year
-outside it, `next` names the gap; state it as an assumption with the
-key `plan-<year>` in the plan's definition.
+outside it, `next` has a `must` row that names the gap; state it as an
+assumption with the key `plan-<year>` in the plan's definition.
 
 ## Scenarios
 
@@ -229,8 +231,7 @@ named keeps a factor of 1. The conditions:
 - The metric has 26 periods of history.
 - The scenario names a period after the metric's last complete
   period. Once those periods are loaded, the scenario returns a
-  reason and no estimate, and `next` asks for later periods with the
-  scenario's statement.
+  reason and no estimate: name later periods in the scenario.
 - A factor differs from 1.
 
 The estimate covers the periods from the first after the last actual
@@ -269,17 +270,16 @@ not estimated.
 
 - No service named: `metric_ranges()`, `metric_forecast()` and
   `metric_scenario()` are refused, and the reason names
-  `GLOSSDB_SERVICE_URL`. The query endpoint answers 503. `next` lists
-  no preview row, and the rest of the server works. Plans read, and
+  `GLOSSDB_SERVICE_URL`. The query endpoint answers 503. The rest of
+  the server works. Plans read, and
   `metric_plan()` stores actual and variance without a range.
 - Service not reachable, or it refuses the request: the call is
   refused with the service's error (503 on the query endpoint),
-  nothing is stored, and `next` keeps the function listed.
+  and nothing new is stored.
 - Too little history: the function runs and stores a reason per
   metric. Read `applicable` and `reason` in the feature's read. A
   result with no number in it is not green: `range_test` has no row in
-  `TESTS()` then, and `view_tests()` shows the test as
-  `not_applicable` with the reason. `next` lists nothing for it, since nobody can add history.
-- A scenario that cannot be estimated for a reason its author can
-  settle (no period ahead, every factor 1, a column that is no lever)
-  shows as `not_run`, and `next` lists it with the statement to change.
+  `TESTS()` or `view_tests()` then, and `next` lists nothing for it.
+- A scenario that cannot be estimated (no period ahead, every factor
+  1, a column that is no lever) stores the reason per metric in
+  `scenario_points()`.

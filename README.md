@@ -56,10 +56,12 @@ test needs something defined, and a review needs an open question;
 nothing else fixes the order. Lineage is no work of its own: the
 other four record it. A view can be queried once it is defined.
 
-`next` lists a dataset's open work, most urgent first: a red test,
-then what a load changed or a person decided, then what is missing.
-Each row is labelled with its kind of work. Every MCP result ends
-with the count per kind and the first row.
+`next` lists a dataset's open work by level: what must be done (a red
+test, a view that serves nothing, a person's decision to apply), what
+should (a missing description, a test not run, a question for a
+person), and what could (the tables no view reads). Each row is
+labelled with its kind of work. Every MCP result ends with the count
+of must and should per kind and the first row.
 
 ## Getting started
 

@@ -81,17 +81,17 @@ narrows either to one property.
 
 ### next
 
-The open work of the dataset in use, one row per asset and state,
-ordered by `priority`, then `ord`: the most urgent first, not by kind
-of work. A test has one row per asset it is not green on, and each
-assumption that waits for a person has a row. A test of your own is
-listed on the assets that carry its expectation.
+The open work of the dataset in use, one row per asset, state and
+level, ordered by `level`, then `ord`. A test has one row per asset it
+is not green on, and each assumption that waits for a person has a
+row. A test of your own is listed on the assets that carry its
+expectation.
 
 | Column | Holds |
 |---|---|
-| `priority` | 1 a number is wrong or withheld; 2 something changed or was decided; 3 not there yet; 9 waiting for a person |
-| `step` | the kind of work: `integrate` (a source to connect, a table to load, a view to define), `describe`, `test`, `review` (a question for a person, or a person's decision to apply) |
-| `ord` | the order of the rows inside one priority: loads (1), `describe` (2), `test` (3), `review` (4), views (5) |
+| `level` | `must`: served data is wrong or cannot be served. `should`: the layer is incomplete for what is served. `could`: what sits beside it |
+| `ord` | the order inside one level, what blocks other work first: a source, a table or a view (1), a person's decision to apply (2), a test (3), an annotation (4), a stored result to compute again (5), a question for a person (6) |
+| `kind` | the kind of work: `integrate` (a source to connect, a table to load, a view to define), `describe`, `test`, `review` (a question for a person, or a person's decision to apply) |
 | `asset` | the dataset, table, column, relationship or view |
 | `state` | `missing`, `stale`, `conflict`, a test's state, `decided`, `waiting`, `blocked` |
 | `who` | `agent` or `person` |
@@ -100,12 +100,32 @@ listed on the assets that carry its expectation.
 | `cause` | what the newest load changed: row counts, and the columns whose profile moved |
 | `statement` | the statement that opens the work; `<…>` marks what the author fills |
 
+What each level holds:
+
+- `must`: no table is loaded; no view is defined; a metric serves no
+  series; a test is red; two values of one property conflict; a
+  person approved a load query, decided a review question or wrote a
+  formula, and the definition does not carry it yet.
+- `should`: an annotation is missing or outdated on an asset a view
+  reads or serves; a test on it is not run, yellow, orange or failed;
+  an assumption waits for a person; a stored result about the dataset
+  or about a plan is out of date, and the server does not compute it
+  (`results_due()` does not list it).
+- `could`: an annotation is missing or outdated on a table, a column,
+  a relationship or the dataset that no view reads.
+
+Work on a dataset is complete when no `must` row is open. The `should`
+rows make the layer complete. The `could` rows are read on request:
+
 ```sql
-SELECT step, asset, state, who, open FROM next;
+SELECT level, kind, asset, state, who, open FROM next WHERE level <> 'could';
+SELECT kind, asset, state, open, statement FROM next WHERE level = 'could';
 ```
 
-The `describe` rows cover the assets the views read, and each value
-in conflict.
+A kit adds rows through its tests and its stored results alone: a red
+test is a `must` with the test's own `finding` and `fix`, a stored
+result out of date is a `should` with the statement that computes it
+again.
 
 ## The views kit
 
@@ -157,7 +177,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 |---|---|
 | `fact_values()` | `view`, `value`, `reason`: each single value |
 | `view_sources(for_view := NULL)` | `view`, `field`, `source` (`table.column`), `table_name`, `reason`: column lineage; one more row per table read |
-| `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, worst first |
+| `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset or a plan, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (spec 0.3.0.dev0) |
 | `lineage_events()` | `event`: OpenLineage run events (spec 2-0-2), one per load and one per view |
 | `pages()` | `uri`, `title`, `body`: each page the MCP interface serves |
@@ -169,16 +189,22 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 is kept until the test runs again. `run` is the function that returns
 the test's property, over the subject; it is empty where no function
 measures the property, as for a test that compares annotations
-(`role_test`). The preview tests are rows under
-the metric, a plan's test under the metric it plans; their `state`
-can be `not_applicable`, their `evidence` holds `applicable`,
-`reason`, `finding` and `fix`, and their `run` is empty.
-`view_tests_without_preview()` is the same read without them.
+(`role_test`). A test on a result about the dataset as a whole, or
+about a plan, is a row too: `view` is empty for the dataset and the
+plan's name for a plan, `evidence` is the stored result with its
+`finding` and `fix`, and `run` is empty, since an actor computes that
+result and the server does not.
 
 ## The outlook kit (preview)
 
 Stored results of the model service, read back as SQL
-([outlook](../usage/outlook.md)).
+([outlook](../usage/outlook.md)). They are functions an actor may run:
+`metric_ranges()`, `metric_forecast()` and `metric_scenario()` over
+the dataset, `metric_plan()` over a plan. The server runs none of them
+after a write, and `next` asks for none. Once one is stored, `next`
+lists it as any stored result: a red test on it as `must`, the result
+out of date as `should`. A server opened without the kit serves the
+same `next` for a dataset with no stored preview result.
 
 | Read | Columns |
 |---|---|
@@ -190,7 +216,6 @@ Stored results of the model service, read back as SQL
 | `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
 | `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `held_80`, `held_from`, `origin` |
-| `plan_stored()` | the stored comparison: the columns of `plan_points()` without `held_80`, `held_from` and `origin`, with `plan_grain`, `forecast_origin`, `computed_at` |
 
 - `forecast_points()`: a row with `span` is a total over that many
   periods, running to the end of `to_go` (`month`, `quarter`, `year`).
@@ -209,6 +234,7 @@ Stored results of the model service, read back as SQL
   from the months before them.
 - `scenario_points()`: `baseline` is the same estimate with every
   lever as planned; `effect` is `value` minus `baseline`.
-- `outlook_measurements()`: `name`, `stored`, `due`: the preview
-  functions the dataset needs; `due` is true where none is stored or
-  the stored result is out of date.
+- `world_series(<grain>)`: `metric`, `series`, `world`, `period`,
+  `value`, `additivity`, `low`, `high`, `held`: each plan and the
+  newest forecast beside a metric's actual series, as the console's
+  chart draws them. Without the outlook kit it serves no rows.

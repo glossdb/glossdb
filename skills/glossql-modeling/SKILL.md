@@ -136,7 +136,7 @@ does not convert; `try_cast` gives NULL.
 
 ## What you hand back
 
-When `next` shows nothing open for you, read back what you served and
+When `next` shows no `must` and no `should` for you, read back what you served and
 compare it with a figure the person already trusts: a table view's
 row count, a metric's total. Then report in three lists:
 
