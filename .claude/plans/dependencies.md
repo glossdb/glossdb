@@ -32,16 +32,10 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The extension's changes of this round (`96b34b7` to `d05f951`) are read by agents and tested, not reviewed line by line; glossval's goldens are not run against them | Medium | the extension; `../glossval` | Next | |
-| `SPEC.md` §6 and the inputs page say the model; the project lead has not reviewed the text | Medium: the spec is normative | the extension | Next | |
-| A body that reads past the read functions is not refused. Its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
-| The forecast is one result for all metrics of a dataset, so a new metric makes it due, and with it every plan that reads it | Low: correct, and coarse; a preview measurement an actor starts | `kits/outlook/kit.sql` | With the outlook issue (`harness.md`) | |
-| A response of the model service is not kept under a hash of the request and the service's version | Medium | `kits/outlook/kit.sql`, the extension's service call | With the outlook issue | |
-| A `metric_scenario` run takes 2.3 s (1.8 s before the read functions): the series read goes through four `annotations()` and a `definition()`, about 15 times in the body | Low | `kits/views/kit.sql` (`view_axes_of`) | With the outlook issue | |
-| A view's lineage is per view. Per output column (`value` is `sum(points)`) it is finer; the SQL as JSON gives the expression of each column | Low | the lineage kit | After | |
-| An outdated result no view needs, and an outdated annotation on an asset no view reads, are listed nowhere | Low | `kits/goals/kit.sql` (`next`) | Open | |
-| An identical reload moves the table's version: the merge updates every matched row, the replace builds a new table | Low: results are computed once more | the extension (`glossql_runner.cpp`) | When measured as a cost | |
-| Newest-row windows left in the outlook kit and the console's frames | Low | `kits/outlook/kit.sql`, `crates/apps/builtin/console/frames` | With the outlook issue | |
+| The extension's changes of this round (`96b34b7` to `d05f951`) are tested, not reviewed line by line; glossval's goldens are not run against them | Medium | the extension; `../glossval` | Next | |
+| The outlook kit: the forecast is one result for all metrics of a dataset, so a new metric makes it and every plan due; a response of the model service is not kept under a hash of the request; a `metric_scenario` run takes 2.3 s (1.8 s before); newest-row windows are left in the kit and the console's frames | Medium | `kits/outlook/kit.sql`, `kits/views/kit.sql` (`view_axes_of`), the extension's service call, `crates/apps/builtin/console/frames` | With the outlook issue (`harness.md`) | |
+| A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
+| Finer than needed today: lineage per output column of a view (from the SQL as JSON); an identical reload moves the table's version, so results are computed once more; an outdated result or annotation no view needs is listed nowhere | Low | the lineage kit, the extension (`glossql_runner.cpp`), `kits/goals/kit.sql` (`next`) | When one is measured as a cost | |
 
 ## What is built
 
@@ -112,5 +106,4 @@ What is there: the commits `96b34b7..d05f951` in the extension
 `kits/lineage/kit.sql`, `SPEC.md` §6, `test/sql/glossql_inputs.test`);
 glossval's goldens (`../glossval/goldens`). Done when: the diff is
 read line by line with findings fixed or listed; the goldens run
-against this build with the same results as their baseline; the
-project lead has accepted the text of `SPEC.md` §6.
+against this build with the same results as their baseline.
