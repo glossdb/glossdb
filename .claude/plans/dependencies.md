@@ -32,8 +32,8 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A write that computes nothing takes 0.72 s. Sampled: nearly all of it is the engine planning each view's SQL again to derive its lineage (`LineageOf`), about ten times per read of the lineage kit, in `results_due()` after every write | Medium: every write of an agent pays it | the extension (`glossql_lineage.cpp`, `kits/lineage/kit.sql`) | Now | |
-| `results_due()` starts from metrics: for a table view or a single value the server computes nothing after a write, so the column profiles and relationship checks of what a harmonised table reads and joins over stay missing. The Formula 1 measurement has four metrics and no table view | Medium: the first use case is a table view | `kits/goals/kit.sql`, `kits/views/kit.sql`, the measurement script | After the write time | |
+| `results_due()` starts from metrics: for a table view or a single value the server computes nothing after a write, so the column profiles and relationship checks of what a harmonised table reads and joins over stay missing. The Formula 1 measurement has four metrics and no table view | Medium: the first use case is a table view | `kits/goals/kit.sql`, `kits/views/kit.sql`, the measurement script | Now | |
+| A write that computes nothing takes 0.56 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning the kits' SQL: `next` for the closing line 0.32 to 0.35 s (about 80% planning, the outlook kit's branches planned though no model service is named), `results_due()` 0.18 to 0.23 s | Low: known, and paid once per write | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | When it hurts an agent's run | |
 | Left from the review of the extension's changes: the write path's lost-race and interrupt handling is read, not run (no second writer, no Postgres catalog in the suites); glossval has no accepted goldens baseline at these commits | Medium | the extension (`glossql_store.cpp`, `glossql_runner.cpp`); `../glossval/goldens` | Before the pull requests | |
 | The outlook kit: the forecast is one result for all metrics of a dataset, so a new metric makes it and every plan due; a response of the model service is not kept under a hash of the request; a `metric_scenario` run takes 2.3 s (1.8 s before); newest-row windows are left in the kit and the console's frames | Medium | `kits/outlook/kit.sql`, `kits/views/kit.sql` (`view_axes_of`), the extension's service call, `crates/apps/builtin/console/frames` | With the outlook issue (`harness.md`) | |
 | A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
@@ -78,8 +78,8 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `0493fef`: 115 tests pass. Extension at `4c325dd`: its SQL
-suite passes with 2885 assertions, lint clean. The extension's
+Server at `038ce97`: 115 tests pass. Extension at `f5bdfca`: its SQL
+suite passes with 2966 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
@@ -89,12 +89,12 @@ write one MCP call:
 
 | Write | Before any lineage | With the read functions |
 |---|---|---|
-| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.72 s, 0 |
-| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.72 s, 0 |
-| `role` on a source column of a metric | 1.17 s, 4 | 0.72 s, 0 |
-| `role` on a column a metric serves | not measured | 1.22 s, 1 |
-| The same annotation again; a new property declared | not measured | 0.72 s, 0 |
-| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.72 s, 0 |
+| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.56 s, 0 |
+| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.56 s, 0 |
+| `role` on a source column of a metric | 1.17 s, 4 | 0.56 s, 0 |
+| `role` on a column a metric serves | not measured | 0.88 s, 1 |
+| The same annotation again; a new property declared | not measured | 0.56 s, 0 |
+| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.56 s, 0 |
 
 Per call, reported by the build and not repeated here:
 `results_due()` 0.10 s, `next` 0.34 s, the currency check over 23
