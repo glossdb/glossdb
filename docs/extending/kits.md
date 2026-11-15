@@ -14,6 +14,7 @@ reads. It does not add grammar.
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
 | `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |
+| `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
 | `outlook` | glossdb | preview: expected ranges, forecasts and scenario estimates from a model service, as functions an actor may run; the server serves the rest without it |
 | `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
 

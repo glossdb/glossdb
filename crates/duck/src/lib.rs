@@ -713,7 +713,7 @@ struct Pieces {
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
-    /// This repository's kits, `kits/`: core, views, plan, outlook and goals.
+    /// This repository's kits, `kits/`: core, views, plan, harmonise, outlook and goals.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
@@ -781,6 +781,7 @@ impl Config {
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("views/kit.sql"),
                 pieces.kits.join("plan/kit.sql"),
+                pieces.kits.join("harmonise/kit.sql"),
                 pieces.kits.join("outlook/kit.sql"),
                 pieces.kits.join("goals/kit.sql"),
             ],

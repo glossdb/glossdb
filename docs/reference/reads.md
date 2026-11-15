@@ -195,6 +195,23 @@ plan's name for a plan, `evidence` is the stored result with its
 `finding` and `fix`, and `run` is empty, since an actor computes that
 result and the server does not.
 
+## The harmonise kit (preview)
+
+Several systems of record mapped onto one target table view. Where
+each target column comes from, per branch of the view's union and per
+system, is `column_mapping()` above: the system is the source the
+source table is loaded from, so the view names no system. The kit
+adds a function an actor may run, `source_systems()` over a table or a
+table view: the systems it is loaded from, each with whether its
+`conventions` are written down, and `without_conventions`, how many
+are not. The server runs it after no write, and `next` asks for none.
+A server opened without the kit serves the same `next` and the same
+`column_mapping()`.
+
+```sql
+SELECT source_systems() FROM onhand;
+```
+
 ## The outlook and plan kits (preview)
 
 Stored results, read back as SQL ([outlook](../usage/outlook.md)).

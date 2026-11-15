@@ -360,13 +360,15 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
     );
 }
 
-/// The plan and the outlook kits are pull-ins: a server that leaves
-/// out both, or the outlook kit alone, serves `next`, `view_tests()` and
-/// the console, the preview tiles and frames empty, and for a dataset
-/// with no stored preview or plan result it serves the same `next` and
-/// the same tests as a server with both.
+/// The plan, the harmonise and the outlook kits are pull-ins: a server
+/// that leaves out all three, or the outlook kit alone, serves `next`,
+/// `view_tests()`, `column_mapping()` and the console, the preview tiles
+/// and frames empty, and for a dataset with no stored preview or plan
+/// result it serves the same `next`, the same tests and the same column
+/// mapping as a server with all of them.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_server_without_the_plan_or_the_outlook_kit_serves_next_the_tests_and_the_console() {
+async fn a_server_without_the_plan_the_harmonise_or_the_outlook_kit_serves_next_the_tests_and_the_console()
+ {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
                    DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
@@ -377,16 +379,21 @@ async fn a_server_without_the_plan_or_the_outlook_kit_serves_next_the_tests_and_
     let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
     let (with, _, _with_dir) = common::app_on("fin").await;
     say(&with, FIN, build).await;
-    let (neither, _, _neither_dir) = common::app_on_without("fin", &["plan", "outlook"]).await;
+    let (neither, _, _neither_dir) =
+        common::app_on_without("fin", &["plan", "harmonise", "outlook"]).await;
     say(&neither, FIN, build).await;
     let (plan_alone, _, _plan_dir) = common::app_on_without("fin", &["outlook"]).await;
     say(&plan_alone, FIN, build).await;
     let served_next = rows(&with, FIN, next).await;
     let served_tests = rows(&with, FIN, tests).await;
     assert!(!served_tests.is_empty());
+    let mapping = "SELECT view, target_column, branch, source_table, source_column FROM column_mapping() ORDER BY ALL";
+    let served_mapping = rows(&with, FIN, mapping).await;
+    assert!(!served_mapping.is_empty());
     for app in [&neither, &plan_alone] {
         assert_eq!(rows(app, FIN, next).await, served_next);
         assert_eq!(rows(app, FIN, tests).await, served_tests);
+        assert_eq!(rows(app, FIN, mapping).await, served_mapping);
         let closing = window(&tool(app, FIN, "SELECT 1 AS one").await);
         assert!(closing.contains("next: must 0"), "{closing}");
         for page in [
