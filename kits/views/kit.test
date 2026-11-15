@@ -442,7 +442,7 @@ noted_spend_latest	green
 
 # referential integrity on the relationships the metric joins over: one coherence result per relationship
 statement ok
-CREATE TABLE fin.customers AS SELECT i AS customer_id, 'c' || i AS name FROM range(80) r(i);
+CREATE TABLE fin.customers AS SELECT i AS customer_id, 'c' || i AS name, (i + 1) % 5 AS region_id FROM range(80) r(i);
 
 statement ok
 CREATE TABLE fin.regions AS SELECT i AS region_id FROM range(5) r(i);
@@ -492,6 +492,23 @@ query TT
 SELECT state, json_extract_string(evidence, '$.breach_rate') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
 red	0.2
+
+# a relationship between the tables the metric reads on columns it does not join on is not judged: every order misses its composite key, the rate stays that of the joins
+statement ok
+DECLARE RELATIONSHIP orders.(customer_id, region_id) -> customers.(customer_id, region_id);
+
+statement ok
+SELECT relationship_coherence() FROM orders.(customer_id, region_id) -> customers.(customer_id, region_id);
+
+statement ok
+SELECT orphan_check() FROM fin.customer_sales;
+
+query TTII
+SELECT state, json_extract_string(evidence, '$.breach_rate'), json_array_length(evidence->'edges'),
+       (SELECT count(*) FROM measurements WHERE function = 'relationship_coherence' AND subject LIKE '%(customer_id, region_id)%' AND (value->>'orphan_rate')::DOUBLE > 0.2)
+FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
+----
+red	0.2	2	1
 
 # a built-in test that is red brings its finding and its fix
 query I

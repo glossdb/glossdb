@@ -812,12 +812,14 @@ $$ RETURNS additivity_check;
 
 DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
--- orphan_check: the share of rows on a declared relationship between two
--- tables the metric scans whose key finds no parent, from the coherence
--- result stored on each relationship (relationship_coherence); an inner
--- join drops them, an outer join counts them under no member. Where no
--- relationship is declared between the tables a metric scans there is
--- nothing to check; where one has no coherence result yet, the check is not
+-- orphan_check: the share of rows on a declared relationship the metric
+-- joins over whose key finds no parent, from the coherence result stored
+-- on each relationship (relationship_coherence); an inner join drops them,
+-- an outer join counts them under no member. A relationship is joined over
+-- when each of its columns is among the columns the definition joins on;
+-- one between the tables it reads on other columns is not judged. Where
+-- the metric joins over no declared relationship there is nothing to
+-- check; where one has no coherence result yet, the check is not
 -- applicable until it has.
 DECLARE ASPECT orphan_check WITH $${
   "description": "Referential integrity on the relationships the view joins over: the share of rows whose key finds no parent row.",
@@ -834,18 +836,27 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
   reads AS (SELECT DISTINCT split_part(r.table_name, '.', 2) AS table_name FROM d, unnest(d.reads) t(r)
             WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
   n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
-  rels AS (
+  joined AS (SELECT DISTINCT side AS column_path FROM d, unnest(d.joins) t(j), unnest([j.left_column, j.right_column]) u(side)),
+  coherence AS (
     SELECT asset AS relationship, value,
            regexp_extract(asset, '^[^.]+\.([^.]+)\.', 1) AS left_table,
            regexp_extract(asset, ' <?-> [^.]+\.([^.]+)\.', 1) AS right_table
     FROM results('relationship_coherence', 'its relationships')),
+  endpoints AS (
+    SELECT c.relationship, regexp_extract(e.side, '^([^.]+\.[^.]+)\.', 1) || '.' || trim(k.name) AS column_path
+    FROM coherence c, unnest(regexp_split_to_array(c.relationship, ' <?-> ')) e(side),
+         unnest(string_split(trim(regexp_replace(e.side, '^[^.]+\.[^.]+\.', ''), '()'), ',')) k(name)),
+  rels AS (
+    SELECT * FROM coherence c
+    WHERE NOT EXISTS (SELECT 1 FROM endpoints e WHERE e.relationship = c.relationship
+                      AND e.column_path NOT IN (SELECT column_path FROM joined))),
   declared AS (SELECT * FROM rels WHERE left_table <> right_table),
   mine AS (SELECT relationship, try_cast(json_extract(value, '$.orphan_rate') AS DOUBLE) AS orphan_rate FROM rels WHERE value IS NOT NULL)
   SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
               WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
               ELSE NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) END AS applicable,
          CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no relationship is declared between the tables the metric scans (' || n.names || '): nothing to check'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no declared relationship is among the joins of the tables the metric scans (' || n.names || '): nothing to check'
               WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM declared WHERE value IS NULL)
                 THEN 'no coherence result is stored for ' || (SELECT string_agg(relationship, ', ' ORDER BY relationship) FROM declared WHERE value IS NULL)
                      || ': run relationship_coherence() over each' END AS reason,
