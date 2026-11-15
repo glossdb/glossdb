@@ -507,11 +507,9 @@ $$ RETURNS metric_forecast;
 -- served_by, computed_at, current (false once the forecast is due again,
 -- outlook_due()), point_seq, step, span, to_go, period,
 -- p05 to p95, service_80, service_90, actual, actuals (below, low, inside,
--- high, above against p05, p10, p90 and p95), held_80 and held_90 (how
--- often such a range held: the catalog's own share where it holds thirty
--- loaded points at this grain, step and span for the metric, else for the
--- dataset, else the service's) and held_from (metric, dataset, service). A
--- metric the forecast found inapplicable is one row with its reason.
+-- high, above against p05, p10, p90 and p95), held_80, held_90 and
+-- held_from (how often such a range held, forecast_held()). A metric the
+-- forecast found inapplicable is one row with its reason.
 --===------------------------------------------------------------------===--
 
 -- forecast_metrics(value): a stored forecast's metrics, typed
@@ -571,23 +569,31 @@ SELECT metric, grain, step, span, to_go, points, inside_80, inside_90,
 FROM (SELECT * FROM tally UNION ALL SELECT * FROM whole)
 ORDER BY metric, grain, step, span NULLS FIRST, to_go NULLS FIRST;
 
+-- forecast_held(): how often a range of the newest forecast held, one
+-- row per metric and point (metric, grain, step, span, to_go): held_80
+-- and held_90, the catalog's own share where forecast_coverage() holds
+-- thirty loaded points at this grain, step and span for the metric, else
+-- for the dataset, else the service's; held_from (metric, dataset,
+-- service). forecast_points() and plan_points() take it at read.
+CREATE OR REPLACE MACRO main.forecast_held() AS TABLE
+WITH stored AS MATERIALIZED (SELECT * FROM main.forecast_stored()),
+newest AS (SELECT * FROM stored WHERE run = (SELECT max(run) FROM stored) AND applicable AND step IS NOT NULL),
+tally AS MATERIALIZED (SELECT * FROM main.forecast_coverage() WHERE points >= 30)
+SELECT n.metric, n.grain, n.step, n.span, n.to_go,
+       coalesce(tm.held_80, td.held_80, n.service_80) AS held_80,
+       coalesce(tm.held_90, td.held_90, n.service_90) AS held_90,
+       CASE WHEN tm.metric IS NOT NULL THEN 'metric' WHEN td.metric IS NOT NULL THEN 'dataset'
+            WHEN n.service_80 IS NOT NULL THEN 'service' END AS held_from
+FROM newest n
+LEFT JOIN tally tm ON tm.metric = n.metric AND tm.grain = n.grain AND tm.step = n.step
+                  AND tm.span IS NOT DISTINCT FROM n.span AND tm.to_go IS NOT DISTINCT FROM n.to_go
+LEFT JOIN tally td ON td.metric = '' AND td.grain = n.grain AND td.step = n.step
+                  AND td.span IS NOT DISTINCT FROM n.span AND td.to_go IS NOT DISTINCT FROM n.to_go;
+
 CREATE OR REPLACE MACRO main.forecast_points() AS TABLE
 WITH runs AS MATERIALIZED (SELECT * FROM main.forecast_runs()),
 newest AS (SELECT max(run) AS run FROM runs),
 current_ AS (SELECT NOT coalesce(bool_or(due), false) AS current FROM main.outlook_due() WHERE name = 'metric_forecast'),
--- the catalog's tally behind held: one point per metric, origin, step and span, per metric and for the dataset
-scored AS (
-  SELECT * FROM runs WHERE applicable AND step IS NOT NULL
-  QUALIFY row_number() OVER (PARTITION BY metric, grain, origin, step, span, to_go ORDER BY run DESC) = 1),
-tally AS (
-  SELECT metric, grain, step, span, to_go, count(actual) AS points,
-         count(*) FILTER (WHERE actual BETWEEN p10 AND p90) AS inside_80,
-         count(*) FILTER (WHERE actual BETWEEN p05 AND p95) AS inside_90
-  FROM scored
-  GROUP BY metric, grain, step, span, to_go),
-whole AS (
-  SELECT grain, step, span, to_go, sum(points) AS points, sum(inside_80) AS inside_80, sum(inside_90) AS inside_90
-  FROM tally GROUP BY grain, step, span, to_go),
 rows_ AS (
   SELECT f.*, dense_rank() OVER (ORDER BY f.metric) - 1 AS seq,
          CASE WHEN f.step IS NULL THEN NULL
@@ -599,12 +605,10 @@ SELECT r.seq, r.metric, r.applicable, r.reason, r.additivity, r.grain, strftime(
        r.actual,
        CASE WHEN r.actual IS NULL THEN NULL WHEN r.actual < r.p05 THEN 'below' WHEN r.actual < r.p10 THEN 'low'
             WHEN r.actual <= r.p90 THEN 'inside' WHEN r.actual <= r.p95 THEN 'high' ELSE 'above' END AS actuals,
-       CASE WHEN tm.points >= 30 THEN tm.inside_80 / tm.points WHEN td.points >= 30 THEN td.inside_80 / td.points ELSE r.service_80 END AS held_80,
-       CASE WHEN tm.points >= 30 THEN tm.inside_90 / tm.points WHEN td.points >= 30 THEN td.inside_90 / td.points ELSE r.service_90 END AS held_90,
-       CASE WHEN tm.points >= 30 THEN 'metric' WHEN td.points >= 30 THEN 'dataset' WHEN r.service_80 IS NOT NULL THEN 'service' END AS held_from
+       h.held_80, h.held_90, h.held_from
 FROM rows_ r
-LEFT JOIN tally tm ON tm.metric = r.metric AND tm.grain = r.grain AND tm.step = r.step AND tm.span IS NOT DISTINCT FROM r.span AND tm.to_go IS NOT DISTINCT FROM r.to_go
-LEFT JOIN whole td ON td.grain = r.grain AND td.step = r.step AND td.span IS NOT DISTINCT FROM r.span AND td.to_go IS NOT DISTINCT FROM r.to_go
+LEFT JOIN main.forecast_held() h ON h.metric = r.metric AND h.grain = r.grain AND h.step = r.step
+                                AND h.span IS NOT DISTINCT FROM r.span AND h.to_go IS NOT DISTINCT FROM r.to_go
 ORDER BY r.seq, r.point_seq NULLS FIRST;
 
 --===------------------------------------------------------------------===--
@@ -1085,13 +1089,17 @@ UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refus
 -- where the plan lies against the range; partial: begun and the rows
 -- cover part of the period, no range; open: begun, no range covers the
 -- rest; ahead: not begun), covers (on the year row of a plan whose rows
--- cover part of the year: how much), held_80 and held_from (the
--- service's share for such a range), origin (the forecast's). A period
--- is complete once the metric's last complete
+-- cover part of the year: how much), held_80 and held_from (how often
+-- the range a row is held against held, forecast_held()), origin (the
+-- forecast's). A period is complete once the metric's last complete
 -- period reaches its end (complete_series()). Computed at read;
--- metric_plan stores it per plan. plan_points_of(plans_at, metrics_at)
--- is the same over the plans and the metrics of the places it names:
--- metric_plan reads its own plan, 'itself', and 'its metric'.
+-- metric_plan stores it per plan, without held_80 and held_from: the
+-- catalog's share reads every stored forecast, and a body reads only the
+-- places it names. plan_points_of(plans_at, metrics_at) is the same over
+-- the plans and the metrics of the places it names, with the key of the
+-- forecast point a row is held against (forecast_grain, forecast_step,
+-- forecast_span, forecast_to_go) in place of the share: metric_plan
+-- reads its own plan, 'itself', and 'its metric'.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.plan_points_of(plans_at, metrics_at) AS TABLE
@@ -1171,17 +1179,16 @@ result AS (
               AND (s.additivity = 'semi-additive' OR s.first_actual <= CASE WHEN s.part THEN s.first ELSE s.period END)
          THEN s.actual_read END AS actual
   FROM stated s),
--- the stored forecast's ranges, with how often such a range held: the service's share
+-- the stored forecast's ranges
 fp AS MATERIALIZED (
   SELECT u.m.metric AS metric, u.m.grain AS grain, u.m.origin::TIMESTAMP AS origin, p.p.step AS step, p.p.span AS span, p.p.to_go AS to_go,
-         p.p.period::TIMESTAMP AS period, p.p.p10 AS p10, p.p.p50 AS p50, p.p.p90 AS p90, p.p.service_80 AS held_80,
-         CASE WHEN p.p.service_80 IS NOT NULL THEN 'service' END AS held_from
+         p.p.period::TIMESTAMP AS period, p.p.p10 AS p10, p.p.p50 AS p50, p.p.p90 AS p90
   FROM results('metric_forecast', 'its dataset') f, unnest(main.forecast_metrics(f.value)) u(m), unnest(u.m.points) p(p)
   WHERE f.value IS NOT NULL AND u.m.applicable AND p.p.step IS NOT NULL),
 -- the range a row is held against: the step's at the metric's own grain; at a coarser grain, for a stock the range of the
 -- last period of the metric's grain inside it, for a flow that has begun the total that runs to the period's end
 candidates AS (
-  SELECT v.plan, v.grain, v.period, f.p10, f.p50, f.p90, f.held_80, f.held_from, f.origin,
+  SELECT v.plan, v.grain, v.period, f.p10, f.p50, f.p90, f.grain AS forecast_grain, f.step, f.span, f.to_go, f.origin,
          row_number() OVER (PARTITION BY v.plan, v.grain, v.period ORDER BY f.span NULLS FIRST, f.step) AS rn
   FROM result v JOIN fp f ON f.metric = v.metric
   WHERE NOT v.complete AND NOT v.part AND NOT v.uncovered
@@ -1190,7 +1197,8 @@ candidates AS (
       OR (v.grain <> v.metric_floor AND v.additivity = 'additive' AND v.has_begun AND v.actual IS NOT NULL
           AND f.span IS NOT NULL AND f.to_go = v.grain AND f.period >= v.period AND f.period < v.period_end))),
 ranged AS (
-  SELECT v.*, c.p10, c.p50, c.p90, c.held_80, c.held_from, c.origin AS forecast_origin,
+  SELECT v.*, c.p10, c.p50, c.p90, c.forecast_grain, c.step AS forecast_step, c.span AS forecast_span, c.to_go AS forecast_to_go,
+         c.origin AS forecast_origin,
          CASE WHEN v.grain = v.metric_floor OR v.additivity = 'semi-additive' THEN 0.0 ELSE coalesce(v.actual_done, 0.0) END AS base
   FROM result v LEFT JOIN candidates c ON c.plan = v.plan AND c.grain = v.grain AND c.period = v.period AND c.rn = 1)
 SELECT plan, metric, grain, period,
@@ -1209,18 +1217,26 @@ SELECT plan, metric, grain, period,
             WHEN p10 IS NULL THEN CASE WHEN has_begun THEN 'open' ELSE 'ahead' END
             WHEN value < base + p10 THEN 'below' WHEN value > base + p90 THEN 'above' ELSE 'inside' END AS planned,
        CASE WHEN part THEN covered || ' of ' || of_ || ' ' || own_grain || 's' END AS covers,
-       CASE WHEN complete OR part THEN NULL ELSE held_80 END AS held_80,
-       CASE WHEN complete OR part THEN NULL ELSE held_from END AS held_from,
-       CASE WHEN complete OR part THEN NULL ELSE strftime(forecast_origin, '%Y-%m-%d') END AS origin
+       CASE WHEN complete OR part THEN NULL ELSE strftime(forecast_origin, '%Y-%m-%d') END AS origin,
+       CASE WHEN complete OR part THEN NULL ELSE forecast_grain END AS forecast_grain,
+       CASE WHEN complete OR part THEN NULL ELSE forecast_step END AS forecast_step,
+       CASE WHEN complete OR part THEN NULL ELSE forecast_span END AS forecast_span,
+       CASE WHEN complete OR part THEN NULL ELSE forecast_to_go END AS forecast_to_go
 FROM ranged
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 
-CREATE OR REPLACE MACRO main.plan_points() AS TABLE FROM main.plan_points_of('the dataset', 'the dataset''s metrics');
+CREATE OR REPLACE MACRO main.plan_points() AS TABLE
+SELECT p.plan, p.metric, p.grain, p.period, p.label, p.value, p.actual, p.variance, p.low, p.expected, p.high, p.planned, p.covers,
+       h.held_80, h.held_from, p.origin
+FROM main.plan_points_of('the dataset', 'the dataset''s metrics') p
+LEFT JOIN main.forecast_held() h ON h.metric = p.metric AND h.grain = p.forecast_grain AND h.step = p.forecast_step
+                                AND h.span IS NOT DISTINCT FROM p.forecast_span AND h.to_go IS NOT DISTINCT FROM p.forecast_to_go
+ORDER BY p.plan, CASE p.grain WHEN 'year' THEN 0 ELSE 1 END, p.period;
 
 --===------------------------------------------------------------------===--
 -- metric_plan: the plan judged, as a measurement on the plan — the rows
--- plan_points() serves for it as of the data, with the origin of the
--- forecast they were judged against. Refused on a view that is not a plan,
+-- plan_points() serves for it as of the data, without held_80 and
+-- held_from, with the origin of the forecast they were judged against. Refused on a view that is not a plan,
 -- or a plan that is not served, by name. Wanted on the plan's row until one
 -- exists; due again once what it read is out of date, the forecast among it.
 -- plan_stored(): the newest judgement per plan from the measurements
@@ -1255,7 +1271,7 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
          (SELECT any_value(origin) FROM pts WHERE origin IS NOT NULL) AS forecast_origin,
          (SELECT coalesce(list({'grain': grain, 'period': strftime(period, '%Y-%m-%d'), 'label': label, 'value': value,
                                 'actual': actual, 'variance': variance, 'low': low, 'expected': expected, 'high': high,
-                                'planned': planned, 'covers': covers, 'held_80': held_80, 'held_from': held_from}
+                                'planned': planned, 'covers': covers}
                                ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period), [])
           FROM pts) AS points
 $$ RETURNS metric_plan;
@@ -1288,19 +1304,18 @@ judged AS (
          json_extract_string(value, '$.grain') AS plan_grain, json_extract_string(value, '$.forecast_origin') AS forecast_origin, computed_at,
          from_json(json_extract(value, '$.points'),
            '[{"grain": "VARCHAR", "period": "VARCHAR", "label": "VARCHAR", "value": "DOUBLE", "actual": "DOUBLE", "variance": "DOUBLE",
-              "low": "DOUBLE", "expected": "DOUBLE", "high": "DOUBLE", "planned": "VARCHAR", "covers": "VARCHAR",
-              "held_80": "DOUBLE", "held_from": "VARCHAR"}]') AS points
+              "low": "DOUBLE", "expected": "DOUBLE", "high": "DOUBLE", "planned": "VARCHAR", "covers": "VARCHAR"}]') AS points
   FROM newest),
 pts AS (
   SELECT plan, metric, plan_grain, forecast_origin, computed_at, unnest(points) AS p
   FROM judged WHERE cardinality(points) > 0)
 SELECT plan, metric, plan_grain, forecast_origin, computed_at,
        p.grain AS grain, p.period::TIMESTAMP AS period, p.label, p.value, p.actual, p.variance, p.low, p.expected, p.high,
-       p.planned, p.covers, p.held_80, p.held_from
+       p.planned, p.covers
 FROM pts
 UNION ALL
 SELECT plan, metric, plan_grain, forecast_origin, computed_at,
-       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 FROM judged WHERE coalesce(cardinality(points), 0) = 0
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
 

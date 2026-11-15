@@ -960,3 +960,29 @@ SELECT floor, r.applicable, r.months, coalesce(r.reason, '') <> ''
 FROM range_request() r JOIN view_summary() s ON s.view = r.metric WHERE r.metric = 'spend_by_year';
 ----
 year	false	0	true
+
+# --- how often a range held is forecast_held()'s, which plan_points() and forecast_points() take at read: the
+# catalog's tally stood in with thirty loaded points of each monthly step of sales, the totals left to the service
+
+statement ok
+USE fin;
+
+statement ok
+CREATE OR REPLACE MACRO main.forecast_coverage() AS TABLE
+SELECT 'sales' AS metric, 'month' AS grain, s AS step, NULL::BIGINT AS span, NULL::VARCHAR AS to_go,
+       30 AS points, 15 AS inside_80, 27 AS inside_90, 0.5 AS held_80, 0.9 AS held_90
+FROM range(1, 13) r(s);
+
+query TTRT
+SELECT grain, label, held_80, held_from FROM plan_points()
+WHERE plan = 'sales_budget' AND held_80 IS NOT NULL ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period LIMIT 3;
+----
+year	2025	0.79	service
+month	2025-04	0.5	metric
+month	2025-05	0.5	metric
+
+query IITRT
+SELECT step, span, to_go, held_80, held_from FROM forecast_points() WHERE metric = 'sales' AND point_seq IN (0, 13) ORDER BY point_seq;
+----
+1	NULL	NULL	0.5	metric
+10	10	year	0.79	service
