@@ -20,11 +20,12 @@
 -- compares to say what a load changed under the view (the cause `next`
 -- names); and the measurement a metric's row names as not run (the grain
 -- of its period column). The server computes these after each write. A
--- preview measurement calls the model service and is not among them:
--- where it is due, `next` lists it with its statement.
+-- result about the dataset as a whole or about a view with no tests of
+-- its own (view_tests() names no `run` for its test) is an actor's to
+-- compute: once it is out of date, `next` lists it with its statement.
 --===------------------------------------------------------------------===--
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
-WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests_without_preview()),
+WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
 fns AS MATERIALIZED (
   SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- the check that measures a test's property, as view_tests() names it
@@ -46,7 +47,7 @@ wanted AS (
    AND p.subject = CASE WHEN w."where" IN (SELECT "where" FROM anchored) THEN current_schema() ELSE w.subject END
   UNION
   SELECT 'column_profile', 'column_profile', s.table_name || '.' || unnest(s.columns)
-  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests)),
+  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests WHERE run <> '')),
 -- a stored result is current while its inputs are, a failure too: a check that failed is not
 -- run again until something it read moves
 stored AS (
@@ -58,7 +59,7 @@ WHERE NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
        'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
-FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
+FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary())
 UNION ALL
 SELECT DISTINCT 2, t.aspect, t.subject, t.run
 FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
@@ -102,27 +103,40 @@ FROM loads l LEFT JOIN changed c USING (tbl)
 WHERE l.newest AND l.rows_before IS NOT NULL;
 
 -- next: what is open on the bound dataset, read from the states the
--- catalog holds and narrowed to what the views read and serve. One
--- row per asset and state: priority (1 a number is wrong or withheld,
--- 2 something changed or was decided, 3 not there yet, 9 waiting for
--- a person), ord (the order of the rows inside one priority), step
--- (the kind of work: integrate, describe, test, review), asset,
--- state, who (agent or person), open (the finding), for_view, cause
--- (what the newest load changed), statement (what opens the work;
--- <...> marks what only the author can fill). The kinds of work are
--- labels, not stages: integrate is a source to connect, a table to
--- load or a view to define; review is a question for a named person
--- or a person's decision to apply. The rows are ordered by priority,
--- not by kind. It serves building the layer (missing, not run) and
--- running it (outdated after a load, red, conflict) alike. A test's
--- finding and fix are the test's own (`finding` and `fix` in its
--- result), on a view, a table or a column alike; a red test without
--- a `fix` gets the check to run again and the statement that accepts
--- its rate. A property that exists to be tested (tested_properties())
--- is a row where its test is set, and is not asked for on the other
--- assets. A kit adds rows through its tests, and the outlook kit
--- through outlook_findings(). An assumption that waits for a person
--- is one row each.
+-- catalog holds. One row per asset, state and level: level, ord, kind,
+-- asset, state, who (agent or person), open (the finding), for_view (the
+-- views that read the asset), cause (what the newest load changed),
+-- statement (what opens the work; <...> marks what only the author can
+-- fill). The rows are ordered by level, then ord, then asset.
+--
+-- level:
+-- must: served data is wrong or cannot be served. No table is loaded, no
+--   view is defined, a metric serves no series, a test is red, two values
+--   conflict, a person decided something (a load query, a review
+--   decision, a formula) that is not carried yet.
+-- should: the layer is incomplete for what is served. An annotation is
+--   missing or outdated on what a view reads or serves, a test on it is
+--   neither green nor red, an assumption waits for a person, a stored
+--   result is out of date and the server does not compute it
+--   (results_due() does not list it).
+-- could: what sits beside. An annotation is missing or outdated on a
+--   table, a column, a relationship or the dataset that no view reads.
+-- Work on a dataset is complete when no must is open.
+--
+-- ord, inside a level, puts what blocks other work first: 1 a source, a
+-- table or a view to integrate, 2 a person's decision to carry, 3 a test,
+-- 4 an annotation, 5 a stored result to compute again, 6 a question for
+-- a person.
+--
+-- kind is the kind of work: integrate, describe, test, review. The
+-- kinds are labels, not stages. A test's finding and fix are the test's
+-- own (`finding` and `fix` in its result), on a view, a table, a column
+-- or the dataset alike, whatever declared it: a kit adds rows only
+-- through its tests (view_tests()) and its stored results, and its rows
+-- take their level from their state. A red test without a `fix` gets the
+-- check to run again and the statement that accepts its rate. A property
+-- that exists to be tested (tested_properties()) is a row where its test
+-- is set, and is not asked for on the other assets.
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
@@ -145,8 +159,7 @@ CREATE OR REPLACE VIEW main.next AS
       AND h.aspect = 'definitions' AND h.actor_kind = 'human'
       AND json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
-  -- the preview features' tests come in through outlook_findings(), below
-  vt AS MATERIALIZED (SELECT * FROM main.view_tests_without_preview()),
+  vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
   -- the assets a view reads, the view itself, and the columns of a
   -- table view: a table is handed over with its columns described
   reach AS (
@@ -203,6 +216,7 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT g.subject, g.aspect, g.state, x.views,
            CASE WHEN g.subject LIKE '% -> %' THEN g.subject
                 ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home,
+           CASE WHEN g.state = 'conflict' THEN 'must' WHEN x.asset IS NOT NULL THEN 'should' ELSE 'could' END AS level,
            s.shape IS NULL AND g.state = 'missing' AS unshaped,
            coalesce(g.state = 'stale' AND EXISTS (
              SELECT 1 FROM defined d
@@ -212,7 +226,10 @@ CREATE OR REPLACE VIEW main.next AS
              || '$$;' AS gloss
     FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
     LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
-    WHERE (x.asset IS NOT NULL OR g.state = 'conflict')
+    -- a view's own columns are asked for where a view serves them (a
+    -- table view's), not beside it
+    WHERE (x.asset IS NOT NULL OR g.state = 'conflict'
+           OR array_to_string(string_split(g.subject, '.')[1:2], '.') NOT IN (SELECT ds.d || '.' || view FROM summary, ds))
       AND NOT (s.expectation AND g.state = 'missing')
       -- `entity` says what one row of a table is: asked on a loaded
       -- table and on a table view, not on a metric, a single value or a plan
@@ -224,11 +241,11 @@ CREATE OR REPLACE VIEW main.next AS
     -- a metric's served column with no role: the statement its summary
     -- row names (`missing`, empty for every other view), on the view's own
     -- column, so that the summary row and this list ask for the same annotation
-    SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, false, false, u.statement
+    SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, 'should', false, false, u.statement
     FROM (SELECT m.view, unnest(m.columns_without_role) AS col, unnest(m.missing) AS statement FROM summary m
           WHERE m.stopped IS NULL) u, ds),
   s_load AS (
-    SELECT 3 AS priority, 1 AS ord, 'integrate' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
+    SELECT 'must' AS level, 1 AS ord, 'integrate' AS kind, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
            '-- name where the data is, list what is there, then load each table with a load query' || chr(10)
              || 'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
@@ -239,13 +256,13 @@ CREATE OR REPLACE VIEW main.next AS
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
-    SELECT 2, 1, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
+    SELECT 'must', 2, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
            'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '', '',
            '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
              || 'DECLARE RECIPE ' || o.tbl || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
     FROM approved o, ds),
   s_describe AS (
-    SELECT CASE h.state WHEN 'conflict' THEN 1 WHEN 'stale' THEN 2 ELSE 3 END, 2, 'describe', h.home, h.state, 'agent',
+    SELECT h.level, 4, 'describe', h.home, h.state, 'agent',
            count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' WHEN 'conflict' THEN 'in conflict' ELSE h.state END || ': '
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
            coalesce(max(h.views), ''),
@@ -273,7 +290,7 @@ CREATE OR REPLACE VIEW main.next AS
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss) END
     FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
-    GROUP BY h.home, h.state),
+    GROUP BY h.home, h.state, h.level),
   -- how a rate is accepted where the data is right as it is: a
   -- tolerance annotated on the test's property where its schema has
   -- one (a person's outranks the agent's), else the test declared
@@ -286,7 +303,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM main.tests w JOIN main.aspects a ON a.name = w.aspect
     WHERE w.detector = 'rate_tolerance'),
   s_test AS (
-    SELECT CASE t.state WHEN 'red' THEN 1 WHEN 'orange' THEN 2 ELSE 3 END, 3, 'test', t.subject, t.state, 'agent',
+    SELECT CASE t.state WHEN 'red' THEN 'must' ELSE 'should' END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
            coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
                      FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.view = t.view)), ''),
@@ -309,25 +326,25 @@ CREATE OR REPLACE VIEW main.next AS
     LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect
     WHERE t.state <> 'green'),
   s_review AS (
-    SELECT 2, 4, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
+    SELECT 'must', 2, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
              || '; the definition does not carry it yet', r.aspect, '',
            '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, r.aspect)
     FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
-    SELECT 2, 4, 'review', ds.d || '.' || o.view, 'decided', 'agent',
+    SELECT 'must', 2, 'review', ds.d || '.' || o.view, 'decided', 'agent',
            'a person''s formula for ' || o.view || ' is newer than its definition', o.view, '',
            '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.view || '''; change the SQL to match it, then record the definition again:' || chr(10)
              || main.view_redefine(ds.d, o.view)
     FROM formulas o, ds
     UNION ALL
-    SELECT 9, 4, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
+    SELECT 'should', 6, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',
            'SELECT key, assumption, basis, alternative FROM open_questions WHERE aspect = ''' || q.aspect || ''' AND key = ''' || q.key || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d),
   s_views AS (
-    SELECT 3, 5, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
+    SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
            '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
              || '-- a table:' || chr(10)
              || 'DECLARE ASPECT <table_view> WITH $${"title": "<its name in the business''s words>", "x-kind": "relation"}$$ AS VIEW;' || chr(10)
@@ -343,7 +360,7 @@ CREATE OR REPLACE VIEW main.next AS
     UNION ALL
     -- a metric with no series yet: the statement is the annotation or
     -- the measurement its summary row names, else the definition again
-    SELECT 2, 5, 'integrate', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
+    SELECT 'must', 1, 'integrate', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
            CASE WHEN m.period_column IS NULL
                 THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<period column> AS $${"value": "timestamp"}$$;'
                 WHEN m.value_column IS NULL
@@ -357,18 +374,21 @@ CREATE OR REPLACE VIEW main.next AS
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
       AND NOT EXISTS (SELECT 1 FROM vt t WHERE t.view = m.view AND t.state <> 'green')),
-  -- the preview features: their findings, and their measurements that are due
-  s_outlook AS (
-    SELECT CASE f.state WHEN 'red' THEN 1 ELSE 3 END, CASE f.step WHEN 'test' THEN 3 ELSE 5 END,
-           f.step, f.asset, f.state, 'agent', f.open, f.for_view, '', f.statement
-    FROM main.outlook_findings() f
-    UNION ALL
-    SELECT 3, 3, 'test', ds.d, 'not_run', 'agent',
-           m.name || ' (preview): ' || CASE WHEN m.stored THEN 'the data or a definition it reads changed since its result' ELSE 'not run yet' END,
-           '', '', 'SELECT ' || m.name || '() FROM ' || ds.d || ';'
-    FROM main.outlook_measurements() m, ds
-    WHERE m.due)
+  -- a stored result out of date that the server does not compute: one
+  -- about the dataset as a whole or about a view with no tests of its own
+  -- (whose tests name no `run`), whatever kit declares its function
+  s_results AS (
+    SELECT 'should', 5, 'test', o.subject, 'stale', 'agent',
+           o.function || ': computed before a read of it changed (' || o.inputs || ')',
+           coalesce(o.view, ''), '',
+           'SELECT ' || o.function || '() FROM ' || o.subject || ';'
+    FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.input, ', ' ORDER BY u.input) AS inputs
+          FROM glossql_outdated() u
+          LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL AND view NOT IN (SELECT view FROM vt WHERE run <> '')) v
+            ON u.subject = current_schema() || '.' || v.view
+          WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)
+          GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
-    UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_outlook)
-  ORDER BY priority, ord, asset, state;
+    UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_results)
+  ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state;

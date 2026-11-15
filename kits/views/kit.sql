@@ -82,12 +82,9 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- read through the metric it names: its period and value are the columns
 -- named as that metric's, or period and value, its additivity the metric's,
 -- its floor the grain its rows are booked against where the declaration
--- says so (x-covers); nothing is annotated on a plan's own columns. A served
--- plan's row lists the comparison the outlook kit measures on the plan
--- (metric_plan over the plan) in measurements_to_run until one exists, as a
--- metric's row lists the profile over its period column.
+-- says so (x-covers); nothing is annotated on a plan's own columns.
 --
--- view_rows(): the same rows, a plan's measurements_to_run empty.
+-- view_rows(): the same rows, unordered.
 --
 -- view_axes(): what a function's body reads of the same, through the read
 -- functions alone (the lineage kit's), on the subject's dataset: one row
@@ -358,13 +355,7 @@ ORDER BY view;
 CREATE OR REPLACE MACRO main.plan_axes() AS TABLE FROM main.plan_axes_of('the dataset', 'the dataset''s metrics');
 
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
-SELECT * REPLACE (
-         CASE WHEN kind = 'plan' AND applicable AND NOT EXISTS (
-                SELECT 1 FROM main.measurements m
-                WHERE m.dataset = current_schema() AND m.function = 'metric_plan' AND m.subject = current_schema() || '.' || v.view)
-              THEN ['metric_plan over ' || current_schema() || '.' || v.view] ELSE measurements_to_run END AS measurements_to_run)
-FROM main.view_rows() v
-ORDER BY view;
+FROM main.view_rows() ORDER BY view;
 
 --===------------------------------------------------------------------===--
 -- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
@@ -384,8 +375,12 @@ ORDER BY view;
 -- members serves its top 23 by weight and 'other'. The actual world is
 -- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
 -- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
--- '<name>') are the outlook kit's, served under the metric through
--- world_cells(), which is empty until that kit is loaded.
+-- '<name>') are served under the metric through world_cells(), which is
+-- empty until a kit that serves them is loaded. world_series(grain): the
+-- same worlds as the series beside a metric's actual one at a grain, as a
+-- chart draws them — metric, series (its name), world, period, value,
+-- low and high (a range around the value), held (how often such a range
+-- held, in words); empty until a kit serves them.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
@@ -397,6 +392,11 @@ ORDER BY view;
 CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
+WHERE false;
+
+CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
+SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
+       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
 WHERE false;
 
 -- actual_series(grain, unclaimed): the actual world alone, which a
@@ -626,13 +626,16 @@ CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
      WHERE g.dataset = ds AND g.subject = ds AND g.aspect = m ORDER BY g.begin_snapshot DESC LIMIT 1),
     '<the current definition>'));
 
--- with_definition(evidence, view): a check's stored result with its fix's
--- statement that records the view's definition again filled with the
+-- with_definition(evidence, ds): a stored result with each statement in
+-- its fix that records a view of dataset ds again filled with that view's
 -- definition as it is now
-CREATE OR REPLACE MACRO main.with_definition(evidence, v) AS
-  CASE WHEN contains(evidence->>'fix', main.redefine_statement(v))
-       THEN json_merge_patch(evidence, json_object('fix', replace(evidence->>'fix', main.redefine_statement(v),
-                                                                  main.view_redefine(split_part(v, '.', 1), split_part(v, '.', 2)))))
+CREATE OR REPLACE MACRO main.with_definition(evidence, ds) AS
+  CASE WHEN contains(evidence->>'fix', '<the current definition>')
+       THEN json_merge_patch(evidence, json_object('fix', coalesce(list_reduce(
+              (SELECT list({'placeholder': main.redefine_statement(ds || '.' || v.name), 'statement': main.view_redefine(ds, v.name)})
+               FROM (SELECT DISTINCT name FROM main.aspects WHERE kind = 'VIEW') v
+               WHERE contains(evidence->>'fix', main.redefine_statement(ds || '.' || v.name))),
+              lambda acc, r: replace(acc, r.placeholder, r.statement), evidence->>'fix'), evidence->>'fix')))
        ELSE evidence END;
 
 -- validity: an effective-dated table (a slowly changing dimension, type 2):
@@ -889,41 +892,37 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 
 --===------------------------------------------------------------------===--
 -- view_tests(): every test on each view of the bound dataset and on
--- what it reads — view, test, aspect, declared_by (the kit that ships
--- the test, kit:<name>, or the agent or person who wrote it), subject
--- (the view, or a table or column it reads), state (red, orange,
--- yellow, green, or not run while the test has not run), current
--- (false once what the result read has moved: the state is kept and the
--- test runs again at the next touch), score, evidence (the check's own
--- result), run (the statement that measures the test's property again:
--- the function that returns it, over the subject; empty where the test
--- compares annotations and no function measures it, as role_test does).
--- The tests marked x-subject view appear on every view, run or not, those
--- marked x-subject metric on every metric. Each view carries the tests on
--- what it reads and the tests declared on it; a plan and a sample have no
--- rows here. The
--- preview features' tests (expected ranges,
--- forecast, scenario, plan) are the outlook kit's rows, preview_tests(),
--- which is empty until that kit is loaded; their state can also be
--- not_applicable. view_tests_without_preview() is the same read
--- without them: what `next` lists under its own rule and the server
--- runs again by itself. Ordered by what to look at first.
+-- what it reads, and every test on a result about the dataset as a whole
+-- or about a view with no tests of its own — view, test, aspect,
+-- declared_by (the kit that ships the test, kit:<name>, or the agent or
+-- person who wrote it), subject (the view, or a table or column it reads,
+-- or the dataset), state (red, orange, yellow, green, error, or not_run
+-- while the test has not run), current (false once what the result read
+-- has moved: the state is kept and the test runs again at the next
+-- touch), score, evidence (the stored result, with its `finding` and
+-- `fix` where the check returns them), run (the statement that measures
+-- the test's property again: the function that returns it, over the
+-- subject; empty where the test compares annotations and no function
+-- measures it, as role_test does, and on a result about the dataset or a
+-- view with no tests, which an actor stores and the server does not
+-- compute after a write). The tests marked x-subject view appear on
+-- every view, run or not, those marked x-subject metric on every metric.
+-- Each view carries the tests on what it reads and the tests declared on
+-- it; a plan and a sample have none of these, and a test on a result
+-- about one carries the plan or the sample as its view. A test on the
+-- dataset's own result has no view (''). Ordered by what to look at
+-- first.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.preview_tests() AS TABLE
-SELECT NULL::VARCHAR AS view, NULL::VARCHAR AS test, NULL::VARCHAR AS aspect, NULL::VARCHAR AS subject, NULL::VARCHAR AS state,
-       NULL::BOOLEAN AS current, NULL::DOUBLE AS score, NULL::JSON AS evidence, NULL::VARCHAR AS run
-WHERE false;
-
-CREATE OR REPLACE MACRO main.view_tests_without_preview() AS TABLE
+CREATE OR REPLACE MACRO main.view_tests() AS TABLE
 WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
 -- every served view, a metric, a table and a single value alike: a plan
--- is compared with the metric it plans (metric_plan) and a sample is a
--- planner's frame, so neither has rows here
+-- is compared with the metric it plans and a sample is a planner's
+-- frame, so neither has the views' tests
 all_views AS (
   SELECT view, coalesce(kind, '') NOT IN ('scalar', 'relation') AS metric FROM summary
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
-results AS (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
+results AS MATERIALIZED (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- a kit's check on each view (x-subject view), or on each metric alone
@@ -934,7 +933,7 @@ expected AS (
   JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
 evidence AS (
-  SELECT subject, aspect, main.with_definition(value::JSON, subject) AS value FROM main.measurements WHERE dataset = current_schema()
+  SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
 own AS (
   SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,
@@ -979,20 +978,21 @@ declared AS (
   JOIN authors w ON w.test = r.test AND w.declared_by NOT LIKE 'kit:%'
   LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
   LEFT JOIN checks f ON f.aspect = r.aspect
-  WHERE r.test NOT IN (SELECT test FROM expected))
+  WHERE r.test NOT IN (SELECT test FROM expected)),
+-- a test on a result an actor stored about the dataset as a whole or
+-- about a view with no tests of its own: a kit's measurement and its
+-- test come in here, by their results alone
+stored AS (
+  SELECT coalesce(o.view, '') AS view, r.test, r.aspect, r.subject, r.state, r.current, r.score, v.value::JSON AS evidence, '' AS run
+  FROM results r
+  LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL AND view NOT IN (SELECT view FROM all_views)) o
+    ON r.subject = current_schema() || '.' || o.view
+  LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
+  WHERE r.subject = current_schema() OR o.view IS NOT NULL)
 SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
-FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared) t LEFT JOIN authors a USING (test)
+FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared UNION ALL SELECT * FROM stored) t
+LEFT JOIN authors a USING (test)
 ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 ELSE 4 END,
-         current, view, test, subject;
-
-CREATE OR REPLACE MACRO main.view_tests() AS TABLE
-SELECT * FROM (
-  SELECT * FROM main.view_tests_without_preview()
-  UNION ALL
-  SELECT p.view, p.test, p.aspect, a.declared_by, p.subject, p.state, p.current, p.score, p.evidence, p.run
-  FROM main.preview_tests() p
-  LEFT JOIN (SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) a USING (test))
-ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'not_run' THEN 3 WHEN 'not_applicable' THEN 4 ELSE 5 END,
          current, view, test, subject;
 
 --===------------------------------------------------------------------===--

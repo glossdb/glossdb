@@ -1,5 +1,5 @@
 # name: kits/goals/kit.test
-# description: the goals kit — what the server computes after a write (`results_due()`) and the work list `next`, on the kits before it; run again, it holds
+# description: the goals kit — what the server computes after a write (`results_due()`) and the work list `next`, its rows by level and kind of work, on the kits before it, with and without the outlook kit; run again, it holds
 # group: [sql]
 
 require glossql
@@ -32,9 +32,6 @@ statement ok
 FROM glossql_kit('{KITS}/views/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/outlook/kit.sql');
-
-statement ok
 FROM glossql_kit('{KITS}/goals/kit.sql');
 
 query I
@@ -42,35 +39,20 @@ SELECT count(*) FROM results_due();
 ----
 0
 
-# every shipped measurement reads the data of its subject's dataset alone: no table named, and no dataset but
-# the subject's (a read past the read functions is refused at the declaration)
-query I
-SELECT count(*)
-FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
-WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
-  AND ((r.kind = 'data' AND r."where" IS NULL AND r.read NOT IN ('dataset_cells', 'subject_column', 'glossql_relationship_checks'))
-       OR (r.kind = 'data' AND r.read IN ('dataset_cells', 'subject_column') AND NOT regexp_matches(r.what, '^[<$]')));
+# with no table in the dataset, the list has one row: a source to connect and a table to load, which must be done
+query TTTT
+SELECT level, kind, state, who FROM next;
 ----
-0
-
-# with no table in the dataset, the list has one row: a source to connect and a table to load
-query TTT
-SELECT step, state, who FROM next;
-----
-integrate	missing	agent
+must	integrate	missing	agent
 
 query TT
 FROM glossql_kit('{KITS}/goals/kit.sql');
 ----
 goals	current
 
-query I
-SELECT count(*) FROM kits;
-----
-7
-
-# --- the preview measurements in `next`: listed where the dataset needs them, due again when what they read
-# changed and only then; the model service is stood in for
+# --- the levels. A table no view reads is described on request (could); with no view, one must be defined.
+# A metric served: what its view reads is to be described (should). The outlook kit is a pull-in: loaded, with a
+# model service named, it changes neither `next` nor view_tests() while no preview result is stored
 
 statement ok
 COPY (SELECT (DATE '2023-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 + m AS orders, 10.0 + m % 3 AS price, 5 AS staff
@@ -88,11 +70,11 @@ DECLARE SOURCE erp SET (type: csv, location: '{TEST_DIR}');
 statement ok
 DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv')$$;
 
-# a table is loaded and no view reads it: the one row is still to define a view; nothing is asked about the table
 query TTTT
-SELECT step, state, who, statement <> '' FROM next;
+SELECT level, kind, asset, state FROM next;
 ----
-integrate	missing	agent	true
+must	integrate	ops	missing
+could	describe	ops.orders_raw	missing
 
 statement ok
 DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS VIEW;
@@ -121,22 +103,66 @@ SELECT applicable, floor FROM view_summary() WHERE view = 'orders';
 true	month
 
 # the view's column price has no role: the summary row and `next` ask for it with the same statement, on the
-# view's own column
-query TT
-SELECT contains(s.missing[1], 'ops.orders.price'), contains(n.statement, s.missing[1])
+# view's own column, as should
+query TTT
+SELECT n.level, contains(s.missing[1], 'ops.orders.price'), contains(n.statement, s.missing[1])
 FROM (SELECT missing FROM view_summary() WHERE view = 'orders') s,
-     (SELECT statement FROM next WHERE step = 'describe' AND asset = 'ops.orders' AND state = 'missing') n;
+     (SELECT level, statement FROM next WHERE kind = 'describe' AND asset = 'ops.orders' AND state = 'missing') n;
 ----
-true	true
+should	true	true
 
-# no model service is named: no preview measurement is asked for
-query I
-SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+# nothing must be done: the dataset is complete. Its tests not run yet are should, the columns no view reads could
+query TTTT
+SELECT level, kind, asset, state FROM next WHERE kind <> 'describe' OR level <> 'should' ORDER BY ALL;
 ----
-0
+could	describe	ops.orders_raw	missing
+should	test	ops.orders	not_run
+should	test	ops.orders	not_run
+should	test	ops.orders	not_run
+
+statement ok
+CREATE TABLE memory.main.next_without AS SELECT * FROM next;
+
+statement ok
+CREATE TABLE memory.main.tests_without AS SELECT * EXCLUDE (evidence), evidence::VARCHAR AS evidence FROM view_tests();
+
+statement ok
+FROM glossql_kit('{KITS}/outlook/kit.sql');
 
 statement ok
 SET GLOBAL glossql_service_url = 'http://model.test';
+
+query II
+SELECT (SELECT count(*) FROM (FROM next EXCEPT ALL FROM memory.main.next_without)),
+       (SELECT count(*) FROM (FROM memory.main.next_without EXCEPT ALL FROM next));
+----
+0	0
+
+query II
+SELECT (SELECT count(*) FROM (SELECT * EXCLUDE (evidence), evidence::VARCHAR FROM view_tests() EXCEPT ALL FROM memory.main.tests_without)),
+       (SELECT count(*) FROM (FROM memory.main.tests_without EXCEPT ALL SELECT * EXCLUDE (evidence), evidence::VARCHAR FROM view_tests()));
+----
+0	0
+
+query I
+SELECT count(*) FROM kits;
+----
+7
+
+# every shipped measurement reads the data of its subject's dataset alone: no table named, and no dataset but
+# the subject's (a read past the read functions is refused at the declaration)
+query I
+SELECT count(*)
+FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
+WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
+  AND ((r.kind = 'data' AND r."where" IS NULL AND r.read NOT IN ('dataset_cells', 'subject_column', 'glossql_relationship_checks'))
+       OR (r.kind = 'data' AND r.read IN ('dataset_cells', 'subject_column') AND NOT regexp_matches(r.what, '^[<$]')));
+----
+0
+
+# --- a kit's stored results in `next`: an actor runs a preview measurement (the model service is stood in for);
+# the server computes none after a write. Current and green, it is no row; out of date, it is a should with the
+# statement that computes it again; a red test on it is a must with the test's own finding and fix
 
 statement ok
 CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"backtest":{"score":0.4,"state":"green","threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.7,"displacement":0.4,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
@@ -144,63 +170,55 @@ CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' T
 statement ok
 CREATE OR REPLACE MACRO main.service_soft(path, body) AS '{"error": "refused"}'::JSON;
 
-# a metric is served: the expected ranges are due; no plan and no scenario, so no forecast
-query TTT
-SELECT asset, state, statement FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
-----
-ops	not_run	SELECT metric_ranges() FROM ops;
-
-# the server does not run it after a write: results_due() does not list it, and `next` does
-query II
-SELECT (SELECT count(*) FROM results_due() WHERE function = 'metric_ranges'),
-       (SELECT count(*) FROM next WHERE statement = 'SELECT metric_ranges() FROM ops;');
-----
-0	1
-
 statement ok
 SELECT metric_ranges() FROM ops;
 
 statement ok
 SELECT metric_forecast() FROM ops;
 
-query I
-SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+query TTT
+SELECT subject, state, current FROM TESTS() WHERE test = 'range_test';
 ----
-0
+ops	green	true
 
-# a plan is declared and defined: the ranges and the forecast read the dataset's metrics, which a plan is not
-# one of, and stay current; the plan's own comparison is what is due
+query II
+SELECT (SELECT count(*) FROM next WHERE contains(statement, 'metric_')),
+       (SELECT count(*) FROM results_due() WHERE function LIKE 'metric_%');
+----
+0	0
+
+# a plan is declared and defined: nobody compared it yet, so it is no row; the ranges and the forecast read the
+# dataset's metrics, which a plan is not one of, and stay current
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
 statement ok
 GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw"}$$;
 
-query TTT
-SELECT name, stored, due FROM outlook_due() WHERE stored ORDER BY name;
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
 ----
-metric_forecast	true	false
-metric_ranges	true	false
-
-query T
-SELECT statement FROM next WHERE asset LIKE 'ops%' AND statement LIKE 'SELECT metric_%' ORDER BY statement;
-----
-SELECT metric_plan() FROM ops.orders_target;
+0
 
 # an annotation on the plan's column leaves them current too
 statement ok
 GLOSS role ON orders_target.value AS $${"value": "measure"}$$;
 
 query I
-SELECT count(*) FROM outlook_due() WHERE stored AND due;
+SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%';
 ----
 0
 
 statement ok
 SELECT metric_plan() FROM ops.orders_target;
 
+query TT
+SELECT view, subject FROM view_tests() WHERE test = 'plan_test';
+----
+orders_target	ops.orders_target
+
 query I
-SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
 ----
 0
 
@@ -226,6 +244,11 @@ SELECT DISTINCT subject FROM glossql_outdated() WHERE function = 'metric_plan' O
 ----
 ops.orders_stretch
 
+query TTTTT
+SELECT level, kind, asset, state, statement FROM next WHERE contains(statement, 'metric_');
+----
+should	test	ops.orders_stretch	stale	SELECT metric_plan() FROM ops.orders_stretch;
+
 statement ok
 SELECT metric_plan() FROM ops.orders_stretch;
 
@@ -241,7 +264,8 @@ SELECT count(*) FROM glossql_outdated() WHERE function = 'metric_plan';
 statement ok
 DROP VIEW ops.staffing_raw;
 
-# a change to the metric both plans compare against makes both due
+# a change to the metric both plans compare against makes both out of date, and the ranges and the forecast:
+# each is a should, with the statement that computes it again
 statement ok
 GLOSS dimension ON orders.price AS $${"value": "none"}$$;
 
@@ -250,6 +274,14 @@ SELECT DISTINCT subject, input FROM glossql_outdated() WHERE function = 'metric_
 ----
 ops.orders_stretch	annotations(dimension, its metric)
 ops.orders_target	annotations(dimension, its metric)
+
+query TTTTT
+SELECT level, kind, asset, state, statement FROM next WHERE contains(statement, 'metric_') ORDER BY statement;
+----
+should	test	ops	stale	SELECT metric_forecast() FROM ops;
+should	test	ops.orders_stretch	stale	SELECT metric_plan() FROM ops.orders_stretch;
+should	test	ops.orders_target	stale	SELECT metric_plan() FROM ops.orders_target;
+should	test	ops	stale	SELECT metric_ranges() FROM ops;
 
 statement ok
 SELECT metric_ranges() FROM ops;
@@ -263,8 +295,13 @@ SELECT metric_plan() FROM ops.orders_target;
 statement ok
 SELECT metric_plan() FROM ops.orders_stretch;
 
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
+----
+0
+
 # a metric declared beside them: the forecast reads the dataset's metrics, and both plans read the stored
-# forecast, so they are due through it
+# forecast, so they are out of date through it
 statement ok
 DECLARE ASPECT staffing WITH $${"title": "Staffing"}$$ AS VIEW;
 
@@ -292,22 +329,18 @@ SELECT metric_ranges() FROM ops;
 statement ok
 SELECT metric_forecast() FROM ops;
 
-# an annotation the measurements do not read leaves them current: nothing is due
+# an annotation the measurements do not read leaves them current: nothing is out of date
 statement ok
 GLOSS meaning ON ops.orders_raw.staff AS $${"value": "people on shift"}$$;
 
-query I
-SELECT count(*) FROM outlook_measurements() WHERE due;
+query II
+SELECT (SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%'),
+       (SELECT count(*) FROM next WHERE contains(statement, 'metric_'));
 ----
-0
-
-query T
-SELECT current FROM TESTS() WHERE test = 'range_test';
-----
-true
+0	0
 
 # an assumption added to the plan and one added to the metric leave the SQL as it is: the definition the
-# measurements read holds, and nothing is due
+# measurements read holds, and nothing is out of date
 statement ok
 GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "target", "assumption": "the target is ten percent over the orders", "basis": "the sales plan", "confidence": 0.7}]}$$;
 
@@ -315,16 +348,11 @@ statement ok
 GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw", "assumptions": [{"dimension": "definition", "key": "taken", "assumption": "an order counts in the month it is taken", "basis": "the order date", "confidence": 0.7}]}$$;
 
 query I
-SELECT count(*) FROM outlook_measurements() WHERE due;
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
 ----
 0
 
-query I
-SELECT count(*) FROM next WHERE asset = 'ops' AND statement LIKE 'SELECT metric_%';
-----
-0
-
-# the table is loaded again with a month more: the ranges and the forecast read it, and are due
+# the table is loaded again with a month more: the ranges and the forecast read it, and are out of date
 statement ok
 COPY (SELECT (DATE '2023-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 + m AS orders, 10.0 + m % 3 AS price, 5 AS staff
       FROM range(31) r(m)) TO '{TEST_DIR}/orders.csv' (HEADER);
@@ -333,10 +361,10 @@ statement ok
 DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv') WHERE orders > 0$$;
 
 query TT
-SELECT name, due FROM outlook_measurements() ORDER BY name;
+SELECT level, statement FROM next WHERE asset = 'ops' AND contains(statement, 'metric_') ORDER BY statement;
 ----
-metric_forecast	true
-metric_ranges	true
+should	SELECT metric_forecast() FROM ops;
+should	SELECT metric_ranges() FROM ops;
 
 query TT
 SELECT table_name, starts_with(cause, 'loaded again: ') FROM load_changes();
@@ -349,26 +377,32 @@ SELECT metric_ranges() FROM ops;
 statement ok
 SELECT metric_forecast() FROM ops;
 
+statement ok
+SELECT metric_plan() FROM ops.orders_target;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
 query I
-SELECT count(*) FROM outlook_measurements() WHERE due;
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
 ----
 0
 
-# the metric's SQL changes: due again
+# the metric's SQL changes: out of date again, and the annotation on the view is outdated, its row saying what
+# changed: the definition, recorded again
 statement ok
 GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw WHERE month >= DATE '2023-02-01'"}$$;
 
-query TT
-SELECT name, due FROM outlook_measurements() ORDER BY name;
+query T
+SELECT statement FROM next WHERE asset = 'ops' AND contains(statement, 'metric_') ORDER BY statement;
 ----
-metric_forecast	true
-metric_ranges	true
+SELECT metric_forecast() FROM ops;
+SELECT metric_ranges() FROM ops;
 
-# the annotation on the view is outdated, and its row says what changed: the definition, recorded again
-query TT
-SELECT state, cause <> '' FROM next WHERE step = 'describe' AND asset = 'ops.orders' AND state = 'stale';
+query TTT
+SELECT level, state, cause <> '' FROM next WHERE kind = 'describe' AND asset = 'ops.orders' AND state = 'stale';
 ----
-stale	true
+should	stale	true
 
 statement ok
 SELECT metric_ranges() FROM ops;
@@ -376,7 +410,13 @@ SELECT metric_ranges() FROM ops;
 statement ok
 SELECT metric_forecast() FROM ops;
 
-# a scenario is annotated: its estimate is due, and the ranges and the forecast, which do not read it, are not
+statement ok
+SELECT metric_plan() FROM ops.orders_target;
+
+statement ok
+SELECT metric_plan() FROM ops.orders_stretch;
+
+# a scenario is annotated: nobody estimated it, so it is no row; estimated, then changed, its estimate alone is out of date
 statement ok
 GLOSS lever ON orders.price AS $${"value": true, "basis": "the list price"}$$;
 
@@ -386,44 +426,56 @@ DECLARE ASPECT price_cut WITH $${"title": "Price cut", "x-kind": "scenario", "ty
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
 
-query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'metric_');
 ----
-metric_forecast	true	false
-metric_ranges	true	false
-metric_scenario	false	true
+0
 
 statement ok
 SELECT metric_scenario() FROM ops;
 
-query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
-----
-metric_forecast	true	false
-metric_ranges	true	false
-metric_scenario	true	false
-
-# the scenario's factor changes: its own estimate is due, alone
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
 
 query T
-SELECT name FROM outlook_measurements() WHERE due;
+SELECT statement FROM next WHERE contains(statement, 'metric_');
 ----
-metric_scenario
-
-# a scenario whose only period is loaded already is estimated for nothing, and `next` asks its author for a
-# period ahead, with the scenario's statement
-statement ok
-GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-01": 0.9}, "basis": "a cut in January"}]}$$;
+SELECT metric_scenario() FROM ops;
 
 statement ok
 SELECT metric_scenario() FROM ops;
 
-query TTT
-SELECT step, asset, state FROM next WHERE contains(statement, 'GLOSS price_cut ON ops');
+# the newest month falls far outside its expected range: the range test is red, a must on the dataset with the
+# measurement's own finding and fix, which records the metric's definition again as it is now. Work on the dataset
+# is not complete; once the month is back inside its range, it is
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[190,190,190,190,190],"pit":[0.999,0.999,0.999,0.999,0.999]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"backtest":{"score":0.998,"state":"red","threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.999,"displacement":0.998,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+query TTTTTTT
+SELECT level, kind, asset, state, starts_with(open, 'range_test: orders is 190'),
+       contains(statement, chr(10) || 'GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw WHERE month >= DATE ''2023-02-01''"}$$;'),
+       contains(statement, '<the current definition>')
+FROM next WHERE level = 'must';
 ----
-test	ops.orders	not_run
+must	test	ops	red	true	true	false
+
+# the statement the fix hands over runs
+statement ok
+GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw WHERE month >= DATE '2023-02-01'"}$$;
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS CASE WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120]},"answer":{"service":"model","version":"test","errors":[],"parts":[]}}'::JSON WHEN json_extract(body, '$.spec.origins') IS NOT NULL THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7]},"answer":{"service":"model","version":"test","errors":[],"coverage":[],"backtest":{"score":0.4,"state":"green","threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"newest":{"origin":"2025-05","period":"2025-06","pit":0.7,"displacement":0.4,"withheld":null}}]}}}'::JSON ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140]},"answer":{"service":"model","version":"test","errors":[],"coverage":[]}}'::JSON END;
+
+statement ok
+SELECT metric_ranges() FROM ops;
+
+query II
+SELECT count(*) FILTER (WHERE level = 'must'), count(*) FILTER (WHERE level IN ('should', 'could')) > 0 FROM next;
+----
+0	true
 
 # --- a test of one's own on a column a view reads. The property holds the expectation, annotated on the one
 # column: `next` does not ask for it on the other assets the views read. Its row in `next` carries the check's
@@ -455,7 +507,7 @@ GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11",
 
 # set on the one column and not run: the test waits there, with the check as its statement, and counts as open once
 query TTT
-SELECT step, asset, state FROM next WHERE contains(statement, 'price_rule') OR contains(statement, 'price_check');
+SELECT kind, asset, state FROM next WHERE contains(statement, 'price_rule') OR contains(statement, 'price_check');
 ----
 test	ops.orders_raw.price	yellow
 
@@ -482,13 +534,13 @@ SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are pri
        contains(statement, 'SELECT price_check() FROM ops.orders_raw.price;'),
        contains(statement, 'GLOSS price_rule ON ops.orders_raw.price AS') AND contains(statement, '"tolerance":'),
        contains(statement, '"outcome":"a price is above 11"')
-FROM next WHERE step = 'test' AND asset = 'ops.orders_raw.price' AND for_view = 'orders';
+FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price' AND for_view = 'orders';
 ----
 red	true	true	true	true
 
 # the expectation is asked for on no other asset: no row of `next` names it as missing
 query I
-SELECT count(*) FROM next WHERE step = 'describe' AND contains(statement, 'price_rule');
+SELECT count(*) FROM next WHERE kind = 'describe' AND contains(statement, 'price_rule');
 ----
 0
 
@@ -502,7 +554,7 @@ SELECT state FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
 green
 
 query I
-SELECT count(*) FROM next WHERE step = 'test' AND asset = 'ops.orders_raw.price';
+SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price';
 ----
 0
 
@@ -521,7 +573,7 @@ SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status W
 ----
 0
 
-# --- each assumption that waits for a person is a row of `next`, as open_questions counts them; `entity` is
+# --- each assumption that waits for a person is a should row of `next`, as open_questions counts them; `entity` is
 # asked on a table view, with its grain, and not on a metric
 
 statement ok
@@ -531,7 +583,7 @@ statement ok
 GLOSS order_list ON ops AS $${"sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
 
 query II
-SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list'),
+SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list' AND level = 'should' AND kind = 'review'),
        (SELECT count(*) FROM open_questions WHERE aspect = 'order_list');
 ----
 2	2
@@ -539,7 +591,7 @@ SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_li
 query II
 SELECT count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.order_list AS') AND contains(statement, '"grain"')),
        count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.orders AS'))
-FROM next WHERE step = 'describe';
+FROM next WHERE kind = 'describe';
 ----
 1	0
 
@@ -577,7 +629,7 @@ statement ok
 GLOSS ledger_rows ON side AS $${"sql": "SELECT count(*) AS value FROM side.ledger"}$$;
 
 query I
-SELECT count(*) FROM next WHERE step = 'integrate';
+SELECT count(*) FROM next WHERE kind = 'integrate';
 ----
 0
 
@@ -585,7 +637,7 @@ statement ok
 GLOSS ledger_rows ON side AS $${"stopped": "the count is read elsewhere"}$$;
 
 query TT
-SELECT asset, state FROM next WHERE step = 'integrate';
+SELECT asset, state FROM next WHERE kind = 'integrate';
 ----
 side	missing
 
@@ -596,7 +648,7 @@ statement ok
 GLOSS ledger_clean ON side AS $${"sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
 
 query I
-SELECT count(*) FROM next WHERE step = 'integrate';
+SELECT count(*) FROM next WHERE kind = 'integrate';
 ----
 0
 
@@ -615,15 +667,15 @@ GLOSS fund_coded ON ledger_clean AS $${"outcome": "each fund is in the code tabl
 statement ok
 SELECT fund_coded_check() FROM ledger_clean;
 
-query TTTT
-SELECT state, for_view, contains(statement, 'fund_coded_check()'), contains(statement, 'GLOSS fund_coded ON side.ledger_clean AS')
-FROM next WHERE step = 'test' AND asset = 'side.ledger_clean' AND starts_with(open, 'fund_coded_test');
+query TTTTT
+SELECT level, state, for_view, contains(statement, 'fund_coded_check()'), contains(statement, 'GLOSS fund_coded ON side.ledger_clean AS')
+FROM next WHERE kind = 'test' AND asset = 'side.ledger_clean' AND starts_with(open, 'fund_coded_test');
 ----
-red	ledger_clean	true	true
+must	red	ledger_clean	true	true
 
 query II
-SELECT (SELECT count(*) FROM next WHERE step = 'describe' AND contains(statement, 'fund_coded')),
-       (SELECT count(*) FROM next WHERE step = 'describe' AND asset = 'side.ledger_clean' AND contains(statement, 'side.ledger_clean.fund'));
+SELECT (SELECT count(*) FROM next WHERE kind = 'describe' AND contains(statement, 'fund_coded')),
+       (SELECT count(*) FROM next WHERE kind = 'describe' AND asset = 'side.ledger_clean' AND contains(statement, 'side.ledger_clean.fund'));
 ----
 0	1
 
@@ -871,11 +923,11 @@ SELECT test, state, round(score, 4) FROM view_tests() WHERE view = 'driver_resul
 join_test	green	0.0
 orphan_test	red	0.1667
 
-query TTTT
-SELECT asset, state, starts_with(open, 'orphan_test'), contains(statement, 'GLOSS orphan_check ON harm.driver_results AS')
-FROM next WHERE step = 'test';
+query TTTTT
+SELECT level, asset, state, starts_with(open, 'orphan_test'), contains(statement, 'GLOSS orphan_check ON harm.driver_results AS')
+FROM next WHERE kind = 'test';
 ----
-harm.driver_results	red	true	true
+must	harm.driver_results	red	true	true
 
 query I
 SELECT count(*) FROM TESTS(harm.driver_results) WHERE state = 'red';

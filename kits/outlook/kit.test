@@ -158,12 +158,14 @@ SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
 fin	range_test	red	1.0
 
-# per metric, the stored result's state with no service named: the metric above the threshold is red
-query TT
-SELECT view, state FROM view_tests() WHERE test = 'range_test' ORDER BY view;
+# the test is a row of view_tests() on the dataset, with no view: the result carries the finding (the metric whose
+# newest month lies outside its range) and the fix, which records the metric's definition again as it is now
+query TTTTTT
+SELECT view, subject, state, run, contains(evidence->>'finding', 'spend is 300.0 at 2025-01'),
+       contains(evidence->>'fix', 'GLOSS spend ON fin AS $${"sql"')
+FROM view_tests() WHERE test = 'range_test';
 ----
-hires	not_applicable
-spend	red
+(empty)	fin	red	(empty)	true	true
 
 # --- a repeat is served; a change to what the backtest read owes a new one
 
@@ -213,12 +215,10 @@ SELECT state FROM TESTS() WHERE test = 'range_test';
 ----
 orange
 
-# the metric whose newest month lies outside its range shows the test's orange, the metric no backtest reached stays not applicable
 query TT
-SELECT view, state FROM view_tests() WHERE test = 'range_test' ORDER BY view;
+SELECT subject, state FROM view_tests() WHERE test = 'range_test';
 ----
-hires	not_applicable
-spend	orange
+fin	orange
 
 statement ok
 DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.9;
@@ -326,21 +326,19 @@ SELECT count(*) FROM forecast_coverage();
 0
 
 # --- an annotation the preview measurements do not read leaves them as they were, the forecast current and the
-# ranges due already: no read of theirs names it
-query TT
-SELECT name, due FROM outlook_due() WHERE stored ORDER BY name;
+# ranges out of date already: no read of theirs names it
+query T
+SELECT DISTINCT function FROM glossql_outdated() WHERE function IN ('metric_ranges', 'metric_forecast');
 ----
-metric_forecast	false
-metric_ranges	true
+metric_ranges
 
 statement ok
 GLOSS meaning ON fin.ledger AS $${"value": "one booking"}$$;
 
-query TT
-SELECT name, due FROM outlook_due() WHERE stored ORDER BY name;
+query T
+SELECT DISTINCT function FROM glossql_outdated() WHERE function IN ('metric_ranges', 'metric_forecast');
 ----
-metric_forecast	false
-metric_ranges	true
+metric_ranges
 
 query I
 SELECT count(*) FROM glossql_outdated() WHERE function IN ('metric_ranges', 'metric_forecast') AND input LIKE 'annotations(meaning%';
@@ -457,32 +455,29 @@ SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
 ----
 13
 
-# --- the comparison is stored on the plan: listed in measurements_to_run on its row until one exists, measured over it, tested; the reads use it
-query T
-SELECT measurements_to_run FROM view_summary() WHERE view = 'sales_budget';
-----
-[metric_plan over fin.sales_budget]
-
-statement ok
-SELECT metric_plan() FROM fin.sales_budget;
-
+# --- the comparison is stored on the plan when an actor runs it, and tested; nothing asks for it before: the plan's
+# row lists no measurement to run
 query T
 SELECT measurements_to_run FROM view_summary() WHERE view = 'sales_budget';
 ----
 []
 
-query TTTTI
-SELECT plan, metric, plan_grain, forecast_origin, count(*) FROM plan_stored() GROUP BY ALL;
-----
-sales_budget	sales	month	2025-02-01	13
+statement ok
+SELECT metric_plan() FROM fin.sales_budget;
 
-query TTR
-SELECT label, planned, value FROM plan_stored() WHERE planned IN ('below', 'above')
-ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
+query TTTI
+SELECT json_extract_string(value, '$.plan'), json_extract_string(value, '$.metric'), json_extract_string(value, '$.forecast_origin'),
+       json_array_length(json_extract(value, '$.points'))
+FROM measurements WHERE function = 'metric_plan';
 ----
-2025	above	2120.0
-2025-04	above	200.0
-2025-12	above	1000.0
+sales_budget	sales	2025-02-01	13
+
+# the judgement carries its finding, the year outside the forecast's range, and the fix that records the plan again
+query TT
+SELECT starts_with(evidence->>'finding', 'sales_budget is 2120.0 at 2025, above'), contains(evidence->>'fix', 'GLOSS sales_budget ON fin AS $${"sql"')
+FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
+----
+true	true
 
 query TTTR
 SELECT subject, test, state, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
@@ -527,21 +522,8 @@ SELECT count(*), bool_and(current) FROM measurements_history m, TESTS() a WHERE 
 ----
 3	true
 
-# the preview features' findings are served only where a model service is named
-query I
-SELECT count(*) FROM outlook_findings();
-----
-0
-
 statement ok
 SET GLOBAL glossql_service_url = 'http://model.test';
-
-# what they leave open, as rows for next: a plan year outside the forecast's range, a value outside its expected range
-query TTT
-SELECT step, asset, state FROM outlook_findings() ORDER BY step, asset, state;
-----
-test	fin.sales_budget	red
-test	fin.spend	red
 
 # --- the scenario: a lever on a column of a metric's view, a scenario of a factor per period, the estimate ahead from the service
 
@@ -732,42 +714,20 @@ SELECT scenario, metric, applicable, (reason) IS NOT NULL FROM scenario_points('
 ----
 promo_on	priced	false	true
 
-# the preview measurements this dataset needs: a plan is served and a scenario annotated
-query T
-SELECT name FROM outlook_measurements() ORDER BY name;
-----
-metric_forecast
-metric_ranges
-metric_scenario
-
-# --- the preview tests are rows of view_tests(), under the metric; a plan's test under the metric it plans
-
-query I
-SELECT count(*) FROM view_tests_without_preview() WHERE test IN ('range_test', 'forecast_test', 'scenario_test', 'plan_test');
-----
-0
+# --- a preview test is a row of view_tests() where its result is stored: the expected ranges' on the dataset, with
+# no view, a plan's comparison on the plan; the forecast and the scenario estimate declare no test, and a stored
+# result carries the finding and the fix of a red one
 
 query TTT
-SELECT view, test, subject FROM view_tests() WHERE test IN ('range_test', 'forecast_test', 'scenario_test', 'plan_test') AND view IN ('sales', 'priced')
-ORDER BY view, test;
+SELECT view, test, subject FROM view_tests() WHERE test IN ('range_test', 'plan_test') ORDER BY test;
 ----
-priced	forecast_test	fin.priced
-priced	range_test	fin.priced
-priced	scenario_test	fin.priced
-sales	forecast_test	fin.sales
-sales	plan_test	fin.sales_budget
-sales	range_test	fin.sales
+sales_budget	plan_test	fin.sales_budget
+(empty)	range_test	fin
 
-# the plan's test is red, with the finding and the fix outlook_findings() holds; the metric no backtest reached is not applicable
 query TTTT
 SELECT view, state, (evidence->>'finding') IS NOT NULL, (evidence->>'fix') IS NOT NULL FROM view_tests() WHERE test = 'plan_test';
 ----
-sales	red	true	true
-
-query TT
-SELECT state, (evidence->>'reason') IS NOT NULL FROM view_tests() WHERE test = 'range_test' AND view = 'hires';
-----
-not_applicable	true
+sales_budget	red	true	true
 
 # --- metric_plan() on a view that is not a plan is refused by name, and stored as a failure: its error and no value
 
@@ -875,14 +835,6 @@ SELECT scenario FROM scenarios() WHERE annotated;
 ----
 cheaper
 
-# no plan is served; the scenario alone makes the forecast one of the measurements the dataset needs
-query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
-----
-metric_forecast	false	true
-metric_ranges	false	true
-metric_scenario	false	true
-
 statement ok
 SELECT metric_ranges() FROM thin;
 
@@ -892,12 +844,10 @@ SELECT metric_forecast() FROM thin;
 statement ok
 SELECT metric_scenario() FROM thin;
 
-query TTT
-SELECT name, stored, due FROM outlook_measurements() ORDER BY name;
+query I
+SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%' AND subject = 'thin';
 ----
-metric_forecast	true	false
-metric_ranges	true	false
-metric_scenario	true	false
+0
 
 query TT
 SELECT applicable, fixable FROM scenario_request();
@@ -910,19 +860,11 @@ SELECT count(*) FROM TESTS() WHERE test = 'range_test';
 ----
 0
 
-# too little history is nobody's to settle: not applicable, with the reason; the scenario's period is its author's: not run, with the fix
-query TTTT
-SELECT test, state, (evidence->>'reason') IS NOT NULL, (evidence->>'fix') IS NOT NULL FROM view_tests()
-WHERE view = 'visits' AND test IN ('range_test', 'forecast_test', 'scenario_test') ORDER BY test;
+# and no row of view_tests()
+query I
+SELECT count(*) FROM view_tests() WHERE test IN ('range_test', 'plan_test');
 ----
-forecast_test	not_applicable	true	false
-range_test	not_applicable	true	false
-scenario_test	not_run	true	true
-
-query TTTT
-SELECT step, asset, state, test FROM outlook_findings();
-----
-test	thin.visits	not_run	scenario_test
+0
 
 # --- a table view is no metric: the backtest does not list it. A metric served by year has no monthly series:
 # its row says so and the backtest leaves it out
@@ -990,30 +932,3 @@ SELECT step, span, to_go, held_80, held_from FROM forecast_points() WHERE metric
 ----
 1	NULL	NULL	0.5	metric
 10	10	year	0.79	service
-
-# --- an expected range's state is per metric against the test's threshold, with a service named and without:
-# the newest displacement stood in at 0.95 for sales and 0.99 for priced, the threshold 0.98
-
-statement ok
-DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.98;
-
-statement ok
-CREATE OR REPLACE MACRO main.range_points() AS TABLE
-SELECT metric, true AS applicable, NULL::VARCHAR AS reason, true AS newest, displacement, '2025-01' AS period,
-       1.0 AS actual, 0.0 AS p05, 0.5 AS p50, 0.9 AS p95
-FROM (VALUES ('sales', 0.95), ('priced', 0.99)) v(metric, displacement);
-
-query TT
-SELECT view, state FROM view_tests() WHERE test = 'range_test' AND view IN ('sales', 'priced') ORDER BY view;
-----
-priced	red
-sales	orange
-
-statement ok
-RESET GLOBAL glossql_service_url;
-
-query TT
-SELECT view, state FROM view_tests() WHERE test = 'range_test' AND view IN ('sales', 'priced') ORDER BY view;
-----
-priced	red
-sales	orange
