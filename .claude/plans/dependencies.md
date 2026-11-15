@@ -32,8 +32,8 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| `results_due()` starts from metrics: for a table view or a single value the server computes nothing after a write, so the column profiles and relationship checks of what a harmonised table reads and joins over stay missing. The Formula 1 measurement has four metrics and no table view | Medium: the first use case is a table view | `kits/goals/kit.sql`, `kits/views/kit.sql`, the measurement script | Now | |
 | A write that computes nothing takes 0.56 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning the kits' SQL: `next` for the closing line 0.32 to 0.35 s (about 80% planning, the outlook kit's branches planned though no model service is named), `results_due()` 0.18 to 0.23 s | Low: known, and paid once per write | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | When it hurts an agent's run | |
+| Where "metric" still stands for "view": `view_summary()` fills `missing` and `columns_without_role` on a table view though `next` asks for them only under describe; its column `metric` and the `metric_reads` read cover every view; the console's empty state on the views page and one line of `docs/usage/test.md` say metrics | Low | `kits/views/kit.sql`, `kits/goals/kit.sql`, `crates/apps/builtin/console`, `docs/usage/test.md` | With the harmonisation kit (`harness.md`) | |
 | Left from the review of the extension's changes: the write path's lost-race and interrupt handling is read, not run (no second writer, no Postgres catalog in the suites); glossval has no accepted goldens baseline at these commits | Medium | the extension (`glossql_store.cpp`, `glossql_runner.cpp`); `../glossval/goldens` | Before the pull requests | |
 | The outlook kit: the forecast is one result for all metrics of a dataset, so a new metric makes it and every plan due; a response of the model service is not kept under a hash of the request; a `metric_scenario` run takes 2.3 s (1.8 s before); newest-row windows are left in the kit and the console's frames | Medium | `kits/outlook/kit.sql`, `kits/views/kit.sql` (`view_axes_of`), the extension's service call, `crates/apps/builtin/console/frames` | With the outlook issue (`harness.md`) | |
 | A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
@@ -64,7 +64,10 @@ computed: no second list, no flag.
 - **Snapshot expiry**: an annotation whose earlier catalog row is
   gone reads as outdated. A load in place of a table with the same
   columns leaves every result current.
-- **`results_due()`** is in `kits/goals/kit.sql`. **The server**
+- **`results_due()`** is in `kits/goals/kit.sql`. It starts from every
+  view that is defined and not stopped (metric, table view, single
+  value) and wants the checks behind its tests and, before them, the
+  results those checks read, taken from the checks' stored reads. **The server**
   (`bring_current` in `crates/duck/src/lib.rs`) runs it after a
   write, in rounds, before the next read of the same call. **`next`**
   reads the catalog's states and `load_changes()`.
@@ -78,13 +81,13 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `038ce97`: 115 tests pass. Extension at `f5bdfca`: its SQL
+Server at `0017cc5`: 116 tests pass. Extension at `f5bdfca`: its SQL
 suite passes with 2966 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
 import path agrees with a fresh load. On the server on
-127.0.0.1:8080 with the Formula 1 data (9 tables, 4 metrics), each
+127.0.0.1:8080 with the Formula 1 data (9 tables, 4 metrics, 1 table view), each
 write one MCP call:
 
 | Write | Before any lineage | With the read functions |
@@ -95,6 +98,9 @@ write one MCP call:
 | `role` on a column a metric serves | not measured | 0.88 s, 1 |
 | The same annotation again; a new property declared | not measured | 0.56 s, 0 |
 | A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.56 s, 0 |
+| A table view defined over three tables | not built | 2.12 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
+| A relationship declared that the table view joins over | not built | 0.99 s, 2: the relationship check and the view's orphan check |
+| `meaning` on a column the table view reads | not built | 0.57 s, 0 |
 
 Per call, reported by the build and not repeated here:
 `results_due()` 0.10 s, `next` 0.34 s, the currency check over 23
