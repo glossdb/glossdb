@@ -5,7 +5,6 @@
 -- grain. What an actor must learn about these words is the
 -- glossql-modeling skill (skills/glossql-modeling/references/).
 --
---   FROM glossql_kit('kits/lineage/kit.sql');
 --   FROM glossql_kit('kits/kpi/kit.sql');
 --   FROM glossql_kit('kits/quality/kit.sql');
 --   FROM glossql_kit('kits/views/kit.sql');
@@ -678,12 +677,17 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
     SELECT DISTINCT split_part(s.table_name, '.', 2) || ' (' || x.valid_from || ', ' || x.valid_to || ')' AS scan
     FROM scans s JOIN dated x ON x.table_path = s.table_name
     WHERE NOT (list_contains(s.columns, x.valid_from) AND list_contains(s.columns, x.valid_to))),
-  joins AS (
-    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced
+  owners AS (
+    SELECT DISTINCT r.table_name, r.table_name || '.' || c AS column_path FROM d, unnest(d.reads) t(r), unnest(r.columns) u(c)),
+  sided AS (
+    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced, l.table_name AS left_table, r.table_name AS right_table
     FROM d, unnest(d.joins) t(j)
-    WHERE regexp_replace(j.left_column, '\.[^.]*$', '') <> regexp_replace(j.right_column, '\.[^.]*$', '')
-      AND regexp_replace(j.left_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)
-      AND regexp_replace(j.right_column, '\.[^.]*$', '') NOT IN (SELECT table_path FROM dated)),
+    LEFT JOIN owners l ON l.column_path = j.left_column LEFT JOIN owners r ON r.column_path = j.right_column),
+  joins AS (
+    SELECT left_column, right_column, reduced FROM sided
+    WHERE left_table IS DISTINCT FROM right_table
+      AND coalesce(left_table NOT IN (SELECT table_path FROM dated), true)
+      AND coalesce(right_table NOT IN (SELECT table_path FROM dated), true)),
   profiles AS (
     SELECT asset AS subject, try_cast(json_extract(value, '$.distinct') AS BIGINT) AS distinct_values,
            round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
