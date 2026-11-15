@@ -32,8 +32,8 @@ The design, agreed with the project lead:
 
 | # | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|---|
-| 1 | The mapping read: per target column and branch, the source table and columns, the expression, the literals. From the lineage per column (`glossql_views_lineage`), which now renders CASE and COALESCE as they are. `view_sources()` returns a passed-through column with no field: looked at first | Medium: unions name columns by position; one table joined under three aliases loses which alias | a new `kits/harmonise`, `kits/views/kit.sql` (`view_sources()`), the extension's lineage if the branch or alias is missing there | Now | |
-| 2 | The source system of a loaded table, readable by a function through a place of the lineage (a table's load and its source) | Low | the extension's lineage kit (`lineage()`, a place), `kits/harmonise` | Now | |
+| 1 | The mapping read: per target column and branch, the source table and columns, the expression, the literals. From the lineage per column (`glossql_views_lineage`), which now renders CASE and COALESCE as they are. `view_sources()` returns a passed-through column with no field: looked at first | Medium: unions name columns by position; one table joined under three aliases loses which alias | a new `kits/harmonise`, `kits/views/kit.sql` (`view_sources()`), the extension's lineage if the branch or alias is missing there | Built: `column_mapping()` in the views kit replaces `view_sources()` | |
+| 2 | The source system of a loaded table, readable by a function through a place of the lineage (a table's load and its source) | Low | the extension's lineage kit (`lineage()`, a place), `kits/harmonise` | Built: the edge `loaded from`, the place `its source systems` | |
 | 3 | The contract on a target view's columns: key, type, meaning, allowed values; a test that the view's rows keep it (key unique, values allowed) | Low: the forms exist (a FACT property, a function, `rate_tolerance`) | `kits/harmonise`, the modeling skill | After 1 and 2 | |
 | 4 | Reconciliation per system and period, with its test | Medium: "dropped and why" must come from the view's joins and filters, which the lineage does not carry today (row filters, literals in a join) | `kits/harmonise`, the extension's lineage (filters) | After 3 | |
 | 5 | Codes that are unique only inside a system (a Swiss and a Polish item with the same local code): a relationship that holds under a condition. Open question in `SPEC.md` §9 (the polymorphic reference). Through the corpus: two forms on the demo's identity sheet and one real switching case, a constant inside the key (`t.('CH', code) -> m.(market, code)`) and a condition on the relationship (`WHEN`, which today reads a sibling annotation on a property declaration, so the word would shift), shown to the project lead | Medium: a grammar change; every reader of a relationship follows the condition | the extension (`corpus/`, `grammar.ebnf`, `SPEC.md`, the checks) | Beside 1 to 4; the lead reviews | |
@@ -41,6 +41,18 @@ The design, agreed with the project lead:
 | 7 | Full load or append/update load, stated and tested. An agent states per load whether the source sends its complete state or only changes (an assumption a person confirms). A full load (no key) is right where rows can disappear unflagged, and when unsure; a keyed load where only new or changed rows arrive. Tested at each load: a keyed load whose file covers most keys of the table and misses some is a finding with the fix to load without the key; a large full load that changes almost nothing is a should row naming a key | Low | `kits/core` or `kits/harmonise`, `load_changes()` in `kits/goals/kit.sql`, the load skill, `docs/usage/load.md` | After 1 and 2 | |
 | 8 | The skill: how an agent harmonises with the kit, on both cases | Low | `skills/` | After 4 | |
 | 9 | The demo rebuilt on the kit: its statements run on this server, its Mapping and Reconciliation pages read the kit's reads | Medium: the demo is behind the server (`cube`, `metric_bands`, `ruling` no longer exist) | `../glossdemo`, the project lead's repository | After 8; the lead says when | |
+
+## Found while building
+
+- A branch of a union reads more than one system: the identity and
+  unit tables come from the group's own source. The system is per
+  source table. Reconciliation (row 4) needs a rule for the table
+  that drives a branch: the one whose rows the branch keeps.
+- FERC's two filing systems are loaded from one source. A table's
+  system is its load's source unless an annotation on the table
+  states another.
+- A function body gets a view's systems as a set. Row 4 needs each
+  read table's source in `definition()`.
 
 ## What is there
 
