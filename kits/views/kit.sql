@@ -362,7 +362,8 @@ FROM main.view_rows() ORDER BY view;
 -- rests on, in words) — from plan_series(g) and forecast_series(g), the
 -- same two kits'. range_points() and plan_points(), the two kits' reads
 -- the console draws, are empty here too, so a page draws nothing where
--- the kit is not loaded.
+-- the kit is not loaded. Each is created only where no macro of its name
+-- exists: this kit run again never replaces a kit's real macro.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
@@ -371,17 +372,17 @@ FROM main.view_rows() ORDER BY view;
 -- such a metric serves no row, and its view_summary() row says what it needs.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.world_plan(w, p, g) AS TABLE
+CREATE MACRO IF NOT EXISTS main.world_plan(w, p, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
 
-CREATE OR REPLACE MACRO main.world_forecast(w, g) AS TABLE
+CREATE MACRO IF NOT EXISTS main.world_forecast(w, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
 
-CREATE OR REPLACE MACRO main.world_scenario(w, s, g) AS TABLE
+CREATE MACRO IF NOT EXISTS main.world_scenario(w, s, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
@@ -395,12 +396,12 @@ UNION ALL SELECT * FROM main.world_forecast(w, g) WHERE w = 'forecast'
 UNION ALL SELECT * FROM main.world_scenario(w, s, g) WHERE w = 'scenario'
 UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refusal WHERE r IS NOT NULL;
 
-CREATE OR REPLACE MACRO main.plan_series(g) AS TABLE
+CREATE MACRO IF NOT EXISTS main.plan_series(g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
        NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
 WHERE false;
 
-CREATE OR REPLACE MACRO main.forecast_series(g) AS TABLE
+CREATE MACRO IF NOT EXISTS main.forecast_series(g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
        NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
 WHERE false;
@@ -408,7 +409,7 @@ WHERE false;
 CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
 FROM main.plan_series(g) UNION ALL FROM main.forecast_series(g);
 
-CREATE OR REPLACE MACRO main.range_points() AS TABLE
+CREATE MACRO IF NOT EXISTS main.range_points() AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::BOOLEAN AS applicable, NULL::VARCHAR AS reason, NULL::VARCHAR AS code,
        NULL::BIGINT AS backtested, NULL::DOUBLE AS held_80, NULL::DOUBLE AS held_90, NULL::DOUBLE AS score, NULL::VARCHAR AS state,
        NULL::VARCHAR AS period, NULL::DOUBLE AS actual, NULL::DOUBLE AS p05, NULL::DOUBLE AS p10, NULL::DOUBLE AS p50,
@@ -417,7 +418,7 @@ SELECT NULL::VARCHAR AS metric, NULL::BOOLEAN AS applicable, NULL::VARCHAR AS re
        NULL::VARCHAR AS served_by, NULL::TIMESTAMP WITH TIME ZONE AS computed_at, NULL::VARCHAR AS error
 WHERE false;
 
-CREATE OR REPLACE MACRO main.plan_points() AS TABLE
+CREATE MACRO IF NOT EXISTS main.plan_points() AS TABLE
 SELECT NULL::VARCHAR AS plan, NULL::VARCHAR AS metric, NULL::VARCHAR AS grain, NULL::TIMESTAMP AS period, NULL::VARCHAR AS label,
        NULL::DOUBLE AS value, NULL::DOUBLE AS actual, NULL::DOUBLE AS variance, NULL::DOUBLE AS low, NULL::DOUBLE AS expected,
        NULL::DOUBLE AS high, NULL::VARCHAR AS planned, NULL::VARCHAR AS covers, NULL::DOUBLE AS coverage_80, NULL::VARCHAR AS origin

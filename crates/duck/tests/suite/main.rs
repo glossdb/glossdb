@@ -435,6 +435,125 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
     );
 }
 
+/// A kit's empty stand-ins never replace another kit's reads: the views
+/// kit run again at an open, its text changed, leaves the plan and the
+/// outlook kits' reads as they were, and the stored plan comparison and
+/// forecast are served. A workspace opened without those two kits keeps
+/// serving `next`, `view_tests()` and their reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_views_kit_run_again_leaves_the_plan_and_outlook_reads_in_place() {
+    let dir = tempfile::tempdir().expect("a tempdir");
+    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
+    let first = Plane::open(config.clone())
+        .await
+        .expect("the workspace opens");
+    let session = first.channel(agent(), None).await.unwrap();
+    session
+        .execute(
+            r#"DECLARE DATASET fin SET (purpose: 'reopen');
+               USE fin;
+               CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, (i % 7 + 1)::DOUBLE AS amount FROM range(400) r(i);
+               DECLARE ASPECT sales WITH $${"title": "Sales"}$$ AS VIEW;
+               GLOSS sales ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value FROM fin.ledger GROUP BY ALL"}$$;
+               GLOSS role ON sales.period AS $${"value": "timestamp"}$$;
+               GLOSS role ON sales.value AS $${"value": "measure"}$$;
+               GLOSS additivity ON sales.value AS $${"value": "additive"}$$;
+               SELECT temporal() FROM sales.period;
+               CREATE TABLE fin.budget AS SELECT (DATE '2025-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 AS planned FROM range(12) r(m);
+               DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
+               GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
+               CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["sales", "sales", "sales", "sales", "sales"], "origin": ["2025-02-01", "2025-02-01", "2025-02-01", "2025-02-01", "2025-02-01"], "step": [1, 1, 1, 1, 1], "span": [null, null, null, null, null], "period": ["2025-03-01", "2025-03-01", "2025-03-01", "2025-03-01", "2025-03-01"], "column": ["value", "value", "value", "value", "value"], "level": [0.05, 0.1, 0.5, 0.9, 0.95], "value": [70, 80, 100, 120, 130], "coverage_80": [0.8, 0.8, 0.8, 0.8, 0.8]}, "answer": {"service": "glossthesi", "version": "test", "errors": []}}'::JSON;
+               SELECT metric_forecast() FROM fin.sales;
+               SELECT metric_plan() FROM fin.sales_budget;"#,
+        )
+        .await
+        .expect("a forecast and a plan comparison are stored");
+    let served = "SELECT (SELECT count(step) FROM forecast_points()), (SELECT count(low) FROM plan_points()), \
+                  (SELECT count(*) FROM metric_series(world := 'plan', plan := 'sales_budget'))";
+    async fn read(plane: &Plane, served: &str) -> Vec<Vec<Option<String>>> {
+        text(
+            &plane
+                .execute(agent(), Some("fin"), served)
+                .await
+                .expect("the reads serve"),
+        )
+    }
+    let before = read(&first, served).await;
+    assert_eq!(
+        before,
+        vec![vec![
+            Some("1".to_string()),
+            Some("1".to_string()),
+            Some("12".to_string())
+        ]]
+    );
+    drop(session);
+    drop(first);
+
+    // the views kit one comment longer: it runs again, the plan and the
+    // outlook kits hold
+    let kits = tempfile::tempdir().unwrap();
+    let mut changed = config.clone();
+    changed.kits = config
+        .kits
+        .iter()
+        .map(|kit| {
+            if kit.parent().and_then(|p| p.file_name()) != Some(std::ffi::OsStr::new("views")) {
+                return kit.clone();
+            }
+            let mut text = std::fs::read_to_string(kit).unwrap();
+            text.push_str("\n-- the same kit, once more\n");
+            let copy = kits.path().join("views").join("kit.sql");
+            std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+            std::fs::write(&copy, text).unwrap();
+            copy
+        })
+        .collect();
+    let second = Plane::open(changed.clone())
+        .await
+        .expect("the workspace reopens");
+    let views_runs = text(
+        &second
+            .execute(
+                agent(),
+                None,
+                "SELECT count(DISTINCT hash) FROM kits_history WHERE name = 'views'",
+            )
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        views_runs,
+        vec![vec![Some("2".to_string())]],
+        "the views kit ran again"
+    );
+    assert_eq!(read(&second, served).await, before);
+    drop(second);
+
+    // opened without the plan and the outlook kits: the work list, the
+    // tests and the reads serve without an error
+    let mut without = changed;
+    without.kits.retain(|kit| {
+        !["plan", "outlook"]
+            .iter()
+            .any(|k| kit.ends_with(std::path::Path::new(k).join("kit.sql")))
+    });
+    let third = Plane::open(without)
+        .await
+        .expect("the workspace reopens without them");
+    for statement in [
+        "SELECT count(*) FROM next",
+        "SELECT count(*) FROM view_tests()",
+        "SELECT count(*) FROM world_series('month')",
+        served,
+    ] {
+        third
+            .execute(agent(), Some("fin"), statement)
+            .await
+            .unwrap_or_else(|e| panic!("{statement}: {e}"));
+    }
+}
+
 /// Two sessions write to one workspace at the same time: each
 /// annotation lands exactly once, each in a snapshot of its own, and a
 /// statement refused while the other session writes returns its own
