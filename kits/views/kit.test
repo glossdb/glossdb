@@ -180,6 +180,27 @@ spend	fund	ledger.fund	ledger
 spend	object	ledger.object	ledger
 spend	period	ledger.booked	ledger
 
+# a field computed by a CASE or a COALESCE descends from the columns inside it, a COALESCE over one column under three aliases from that column once
+statement ok
+CREATE TABLE fin.products AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'D' ELSE 'A' END AS status, 'brand' || i AS global_brand, i AS parent FROM range(4) t(i);
+
+statement ok
+DECLARE ASPECT product_forms WITH $${"title": "Product forms"}$$ AS VIEW;
+
+statement ok
+GLOSS product_forms ON fin AS $${"sql": "SELECT p.id, CASE WHEN p.status = 'D' THEN 'available' ELSE 'other' END AS availability, coalesce(p.global_brand, up.global_brand, top.global_brand) AS brand FROM fin.products p JOIN fin.products up ON p.parent = up.id JOIN fin.products top ON up.parent = top.id"}$$;
+
+query TTTT
+SELECT view, field, source, table_name FROM view_sources('product_forms') ORDER BY field NULLS FIRST;
+----
+product_forms	NULL	NULL	products
+product_forms	availability	products.status	products
+product_forms	brand	products.global_brand	products
+product_forms	id	products.id	products
+
+statement ok
+GLOSS product_forms ON fin AS $${"stopped": "the lineage case only"}$$;
+
 # --- a stock: the period's last level, summed over what holds at that instant
 
 statement ok
