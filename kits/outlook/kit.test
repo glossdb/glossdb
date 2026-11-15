@@ -158,6 +158,13 @@ SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
 fin	range_test	red	1.0
 
+# per metric, the stored result's state with no service named: the metric above the threshold is red
+query TT
+SELECT view, state FROM view_tests() WHERE test = 'range_test' ORDER BY view;
+----
+hires	not_applicable
+spend	red
+
 # --- a repeat is served; a change to what the backtest read owes a new one
 
 statement ok
@@ -983,3 +990,30 @@ SELECT step, span, to_go, held_80, held_from FROM forecast_points() WHERE metric
 ----
 1	NULL	NULL	0.5	metric
 10	10	year	0.79	service
+
+# --- an expected range's state is per metric against the test's threshold, with a service named and without:
+# the newest displacement stood in at 0.95 for sales and 0.99 for priced, the threshold 0.98
+
+statement ok
+DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.98;
+
+statement ok
+CREATE OR REPLACE MACRO main.range_points() AS TABLE
+SELECT metric, true AS applicable, NULL::VARCHAR AS reason, true AS newest, displacement, '2025-01' AS period,
+       1.0 AS actual, 0.0 AS p05, 0.5 AS p50, 0.9 AS p95
+FROM (VALUES ('sales', 0.95), ('priced', 0.99)) v(metric, displacement);
+
+query TT
+SELECT view, state FROM view_tests() WHERE test = 'range_test' AND view IN ('sales', 'priced') ORDER BY view;
+----
+priced	red
+sales	orange
+
+statement ok
+RESET GLOBAL glossql_service_url;
+
+query TT
+SELECT view, state FROM view_tests() WHERE test = 'range_test' AND view IN ('sales', 'priced') ORDER BY view;
+----
+priced	red
+sales	orange

@@ -1448,11 +1448,12 @@ WHERE live.named AND NOT e.m.applicable AND coalesce(e.m.fixable, false)
 --===------------------------------------------------------------------===--
 -- preview_tests(): the preview features' tests as rows of view_tests(),
 -- one per metric and test — view, test, aspect, subject, state, current,
--- score, evidence, run. state: red where the metric's newest value lies
--- outside its expected range or the plan outside the forecast's; orange
--- where the newest value lies outside its range and the test reads the
--- service's red as orange (range_breach); green
--- where the result holds a point for the metric; not_run where no
+-- score, evidence, run. state, for an expected range: per metric, red
+-- where its newest displacement is above the test's threshold, orange
+-- where it is above 0.9 and at or under the threshold, green below,
+-- whether or not a model service is named now; for a plan, the test's
+-- state on the plan; green elsewhere where the result holds a point for
+-- the metric; not_run where no
 -- result is stored yet, or one could be after a fix the evidence names;
 -- not_applicable where the result holds no point for the metric and
 -- nothing can be done about it (the evidence's reason says why). A
@@ -1471,11 +1472,11 @@ WITH ds AS (SELECT current_schema() AS d),
 live AS (SELECT coalesce(current_setting('glossql_service_url'), '') <> '' AS named),
 due AS MATERIALIZED (SELECT * FROM main.outlook_due()),
 declared AS (
-  SELECT name AS test, aspect FROM main.tests
+  SELECT name AS test, aspect, threshold FROM main.tests
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 tests AS (
-  SELECT test, aspect FROM declared WHERE aspect IN ('metric_ranges', 'metric_plan')
-  UNION ALL VALUES ('forecast_test', 'metric_forecast'), ('scenario_test', 'metric_scenario')),
+  SELECT test, aspect, threshold FROM declared WHERE aspect IN ('metric_ranges', 'metric_plan')
+  UNION ALL VALUES ('forecast_test', 'metric_forecast', NULL::DOUBLE), ('scenario_test', 'metric_scenario', NULL::DOUBLE)),
 results AS MATERIALIZED (
   SELECT subject, test, state, score FROM glossql_tests(current_schema(), NULL) WHERE test IN (SELECT test FROM tests)),
 summary AS MATERIALIZED (SELECT view, kind, plan_of, stopped, applicable FROM main.view_summary()),
@@ -1507,8 +1508,8 @@ rows_ AS (
   SELECT m.metric AS view, t.test, t.aspect, ds.d || '.' || m.metric AS subject,
          CASE WHEN NOT w.stored OR r.metric IS NULL THEN 'not_run'
               WHEN NOT r.applicable OR x.state IS NULL THEN 'not_applicable'
-              WHEN f.finding IS NOT NULL THEN 'red'
-              WHEN x.state = 'orange' AND r.displacement > 0.9 THEN 'orange'
+              WHEN r.displacement > t.threshold THEN 'red'
+              WHEN r.displacement > 0.9 THEN 'orange'
               ELSE 'green' END AS state,
          NOT w.due AS current, r.displacement AS score,
          r.applicable, r.reason, f.finding,
