@@ -1,24 +1,22 @@
--- A corridor test's evidence: every backtested metric's newest point —
--- the one the backtest's result scores — with its actual, its corridor,
+-- A range test's evidence: every backtested metric's newest point —
+-- the one the backtest's result scores — with its actual, its range,
 -- how far out it sits and on which side, the farthest out first. The
--- state beside each point is the result's own rule on that one
--- displacement (green to 0.8, yellow to 0.9, orange to the threshold,
--- red past it); the result's score is the worst of them raised to
--- their number. A point whose PIT is withheld carries the service's
+-- state beside each point is the model service's own for that metric,
+-- as stored. A point whose PIT is withheld carries the service's
 -- reason; a metric the backtest could not take carries its reason and
--- no numbers. `range_points()` is the stored backtest, no re-run. Rows
--- only for a test whose detector is range_breach, so another test's
--- page draws nothing here.
+-- no numbers. `range_points()` is the stored backtest, no re-run, and
+-- empty where the outlook kit is not loaded. Rows only for a test
+-- whose detector is range_state, so another test's page draws nothing
+-- here.
 WITH w AS (
-  SELECT name, coalesce(threshold, 0.98) AS threshold
-  FROM tests WHERE name = $test AND detector = 'range_breach'
+  SELECT name FROM tests WHERE name = $test AND detector = 'range_state'
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 ),
 newest AS (
-  SELECT metric, applicable, reason, period, actual, p10, p90, pit, displacement AS far, withheld,
+  SELECT metric, applicable, reason, period, actual, p10, p90, pit, displacement AS far, withheld, state,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
   FROM range_points()
-  WHERE NOT applicable OR period IS NOT NULL
+  WHERE metric IS NOT NULL AND (NOT applicable OR period IS NOT NULL)
 ),
 -- The axis that moved most between the previous and the newest backtested
 -- month, per metric, from the series' cells: a point's link opens the
@@ -58,19 +56,10 @@ SELECT coalesce(a.title, n.metric) AS title,
        CASE
          WHEN NOT n.applicable THEN 'not checked'
          WHEN n.far IS NULL THEN 'withheld'
-         WHEN n.far >= 0.95 AND n.pit >= 0.5 THEN 'above'
-         WHEN n.far >= 0.95 THEN 'below'
-         ELSE 'inside' END AS side,
-       CASE
-         WHEN NOT n.applicable OR n.far IS NULL THEN 'none'
-         WHEN n.far <= 0.8 THEN 'green'
-         WHEN n.far <= 0.9 THEN 'yellow'
-         WHEN n.far <= w.threshold THEN 'orange'
-         ELSE 'red' END AS state,
-       CASE
-         WHEN NOT n.applicable OR n.far IS NULL THEN ''
-         WHEN n.far <= 0.8 THEN 'ok'
-         ELSE 'warn' END AS scls,
+         WHEN n.pit >= 0.5 THEN 'above the median'
+         ELSE 'below the median' END AS side,
+       coalesce(n.state, 'none') AS state,
+       CASE WHEN n.state IS NULL THEN '' WHEN n.state = 'green' THEN 'ok' ELSE 'warn' END AS scls,
        coalesce(CASE WHEN NOT n.applicable THEN n.reason ELSE n.withheld END, '') AS note,
        '/' || d.dataset || '/app/console/p/views?view=' || n.metric || coalesce('&dim=' || t.axis, '') AS link
 FROM newest n

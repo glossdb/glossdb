@@ -4,7 +4,9 @@
 -- the period is complete, and the forecast's median with its 80% range
 -- where it covers the rest: the step's range at the metric's own grain,
 -- at a coarser grain the actual to date plus the total that runs to
--- the period's end. `plan_points()` is the read; the wording, the
+-- the period's end, with the share of such ranges that held on the
+-- model service's held-out data. `plan_points()` is the read, empty
+-- where the plan kit is not loaded; the wording, the
 -- rounding and the chip's class are this frame's. Below or above: the
 -- range does not hold the plan, which is what the next read's plan goal
 -- asks a judgment on. A year row of a plan whose rows cover part of
@@ -29,7 +31,7 @@ SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
          ELSE planned END || coalesce(', covers ' || covers, '') AS planned,
        CASE planned WHEN 'below' THEN 'warn' WHEN 'above' THEN 'warn' ELSE 'ok' END AS scls,
        coalesce(
-         CAST(CAST(round(held_80 * 100) AS INT) AS VARCHAR) || '% of such ranges held (' || held_from || ')',
+         CAST(CAST(round(coverage_80 * 100) AS INT) AS VARCHAR) || '% of such ranges held on held-out data',
          '') AS held
 FROM plan_points()
 WHERE metric = CAST($view AS VARCHAR)

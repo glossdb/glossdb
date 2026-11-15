@@ -4,7 +4,7 @@ A city's expense table carries the month's actual spend and two
 budgets on each row: the adopted budget, booked in January, and the
 revised budget, with each amendment booked in its month. The actual
 is a metric. Each budget is a plan: a view of its own that names the
-metric it plans. The outlook kit (preview) serves a plan as a world of
+metric it plans. The plan kit (preview) serves a plan as a world of
 `metric_series()`.
 
 ## The metric

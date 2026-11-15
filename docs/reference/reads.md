@@ -195,46 +195,52 @@ plan's name for a plan, `evidence` is the stored result with its
 `finding` and `fix`, and `run` is empty, since an actor computes that
 result and the server does not.
 
-## The outlook kit (preview)
+## The outlook and plan kits (preview)
 
-Stored results of the model service, read back as SQL
-([outlook](../usage/outlook.md)). They are functions an actor may run:
-`metric_ranges()`, `metric_forecast()` and `metric_scenario()` over
-the dataset, `metric_plan()` over a plan. The server runs none of them
-after a write, and `next` asks for none. Once one is stored, `next`
-lists it as any stored result: a red test on it as `must`, the result
-out of date as `should`. A server opened without the kit serves the
-same `next` for a dataset with no stored preview result.
+Stored results, read back as SQL ([outlook](../usage/outlook.md)).
+They are functions an actor may run: `metric_ranges()` over the
+dataset, `metric_forecast()` and `metric_scenario()` over a metric
+(the outlook kit, with a model service), `metric_plan()` over a plan
+(the plan kit, without one). The server runs none of them after a
+write, and `next` asks for none. Once one is stored, `next` lists it
+as any stored result: a red test on it as `must`, the result out of
+date as `should`. A server opened without either kit serves the same
+`next` for a dataset with no stored result of theirs, and these reads
+serve no rows.
 
 | Read | Columns |
 |---|---|
-| `range_result()` | `served_by`, `grain`, `score`, `state`, `threshold`, `computed_at` |
-| `range_points()` | `metric`, `applicable`, `reason`, `additivity`, `backtested`, `held_80`, `held_90`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `withheld`, `displacement`, `newest`, `point_seq`, `computed_at` |
-| `forecast_points()` | `seq`, `metric`, `applicable`, `reason`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `service_80`, `service_90`, `actual`, `actuals`, `held_80`, `held_90`, `held_from` |
-| `forecast_coverage()` | `metric`, `grain`, `step`, `span`, `to_go`, `points`, `inside_80`, `inside_90`, `held_80`, `held_90` |
-| `scenarios()` | `scenario`, `annotated`, `applicable`, `reason`, `levers` |
-| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `levers`, `pass`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `held_80`, `held_from`, `sign`, `confidence`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
-| `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `basis`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
-| `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `held_80`, `held_from`, `origin` |
+| `range_points()` | `metric`, `applicable`, `reason`, `code`, `backtested`, `held_80`, `held_90`, `score`, `state`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `displacement`, `withheld`, `coverage_80`, `coverage_90`, `newest`, `point_seq`, `served_by`, `computed_at`, `error` |
+| `forecast_points()` | `metric`, `applicable`, `reason`, `code`, `error`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `coverage_80`, `coverage_80_se`, `coverage_90`, `coverage_90_se`, `coverage_points` |
+| `scenarios()` | `scenario`, `body`, `annotated`, `applicable`, `reason`, `levers`, `fix` |
+| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `code`, `levers`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `sign`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
+| `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
+| `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `coverage_80`, `origin` |
 
-- `forecast_points()`: a row with `span` is a total over that many
-  periods, running to the end of `to_go` (`month`, `quarter`, `year`).
-  `actuals` is `below`, `low`, `inside`, `high` or `above`.
-  `held_from` says whose count `held_80` is: `metric`, `dataset` or
-  `service`. It is `metric` or `dataset` where `forecast_coverage()`
-  holds 30 points with their actuals at that grain, step and span for
-  the metric or the dataset, and `service` until then.
-- `plan_points()`: `held_80` and `held_from` are those of the forecast
-  point the row is held against, as `forecast_points()` serves them.
-  `planned` is `complete`, `not_covered`, `inside`,
+- `range_points()`: one row per metric and backtested month.
+  `backtested` is how many months were predicted from the months
+  before them; `newest` marks the month `score` and `state` are for,
+  the model service's result. `code` is the service's code for a
+  metric it could not backtest, such as `origins_short`. A backtest
+  that failed is one row with its `error`.
+- `forecast_points()`: one row per metric and point, from the forecast
+  stored on each metric. A row with `span` is a total over that many
+  periods, running to the end of `to_go` (`month`, `quarter`,
+  `year`). `coverage_80` and `coverage_90` are the service's measured
+  share of actual values inside such a range on held-out data, with
+  their standard errors. A run that failed is one row with its
+  `error`.
+- `plan_points()`: `planned` is `complete`, `not_covered`, `inside`,
   `below`, `above`, `partial`, `open` or `ahead`. `not_covered`: the
   period has begun and the metric's series does not cover it, so the
-  row has no `actual` and no `variance`.
-- `range_points()`: `backtested` is how many months were predicted
-  from the months before them.
+  row has no `actual` and no `variance`. `low`, `expected`, `high`,
+  `coverage_80` and `origin` come from the forecast stored on the
+  metric, and are empty without one.
 - `scenario_points()`: `baseline` is the same estimate with every
-  lever as planned; `effect` is `value` minus `baseline`.
+  lever as planned; `effect` is the service's difference of the two.
+  `code` is the service's code for a scenario it could not answer,
+  such as `nothing_changed`.
 - `world_series(<grain>)`: `metric`, `series`, `world`, `period`,
-  `value`, `additivity`, `low`, `high`, `held`: each plan and the
-  newest forecast beside a metric's actual series, as the console's
-  chart draws them. Without the outlook kit it serves no rows.
+  `value`, `additivity`, `low`, `high`, `held`: each plan and each
+  stored forecast beside a metric's actual series, as the console's
+  chart draws them.

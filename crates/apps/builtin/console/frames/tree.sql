@@ -67,7 +67,7 @@ FROM (
   FROM views WHERE kind = 'scalar'
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
-         (SELECT * FROM base) || 'quality?test=' || name || CASE WHEN detector = 'range_breach' THEN '&kind=range' ELSE '' END, 0
+         (SELECT * FROM base) || 'quality?test=' || name || CASE WHEN detector = 'range_state' THEN '&kind=range' ELSE '' END, 0
   FROM test)
 ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Integration' THEN 1 WHEN 'Metadata' THEN 2
                   WHEN 'Quality' THEN 3 WHEN 'Governance' THEN 4 WHEN 'Lineage' THEN 5 ELSE 6 END,

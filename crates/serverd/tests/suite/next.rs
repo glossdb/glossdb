@@ -360,42 +360,59 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
     );
 }
 
-/// The outlook kit is a pull-in: a server that leaves it out serves
-/// `next`, `view_tests()` and the console, and for a dataset with no
-/// stored preview result it serves the same `next` and the same tests
-/// as a server with it.
+/// The plan and the outlook kits are pull-ins: a server that leaves
+/// out both, or the outlook kit alone, serves `next`, `view_tests()` and
+/// the console, the preview tiles and frames empty, and for a dataset
+/// with no stored preview or plan result it serves the same `next` and
+/// the same tests as a server with both.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_server_without_the_outlook_kit_serves_next_the_tests_and_the_console() {
+async fn a_server_without_the_plan_or_the_outlook_kit_serves_next_the_tests_and_the_console() {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
                    DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
+                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
+                   DECLARE ASPECT spend_budget WITH $${"title": "Spend budget", "x-kind": "plan", "x-plan-of": "spend"}$$ AS VIEW;
+                   GLOSS spend_budget ON fin AS $${"sql": "SELECT period, value * 1.1 AS value FROM fin.spend"}$$;"#;
     let next = "SELECT level, kind, asset, state, who, open, statement FROM next";
     let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
     let (with, _, _with_dir) = common::app_on("fin").await;
     say(&with, FIN, build).await;
-    let (without, _, _without_dir) = common::app_on_without("fin", "outlook").await;
-    say(&without, FIN, build).await;
-    assert_eq!(
-        rows(&without, FIN, next).await,
-        rows(&with, FIN, next).await
-    );
-    let served = rows(&without, FIN, tests).await;
-    assert!(!served.is_empty());
-    assert_eq!(served, rows(&with, FIN, tests).await);
-    let closing = window(&tool(&without, FIN, "SELECT 1 AS one").await);
-    assert!(closing.contains("next: must 0"), "{closing}");
-    for page in [
-        "/fin/app/console",
-        "/fin/app/console/frames/next_rows",
-        "/fin/app/console/frames/functions",
-        "/fin/app/console/frames/front",
-        "/fin/app/console/frames/view_tests",
-        "/fin/app/console/frames/trend?view=spend&grain=month&span=24",
-    ] {
-        let response = common::get(&without, page).await;
-        assert_eq!(response.status(), axum::http::StatusCode::OK, "{page}");
+    let (neither, _, _neither_dir) = common::app_on_without("fin", &["plan", "outlook"]).await;
+    say(&neither, FIN, build).await;
+    let (plan_alone, _, _plan_dir) = common::app_on_without("fin", &["outlook"]).await;
+    say(&plan_alone, FIN, build).await;
+    let served_next = rows(&with, FIN, next).await;
+    let served_tests = rows(&with, FIN, tests).await;
+    assert!(!served_tests.is_empty());
+    for app in [&neither, &plan_alone] {
+        assert_eq!(rows(app, FIN, next).await, served_next);
+        assert_eq!(rows(app, FIN, tests).await, served_tests);
+        let closing = window(&tool(app, FIN, "SELECT 1 AS one").await);
+        assert!(closing.contains("next: must 0"), "{closing}");
+        for page in [
+            "/fin/app/console",
+            "/fin/app/console/p/quality",
+            "/fin/app/console/p/views?view=spend&tab=measurements",
+            "/fin/app/console/frames/next_rows",
+            "/fin/app/console/frames/functions",
+            "/fin/app/console/frames/front",
+            "/fin/app/console/frames/view_tests",
+            "/fin/app/console/frames/trend?view=spend&grain=month&span=24",
+            "/fin/app/console/frames/breaches",
+            "/fin/app/console/frames/test_points?test=range_test",
+            "/fin/app/console/frames/corridor?view=spend",
+            "/fin/app/console/frames/movers?view=spend",
+            "/fin/app/console/frames/plan?view=spend",
+        ] {
+            let response = common::get(app, page).await;
+            assert_eq!(response.status(), axum::http::StatusCode::OK, "{page}");
+        }
     }
+    // the plan against the actual where the plan kit is loaded, nothing
+    // where it is not
+    let plan = "SELECT plan FROM plan_points()";
+    assert!(rows(&plan_alone, FIN, plan).await.len() > 1);
+    assert!(rows(&neither, FIN, plan).await.is_empty());
 }
 
 /// The interface keeps a dataset's `next` rows while the lake's snapshot

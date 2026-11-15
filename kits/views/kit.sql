@@ -94,7 +94,8 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- columns by name). It reads the views'
 -- definitions, role, additivity, dimension and time_grains, and the
 -- temporal profiles, on the dataset's metrics: a plan is no row here
--- (plan_axes()). A view whose definition serves no view has no row.
+-- (the plan kit's plan_axes_of()). A view whose definition serves no
+-- view has no row.
 --===------------------------------------------------------------------===--
 
 -- series_reason(…) and plan_reason(…): why a view serves no series, NULL
@@ -264,16 +265,16 @@ SELECT view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reaso
 FROM judged_plans
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes_of(metrics_at) AS TABLE
+CREATE OR REPLACE MACRO main.view_axes_of(views_at, columns_at) AS TABLE
 WITH defs AS MATERIALIZED (
   SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition(metrics_at)),
+  FROM definition(views_at)),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          property AS aspect, value, state
-  FROM (FROM annotations('role', metrics_at) UNION ALL FROM annotations('additivity', metrics_at)
-        UNION ALL FROM annotations('dimension', metrics_at) UNION ALL FROM annotations('time_grains', metrics_at))
+  FROM (FROM annotations('role', columns_at) UNION ALL FROM annotations('additivity', columns_at)
+        UNION ALL FROM annotations('dimension', columns_at) UNION ALL FROM annotations('time_grains', columns_at))
   WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -297,7 +298,7 @@ profiles AS (
          CASE WHEN json_extract_string(value, '$.applicable') = 'true'
                    AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
               THEN json_extract_string(value, '$.granularity') END AS grain_detected
-  FROM results('temporal', metrics_at) WHERE value IS NOT NULL),
+  FROM results('temporal', columns_at) WHERE value IS NOT NULL),
 rows_ AS (
   SELECT ch.*,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
@@ -321,38 +322,14 @@ SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN rea
 FROM judged
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the dataset''s metrics');
+CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the dataset''s metrics', 'the dataset''s metrics');
 
--- view_axes_of(metrics_at) reads the metrics of the place metrics_at
--- names, a constant: view_axes() the dataset's metrics, a plan's own
--- comparison its metric ('its metric').
---
--- plan_axes(): the same for each plan of the dataset: view, kind,
--- plan_of, covers, stopped, applicable, reason, its period and value
--- columns, its metric's additivity, the grain it covers as floor. It reads
--- every view's definition, and its metric's through view_axes().
--- plan_axes_of(plans_at, metrics_at) reads the plans and the metrics of
--- the places they name: a plan's own comparison reads 'itself' and 'its
--- metric'.
-CREATE OR REPLACE MACRO main.plan_axes_of(plans_at, metrics_at) AS TABLE
-WITH defs AS MATERIALIZED (
-  SELECT split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition(plans_at) WHERE kind = 'plan'),
-pc AS (SELECT d.metric, list(c.name ORDER BY c.position) AS cols FROM defs d, unnest(d.columns) t(c) GROUP BY d.metric),
-m AS MATERIALIZED (FROM main.view_axes_of(metrics_at)),
-plans AS (
-  SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.columns,
-         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
-         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
-         m.view IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
-         m.period_column AS of_period, m.value_column AS of_value, m.numerator, m.denominator, m.additivity, m.additivity_state
-  FROM defs p LEFT JOIN pc ON pc.metric = p.metric LEFT JOIN m ON m.view = p.plan_of)
-SELECT metric AS view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason, period_column, value_column, numerator, denominator,
-       covers AS floor, NULL::INTEGER AS window_periods, additivity, additivity_state, []::VARCHAR[] AS dims, list_transform(columns, lambda c: c.name) AS columns
-FROM (SELECT *, main.plan_reason(stopped, plan_of, of_declared, true, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason FROM plans)
-ORDER BY view;
-
-CREATE OR REPLACE MACRO main.plan_axes() AS TABLE FROM main.plan_axes_of('the dataset', 'the dataset''s metrics');
+-- view_axes_of(views_at, columns_at) reads the definitions of the views
+-- of the place views_at names and the annotations and profiles of the
+-- columns of columns_at, constants both: view_axes() the dataset's
+-- metrics, a plan's comparison its metric ('its metric' twice), a
+-- metric's own forecast the metric and its columns ('itself', 'its
+-- columns').
 
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 FROM main.view_rows() ORDER BY view;
@@ -375,12 +352,17 @@ FROM main.view_rows() ORDER BY view;
 -- members serves its top 23 by weight and 'other'. The actual world is
 -- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
 -- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
--- '<name>') are served under the metric through world_cells(), which is
--- empty until a kit that serves them is loaded. world_series(grain): the
--- same worlds as the series beside a metric's actual one at a grain, as a
--- chart draws them — metric, series (its name), world, period, value,
--- low and high (a range around the value), held (how often such a range
--- held, in words); empty until a kit serves them.
+-- '<name>') are served under the metric through world_cells(), each
+-- world by the macro of the kit that serves it: world_plan(w, p, g) the
+-- plan kit's, world_forecast(w, g) and world_scenario(w, s, g) the
+-- outlook kit's, empty here until that kit is loaded. world_series(grain):
+-- the same worlds as the series beside a metric's actual one at a grain,
+-- as a chart draws them — metric, series (its name), world, period,
+-- value, low and high (a range around the value), held (what the range
+-- rests on, in words) — from plan_series(g) and forecast_series(g), the
+-- same two kits'. range_points() and plan_points(), the two kits' reads
+-- the console draws, are empty here too, so a page draws nothing where
+-- the kit is not loaded.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
@@ -389,26 +371,88 @@ FROM main.view_rows() ORDER BY view;
 -- such a metric serves no row, and its view_summary() row says what it needs.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
+CREATE OR REPLACE MACRO main.world_plan(w, p, g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
        NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
 WHERE false;
 
-CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
+CREATE OR REPLACE MACRO main.world_forecast(w, g) AS TABLE
+SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
+       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
+WHERE false;
+
+CREATE OR REPLACE MACRO main.world_scenario(w, s, g) AS TABLE
+SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
+       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
+WHERE false;
+
+CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
+WITH refusal AS (
+  SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario')
+              THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario') END AS r)
+SELECT * FROM main.world_plan(w, p, g) WHERE w = 'plan'
+UNION ALL SELECT * FROM main.world_forecast(w, g) WHERE w = 'forecast'
+UNION ALL SELECT * FROM main.world_scenario(w, s, g) WHERE w = 'scenario'
+UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refusal WHERE r IS NOT NULL;
+
+CREATE OR REPLACE MACRO main.plan_series(g) AS TABLE
 SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
        NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
 WHERE false;
 
+CREATE OR REPLACE MACRO main.forecast_series(g) AS TABLE
+SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
+       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
+WHERE false;
+
+CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
+FROM main.plan_series(g) UNION ALL FROM main.forecast_series(g);
+
+CREATE OR REPLACE MACRO main.range_points() AS TABLE
+SELECT NULL::VARCHAR AS metric, NULL::BOOLEAN AS applicable, NULL::VARCHAR AS reason, NULL::VARCHAR AS code,
+       NULL::BIGINT AS backtested, NULL::DOUBLE AS held_80, NULL::DOUBLE AS held_90, NULL::DOUBLE AS score, NULL::VARCHAR AS state,
+       NULL::VARCHAR AS period, NULL::DOUBLE AS actual, NULL::DOUBLE AS p05, NULL::DOUBLE AS p10, NULL::DOUBLE AS p50,
+       NULL::DOUBLE AS p90, NULL::DOUBLE AS p95, NULL::DOUBLE AS pit, NULL::DOUBLE AS displacement, NULL::VARCHAR AS withheld,
+       NULL::DOUBLE AS coverage_80, NULL::DOUBLE AS coverage_90, NULL::BOOLEAN AS newest, NULL::BIGINT AS point_seq,
+       NULL::VARCHAR AS served_by, NULL::TIMESTAMP WITH TIME ZONE AS computed_at, NULL::VARCHAR AS error
+WHERE false;
+
+CREATE OR REPLACE MACRO main.plan_points() AS TABLE
+SELECT NULL::VARCHAR AS plan, NULL::VARCHAR AS metric, NULL::VARCHAR AS grain, NULL::TIMESTAMP AS period, NULL::VARCHAR AS label,
+       NULL::DOUBLE AS value, NULL::DOUBLE AS actual, NULL::DOUBLE AS variance, NULL::DOUBLE AS low, NULL::DOUBLE AS expected,
+       NULL::DOUBLE AS high, NULL::VARCHAR AS planned, NULL::VARCHAR AS covers, NULL::DOUBLE AS coverage_80, NULL::VARCHAR AS origin
+WHERE false;
+
+-- partial_periods_of(views_at, columns_at, g): per metric of the places,
+-- the period at grain g (its own floor where NULL) that its data ends
+-- inside, where its rows land finer than that grain: a short sum against
+-- a whole period reads as a change that is only the calendar. The plan
+-- kit's comparison and the outlook kit's requests leave it out alike.
+CREATE OR REPLACE MACRO main.partial_periods_of(views_at, columns_at, g) AS TABLE
+WITH axes AS (
+  SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
+  FROM main.view_axes_of(views_at, columns_at) WHERE applicable AND coalesce(kind, '') <> 'plan'),
+edges AS (
+  SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
+         count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
+           > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
+  FROM dataset_cells(current_schema(), views_at) c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
+  GROUP BY c."table")
+SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
+WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
+
 -- actual_series(grain, unclaimed): the actual world alone, which a
 -- function's body reads: through view_axes(), and no stored result.
-CREATE OR REPLACE MACRO main.actual_series_of(metrics_at, grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
+-- actual_series_of(views_at, columns_at, …) the same over the places
+-- view_axes_of() takes.
+CREATE OR REPLACE MACRO main.actual_series_of(views_at, columns_at, grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_axes_of(metrics_at) m
+  FROM main.view_axes_of(views_at, columns_at) m
   WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
-  SELECT * FROM dataset_cells(current_schema(), metrics_at) WHERE "table" IN (SELECT metric FROM asked)),
+  SELECT * FROM dataset_cells(current_schema(), views_at) WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
   SELECT c."table" AS metric, c.rn,
          max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -498,7 +542,7 @@ WHERE refused.refusal IS NULL
 ORDER BY metric, dimension, member, period;
 
 CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
-FROM main.actual_series_of('the dataset''s metrics', grain := grain, unclaimed := unclaimed, world := world);
+FROM main.actual_series_of('the dataset''s metrics', 'the dataset''s metrics', grain := grain, unclaimed := unclaimed, world := world);
 
 CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
 SELECT * FROM main.actual_series(grain := grain, unclaimed := unclaimed, world := world)

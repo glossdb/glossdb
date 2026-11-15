@@ -45,7 +45,8 @@ columns it reads, worst first. `evidence` holds the check's result,
 compares annotations, which no function measures. A test on a result
 about the dataset as a whole or about a plan is a row too, with an
 empty `run`: an actor stores that result, and the server does not
-compute it after a write. The preview tests `range_test` and
+compute it after a write. A person accepts a red `range_test` with a
+`tolerance` on the dataset. The preview tests `range_test` and
 `plan_test` come in this way once their result is stored
 ([outlook](outlook.md)). `TESTS()` is the language's own read, for
 any asset:

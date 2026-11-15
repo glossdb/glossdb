@@ -13,7 +13,8 @@ reads. It does not add grammar.
 | `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`, `definitions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `metric_series()`, `view_tests()`, `view_sources()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
-| `outlook` | glossdb | preview: expected ranges, forecasts, plans, scenarios, as functions an actor may run; the server serves the rest without it |
+| `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |
+| `outlook` | glossdb | preview: expected ranges, forecasts and scenario estimates from a model service, as functions an actor may run; the server serves the rest without it |
 | `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
 
 The server loads them at each start, in this order. A kit the lake
@@ -88,14 +89,18 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
   metric alone, as here: a check on the measure. Its function runs
   over `<dataset>.<view>`. Before it, the server computes the results
   its body reads (`results(...)`) at the place it names.
+  `"x-subject": "dataset"` marks a check on the dataset as a whole that
+  an actor runs: the server expects it nowhere and `next` asks for no
+  annotation of it, and a person accepts a result with a `tolerance`
+  on the dataset, as for the views' checks.
 - **Rows in `next`.** A kit adds rows to `next` through its tests and
   its stored results, and through nothing else. A test that is not
   green is a row: `must` where it is red, `should` otherwise. A check
   that returns `finding` and `fix` has them served as the row's `open`
-  and `statement`. A result about the dataset as a whole, or about a
-  plan, is one an actor runs: the server does not compute it, and
-  once it is out of date it is a `should` row with the statement that
-  computes it again. A function nobody ran is no row. A kit adds no
+  and `statement`. A result about the dataset or a view that no test
+  on the view runs is one an actor runs: the server does not compute
+  it, and once it is out of date it is a `should` row with the
+  statement that computes it again. A function nobody ran is no row. A kit adds no
   other code for this, and `next` names no kit.
 
 ## Load a kit

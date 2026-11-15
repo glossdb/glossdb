@@ -33,6 +33,6 @@ SELECT test,
            CASE WHEN green > 0 THEN CAST(green AS VARCHAR) || ' green' END) END AS measured,
        CASE worst WHEN 4 THEN 'red' WHEN 3 THEN 'orange' WHEN 2 THEN 'yellow' WHEN 1 THEN 'error' WHEN 0 THEN 'green' ELSE 'not run' END AS state,
        CASE WHEN worst = 0 THEN 'ok' WHEN worst < 0 THEN '' ELSE 'warn' END AS scls,
-       '?test=' || test || CASE WHEN detector = 'range_breach' THEN '&kind=range' ELSE '' END AS link
+       '?test=' || test || CASE WHEN detector = 'range_state' THEN '&kind=range' ELSE '' END AS link
 FROM folded
 ORDER BY worst DESC, test

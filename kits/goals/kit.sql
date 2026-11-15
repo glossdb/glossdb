@@ -19,10 +19,10 @@
 -- reads); the profile of each column a view scans, which load_changes()
 -- compares to say what a load changed under the view (the cause `next`
 -- names); and the measurement a metric's row names as not run (the grain
--- of its period column). The server computes these after each write. A
--- result about the dataset as a whole or about a view with no tests of
--- its own (view_tests() names no `run` for its test) is an actor's to
--- compute: once it is out of date, `next` lists it with its statement.
+-- of its period column). The server computes these after each write.
+-- Any other result about the dataset or a view (a kit's function an
+-- actor runs) is the actor's to compute: once it is out of date, `next`
+-- lists it with its statement.
 --===------------------------------------------------------------------===--
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
 WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
@@ -375,8 +375,9 @@ CREATE OR REPLACE VIEW main.next AS
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
       AND NOT EXISTS (SELECT 1 FROM vt t WHERE t.view = m.view AND t.state <> 'green')),
   -- a stored result out of date that the server does not compute: one
-  -- about the dataset as a whole or about a view with no tests of its own
-  -- (whose tests name no `run`), whatever kit declares its function
+  -- about the dataset as a whole or about a view, whatever kit declares
+  -- its function, but a check a test on the view runs (view_tests()
+  -- names it as the test's `run`)
   s_results AS (
     SELECT 'should', 5, 'test', o.subject, 'stale', 'agent',
            o.function || ': computed before a read of it changed (' || o.inputs || ')',
@@ -384,9 +385,9 @@ CREATE OR REPLACE VIEW main.next AS
            'SELECT ' || o.function || '() FROM ' || o.subject || ';'
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.input, ', ' ORDER BY u.input) AS inputs
           FROM glossql_outdated() u
-          LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL AND view NOT IN (SELECT view FROM vt WHERE run <> '')) v
-            ON u.subject = current_schema() || '.' || v.view
+          LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
           WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)
+            AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test

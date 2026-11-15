@@ -1,24 +1,24 @@
--- The findings' first rows: every backtested metric whose newest point
--- loaded outside the corridor its own history predicted — the point
--- the backtest's result scores — as one finding: a sentence from the
--- catalog's fields, the numbers behind it, the range test's result
--- as the chip, and the axis that moved most for the link to the metric
--- sliced by it. The corridor picture and the movers under the finding
--- are the metric's own frames, keyed by its name. `range_points()` is
--- the stored backtest, no re-run; a point is outside at displacement
--- 0.95 and over. A green corridor serves no row. The axis that moved
--- most is the series' own cells at month grain, the newest backtested
--- month against the one before it.
+-- The findings' first rows: every backtested metric the model service
+-- judged red — its newest point loaded outside the range its own
+-- history predicted — as one finding: a sentence from the catalog's
+-- fields, the numbers behind it, the range test's result as the chip,
+-- and the axis that moved most for the link to the metric sliced by it.
+-- The range picture and the movers under the finding are the metric's
+-- own frames, keyed by its name. `range_points()` is the stored
+-- backtest, no re-run, and empty where the outlook kit is not loaded;
+-- no other metric serves a row. The axis that moved most is the
+-- series' own cells at month grain, the newest backtested month
+-- against the one before it.
 WITH result AS (
   SELECT a.test, a.state, a.computed_at, a.current, w.detector, w.threshold,
          row_number() OVER (ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
   FROM glossql_tests(current_schema(), NULL) a
   JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) w
     ON w.name = a.test
-  WHERE w.detector = 'range_breach'
+  WHERE w.detector = 'range_state'
 ),
 points AS (
-  SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far,
+  SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far, state,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
   FROM range_points()
   WHERE applicable AND period IS NOT NULL
@@ -49,8 +49,8 @@ titles AS (
   SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 ),
-counted AS (SELECT count(*) AS n FROM newest WHERE pit IS NOT NULL),
-outside AS (SELECT * FROM newest WHERE pit IS NOT NULL AND far >= 0.95),
+counted AS (SELECT count(*) AS n FROM newest WHERE state IS NOT NULL),
+outside AS (SELECT * FROM newest WHERE state = 'red'),
 outs AS (SELECT count(*) AS k FROM outside)
 SELECT coalesce(t2.title, o.name) AS title,
        o.name AS view,

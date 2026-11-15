@@ -262,14 +262,22 @@ pub async fn app_on(dataset: &str) -> Served {
 }
 
 /// The gated interfaces over a new workspace that holds `dataset`, the
-/// engine opened with every kit but `kits/<kit>/kit.sql`.
-pub async fn app_on_without(dataset: &str, kit: &str) -> Served {
+/// engine opened with every kit but `kits/<kit>/kit.sql` for each kit
+/// named.
+pub async fn app_on_without(dataset: &str, kits: &[&str]) -> Served {
     let dir = tempfile::tempdir().unwrap();
     let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
-    let left_out = std::path::Path::new(kit).join("kit.sql");
     let before = config.kits.len();
-    config.kits.retain(|path| !path.ends_with(&left_out));
-    assert_eq!(config.kits.len(), before - 1, "no kit {kit} among the kits");
+    config.kits.retain(|path| {
+        !kits
+            .iter()
+            .any(|kit| path.ends_with(std::path::Path::new(kit).join("kit.sql")))
+    });
+    assert_eq!(
+        config.kits.len(),
+        before - kits.len(),
+        "a kit of {kits:?} is not among the kits"
+    );
     config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
     let plane = Arc::new(
         Plane::open(config).await.unwrap().with_pages(

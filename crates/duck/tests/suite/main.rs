@@ -395,7 +395,7 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
         .map(|kit| {
             let name = kit.parent().and_then(|p| p.file_name()).unwrap();
             let mut text = std::fs::read_to_string(kit).unwrap();
-            if ["core", "views", "outlook", "goals"]
+            if ["core", "views", "plan", "outlook", "goals"]
                 .iter()
                 .any(|k| name == *k)
             {

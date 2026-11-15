@@ -57,7 +57,7 @@ GLOSS price_hike ON sales AS $${
 
 ```glossql
 SELECT metric, period, value FROM metric_series(world := 'scenario', scenario := 'price_hike');
-SELECT period, pass, value, low, high, held_80, held_from, sign, basis
+SELECT period, value, low, high, baseline, effect, sign, basis
 FROM scenario_points('price_hike') WHERE metric = 'revenue';
 ```
 

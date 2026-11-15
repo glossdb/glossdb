@@ -8,7 +8,7 @@ SELECT substr(a.subject, len(d.dataset) + 2) AS subject,
        a.state,
        coalesce(fmt_number(a.score), '') AS score,
        CASE a.state WHEN 'green' THEN 'ok' WHEN 'error' THEN '' ELSE 'warn' END AS scls,
-       '/' || d.dataset || '/app/console/p/quality?test=' || a.test || CASE WHEN t.detector = 'range_breach' THEN '&kind=range' ELSE '' END AS link
+       '/' || d.dataset || '/app/console/p/quality?test=' || a.test || CASE WHEN t.detector = 'range_state' THEN '&kind=range' ELSE '' END AS link
 FROM TESTS() a
 CROSS JOIN d
 LEFT JOIN t ON t.name = a.test
