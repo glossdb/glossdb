@@ -23,15 +23,14 @@ WITH ds AS (SELECT current_schema() AS d),
 metrics AS (
   SELECT view FROM main.view_summary()
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+sc AS MATERIALIZED (FROM glossql_views_scans(current_schema()) WHERE view IN (SELECT view FROM metrics)),
+jo AS MATERIALIZED (FROM glossql_views_joins(current_schema()) WHERE view IN (SELECT view FROM metrics)),
 columns AS (
-  SELECT s.table_name || '.' || unnest(s.columns) AS subject
-  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM metrics)
-  UNION SELECT j.left_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)
-  UNION SELECT j.right_column FROM glossql_views_joins(current_schema()) j WHERE j.view IN (SELECT view FROM metrics)),
+  SELECT s.table_name || '.' || unnest(s.columns) AS subject FROM sc s
+  UNION SELECT j.left_column FROM jo j
+  UNION SELECT j.right_column FROM jo j),
 -- the relationships between the tables a metric scans, each checked on its own
-scanned AS (
-  SELECT DISTINCT s.view, s.table_name FROM glossql_views_scans(current_schema()) s
-  WHERE s.view IN (SELECT view FROM metrics)),
+scanned AS (SELECT DISTINCT s.view, s.table_name FROM sc s),
 relationships AS (
   SELECT DISTINCT r.left_side || ' ' || r.op || ' ' || r.right_side AS rel
   FROM main.relationships r JOIN scanned l ON l.table_name = regexp_extract(r.left_side, '^([^.]+\.[^.]+)\.', 1)
