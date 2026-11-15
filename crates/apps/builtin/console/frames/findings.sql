@@ -9,10 +9,11 @@ a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
-  SELECT ms.source, string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
-  FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
-  WHERE ms.source IS NOT NULL
-  GROUP BY ms.source),
+  SELECT ms.source_table || '.' || ms.source_column AS source,
+         string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
+  FROM column_mapping() ms LEFT JOIN a ON a.name = ms.view
+  WHERE ms.source_column IS NOT NULL
+  GROUP BY ALL),
 meanings AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning,
          row_number() OVER (PARTITION BY g.subject ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn

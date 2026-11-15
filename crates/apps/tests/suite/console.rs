@@ -1538,8 +1538,8 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
         .unwrap();
 
     // Nodes: the two tables' columns in order, and the metric definition's
-    // served fields under the metric; a metric definition with only an
-    // aggregate (payables) has no field to show.
+    // served fields under the metric; a sum (payables) shows the column
+    // it sums.
     let nodes = frame(get(&app, "/perf/app/console/frames/lineage_nodes").await).await;
     let rows: Vec<(&str, &str, &str, &str)> = (0..nodes.len())
         .map(|i| {
@@ -1562,10 +1562,7 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
     );
     assert!(has("dso", "month"), "{rows:?}");
     assert!(has("dso", "cohort"), "{rows:?}");
-    assert!(
-        !rows.iter().any(|r| r.0 == "payables"),
-        "an aggregate descends from no column:\n{rows:?}"
-    );
+    assert!(has("payables", "value"), "{rows:?}");
     assert!(
         rows.iter().any(|r| r.0 == "dso" && r.1 == "view"),
         "{rows:?}"
@@ -1606,8 +1603,8 @@ async fn lineage_serves_tables_with_their_source_relationships_and_reads() {
     );
     assert_eq!(
         edges.iter().filter(|e| e.2 == "reads").count(),
-        6,
-        "the series and the relation each read three columns:\n{edges:?}"
+        7,
+        "the series and the relation each read three columns, the single value one:\n{edges:?}"
     );
 }
 

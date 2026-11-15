@@ -526,7 +526,7 @@ const CATALOG: &[&str] = &[
     "agent_assumptions",
     "view_definitions",
     "view_summary",
-    "view_sources",
+    "column_mapping",
     "view_tests",
     "workspace_status",
     "app_parts",

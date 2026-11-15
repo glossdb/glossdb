@@ -575,37 +575,31 @@ FROM facts f LEFT JOIN shape s USING (metric)
 ORDER BY f.metric;
 
 --===------------------------------------------------------------------===--
--- view_sources(for_view := NULL): what feeds each view of the bound
--- dataset, or one — one row per served field and the loaded column it
--- descends from, through the views' lineage: view, field, source
--- (table.column), table_name; a computed field with no column behind it
--- has no row; beside those, one row per table the view reads, table_name
--- alone; a view that does not plan serves one row with reason.
+-- column_mapping(for_view := NULL): where each column of each view of the
+-- bound dataset, or of one, comes from, read off the view's SQL. One row
+-- per target column, per branch of the union the view's rows come from
+-- (1 where it has none) and per source column: view, target_column,
+-- branch, system (the source the source table is loaded from), source_table,
+-- source_column, alias (where the view reads the table more than once),
+-- condition (what the view's joins and filters require of that read of the
+-- table alone), expression (the branch's derivation), literals (the codes
+-- the expression tests or returns, as written), complete. A column computed
+-- from no source column (a constant, count(*)) has one row with no source.
+-- complete is false where the lineage could not follow a step, or reads two
+-- reads of one table alike; a view that does not plan has one row, no
+-- target column, complete false.
 --===------------------------------------------------------------------===--
 
-CREATE OR REPLACE MACRO main.view_sources(for_view := NULL) AS TABLE
+CREATE OR REPLACE MACRO main.column_mapping(for_view := NULL) AS TABLE
 WITH views AS (
   SELECT m.view FROM main.view_summary() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
-lineage AS (
-  SELECT l.view AS view, l."column" AS field, l.derivation, l.complete
-  FROM glossql_views_lineage(current_schema()) l WHERE l.view IN (SELECT view FROM views)),
--- a field descends from the columns its derivation names; an aggregate
--- descends from no column — it is computed over them
-fields AS (
-  SELECT view, field, unnest(regexp_extract_all(derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path,
-         regexp_matches(derivation, '^(sum|count|avg|mean|min|max|median|mode|stddev|stddev_pop|stddev_samp|var_pop|var_samp|variance|string_agg|list|array_agg|arg_min|arg_max|first|last|any_value|bool_and|bool_or|quantile|quantile_cont|quantile_disc|approx_count_distinct|product)\(') AS aggregate
-  FROM lineage WHERE field IS NOT NULL),
-tables AS (
-  SELECT DISTINCT view, split_part(path, '.', 2) AS table_name FROM fields),
-sources AS (
-  SELECT DISTINCT view, field, split_part(path, '.', 2) || '.' || split_part(path, '.', 3) AS source, split_part(path, '.', 2) AS table_name
-  FROM fields WHERE NOT aggregate)
-SELECT view, field, source, table_name, NULL::VARCHAR AS reason FROM sources
-UNION ALL
-SELECT view, NULL, NULL, table_name, NULL FROM tables
-UNION ALL
-SELECT view, NULL, NULL, NULL, 'the view definition does not plan' FROM lineage WHERE field IS NULL
-ORDER BY view, table_name NULLS LAST, field NULLS FIRST;
+systems AS (SELECT "from" AS t, "to" AS system FROM main.loaded_from_edges(current_schema()))
+SELECT m.view, m."column" AS target_column, m.branch, s.system,
+       split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
+       m.alias, m.condition, m.derivation AS expression, m.literals, m.complete
+FROM glossql_views_mapping(current_schema()) m
+LEFT JOIN systems s ON s.t = m.table_name
+WHERE m.view IN (SELECT view FROM views);
 
 --===------------------------------------------------------------------===--
 -- The built-in tests on a view: what can break its rows or its number,

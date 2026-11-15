@@ -59,13 +59,13 @@ cols AS (
   WHERE c.table_catalog = current_database()),
 defs AS (SELECT name, kind FROM view_definitions),
 fields AS (
-  SELECT s.view AS node, 'view' AS kind, s.field AS col,
-         CAST(row_number() OVER (PARTITION BY s.view ORDER BY s.field) AS BIGINT) AS ord,
+  SELECT s.view AS node, 'view' AS kind, s.target_column AS col,
+         CAST(row_number() OVER (PARTITION BY s.view ORDER BY s.target_column) AS BIGINT) AS ord,
          CASE v.kind WHEN 'relation' THEN 'table view' WHEN 'scalar' THEN 'single value'
                      WHEN 'plan' THEN 'plan' ELSE 'metric' END AS sub,
          (SELECT b FROM base) || 'views?view=' || s.view
            || CASE WHEN v.kind IN ('relation', 'scalar') THEN '&kind=' || v.kind ELSE '' END AS link
-  FROM (SELECT DISTINCT view, field FROM view_sources() WHERE field IS NOT NULL) s
+  FROM (SELECT DISTINCT view, target_column FROM column_mapping() WHERE target_column IS NOT NULL) s
   LEFT JOIN defs v ON v.name = s.view)
 SELECT node, kind, col, ord, role, detail, sub, link, tag FROM cols
 UNION ALL

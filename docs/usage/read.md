@@ -55,15 +55,16 @@ SELECT view, test, subject, state FROM view_tests() WHERE state <> 'green';
 ```
 
 ```sql
-SELECT view, field, source FROM view_sources(for_view := 'booked_nights');
+SELECT target_column, source_table, source_column, expression FROM column_mapping(for_view := 'booked_nights');
 ```
 
 ```glossql
 SELECT subject, aspect, value, state FROM GLOSSARY(stays.booked_nights);
 ```
 
-`view_sources()` is the column lineage: each served field and the
-loaded column it comes from. Lineage needs no work of its own. Each
+`column_mapping()` is the column lineage: each column a view serves,
+the loaded column it comes from, the source system that table is
+loaded from, and the expression between them. Lineage needs no work of its own. Each
 load and each view definition records it.
 
 ## Over the interfaces

@@ -4,8 +4,8 @@
 -- definition carries, and the as-of, the newest load of the tables
 -- the metric definition reads.
 WITH reads AS (
-  SELECT DISTINCT table_name AS t FROM view_sources()
-  WHERE view = CAST($view AS VARCHAR) AND table_name IS NOT NULL),
+  SELECT DISTINCT source_table AS t FROM column_mapping()
+  WHERE view = CAST($view AS VARCHAR) AND source_table IS NOT NULL),
 as_of AS (
   SELECT max(i.imported_at) AS loaded_at
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset

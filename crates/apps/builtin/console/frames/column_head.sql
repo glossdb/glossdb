@@ -20,8 +20,8 @@ a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
-  FROM view_sources() ms LEFT JOIN a ON a.name = ms.view
-  WHERE ms.source = CAST($column AS VARCHAR))
+  FROM column_mapping() ms LEFT JOIN a ON a.name = ms.view
+  WHERE ms.source_table || '.' || ms.source_column = CAST($column AS VARCHAR))
 SELECT col.table_name,
        col.column_name AS name,
        lower(col.data_type) AS typed,

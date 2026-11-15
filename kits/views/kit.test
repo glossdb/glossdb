@@ -169,34 +169,38 @@ spend	2024-06-01	0.0
 statement ok
 GLOSS reach ON fin AS $${"stopped": "one row, no series"}$$;
 
-# --- what feeds the metric, through the view's lineage
+# --- where each column comes from: the column mapping, read off the view's SQL
 
-# a field descends from the columns its derivation names; the summed value is computed, no column is its own
-query TTTT
-SELECT view, field, source, table_name FROM view_sources('spend') ORDER BY field NULLS FIRST;
+# every column has its row with the column it is computed from, the summed value and a column passed
+# through unchanged alike; no row stands for a table alone
+query TTTTT
+SELECT target_column, branch, source_table, source_column, expression FROM column_mapping('spend') ORDER BY target_column, source_column;
 ----
-spend	NULL	NULL	ledger
-spend	fund	ledger.fund	ledger
-spend	object	ledger.object	ledger
-spend	period	ledger.booked	ledger
+fund	1	ledger	fund	fin.ledger.fund:VARCHAR
+object	1	ledger	object	fin.ledger.object:VARCHAR
+period	1	ledger	booked	cast(date_trunc('month', fin.ledger.booked:TIMESTAMP) as DATE)
+value	1	ledger	amount	sum(fin.ledger.amount:DOUBLE)
 
-# a field computed by a CASE or a COALESCE descends from the columns inside it, a COALESCE over one column under three aliases from that column once
+# a column computed by a CASE or a COALESCE comes from the columns inside it; a table read under three
+# aliases reads as three reads, the coalesce's order kept; a column named with a blank passes through
 statement ok
-CREATE TABLE fin.products AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'D' ELSE 'A' END AS status, 'brand' || i AS global_brand, i AS parent FROM range(4) t(i);
+CREATE TABLE fin.products AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'D' ELSE 'A' END AS status, 'brand' || i AS global_brand, i AS parent, i * 1.5 AS "unit price" FROM range(4) t(i);
 
 statement ok
 DECLARE ASPECT product_forms WITH $${"title": "Product forms"}$$ AS VIEW;
 
 statement ok
-GLOSS product_forms ON fin AS $${"sql": "SELECT p.id, CASE WHEN p.status = 'D' THEN 'available' ELSE 'other' END AS availability, coalesce(p.global_brand, up.global_brand, top.global_brand) AS brand FROM fin.products p JOIN fin.products up ON p.parent = up.id JOIN fin.products top ON up.parent = top.id"}$$;
+GLOSS product_forms ON fin AS $${"sql": "SELECT p.id, CASE WHEN p.status = 'D' THEN 'available' ELSE 'other' END AS availability, coalesce(p.global_brand, up.global_brand, top.global_brand) AS brand, p.\"unit price\" FROM fin.products p JOIN fin.products up ON p.parent = up.id JOIN fin.products top ON up.parent = top.id"}$$;
 
-query TTTT
-SELECT view, field, source, table_name FROM view_sources('product_forms') ORDER BY field NULLS FIRST;
+query TTTTTT
+SELECT target_column, source_table, source_column, alias, array_to_string(literals, ' '), complete FROM column_mapping('product_forms') ORDER BY target_column, alias;
 ----
-product_forms	NULL	NULL	products
-product_forms	availability	products.status	products
-product_forms	brand	products.global_brand	products
-product_forms	id	products.id	products
+availability	products	status	p	'D' 'available' 'other'	true
+brand	products	global_brand	p	(empty)	true
+brand	products	global_brand	top	(empty)	true
+brand	products	global_brand	up	(empty)	true
+id	products	id	p	(empty)	true
+unit price	products	unit price	p	(empty)	true
 
 statement ok
 GLOSS product_forms ON fin AS $${"stopped": "the lineage case only"}$$;

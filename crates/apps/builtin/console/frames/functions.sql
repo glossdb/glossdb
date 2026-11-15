@@ -31,7 +31,8 @@ q AS (
          (SELECT count(*) FROM review_decisions r JOIN d ON d.dataset = r.dataset) AS decided),
 traced AS (
   SELECT count(*) FILTER (WHERE source IS NOT NULL) AS traced, count(*) AS n
-  FROM (SELECT view, field, max(source) AS source FROM view_sources() WHERE field IS NOT NULL GROUP BY ALL)),
+  FROM (SELECT view, target_column, max(source_column) AS source FROM column_mapping()
+        WHERE target_column IS NOT NULL GROUP BY ALL)),
 v AS (
   SELECT count(*) AS n,
          count(*) FILTER (WHERE kind = 'relation') AS tables,

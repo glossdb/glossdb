@@ -9,7 +9,7 @@ WITH asked AS (
 decided AS (
   SELECT r.aspect, max(r.written_at) AS decided_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect),
-reads AS (SELECT DISTINCT view, table_name AS t FROM view_sources() WHERE table_name IS NOT NULL),
+reads AS (SELECT DISTINCT view, source_table AS t FROM column_mapping() WHERE source_table IS NOT NULL),
 loaded AS (
   SELECT i.table_name, max(i.imported_at) AS loaded_at
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset GROUP BY i.table_name),

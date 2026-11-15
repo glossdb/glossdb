@@ -75,7 +75,7 @@
 {% elif tab == "used" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every view that reads this object, column by column. A row opens the view.">Views that read it</span>
-      <code class="chip">view_sources()</code></header>
+      <code class="chip">column_mapping()</code></header>
     <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no view reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
@@ -171,7 +171,7 @@
 {% elif tab == "used" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every view that reads this object, column by column. A row opens the view.">Views that read it</span>
-      <code class="chip">view_sources()</code></header>
+      <code class="chip">column_mapping()</code></header>
     <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no view reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
