@@ -10,7 +10,6 @@
 -- ranges, the PIT and why it is withheld, the backtest's result; the kit owns
 -- the calendar, and sends complete periods only.
 --
---   FROM glossql_kit('kits/lineage/kit.sql');
 --   FROM glossql_kit('kits/kpi/kit.sql');
 --   FROM glossql_kit('kits/quality/kit.sql');
 --   FROM glossql_kit('kits/views/kit.sql');

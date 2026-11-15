@@ -23,9 +23,6 @@ statement ok
 FROM glossql_kit('{KITS}/core/kit.sql');
 
 statement ok
-FROM glossql_kit('{GLOSSQL_KITS}/lineage/kit.sql');
-
-statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok

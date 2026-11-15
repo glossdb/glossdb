@@ -777,7 +777,6 @@ impl Config {
             extension: pieces.extension,
             kits: vec![
                 pieces.kits.join("core/kit.sql"),
-                pieces.glossql_kits.join("lineage/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("views/kit.sql"),
