@@ -435,6 +435,65 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
     );
 }
 
+/// Two sessions write to one workspace at the same time: each
+/// annotation lands exactly once, each in a snapshot of its own, and a
+/// statement refused while the other session writes returns its own
+/// code, not a lost race.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_writers_at_once_each_land_once_and_a_refusal_keeps_its_code() {
+    const EACH: usize = 12;
+    let (_dir, plane) = plane().await;
+    let columns: Vec<String> = (0..2 * EACH).map(|i| format!("{i} AS c{i}")).collect();
+    plane
+        .execute(
+            agent(),
+            None,
+            &format!(
+                "DECLARE DATASET fin SET (purpose: 'two writers');
+                 CREATE TABLE fin.wide AS SELECT {};
+                 DECLARE ASPECT remark WITH $${{\"type\": \"object\"}}$$ AS FACT ON COLUMN;
+                 DECLARE ASPECT raw WITH $${{\"type\": \"integer\"}}$$ AS MEASUREMENT ON TABLE;",
+                columns.join(", ")
+            ),
+        )
+        .await
+        .unwrap();
+    let glosses = |from: usize| -> String {
+        (from..from + EACH)
+            .map(|i| format!("GLOSS remark ON wide.c{i} AS $${{\"n\": {i}}}$$;"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let first = plane.channel(agent(), Some("fin")).await.unwrap();
+    let second = plane.channel(human(), Some("fin")).await.unwrap();
+    let (ones, twos) = (glosses(0), glosses(EACH));
+    let (one, two) = tokio::join!(first.execute(&ones), async {
+        let refused = second
+            .execute(
+                "DECLARE FUNCTION raw FOR fin AS $$ SELECT count(*) AS n FROM main.glossary $$ RETURNS raw;",
+            )
+            .await;
+        (refused, second.execute(&twos).await)
+    });
+    assert_eq!(one.unwrap().len(), EACH);
+    let (refused, written) = two;
+    assert_eq!(written.unwrap().len(), EACH);
+    assert_eq!(refused.unwrap_err().code(), Some("untracked_read"));
+
+    let read = first
+        .execute(
+            "SELECT count(*), count(DISTINCT subject), count(DISTINCT begin_snapshot)
+             FROM glossary_history WHERE aspect = 'remark'",
+        )
+        .await
+        .unwrap();
+    let total = (2 * EACH).to_string();
+    assert_eq!(
+        text(&read),
+        vec![vec![Some(total.clone()), Some(total.clone()), Some(total)]]
+    );
+}
+
 /// This repository's kits' suites, `kits/<kit>/kit.test`, on the
 /// engine, each on a lake of its own and on a thread of its own: a
 /// suite loads its kits itself, which is what it tests, so the wait is
