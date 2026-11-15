@@ -32,11 +32,10 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A write that computes nothing takes 0.56 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning the kits' SQL: `next` for the closing line 0.32 to 0.35 s (about 80% planning, the outlook kit's branches planned though no model service is named), `results_due()` 0.18 to 0.23 s | Low: known, and paid once per write | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | When it hurts an agent's run | |
+| A write that computes nothing takes 0.44 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning `next` (0.23 s) and `results_due()` (about 0.2 s) | Low: known, and paid once per write | `kits/goals/kit.sql` | When it hurts an agent's run | |
 | Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
 | A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
-| `next` has no level: every open row is a must, and it names the outlook kit's reads. A row keeps its kind of work (integrate, describe, test, review) and gets a level: must (served data is wrong or cannot be served), should (the layer is incomplete for what is served), could (what sits on top or beside). A kit adds rows through its own tests; later a kit's configuration says how it enters `next` | Medium: it changes what an agent is told | `kits/goals/kit.sql`, `crates/serverd/src/window.rs`, `crates/serverd/src/mcp.rs`, the skills | After the rows in work | |
-| The outlook kit is a pull-in: nothing stored, nothing asked. Of its 1,557 lines 62 repeat what the model service decides, 141 could move there, about 270 are glue for `next` and `view_tests()`, 120 are its own count of how often ranges held. It disagrees with the service on the scenario history gate and the per-metric range state, serves an older forecast when the newest run failed, and puts the forecast model's coverage on scenario ranges. One forecast per metric; the newest-row windows go. Plan against actual (about 330 lines, no model needed but for the forecast column) becomes a kit of its own | Medium | `kits/outlook/kit.sql`, a new `kits/plan`, `../glossthesi` (a state per metric, a code per error: in work there) | After `next` | |
+| The outlook kit, cut to what needs the model service (1,316 lines now). The service's answer carries the verdicts (glossthesi `976842b`: a state per metric, a code per error, coverage per point, the effect) and the kit still reads the old answer. It serves an older forecast when the newest run failed, judges a scenario twice, and a red range test has no way to be accepted. One forecast per metric. Plan against actual becomes a kit of its own. The console's preview tiles show an error where the kit is not loaded | Medium | `kits/outlook/kit.sql`, a new `kits/plan`, the console's frames | In work | |
 
 ## What is built
 
@@ -70,6 +69,15 @@ computed: no second list, no flag.
   (`bring_current` in `crates/duck/src/lib.rs`) runs it after a
   write, in rounds, before the next read of the same call. **`next`**
   reads the catalog's states and `load_changes()`.
+- **`next`** has, per row, a kind of work (integrate, describe,
+  test, review) and a level: must (served data is wrong or cannot be
+  served), should (the layer is incomplete for what is served), could
+  (what sits beside). Work on a dataset is complete with no must
+  open; the closing line of a call counts must and should. `next`
+  names no kit: a kit's tests and its stored results that are out of
+  date come in through `view_tests()` and `glossql_outdated()`, and a
+  function nobody ran is no row. A server runs without the outlook
+  kit.
 - **Gone**: the inputs derived from a body's bound plan, the lineage
   computed in C++ with its widenings, the filter on what a running
   function sees, `glossql_parts()`, the outlook kit's hand-made
@@ -88,7 +96,7 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `cdcf23a`: 117 tests pass. Extension at `ca9f68b`: its SQL
+Server at `85dd42b`: 118 tests pass. Extension at `ca9f68b`: its SQL
 suite passes with 2982 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
@@ -99,15 +107,15 @@ write one MCP call:
 
 | Write | Before any lineage | With the read functions |
 |---|---|---|
-| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.56 s, 0 |
-| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.56 s, 0 |
-| `role` on a source column of a metric | 1.17 s, 4 | 0.56 s, 0 |
-| `role` on a column a metric serves | not measured | 0.88 s, 1 |
-| The same annotation again; a new property declared | not measured | 0.56 s, 0 |
-| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.56 s, 0 |
-| A table view defined over three tables | not built | 2.12 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
-| A relationship declared that the table view joins over | not built | 0.99 s, 2: the relationship check and the view's orphan check |
-| `meaning` on a column the table view reads | not built | 0.57 s, 0 |
+| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.44 s, 0 |
+| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.44 s, 0 |
+| `role` on a source column of a metric | 1.17 s, 4 | 0.44 s, 0 |
+| `role` on a column a metric serves | not measured | 0.75 s, 1 |
+| The same annotation again; a new property declared | not measured | 0.44 s, 0 |
+| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.44 s, 0 |
+| A table view defined over three tables | not built | 1.99 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
+| A relationship declared that the table view joins over | not built | 0.87 s, 2: the relationship check and the view's orphan check |
+| `meaning` on a column the table view reads | not built | 0.45 s, 0 |
 
 Per call, reported by the build and not repeated here:
 `results_due()` 0.10 s, `next` 0.34 s, the currency check over 23
@@ -118,15 +126,5 @@ dataset's preview measurements current.
 
 ## Next issue (draft)
 
-**`next` with levels.** What it buys: an agent knows what it must do
-before a dataset can be served, what it should do, and what it could;
-a kit such as the outlook kit is used when asked for and not a chore.
-What is there: the `next` view and `results_due()` in
-`kits/goals/kit.sql`, the tests' own `finding` and `fix`
-(`view_tests()`), the closing lines of a call
-(`crates/serverd/src/window.rs`), `outlook_findings()` and
-`outlook_measurements()` named inside `next`. Done when: every row of
-`next` carries its kind of work and a level; the closing line counts
-must and should; work on a dataset is complete with no must open;
-`next` names no kit; a server without the outlook kit serves the
-same `next` for a dataset with no stored preview result.
+**The harmonisation kit** (`harness.md`, the first backlog row). The
+outlook cut closes this plan's last medium row before it.
