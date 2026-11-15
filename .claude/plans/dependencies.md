@@ -32,7 +32,8 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| The extension's changes of this round (`96b34b7` to `d05f951`) are tested, not reviewed line by line; glossval's goldens are not run against them | Medium | the extension; `../glossval` | Next | |
+| A write that computes nothing takes 0.72 s. Sampled: nearly all of it is the engine planning each view's SQL again to derive its lineage (`LineageOf`), about ten times per read of the lineage kit, in `results_due()` after every write | Medium: every write of an agent pays it | the extension (`glossql_lineage.cpp`, `kits/lineage/kit.sql`) | Now | |
+| Left from the review of the extension's changes: the write path's lost-race and interrupt handling is read, not run (no second writer, no Postgres catalog in the suites); glossval has no accepted goldens baseline at these commits | Medium | the extension (`glossql_store.cpp`, `glossql_runner.cpp`); `../glossval/goldens` | Before the pull requests | |
 | The outlook kit: the forecast is one result for all metrics of a dataset, so a new metric makes it and every plan due; a response of the model service is not kept under a hash of the request; a `metric_scenario` run takes 2.3 s (1.8 s before); newest-row windows are left in the kit and the console's frames | Medium | `kits/outlook/kit.sql`, `kits/views/kit.sql` (`view_axes_of`), the extension's service call, `crates/apps/builtin/console/frames` | With the outlook issue (`harness.md`) | |
 | A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
 | Finer than needed today: lineage per output column of a view (from the SQL as JSON); an identical reload moves the table's version, so results are computed once more; an outdated result or annotation no view needs is listed nowhere | Low | the lineage kit, the extension (`glossql_runner.cpp`), `kits/goals/kit.sql` (`next`) | When one is measured as a cost | |
@@ -76,19 +77,23 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `9962a9f`: 115 tests pass. Extension at `03cc58e`: its SQL
-suite passes with 2787 assertions, lint clean. On the server on
+Server at `0493fef`: 115 tests pass. Extension at `4c325dd`: its SQL
+suite passes with 2885 assertions, lint clean. The extension's
+changes since `96b34b7` were reviewed line by line by two reviewers;
+the confirmed findings are fixed, each with a test. glossval's cube
+capture equals each metric's own SQL (0 differing cells) and its
+import path agrees with a fresh load. On the server on
 127.0.0.1:8080 with the Formula 1 data (9 tables, 4 metrics), each
 write one MCP call:
 
 | Write | Before any lineage | With the read functions |
 |---|---|---|
-| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.67 s, 0 |
-| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.67 s, 0 |
-| `role` on a source column of a metric | 1.17 s, 4 | 0.68 s, 0 |
-| `role` on a column a metric serves | not measured | 1.09 s, 1 |
-| The same annotation again; a new property declared | not measured | 0.67 s, 0 |
-| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.67 s, 0 |
+| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.72 s, 0 |
+| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.72 s, 0 |
+| `role` on a source column of a metric | 1.17 s, 4 | 0.72 s, 0 |
+| `role` on a column a metric serves | not measured | 1.22 s, 1 |
+| The same annotation again; a new property declared | not measured | 0.72 s, 0 |
+| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.72 s, 0 |
 
 Per call, reported by the build and not repeated here:
 `results_due()` 0.10 s, `next` 0.34 s, the currency check over 23
@@ -99,11 +104,14 @@ dataset's preview measurements current.
 
 ## Next issue (draft)
 
-**Review of the extension's dependency changes.** What it buys: the
-branch can go up as one pull request whose diff a person has read.
-What is there: the commits `96b34b7..d05f951` in the extension
-(`src/glossql_runner.cpp`, `src/glossql_store.cpp`,
-`kits/lineage/kit.sql`, `SPEC.md` §6, `test/sql/glossql_inputs.test`);
-glossval's goldens (`../glossval/goldens`). Done when: the diff is
-read line by line with findings fixed or listed; the goldens run
-against this build with the same results as their baseline.
+**The outlook kit keeps the request and the stored answer.** What it
+buys: a preview measurement is asked of the model service once per
+request, and a new metric does not make every plan due. What is
+there: `metric_ranges`, `metric_forecast`, `metric_scenario` and
+`metric_plan` on the read functions (`kits/outlook/kit.sql`), one
+forecast result per dataset, `view_axes_of` in `kits/views/kit.sql`,
+the extension's service call. Done when: a response is kept under a
+hash of the request and the service's version; a metric declared
+leaves the other metrics' forecasts and their plans current; a
+`metric_scenario` run is back at about 1.8 s; the newest-row windows
+are gone from the kit and the console's frames.
