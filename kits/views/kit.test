@@ -361,11 +361,16 @@ join_test	kit:views	green	SELECT join_check() FROM fin.spend
 measure_additivity_test	kit:views	green	SELECT additivity_check() FROM fin.spend
 orphan_test	kit:views	green	SELECT orphan_check() FROM fin.spend
 
-# a single value and a stopped definition have no tests of this kind
-query I
-SELECT count(*) FROM view_tests() WHERE view IN ('fte_cap', 'win_rate');
+# a single value carries the join and orphan tests, green where it reads no table, and not the additivity
+# test, which needs a measure; a stopped definition has no tests of this kind
+statement ok
+SELECT join_check(), orphan_check() FROM fin.fte_cap;
+
+query TT
+SELECT test, state FROM view_tests() WHERE view IN ('fte_cap', 'win_rate') ORDER BY view, test;
 ----
-0
+join_test	green
+orphan_test	green
 
 # a metric joining two tables on a column whose values repeat on both sides fans out: the definition's own join and the columns' profiles are the evidence, and until they are profiled the test says so
 statement ok

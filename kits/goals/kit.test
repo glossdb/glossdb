@@ -620,7 +620,7 @@ SELECT fund_coded_check() FROM ledger_clean;
 
 query TTTT
 SELECT state, for_view, contains(statement, 'fund_coded_check()'), contains(statement, 'GLOSS fund_coded ON side.ledger_clean AS')
-FROM next WHERE step = 'test' AND asset = 'side.ledger_clean';
+FROM next WHERE step = 'test' AND asset = 'side.ledger_clean' AND starts_with(open, 'fund_coded_test');
 ----
 red	ledger_clean	true	true
 
@@ -798,3 +798,118 @@ query T
 SELECT run FROM results_due();
 ----
 SELECT additivity_check() FROM grid.entries
+
+# --- a table view and a single value want what a metric wants: a table view over two joined tables with a
+# declared relationship wants the profile of each column it reads (the join columns among them), the coherence
+# of the relationship and its own join and orphan checks; an orphaned key makes the orphan check red and `next`
+# lists it under test; a single value over one table wants the profile of the column it reads, no other, and its
+# own checks; a write that touches nothing the views' checks read wants nothing
+
+statement ok
+DECLARE DATASET harm SET (purpose: 'a harmonised table');
+
+statement ok
+USE harm;
+
+statement ok
+CREATE TABLE harm.drivers AS SELECT i AS driver_id, 'driver ' || i AS surname FROM range(5) t(i);
+
+statement ok
+CREATE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, (i % 10)::DOUBLE AS points FROM range(60) t(i);
+
+statement ok
+CREATE TABLE harm.circuits AS SELECT i AS circuit_id, 'circuit ' || i AS name FROM range(3) t(i);
+
+statement ok
+DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.results r JOIN harm.drivers d ON d.driver_id = r.driver_id"}$$;
+
+statement ok
+DECLARE RELATIONSHIP results.driver_id -> drivers.driver_id;
+
+query ITT
+SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
+----
+1	column_profile	harm.drivers.driver_id
+1	column_profile	harm.drivers.surname
+1	column_profile	harm.results.driver_id
+1	column_profile	harm.results.points
+1	column_profile	harm.results.result_id
+1	relationship_coherence	harm.results.driver_id -> harm.drivers.driver_id
+2	join_check	harm.driver_results
+2	orphan_check	harm.driver_results
+
+statement ok
+SELECT column_profile() FROM harm.drivers.driver_id;
+
+statement ok
+SELECT column_profile() FROM harm.drivers.surname;
+
+statement ok
+SELECT column_profile() FROM harm.results.driver_id;
+
+statement ok
+SELECT column_profile() FROM harm.results.points;
+
+statement ok
+SELECT column_profile() FROM harm.results.result_id;
+
+statement ok
+SELECT relationship_coherence() FROM harm.results.driver_id -> harm.drivers.driver_id;
+
+statement ok
+SELECT join_check(), orphan_check() FROM harm.driver_results;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+# driver 5 has no row in drivers: a sixth of the results find no parent
+query TTR
+SELECT test, state, round(score, 4) FROM view_tests() WHERE view = 'driver_results' ORDER BY test;
+----
+join_test	green	0.0
+orphan_test	red	0.1667
+
+query TTTT
+SELECT asset, state, starts_with(open, 'orphan_test'), contains(statement, 'GLOSS orphan_check ON harm.driver_results AS')
+FROM next WHERE step = 'test';
+----
+harm.driver_results	red	true	true
+
+query I
+SELECT count(*) FROM TESTS(harm.driver_results) WHERE state = 'red';
+----
+1
+
+statement ok
+GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+statement ok
+GLOSS meaning ON drivers.surname AS $${"value": "the driver's family name"}$$;
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+statement ok
+DECLARE ASPECT circuit_count WITH $${"title": "Circuits", "x-kind": "scalar"}$$ AS VIEW;
+
+statement ok
+GLOSS circuit_count ON harm AS $${"sql": "SELECT count(DISTINCT name) AS value FROM harm.circuits"}$$;
+
+query ITT
+SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
+----
+1	column_profile	harm.circuits.name
+2	join_check	harm.circuit_count
+2	orphan_check	harm.circuit_count

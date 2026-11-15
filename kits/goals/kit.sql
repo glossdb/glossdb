@@ -9,52 +9,59 @@
 -- in the order to run them: ord, function, subject, run. A result is out
 -- of date when an input it read has another version now (the catalog's
 -- `inputs`), or a result it read is out of date. A check that failed is
--- a result with its error, due again once it is out of date. What a metric needs: the profile of each column it reads or
--- joins on, the check of each relationship between the tables it scans,
--- and the tests on it and on what it reads. A profile and the relationship
--- checks come first:
--- the tests read them, and so does a measurement a metric's row names as
--- not run (the grain of its period column). The server computes these
--- after each write. A preview measurement calls the model service and is
--- not among them: where it is due, `next` lists it with its statement.
+-- a result with its error, due again once it is out of date. What is
+-- wanted follows from the tests on each view and on what it reads
+-- (view_tests()), whatever the kind of view: each test's check, and
+-- before it (ord 1) every result the check's body reads, at the place it
+-- names from the test's subject, as the function's stored `reads` say
+-- (join_check reads the profile of the columns a view joins on,
+-- orphan_check the coherence of the relationships between the tables it
+-- reads); the profile of each column a view scans, which load_changes()
+-- compares to say what a load changed under the view (the cause `next`
+-- names); and the measurement a metric's row names as not run (the grain
+-- of its period column). The server computes these after each write. A
+-- preview measurement calls the model service and is not among them:
+-- where it is due, `next` lists it with its statement.
 --===------------------------------------------------------------------===--
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
-WITH ds AS (SELECT current_schema() AS d),
-metrics AS (
-  SELECT view FROM main.view_summary()
-  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
-sc AS MATERIALIZED (FROM glossql_views_scans(current_schema()) WHERE view IN (SELECT view FROM metrics)),
-jo AS MATERIALIZED (FROM glossql_views_joins(current_schema()) WHERE view IN (SELECT view FROM metrics)),
-columns AS (
-  SELECT s.table_name || '.' || unnest(s.columns) AS subject FROM sc s
-  UNION SELECT j.left_column FROM jo j
-  UNION SELECT j.right_column FROM jo j),
--- the relationships between the tables a metric scans, each checked on its own
-scanned AS (SELECT DISTINCT s.view, s.table_name FROM sc s),
-relationships AS (
-  SELECT DISTINCT r.left_side || ' ' || r.op || ' ' || r.right_side AS rel
-  FROM main.relationships r JOIN scanned l ON l.table_name = regexp_extract(r.left_side, '^([^.]+\.[^.]+)\.', 1)
-  JOIN scanned p ON p.view = l.view AND p.table_name = regexp_extract(r.right_side, '^([^.]+\.[^.]+)\.', 1)
-  WHERE r.dataset = current_schema()),
+WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests_without_preview()),
+fns AS MATERIALIZED (
+  SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
+-- the check that measures a test's property, as view_tests() names it
+checks AS (SELECT returns AS aspect, min(name) AS name FROM fns WHERE returns IS NOT NULL GROUP BY returns),
+-- the results each check reads, by the place its body names
+wants AS (
+  SELECT DISTINCT t.subject, r.what AS function, r."where"
+  FROM tests t JOIN checks c ON c.aspect = t.aspect JOIN fns f ON f.name = c.name,
+       unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
+  WHERE t.run <> '' AND r.kind = 'read' AND r.read = 'results'),
+anchored AS (SELECT p."where" FROM unnest(main.place_list()) u(p) WHERE p.anchored),
+places AS MATERIALIZED (FROM main.places(current_schema()) WHERE "where" IN (SELECT "where" FROM wants)),
+wanted AS (
+  SELECT DISTINCT w.function, f.returns AS aspect, w.subject FROM wants w JOIN fns f ON f.name = w.function
+  WHERE w."where" = 'itself'
+  UNION
+  SELECT DISTINCT w.function, f.returns, p.asset FROM wants w JOIN fns f ON f.name = w.function
+  JOIN places p ON p."where" = w."where"
+   AND p.subject = CASE WHEN w."where" IN (SELECT "where" FROM anchored) THEN current_schema() ELSE w.subject END
+  UNION
+  SELECT 'column_profile', 'column_profile', s.table_name || '.' || unnest(s.columns)
+  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests)),
 -- a stored result is current while its inputs are, a failure too: a check that failed is not
 -- run again until something it read moves
 stored AS (
   SELECT subject, aspect, bool_and(current) AS current, bool_or(error IS NOT NULL) AS failed
   FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
-SELECT 1 AS ord, 'column_profile' AS function, c.subject, 'SELECT column_profile() FROM ' || c.subject AS run
-FROM columns c LEFT JOIN stored s ON s.subject = c.subject AND s.aspect = 'column_profile'
+SELECT 1 AS ord, w.function, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
+FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.aspect = w.aspect
 WHERE NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
        'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
 FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary() WHERE coalesce(kind, '') <> 'plan')
 UNION ALL
-SELECT DISTINCT 2, 'relationship_coherence', r.rel, 'SELECT relationship_coherence() FROM ' || r.rel
-FROM relationships r LEFT JOIN stored s ON s.subject = r.rel AND s.aspect = 'relationship_coherence'
-WHERE NOT coalesce(s.current, false)
-UNION ALL
-SELECT DISTINCT 3, t.aspect, t.subject, t.run
-FROM main.view_tests_without_preview() t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
+SELECT DISTINCT 2, t.aspect, t.subject, t.run
+FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
 WHERE t.run <> '' AND NOT coalesce(s.current AND s.failed, false)
   AND (t.state = 'not_run' OR NOT t.current OR NOT coalesce(s.current, true));
 

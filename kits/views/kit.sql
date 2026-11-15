@@ -52,8 +52,9 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
          WHEN 'month' THEN 48 WHEN 'quarter' THEN 40 WHEN 'year' THEN 20 END;
 
 --===------------------------------------------------------------------===--
--- view_summary(): one row per metric of the bound dataset — a VIEW aspect
--- whose metric definition is a view — what the catalog says its columns are
+-- view_summary(): one row per view of the bound dataset (a metric, a
+-- table, a single value, a plan) — a VIEW aspect whose definition is a
+-- view — what the catalog says its columns are
 -- and whether a series can be served: view, kind (the aspect's x-kind),
 -- plan_of and covers (a plan's metric and the grain its rows are booked
 -- against), stopped (the author's text), applicable (a series can be
@@ -528,7 +529,7 @@ FROM facts f LEFT JOIN shape s USING (metric)
 ORDER BY f.metric;
 
 --===------------------------------------------------------------------===--
--- view_sources(for_view := NULL): what feeds each metric of the bound
+-- view_sources(for_view := NULL): what feeds each view of the bound
 -- dataset, or one — one row per served field and the loaded column it
 -- descends from, through the views' lineage: view, field, source
 -- (table.column), table_name; a computed field with no column behind it
@@ -561,25 +562,27 @@ SELECT view, NULL, NULL, NULL, 'the view definition does not plan' FROM lineage 
 ORDER BY view, table_name NULLS LAST, field NULLS FIRST;
 
 --===------------------------------------------------------------------===--
--- The built-in tests on a metric: what can break its number, checked
--- against its definition and the evidence the quality kit stored, never
--- against the data again. join_check is a join that repeats rows,
--- orphan_check referential integrity on the declared joins,
--- additivity_check the additivity of the value. Each is a measurement
--- over the metric's view, `SELECT <check>() FROM <dataset>.<metric>`,
--- whose breach_rate rate_tolerance scores: 0 is green. A check whose
--- evidence is not stored yet says so in `reason` and serves no rate,
--- which reads yellow; a metric over one table cannot fan out and has no
--- join to check. A person who accepts a result records a tolerance at or
--- above it on the metric; their value outranks the agent's. `x-subject:
--- view` marks a test view_tests() expects on every metric, run or not,
--- and the test the server runs itself after a call that defined the
--- metric, annotated its columns or loaded a table it scans. Each body
--- reads the catalog through the read functions of the lineage kit
--- alone (annotations(), results(), definition()).
+-- The built-in tests on a view: what can break its rows or its number,
+-- checked against its definition and the evidence the quality kit
+-- stored, never against the data again. join_check is a join that
+-- repeats rows, orphan_check referential integrity on the declared
+-- joins, both on every view (a table, a single value, a metric);
+-- additivity_check the additivity of a metric's value, which only a
+-- metric has. Each is a measurement over the view,
+-- `SELECT <check>() FROM <dataset>.<view>`, whose breach_rate
+-- rate_tolerance scores: 0 is green. A check whose evidence is not
+-- stored yet says so in `reason` and serves no rate, which reads yellow;
+-- a view over one table cannot fan out and has no join to check. A
+-- person who accepts a result records a tolerance at or above it on the
+-- view; their value outranks the agent's. `x-subject: view` marks a test
+-- view_tests() expects on every view, run or not, `x-subject: metric` one
+-- it expects on every metric; the server runs each itself after a call
+-- that defined the view, annotated what the check reads or loaded a
+-- table it scans. Each body reads the catalog through the read functions
+-- of the lineage kit alone (annotations(), results(), definition()).
 --
--- view_reads_of(ds, m): the tables and columns metric m of dataset ds
--- descends from, through its view's lineage; none when it does not plan.
+-- view_reads_of(ds, m): the tables and columns view m of dataset ds
+-- descends from, through its lineage; none when it does not plan.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
@@ -588,7 +591,7 @@ FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[
       FROM glossql_views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
--- view_scans_of(ds, m): every table of ds metric m's definition scans,
+-- view_scans_of(ds, m): every table view m of dataset ds scans,
 -- joins and filters included, from its view's plan.
 CREATE OR REPLACE MACRO main.view_scans_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
@@ -614,7 +617,7 @@ CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
 CREATE OR REPLACE MACRO main.redefine_statement(v) AS
   main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), '<the current definition>');
 
--- view_redefine(ds, m): the same statement for metric m of dataset ds,
+-- view_redefine(ds, m): the same statement for view m of dataset ds,
 -- read from the catalog, for the reads the interfaces serve (`next`)
 CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
   main.gloss_statement(m, ds, coalesce(
@@ -641,17 +644,17 @@ DECLARE ASPECT validity WITH $${
                  "open_end": {"type": "string"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
--- join_check: a join in the metric repeats rows. Two ways: the metric
+-- join_check: a join in the view repeats rows. Two ways: the view
 -- joins two tables on columns whose values repeat on both sides, so each
 -- match multiplies rows (join fan-out); or it reads an effective-dated
 -- table without bounding both validity dates, so a key counts once per
 -- version. The join columns come from the definition's own plan, whether
 -- a column repeats from its stored column_profile, which the server runs
--- for a metric's join columns. A side the definition reduces to one row
+-- for a view's join columns. A side the definition reduces to one row
 -- per value before the join (grouped by the join columns, DISTINCT on
 -- them, or the latest row per value by row_number() = 1) does not repeat,
 -- whatever its table holds. A join on an effective-dated table repeats its
--- key by design: its validity dates judge it. A metric that joins nothing
+-- key by design: its validity dates judge it. A view that joins nothing
 -- and reads no effective-dated table cannot repeat rows.
 DECLARE ASPECT join_check WITH $${
   "description": "A join in the view must not repeat rows. Fails where the view joins two tables on columns whose values repeat on both sides, or reads a table with validity dates without bounding both, so a key counts once per version.",
@@ -670,6 +673,8 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
     SELECT DISTINCT r.table_name, r.columns FROM d, unnest(d.reads) t(r)
     WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
   n AS (SELECT count(*) AS tables FROM scans),
+  -- a view that reads no loaded table, a constant, plans and has nothing to join
+  plans AS (SELECT coalesce(bool_or(c.derivation IS NOT NULL), false) AS ok FROM d, unnest(d.columns) t(c)),
   dated AS (
     SELECT asset AS table_path, value->>'valid_from' AS valid_from, value->>'valid_to' AS valid_to
     FROM annotations('validity', 'its sources') WHERE value IS NOT NULL),
@@ -704,12 +709,12 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
     SELECT regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') AS pair
     FROM judged WHERE repeats),
   state AS (
-    SELECT n.tables > 0 AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled)) AS applicable,
+    SELECT (n.tables > 0 OR plans.ok) AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled)) AS applicable,
            EXISTS (SELECT 1 FROM repeating) AS fans, EXISTS (SELECT 1 FROM undated) AS versions,
            (SELECT redefine_statement(view) FROM d) AS redefine
-    FROM n)
+    FROM n, plans)
   SELECT state.applicable,
-         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
+         CASE WHEN n.tables = 0 AND NOT state.applicable THEN 'its definition does not plan'
               WHEN NOT state.applicable THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled) END AS reason,
          CASE WHEN NOT state.applicable THEN NULL WHEN state.fans OR state.versions THEN 1.0 ELSE 0.0 END AS breach_rate,
          (SELECT list(pair ORDER BY pair) FROM repeating) AS pairs,
@@ -746,8 +751,8 @@ DECLARE TEST join_test ON join_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 -- value is the column annotated role measure, the one named value where
 -- several are.
 DECLARE ASPECT additivity_check WITH $${
-  "description": "The view adds its value up the way the value allows. Fails where a ratio, an average or a distinct count is summed.",
-  "type": "object", "x-subject": "view",
+  "description": "The metric adds its value up the way the value allows. Fails where a ratio, an average or a distinct count is summed.",
+  "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]}, "additivity": {"type": ["string", "null"]},
                  "shape": {"type": ["string", "null"]},
@@ -816,13 +821,13 @@ $$ RETURNS additivity_check;
 
 DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
--- orphan_check: the share of rows on a declared relationship the metric
+-- orphan_check: the share of rows on a declared relationship the view
 -- joins over whose key finds no parent, from the coherence result stored
 -- on each relationship (relationship_coherence); an inner join drops them,
--- an outer join counts them under no member. A relationship is joined over
+-- an outer join keeps them with empty parent columns. A relationship is joined over
 -- when each of its columns is among the columns the definition joins on;
 -- one between the tables it reads on other columns is not judged. Where
--- the metric joins over no declared relationship there is nothing to
+-- the view joins over no declared relationship there is nothing to
 -- check; where one has no coherence result yet, the check is not
 -- applicable until it has.
 DECLARE ASPECT orphan_check WITH $${
@@ -840,6 +845,8 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
   reads AS (SELECT DISTINCT split_part(r.table_name, '.', 2) AS table_name FROM d, unnest(d.reads) t(r)
             WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
   n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
+  -- a view that reads no loaded table, a constant, plans and has no key to check
+  plans AS (SELECT coalesce(bool_or(c.derivation IS NOT NULL), false) AS ok FROM d, unnest(d.columns) t(c)),
   joined AS (SELECT DISTINCT side AS column_path FROM d, unnest(d.joins) t(j), unnest([j.left_column, j.right_column]) u(side)),
   coherence AS (
     SELECT asset AS relationship, value,
@@ -856,43 +863,44 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
                       AND e.column_path NOT IN (SELECT column_path FROM joined))),
   declared AS (SELECT * FROM rels WHERE left_table <> right_table),
   mine AS (SELECT relationship, try_cast(json_extract(value, '$.orphan_rate') AS DOUBLE) AS orphan_rate FROM rels WHERE value IS NOT NULL)
-  SELECT CASE WHEN n.tables = 0 THEN false WHEN n.tables = 1 THEN true
+  SELECT CASE WHEN n.tables = 0 THEN plans.ok WHEN n.tables = 1 THEN true
               WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
               ELSE NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) END AS applicable,
-         CASE WHEN n.tables = 0 THEN 'reads no loaded table: not a metric, or its definition does not plan'
-              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no declared relationship is among the joins of the tables the metric scans (' || n.names || '): nothing to check'
+         CASE WHEN n.tables = 0 AND NOT plans.ok THEN 'its definition does not plan'
+              WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 'no declared relationship is among the joins of the tables the view scans (' || n.names || '): nothing to check'
               WHEN n.tables > 1 AND EXISTS (SELECT 1 FROM declared WHERE value IS NULL)
                 THEN 'no coherence result is stored for ' || (SELECT string_agg(relationship, ', ' ORDER BY relationship) FROM declared WHERE value IS NULL)
                      || ': run relationship_coherence() over each' END AS reason,
-         CASE WHEN n.tables = 1 THEN 0.0
+         CASE WHEN n.tables = 1 OR (n.tables = 0 AND plans.ok) THEN 0.0
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
          (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
               THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
-                   || ' find no parent: an inner join drops them, an outer join counts them under no member' END AS finding,
+                   || ' find no parent: an inner join drops them, an outer join keeps them with empty parent columns' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
               THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
                    || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
-  FROM n
+  FROM n, plans
 $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
--- view_tests(): every test on each metric of the bound dataset and on
+-- view_tests(): every test on each view of the bound dataset and on
 -- what it reads — view, test, aspect, declared_by (the kit that ships
 -- the test, kit:<name>, or the agent or person who wrote it), subject
--- (the metric, or a table or column it reads), state (red, orange,
+-- (the view, or a table or column it reads), state (red, orange,
 -- yellow, green, or not run while the test has not run), current
 -- (false once what the result read has moved: the state is kept and the
 -- test runs again at the next touch), score, evidence (the check's own
 -- result), run (the statement that measures the test's property again:
 -- the function that returns it, over the subject; empty where the test
 -- compares annotations and no function measures it, as role_test does).
--- The tests marked x-subject view appear on every metric, run or not.
--- A table and a single value carry the tests on what they read and the
--- tests declared on them; a plan and a sample have no rows here. The
+-- The tests marked x-subject view appear on every view, run or not, those
+-- marked x-subject metric on every metric. Each view carries the tests on
+-- what it reads and the tests declared on it; a plan and a sample have no
+-- rows here. The
 -- preview features' tests (expected ranges,
 -- forecast, scenario, plan) are the outlook kit's rows, preview_tests(),
 -- which is empty until that kit is loaded; their state can also be
@@ -908,22 +916,22 @@ WHERE false;
 
 CREATE OR REPLACE MACRO main.view_tests_without_preview() AS TABLE
 WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
-views AS (
-  SELECT view FROM summary
-  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
--- every served view: a table and a single value carry the tests on
--- what they read and the tests declared on them
+-- every served view, a metric, a table and a single value alike: a plan
+-- is compared with the metric it plans (metric_plan) and a sample is a
+-- planner's frame, so neither has rows here
 all_views AS (
-  SELECT view FROM summary
+  SELECT view, coalesce(kind, '') NOT IN ('scalar', 'relation') AS metric FROM summary
   WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
 results AS (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
+-- a kit's check on each view (x-subject view), or on each metric alone
+-- (x-subject metric: a check that needs a measure)
 expected AS (
-  SELECT t.name AS test, t.aspect
+  SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
   JOIN main.aspects a ON a.name = t.aspect
-  WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
+  WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
 evidence AS (
   SELECT subject, aspect, main.with_definition(value::JSON, subject) AS value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
@@ -932,7 +940,7 @@ own AS (
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
-  FROM views m CROSS JOIN expected e
+  FROM all_views m JOIN expected e ON m.metric OR NOT e.metrics_only
   LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
   LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect),
 reads AS (

@@ -10,12 +10,13 @@ data. It has a state, and the state is read again after each load.
 | `orange` | a middle state a detector of your own may return |
 | `red` | does not hold |
 | `error` | the detector failed; the text is in `error` (`TESTS()`) |
-| `not_run` | expected on a metric and not run yet (`view_tests()`) |
+| `not_run` | expected on a view and not run yet (`view_tests()`) |
 | `not_applicable` | a preview test whose result holds no number for the metric, with the reason in `evidence` (`view_tests()`) |
 
 ## The built-in tests
 
-Each metric gets three tests, on the tables its definition scans:
+Each view gets the join and orphan tests, on the tables its definition
+scans; each metric also gets the additivity test:
 
 | Test | Checks | Red when |
 |---|---|---|
@@ -23,15 +24,15 @@ Each metric gets three tests, on the tables its definition scans:
 | `orphan_test` | referential integrity on the declared relationships between the scanned tables | rows find no parent; the score is the highest orphan rate |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
 
-The server runs them after a call that defines the metric, annotates
-its columns or loads a table it scans. They read the definition's
-lineage and stored measurements: `column_profile()` on the join
-columns, `relationship_coherence()` on each declared relationship
-between the scanned tables. A test whose evidence is missing is
-`yellow` and its `reason` names the measurement to run. The three run
-on metrics. A table and a single
-value carry the tests on what they read and the tests you declare on
-them.
+The server runs them after a call that defines the view, annotates
+what a test reads or loads a table the view scans. They read the
+definition's lineage and stored measurements: `column_profile()` on
+the join columns, `relationship_coherence()` on each declared
+relationship between the scanned tables. The server computes those
+first, from what each test's check reads. A test whose evidence is
+missing is `yellow` and its `reason` names the measurement to run. A
+table view and a single value carry the join and orphan tests, the
+tests on what they read and the tests you declare on them.
 
 ## Read the results
 
@@ -66,16 +67,16 @@ SELECT asset, state, open, cause, statement FROM next WHERE step = 'test';
 
 ```
 orphan_test: 4.6% of rows on sales.orders.customer_id -> sales.customers.customer_id
-find no parent: an inner join drops them, an outer join counts them under no member
+find no parent: an inner join drops them, an outer join keeps them with empty parent columns
 ```
 
-`cause` says what the newest load changed in the tables the metric
+`cause` says what the newest load changed in the tables the view
 reads.
 
 ## Accept a result
 
 Fix the load or the definition. Or accept the measured rate, with the
-reason, as a tolerance on the metric. A person's tolerance outranks an
+reason, as a tolerance on the view. A person's tolerance outranks an
 agent's.
 
 ```glossql

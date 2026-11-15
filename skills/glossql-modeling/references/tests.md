@@ -15,8 +15,8 @@ SELECT view, test, subject, state, score, current, run FROM view_tests()
 
 `view_tests()` lists, per view, the tests on the view and on the
 tables and columns it reads, worst first. A table view and a single
-value have rows too: the tests on what they read and the tests you
-declared on them. `not_run` means no result exists yet; `current` is
+value have rows too: the built-in join and orphan tests, the tests on
+what they read and the tests you declared on them. `not_run` means no result exists yet; `current` is
 false when the data changed after the result was stored. `run` is the
 statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
@@ -30,15 +30,18 @@ your own, the annotation that records an accepted rate.
 
 ## The built-in tests
 
-The server runs these on each metric after a call that defines it,
-annotates it or its columns, or loads a table it reads. It also runs
-what they read: a profile of each column the metric reads, and the
-check of each relationship between the tables it scans.
+The server runs these after a call that defines a view, annotates
+what a test reads, or loads a table the view reads. `join_test` and
+`orphan_test` run on every view: a table view, a single value, a
+metric. `measure_additivity_test` runs on each metric, since only a
+metric has a measure. The server also runs what the tests read first:
+a profile of each column the view joins on, and the check of each
+relationship between the tables it reads.
 
 | Test | Red when | The usual fix |
 |---|---|---|
-| `join_test` | the metric joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
-| `orphan_test` | rows on a declared relationship the metric uses find no parent: an inner join drops them, an outer join counts them under no member | fix the load (trim, pad, cast the key), or load the missing parents |
+| `join_test` | the view joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
+| `orphan_test` | rows on a declared relationship the view joins over find no parent: an inner join drops them, an outer join keeps them with empty parent columns | fix the load (trim, pad, cast the key), or load the missing parents |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
 
 `orphan_test` reads declared relationships only: declare the joins a

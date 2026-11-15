@@ -101,6 +101,67 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
 
+/// The server runs a table view's tests after each write, as a
+/// metric's: its join columns are profiled and the relationship it
+/// joins over is checked with no statement by the agent, and a key
+/// without a parent turns the orphan test red under "test" in `next`.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_runs_a_table_views_tests_after_each_write() {
+    let (app, _, _dir) = fin().await;
+    say(
+        &app,
+        FIN,
+        r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
+           DECLARE ASPECT ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+    )
+    .await;
+    let computed = async |function: &str| {
+        rows(
+            &app,
+            FIN,
+            &format!(
+                "SELECT subject FROM measurements WHERE function = '{function}' ORDER BY subject"
+            ),
+        )
+        .await
+        .iter()
+        .map(|r| text(r, "subject"))
+        .collect::<Vec<_>>()
+    };
+    let profiled = computed("column_profile").await;
+    for column in ["fin.funds.fund", "fin.ledger.fund"] {
+        assert!(profiled.contains(&column.to_string()), "{profiled:?}");
+    }
+
+    say(&app, FIN, "DECLARE RELATIONSHIP ledger.fund -> funds.fund;").await;
+    assert_eq!(
+        computed("relationship_coherence").await,
+        ["fin.ledger.fund -> fin.funds.fund"]
+    );
+    let tests = rows(
+        &app,
+        FIN,
+        "SELECT test, state FROM view_tests() WHERE view = 'ledger_funds' ORDER BY test",
+    )
+    .await;
+    let states: Vec<(String, String)> = tests
+        .iter()
+        .map(|r| (text(r, "test"), text(r, "state")))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("join_test".to_string(), "green".to_string()),
+            ("orphan_test".to_string(), "red".to_string())
+        ]
+    );
+    let open = open_tests(&app).await;
+    assert_eq!(open.len(), 1, "{open:?}");
+    assert_eq!(text(&open[0], "asset"), "fin.ledger_funds");
+    assert_eq!(text(&open[0], "state"), "red");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_page_carries_the_test_and_its_statement() {
     let (app, _, _dir) = fin().await;

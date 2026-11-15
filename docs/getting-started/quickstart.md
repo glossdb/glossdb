@@ -196,7 +196,7 @@ red, and `next` puts it first:
 
 ```
 next: describe 5 · test 1 · waiting for a person 1
-first: test shop.order_value (red): orphan_test: 8.3% of rows on shop.orders.customer_id -> shop.customers.customer_id find no parent: an inner join drops them, an outer join counts them under no member (next://shop/test)
+first: test shop.order_value (red): orphan_test: 8.3% of rows on shop.orders.customer_id -> shop.customers.customer_id find no parent: an inner join drops them, an outer join keeps them with empty parent columns (next://shop/test)
 ```
 
 Order `O10` is missing from May: the inner join dropped it. Each test

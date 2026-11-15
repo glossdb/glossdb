@@ -38,7 +38,7 @@ DECLARE ASPECT currency WITH $${
 DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 
 DECLARE ASPECT unit_check WITH $${
-  "type": "object", "x-subject": "view",
+  "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "breach_rate": {"type": ["number", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "basis": {"type": "string"}}
@@ -80,11 +80,14 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
 - **A detector** is a function without `RETURNS`. It reads the test's
   `annotations` and returns `subject`, `state`, `score`. `$threshold`
   is the test's.
-- **A test on each metric.** `"x-subject": "view"` on the property
-  marks a test the server expects on each metric and runs itself:
-  after the metric is defined, after its columns are annotated, and
-  after a load of a table it scans. Its function runs over
-  `<dataset>.<metric>`.
+- **A test on each view.** `"x-subject": "view"` on the property
+  marks a test the server expects on each view (a table view, a single
+  value, a metric) and runs itself: after the view is defined, after
+  something its check reads is annotated, and after a load of a table
+  it scans. `"x-subject": "metric"` marks one it expects on each
+  metric alone, as here: a check on the measure. Its function runs
+  over `<dataset>.<view>`. Before it, the server computes the results
+  its body reads (`results(...)`) at the place it names.
 - **Rows in `next`.** A test that is not green is a row of `next`.
   A check that returns `finding` and `fix` has them served as the
   row's `open` and `statement`. A kit adds no other code for this.

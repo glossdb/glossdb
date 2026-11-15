@@ -212,10 +212,11 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   -- A property that exists to be tested (tested_properties()) is in
   -- use where the test is set: each asset that carries its expectation
   -- as an annotation is open until a result is stored there. A kit's
-  -- check on a view (x-subject view) is in use on each metric that is
-  -- defined, and open there until its result is stored. A
-  -- descriptive table or column property is in use on what the metrics
-  -- read: each loaded table a metric's view descends from when the
+  -- check on a view (x-subject view) is in use on each view that is
+  -- defined (x-subject metric: on each metric), and open there until its
+  -- result is stored. A
+  -- descriptive table or column property is in use on what the views
+  -- read: each loaded table a view descends from when the
   -- property takes tables, else each such column, where a WHEN holds
   -- on that asset; each asset without a value is open. Every other
   -- property counts once, in use when something that exists needs it:
@@ -232,23 +233,25 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     FROM (SELECT DISTINCT aspect FROM main.tests) t
     JOIN newest_aspects a ON a.name = t.aspect
     WHERE a.name NOT IN (SELECT name FROM to_test)
-      AND json_extract_string(a.schema, '$.x-subject') IS DISTINCT FROM 'view'),
-  -- a kit's check on a view, on each metric whose newest definition
-  -- holds SQL, until a result of the check is stored on the metric
+      AND json_extract(a.schema, '$.x-subject') IS NULL),
+  -- a kit's check on a view, on each view whose newest definition holds
+  -- SQL (a check on a metric, on each metric), until a result of the
+  -- check is stored on the view
   view_checks AS (
-    SELECT DISTINCT a.name FROM (SELECT DISTINCT aspect FROM main.tests) t
+    SELECT DISTINCT a.name, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only
+    FROM (SELECT DISTINCT aspect FROM main.tests) t
     JOIN newest_aspects a ON a.name = t.aspect
-    WHERE json_extract_string(a.schema, '$.x-subject') = 'view'),
-  metrics AS (
-    SELECT dataset, aspect AS view FROM (
-      SELECT g.dataset, g.aspect, g.body FROM main.glossary g
+    WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
+  defined_views AS (
+    SELECT dataset, aspect AS view, coalesce(kind, 'metric') = 'metric' AS metric FROM (
+      SELECT g.dataset, g.aspect, g.body, json_extract_string(a.schema, '$.x-kind') AS kind FROM main.glossary g
       JOIN newest_aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
-        AND json_extract_string(a.schema, '$.x-kind') IS NULL
+        AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('plan', 'sample')
       WHERE g.subject = g.dataset
       QUALIFY row_number() OVER (PARTITION BY g.dataset, g.aspect ORDER BY g.begin_snapshot DESC) = 1)
     WHERE json_extract_string(body, '$.sql') IS NOT NULL),
   open_view_checks AS (
-    SELECT v.dataset, v.view, c.name FROM metrics v, view_checks c
+    SELECT v.dataset, v.view, c.name FROM defined_views v JOIN view_checks c ON v.metric OR NOT c.metrics_only
     WHERE NOT EXISTS (SELECT 1 FROM main.measurements m
                       WHERE m.dataset = v.dataset AND m.subject = v.dataset || '.' || v.view AND m.aspect = c.name)),
   -- where a test is set and no check has run: the expectation is
