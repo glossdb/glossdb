@@ -35,7 +35,7 @@ computed: no second list, no flag.
 | A write that computes nothing takes 0.44 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning `next` (0.23 s) and `results_due()` (about 0.2 s) | Low: known, and paid once per write | `kits/goals/kit.sql` | When it hurts an agent's run | |
 | Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
 | A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
-| The outlook kit, cut to what needs the model service (1,316 lines now). The service's answer carries the verdicts (glossthesi `976842b`: a state per metric, a code per error, coverage per point, the effect) and the kit still reads the old answer. It serves an older forecast when the newest run failed, judges a scenario twice, and a red range test has no way to be accepted. One forecast per metric. Plan against actual becomes a kit of its own. The console's preview tiles show an error where the kit is not loaded | Medium | `kits/outlook/kit.sql`, a new `kits/plan`, the console's frames | In work | |
+| The outlook and plan kits are tested against the suite's stand-in service only; a run against glossthesi `976842b` (it loads models) has not been made. The forecast is one result per metric, which loses the service's joint forecast of a request's series (better or level on 18 of 21 datasets by its own measurement): the project lead decides per metric or per dataset. The scenario path is about 300 of the outlook kit's 841 lines | Medium until run | `kits/outlook/kit.sql`, `../glossthesi` | Before the pull requests | |
 
 ## What is built
 
@@ -78,6 +78,13 @@ computed: no second list, no flag.
   date come in through `view_tests()` and `glossql_outdated()`, and a
   function nobody ran is no row. A server runs without the outlook
   kit.
+- **The outlook kit** (841 lines, 1,557 before) holds what needs the
+  model service: `metric_ranges` on the dataset, `metric_forecast`
+  and `metric_scenario` on a metric, the range test. The service
+  returns the verdicts and the kit stores and serves them. **The plan
+  kit** (323 lines) compares a plan with its metric's actuals with no
+  model service; its forecast column reads a stored forecast. Both
+  are pull-ins.
 - **Gone**: the inputs derived from a body's bound plan, the lineage
   computed in C++ with its widenings, the filter on what a running
   function sees, `glossql_parts()`, the outlook kit's hand-made
@@ -96,8 +103,8 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `85dd42b`: 118 tests pass. Extension at `ca9f68b`: its SQL
-suite passes with 2982 assertions, lint clean. The extension's
+Server at `df43dd8`: 119 tests pass. Extension at `b0478d1`: its SQL
+suite passes with 2990 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
