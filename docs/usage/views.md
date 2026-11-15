@@ -105,6 +105,29 @@ status. A keyed assumption below full confidence goes to the review
 queue ([review and decide](review.md)). What the data settles, such
 as a sign or a grain, is measured, not asked.
 
+## A target table with a contract (preview)
+
+A table view that maps several systems of record onto one format
+carries a data contract, with the harmonise kit loaded. The key is
+the view's `entity` grain. Each column carries a `contract`: its type,
+whether a value is required, the allowed values. A code table is a
+relationship from the view's column.
+
+```glossql
+GLOSS entity ON supply.onhand AS $${"value": "the stock of one part at one site", "role": "fact", "grain": ["part", "site"]}$$;
+GLOSS contract ON supply.onhand.site AS $${"type": "VARCHAR", "required": true, "values": ["CH10", "DK01", "DK02", "PL01"]}$$;
+GLOSS contract ON supply.onhand.cases AS $${"type": "DOUBLE", "required": true}$$;
+```
+
+After each write the server runs `contract_test` (the rows keep the
+contract) and `code_test` (every code a source column holds is named
+by the CASE that maps it) on the view. A red test is a `must` row of
+`next` with the breaches per column, their rows and example values.
+A column of the view with no contract is a `should` row. Name every
+code in the CASE and leave the rest to NULL: a new code then shows in
+`code_test` instead of falling to the `ELSE`
+([reads](../reference/reads.md#the-harmonise-kit-preview)).
+
 ## Stop instead of serving
 
 Where the data cannot carry the number, state why in place of the

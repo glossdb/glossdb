@@ -1,5 +1,5 @@
 # name: kits/harmonise/kit.test
-# description: the harmonise kit — systems of record mapped onto one target table view, on two small fixtures: three ERPs with one market each, and two filing systems split by time with a year filed twice. Where each target column comes from per branch and per system is read off the view's SQL; a function reads a table's systems through the lineage
+# description: the harmonise kit — systems of record mapped onto one target table view, on two small fixtures: three ERPs with one market each, and two filing systems split by time with a year filed twice, loaded from one source. Where each target column comes from per branch and per system is read off the view's SQL; a function reads a table's systems through the lineage; the target's contract and the codes its expressions name are checked against its rows; each load is held against what its source sends (the goals kit's load_modes())
 # group: [sql]
 
 require glossql
@@ -33,6 +33,9 @@ FROM glossql_kit('{KITS}/views/kit.sql');
 
 statement ok
 FROM glossql_kit('{KITS}/harmonise/kit.sql');
+
+statement ok
+FROM glossql_kit('{KITS}/goals/kit.sql');
 
 # === Three systems by market: SAP in Denmark, Dynamics 365 in Switzerland, Monolith in Poland, each with its
 # own column names, formats and local codes; the group's model holds the identities, the units and the
@@ -69,10 +72,13 @@ COPY (FROM (VALUES ('P100', 'PL01', '55,5', 'kart', 'D'), ('P300', 'PL01', '1', 
                    ('X9', 'PL01', '12', 'kart', 'D')) t(indeks, magazyn, ilosc, jm, status))
 TO '{TEST_DIR}/stany.csv' (HEADER);
 
+# the identities: one row per market and local code, the group's sheet of 20 rows, 13 of them for parts no
+# stock row names
 statement ok
 COPY (FROM (VALUES ('DK', '000000000000100001', 100001), ('DK', '000000000000100002', 100002), ('DK', '000000000000100003', 100003),
                    ('CH', 'CH-PIL-33', 100001), ('CH', 'CH-AF-33', 100003), ('PL', 'P100', 100001), ('PL', 'P300', 100003))
-      t(market, local_code, global_material))
+      t(market, local_code, global_material)
+      UNION ALL SELECT 'DK', 'OLD-' || i, 900000 + i FROM range(13) r(i))
 TO '{TEST_DIR}/identities.csv' (HEADER);
 
 statement ok
@@ -123,7 +129,7 @@ statement ok
 DECLARE RECIPE stock_mono ON supply FROM mono AS $$SELECT indeks, magazyn AS warehouse, CAST(replace(ilosc, ',', '.') AS DOUBLE) AS quantity, jm AS unit, status FROM read_csv('stany.csv', all_varchar = true)$$;
 
 statement ok
-DECLARE RECIPE model_identities ON supply FROM model AS $$SELECT market, local_code, CAST(global_material AS BIGINT) AS global_material FROM read_csv('identities.csv', all_varchar = true)$$;
+DECLARE RECIPE model_identities ON supply FROM model SET (key: 'market, local_code') AS $$SELECT market, local_code, CAST(global_material AS BIGINT) AS global_material FROM read_csv('identities.csv', all_varchar = true)$$;
 
 statement ok
 DECLARE RECIPE model_parts ON supply FROM model AS $$SELECT CAST(global_material AS BIGINT) AS global_material, description, CAST(cases_per_pallet AS INTEGER) AS cases_per_pallet FROM read_csv('parts.csv', all_varchar = true)$$;
@@ -256,6 +262,240 @@ SELECT (value->>'without_conventions')::INT FROM main.measurements WHERE functio
 ----
 1
 
+# === The contract on the target: the key is the view's entity grain, each column's type, whether it is
+# required and its allowed values a contract on the column. The server runs contract_check and code_check on a
+# view after a write once a column of it carries a contract; here they are run by hand.
+
+# no contract stated: the view carries neither check
+query I
+SELECT count(*) FROM view_tests() WHERE test IN ('contract_test', 'code_test');
+----
+0
+
+statement ok
+GLOSS entity ON supply.onhand AS $${"value": "the stock of one part at one site", "role": "fact", "grain": ["part", "site"]}$$;
+
+statement ok
+GLOSS contract ON supply.onhand.part AS $${"type": "BIGINT", "required": true}$$;
+
+statement ok
+GLOSS contract ON supply.onhand.site AS $${"type": "VARCHAR", "required": true, "values": ["CH10", "DK01", "DK02", "PL01"]}$$;
+
+# the checks are set on the view that carries a contract, and on no other
+query TTT
+SELECT view, test, state FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
+----
+onhand	code_test	not_run
+onhand	contract_test	not_run
+
+# the column with no contract is asked for one, the two with one are not
+query TTT
+SELECT level, contains(statement, 'GLOSS contract ON supply.onhand.cases '), contains(statement, 'GLOSS contract ON supply.onhand.part ')
+FROM next WHERE asset = 'supply.onhand' AND kind = 'describe' AND state = 'missing';
+----
+should	true	false
+
+statement ok
+GLOSS contract ON supply.onhand.cases AS $${"type": "DOUBLE", "required": true}$$;
+
+query I
+SELECT count(*) FROM next WHERE asset = 'supply.onhand' AND kind = 'describe' AND contains(statement, 'GLOSS contract ON');
+----
+0
+
+statement ok
+SELECT contract_check() FROM onhand;
+
+statement ok
+SELECT code_check() FROM onhand;
+
+# the Swiss item with no global number has no part
+query TTIT
+SELECT b.column, b.rule, b.count, array_to_string(b.examples, ' ')
+FROM main.measurements m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
+WHERE m.function = 'contract_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
+----
+part	required	1	(empty)
+
+# each system's unit codes the CASE does not name fall to its ELSE: listed per system with their rows, and the
+# test is red, since they reach a column with a contract
+query TTTTT
+SELECT c.column, c.system, c.source, array_to_string(c.literals, ' '), (SELECT string_agg(u.value || ':' || u.rows, ' ' ORDER BY u.value) FROM unnest(c.unnamed) x(u))
+FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"column": "VARCHAR", "system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
+WHERE m.function = 'code_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
+----
+cases	d365	stock_d365.unit_id	Pl	Cs:2
+cases	mono	stock_mono.unit	pal	kart:3
+cases	sap	stock_sap.uom	PAL	CS:2
+
+query TTR
+SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
+----
+code_test	red	0.75
+contract_test	red	0.125
+
+# both red tests are musts of next, each with its fix
+query TTB
+SELECT level, kind, contains(statement, 'GLOSS onhand ON supply') FROM next WHERE asset = 'supply.onhand' AND kind = 'test' AND state = 'red' ORDER BY open;
+----
+must	test	true
+must	test	true
+
+# the view names every code each system writes, and leaves the rest to NULL
+statement ok
+GLOSS onhand ON supply AS $${"sql": "WITH pl AS (SELECT i.global_material AS part, m.warehouse AS site, CASE WHEN m.unit = 'pal' THEN m.quantity * u.cases_per_pallet WHEN m.unit = 'kart' THEN m.quantity END AS cases FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D') SELECT i.global_material AS part, s.site, CASE WHEN s.uom = 'PAL' THEN s.unrestricted * u.cases_per_pallet WHEN s.uom = 'CS' THEN s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT coalesce(p.global_item, i.global_material), d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet WHEN 'Cs' THEN d.physical - d.reserved END FROM stock_d365 d LEFT JOIN product_d365 p ON p.item_id = d.item_id LEFT JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id LEFT JOIN model_parts u ON u.global_material = coalesce(p.global_item, i.global_material) UNION ALL SELECT * FROM pl"}$$;
+
+statement ok
+SELECT code_check() FROM onhand;
+
+query TR
+SELECT state, score FROM view_tests() WHERE test = 'code_test';
+----
+green	0.0
+
+# the next deliveries: Denmark sends a second row for one part and site, Poland a warehouse the contract does
+# not allow and a pallet written a fourth way
+statement ok
+COPY (FROM (VALUES ('000000000000100001', 'DK01', '120', 'CS'), ('000000000000100002', 'DK01', '3', 'PAL'),
+                   ('000000000000100003', 'DK02', '40', 'CS'), ('000000000000100001', 'DK01', '5', 'CS')) t("MATNR", "WERKS", "LABST", "MEINS"))
+TO '{TEST_DIR}/mard.csv' (HEADER);
+
+statement ok
+COPY (FROM (VALUES ('P100', 'PL01', '55,5', 'kart', 'D'), ('P300', 'PL01', '1', 'Pal', 'D'), ('P300', 'PL01', '7', 'kart', 'K'),
+                   ('X9', 'PL01', '12', 'kart', 'D'), ('P100', 'PL02', '4', 'kart', 'D')) t(indeks, magazyn, ilosc, jm, status))
+TO '{TEST_DIR}/stany.csv' (HEADER);
+
+statement ok
+IMPORT stock_sap;
+
+statement ok
+IMPORT stock_mono;
+
+statement ok
+SELECT contract_check() FROM onhand;
+
+statement ok
+SELECT code_check() FROM onhand;
+
+query TTIT
+SELECT b.column, b.rule, b.count, array_to_string(b.examples, ' ')
+FROM main.measurements m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
+WHERE m.function = 'contract_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
+----
+cases	required	1	(empty)
+part	required	1	(empty)
+part, site	key	1	(100001, DK01)
+site	values	1	PL02
+
+query TTTT
+SELECT c.system, c.source, array_to_string(c.literals, ' '), (SELECT string_agg(u.value || ':' || u.rows, ' ' ORDER BY u.value) FROM unnest(c.unnamed) x(u))
+FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
+WHERE m.function = 'code_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
+----
+d365	stock_d365.unit_id	Cs Pl	NULL
+mono	stock_mono.unit	kart pal	Pal:1
+sap	stock_sap.uom	CS PAL	NULL
+
+query TTR
+SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
+----
+code_test	red	0.2
+contract_test	red	0.1
+
+# a person accepts the rows as they are: their tolerance turns the test green
+statement ok
+GLOSS contract_check ON supply.onhand AS $${"tolerance": 0.12, "basis": "the planner accepts the open deliveries until the next load"}$$;
+
+query T
+SELECT state FROM view_tests() WHERE test = 'contract_test';
+----
+green
+
+# a code the literals do not tell: a column that tests a unit by a pattern
+statement ok
+DECLARE ASPECT pallets WITH $${"title": "Pallets", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS pallets ON supply AS $${"sql": "SELECT indeks, CASE WHEN jm_unit LIKE 'pa%' THEN quantity END AS pallets FROM (SELECT indeks, lower(unit) AS jm_unit, quantity FROM stock_mono)"}$$;
+
+statement ok
+GLOSS contract ON supply.pallets.pallets AS $${"type": "DOUBLE"}$$;
+
+statement ok
+SELECT code_check() FROM pallets;
+
+query TT
+SELECT value->>'applicable', value->>'breach_rate' FROM main.measurements WHERE function = 'code_check' AND subject = 'supply.pallets';
+----
+false	NULL
+
+query T
+SELECT state FROM view_tests() WHERE test = 'code_test' AND view = 'pallets';
+----
+yellow
+
+# === Full or keyed loads, held against what the source sends (the goals kit's load_modes()). No finding
+# without a load before the newest; the unit tables loaded again above are small and replaced whole
+query I
+SELECT count(*) FROM load_modes() WHERE state IS NOT NULL;
+----
+0
+
+# the group sends its identity sheet again without one retired code: the keyed load keeps it
+statement ok
+COPY (FROM read_csv('{TEST_DIR}/identities.csv') WHERE local_code <> 'OLD-12') TO '{TEST_DIR}/identities.csv' (HEADER);
+
+statement ok
+IMPORT model_identities;
+
+query TTIIIIITT
+SELECT table_name, mode, rows, rows_before, source_rows, keys_carried, keys_missed, state, level FROM load_modes() WHERE state IS NOT NULL;
+----
+supply.model_identities	merge	20	20	19	19	1	keys missing	should
+
+# stated as the complete state, the kept row is wrong: a must
+statement ok
+GLOSS delivery ON supply.model_identities AS $${"value": "full", "basis": "the group sends its whole identity sheet each week"}$$;
+
+query TTTT
+SELECT level, kind, state, contains(statement, 'DECLARE RECIPE model_identities ON supply FROM model AS $$') FROM next WHERE asset = 'supply.model_identities' AND kind = 'integrate';
+----
+must	integrate	keys missing	true
+
+# loaded without the key, the table is the sheet
+statement ok
+DECLARE RECIPE model_identities ON supply FROM model AS $$SELECT market, local_code, CAST(global_material AS BIGINT) AS global_material FROM read_csv('identities.csv', all_varchar = true)$$;
+
+query II
+SELECT (SELECT count(*) FROM supply.model_identities), (SELECT count(*) FROM load_modes() WHERE state IS NOT NULL);
+----
+19	0
+
+# Denmark's order lines, 100,000 rows replaced whole by a file that changed none of them
+statement ok
+COPY (SELECT 'SO' || lpad(i::VARCHAR, 7, '0') AS "VBELN", '000000000000' || (100001 + i % 3) AS "MATNR", (i % 40 + 1) AS "KWMENG" FROM range(100000) r(i))
+TO '{TEST_DIR}/vbap.parquet';
+
+statement ok
+DECLARE RECIPE orders_sap ON supply FROM sap AS $$SELECT "VBELN" AS order_id, "MATNR" AS matnr, "KWMENG" AS cases FROM read_parquet('vbap.parquet')$$;
+
+statement ok
+IMPORT orders_sap;
+
+query TTIIITT
+SELECT table_name, mode, rows, source_rows, changed_rows, key IS NULL, state FROM load_modes() WHERE state IS NOT NULL;
+----
+supply.orders_sap	replace	100000	100000	0	true	unchanged
+
+# with the table's grain stated, the row names it as the key to merge by
+statement ok
+GLOSS entity ON supply.orders_sap AS $${"value": "one order line", "role": "fact", "grain": ["order_id"]}$$;
+
+query TTT
+SELECT level, state, contains(statement, 'DECLARE RECIPE orders_sap ON supply FROM sap SET (key: order_id) AS $$') FROM next WHERE asset = 'supply.orders_sap' AND kind = 'integrate';
+----
+should	unchanged	true
+
 # === Two systems by time: the old filing system holds the report years to 2020, the new one from 2021, each
 # with its own key columns and a mapping table to one utility id; the new system holds 2021 filed twice. The
 # target's key is built by another expression per branch. Awkward on purpose: an old respondent with no mapping
@@ -285,23 +525,21 @@ DECLARE DATASET ferc SET (purpose: 'large steam plants from two filing systems')
 statement ok
 USE ferc;
 
+# one source holds both filing systems' files
 statement ok
-DECLARE SOURCE ferc_dbf SET (type: csv, location: '{TEST_DIR}');
+DECLARE SOURCE ferc_files SET (type: csv, location: '{TEST_DIR}');
 
 statement ok
-DECLARE SOURCE ferc_xbrl SET (type: csv, location: '{TEST_DIR}');
+DECLARE RECIPE f1_steam ON ferc FROM ferc_files AS $$SELECT * FROM read_csv('f1_steam.csv')$$;
 
 statement ok
-DECLARE RECIPE f1_steam ON ferc FROM ferc_dbf AS $$SELECT * FROM read_csv('f1_steam.csv')$$;
+DECLARE RECIPE utilities_dbf ON ferc FROM ferc_files AS $$SELECT * FROM read_csv('utilities_old.csv')$$;
 
 statement ok
-DECLARE RECIPE utilities_dbf ON ferc FROM ferc_dbf AS $$SELECT * FROM read_csv('utilities_old.csv')$$;
+DECLARE RECIPE steam_xbrl ON ferc FROM ferc_files AS $$SELECT * FROM read_csv('steam_duration.csv')$$;
 
 statement ok
-DECLARE RECIPE steam_xbrl ON ferc FROM ferc_xbrl AS $$SELECT * FROM read_csv('steam_duration.csv')$$;
-
-statement ok
-DECLARE RECIPE utilities_xbrl ON ferc FROM ferc_xbrl AS $$SELECT * FROM read_csv('utilities_new.csv')$$;
+DECLARE RECIPE utilities_xbrl ON ferc FROM ferc_files AS $$SELECT * FROM read_csv('utilities_new.csv')$$;
 
 statement ok
 DECLARE ASPECT steam_plants WITH $${"title": "Large steam plants", "x-kind": "relation"}$$ AS VIEW;
@@ -317,6 +555,25 @@ f1_steam_2019_12_11_1_3	401	2019	1200.0
 f1_steam_2020_12_11_1_3	401	2020	1210.0
 steam_402_2021_c000011_big_bend_station	401	2021	1225.0
 steam_402_2022_c000011_big_bend_station	401	2022	1230.0
+
+# loaded from one source, every table's system is that source
+query T
+SELECT DISTINCT system FROM column_mapping('steam_plants');
+----
+ferc_files
+
+# the filing system each table's rows come from, stated on the table
+statement ok
+GLOSS system_of_record ON ferc.f1_steam AS $${"value": "ferc_dbf", "basis": "the Visual FoxPro filings, report years to 2020"}$$;
+
+statement ok
+GLOSS system_of_record ON ferc.utilities_dbf AS $${"value": "ferc_dbf"}$$;
+
+statement ok
+GLOSS system_of_record ON ferc.steam_xbrl AS $${"value": "ferc_xbrl", "basis": "the XBRL filings, report years from 2021"}$$;
+
+statement ok
+GLOSS system_of_record ON ferc.utilities_xbrl AS $${"value": "ferc_xbrl"}$$;
 
 # the key per branch: each branch's expression with the columns it builds the key from, each in its system
 query ITTT
@@ -353,3 +610,47 @@ plant_name_ferc1	true
 record_id	true
 report_year	true
 utility_id_ferc1	true
+
+# the contract on the target: the record id is the key, each filing system's key built by its own expression.
+# No column tests a code against literals, so code_check cannot tell and is not green
+statement ok
+GLOSS entity ON ferc.steam_plants AS $${"value": "one plant of one utility in one report year", "role": "fact", "grain": ["record_id"]}$$;
+
+statement ok
+GLOSS contract ON ferc.steam_plants.record_id AS $${"type": "VARCHAR", "required": true}$$;
+
+statement ok
+GLOSS contract ON ferc.steam_plants.report_year AS $${"type": "BIGINT", "required": true}$$;
+
+statement ok
+GLOSS contract ON ferc.steam_plants.utility_id_ferc1 AS $${"type": "BIGINT", "required": true}$$;
+
+statement ok
+SELECT contract_check() FROM steam_plants;
+
+statement ok
+SELECT code_check() FROM steam_plants;
+
+query TTR
+SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
+----
+code_test	yellow	0.0
+contract_test	green	0.0
+
+# the two columns with no contract are asked for one
+query TTT
+SELECT level, contains(statement, 'GLOSS contract ON ferc.steam_plants.capacity_mw '), contains(statement, 'GLOSS contract ON ferc.steam_plants.plant_name_ferc1 ')
+FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'describe' AND state = 'missing';
+----
+should	true	true
+
+# every measurement this kit ships reads the data of its subject's dataset alone: no table named, and no dataset
+# but the subject's
+query I
+SELECT count(*)
+FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
+WHERE f.name IN ('source_systems', 'contract_check', 'code_check')
+  AND ((r.kind = 'data' AND r."where" IS NULL AND r.read NOT IN ('dataset_cells', 'subject_column', 'glossql_relationship_checks'))
+       OR (r.kind = 'data' AND r.read IN ('dataset_cells', 'subject_column') AND NOT regexp_matches(r.what, '^[<$]')));
+----
+0
