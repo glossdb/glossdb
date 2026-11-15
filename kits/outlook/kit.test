@@ -209,6 +209,13 @@ SELECT state FROM TESTS() WHERE test = 'range_test';
 ----
 orange
 
+# the metric whose newest month lies outside its range shows the test's orange, the metric no backtest reached stays not applicable
+query TT
+SELECT view, state FROM view_tests() WHERE test = 'range_test' ORDER BY view;
+----
+hires	not_applicable
+spend	orange
+
 statement ok
 DECLARE TEST range_test ON metric_ranges DETECTOR range_breach THRESHOLD 0.9;
 

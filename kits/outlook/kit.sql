@@ -1435,7 +1435,9 @@ WHERE live.named AND NOT e.m.applicable AND coalesce(e.m.fixable, false)
 -- preview_tests(): the preview features' tests as rows of view_tests(),
 -- one per metric and test — view, test, aspect, subject, state, current,
 -- score, evidence, run. state: red where the metric's newest value lies
--- outside its expected range or the plan outside the forecast's; green
+-- outside its expected range or the plan outside the forecast's; orange
+-- where the newest value lies outside its range and the test reads the
+-- service's red as orange (range_breach); green
 -- where the result holds a point for the metric; not_run where no
 -- result is stored yet, or one could be after a fix the evidence names;
 -- not_applicable where the result holds no point for the metric and
@@ -1492,6 +1494,7 @@ rows_ AS (
          CASE WHEN NOT w.stored OR r.metric IS NULL THEN 'not_run'
               WHEN NOT r.applicable OR x.state IS NULL THEN 'not_applicable'
               WHEN f.finding IS NOT NULL THEN 'red'
+              WHEN x.state = 'orange' AND r.displacement > 0.9 THEN 'orange'
               ELSE 'green' END AS state,
          NOT w.due AS current, r.displacement AS score,
          r.applicable, r.reason, f.finding,
