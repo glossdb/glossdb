@@ -33,12 +33,10 @@ computed: no second list, no flag.
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
 | A write that computes nothing takes 0.56 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning the kits' SQL: `next` for the closing line 0.32 to 0.35 s (about 80% planning, the outlook kit's branches planned though no model service is named), `results_due()` 0.18 to 0.23 s | Low: known, and paid once per write | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | When it hurts an agent's run | |
-| Where "metric" still stands for "view": `view_summary()` fills `missing` and `columns_without_role` on a table view though `next` asks for them only under describe; its column `metric` and the `metric_reads` read cover every view; the console's empty state on the views page and one line of `docs/usage/test.md` say metrics | Low | `kits/views/kit.sql`, `kits/goals/kit.sql`, `crates/apps/builtin/console`, `docs/usage/test.md` | With the harmonisation kit (`harness.md`) | |
-| Left from the review of the extension's changes: the write path's lost-race and interrupt handling is read, not run (no second writer, no Postgres catalog in the suites); glossval has no accepted goldens baseline at these commits | Medium | the extension (`glossql_store.cpp`, `glossql_runner.cpp`); `../glossval/goldens` | Before the pull requests | |
+| Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
+| A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
 | `next` has no level: every open row is a must, and it names the outlook kit's reads. A row keeps its kind of work (integrate, describe, test, review) and gets a level: must (served data is wrong or cannot be served), should (the layer is incomplete for what is served), could (what sits on top or beside). A kit adds rows through its own tests; later a kit's configuration says how it enters `next` | Medium: it changes what an agent is told | `kits/goals/kit.sql`, `crates/serverd/src/window.rs`, `crates/serverd/src/mcp.rs`, the skills | After the rows in work | |
 | The outlook kit is a pull-in: nothing stored, nothing asked. Of its 1,557 lines 62 repeat what the model service decides, 141 could move there, about 270 are glue for `next` and `view_tests()`, 120 are its own count of how often ranges held. It disagrees with the service on the scenario history gate and the per-metric range state, serves an older forecast when the newest run failed, and puts the forecast model's coverage on scenario ranges. One forecast per metric; the newest-row windows go. Plan against actual (about 330 lines, no model needed but for the forecast column) becomes a kit of its own | Medium | `kits/outlook/kit.sql`, a new `kits/plan`, `../glossthesi` (a state per metric, a code per error: in work there) | After `next` | |
-| A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
-| An identical reload moves the table's version, so results are computed once more | Low | the extension (`glossql_runner.cpp`) | In work: built if the comparison is cheap, else dropped with the number |
 
 ## What is built
 
@@ -79,11 +77,19 @@ computed: no second list, no flag.
   `fan_out_check` and `validity_check` as two, `open_items`, the
   console's re-measure button. `glossql_runner.cpp` went from 2947 to
   2401 lines in the last step.
+- **A body that reads past the read functions is refused** at its
+  declaration (`untracked_read`): the catalog reached directly, a
+  what or where that is not a constant, a where that is no place.
+- **A keyed load of identical rows** writes nothing and leaves the
+  table's version (1.3 s against 2.0 s on 2,000,000 rows; a load
+  where every row changed 2.3 s against 2.0 s).
+- **Two writers at once** each land once; a test in
+  `crates/duck/tests` holds it.
 
 ## Measured
 
-Server at `0017cc5`: 116 tests pass. Extension at `f5bdfca`: its SQL
-suite passes with 2966 assertions, lint clean. The extension's
+Server at `cdcf23a`: 117 tests pass. Extension at `ca9f68b`: its SQL
+suite passes with 2982 assertions, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
