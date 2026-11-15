@@ -17,11 +17,11 @@ Two cases, by what the source is:
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
 | Both test cases run three times each, the server in the container; cost, turns and scores per run, before and after the review | Low | glossval scenarios `ferc-steam`, `eia-generators` | Next | |
+| The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Medium: it is what the layer adds over a built table | both test cases | Next | |
+| The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
 | The plant name on FERC: the reference writes it in lower case, the contract and the reference's documentation say "as reported". The builder kept the filed case and asked; the review confirmed it from the documentation; every row is wrong in that column | Medium: rows right stays 0% on FERC until the contract states the case or the scorer ignores it | glossval `ferc-steam` (`tools/gen_ferc.py`, `contract.yaml`) or `tools/contract_score.py` | Before the runs are reported | |
 | The rows the builder misses on FERC (the new filing system: 3,909 of 5,221 found by hand) | Medium: PUDL's own mapping may not be reachable from the sources | glossval `ferc-steam` | With the runs | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
-| The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Low | both test cases | After the first runs | |
-| The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Low | glossval | After the build stage | |
 | Finance from `../glosstest`, labelled generated; one data set among others | Low | glossval | After the real data reports | |
 | The results page | Low | glossval, the websites | Last | |
 
