@@ -701,6 +701,12 @@ FROM view_summary() WHERE view = 'ledger_lines';
 ----
 relation	true	true	true	true	true
 
+# a table view asks for no role on its columns either: amount and fund carry none
+query II
+SELECT len(columns_without_role), len(missing) FROM view_summary() WHERE view = 'ledger_lines';
+----
+0	0
+
 statement ok
 GLOSS entity ON ledger AS $${"value": "one booking", "role": "fact", "grain": ["booked", "fund"], "time_axis": "booked"}$$;
 

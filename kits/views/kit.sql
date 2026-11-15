@@ -70,7 +70,8 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- (the served columns with no role), missing (the annotation each of those
 -- needs, on the view's own column: a view's column takes no role from the
 -- column it reads; `next` lists the same statements under the view; a
--- single value needs none, so both are empty for it),
+-- table and a single value need none, since no check on them reads a
+-- role, so both are empty for them),
 -- measurements_to_run (the measurement the row reads and nobody ran),
 -- profile_current (the period column's temporal profile is current at the
 -- data's own version). A table (x-kind relation) and a single value
@@ -134,19 +135,19 @@ CREATE OR REPLACE MACRO main.view_rows() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
-  SELECT DISTINCT c.table_name AS metric FROM glossql_columns(current_schema()) c
+  SELECT DISTINCT c.table_name AS view FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
 bodies AS (
-  SELECT aspect AS metric, body FROM (
+  SELECT aspect AS view, body FROM (
     SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) AS rn
     FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
 cols AS (
-  SELECT c.table_name AS metric, c.column_name AS col, c.ordinal_position AS pos
+  SELECT c.table_name AS view, c.column_name AS col, c.ordinal_position AS pos
   FROM glossql_columns(current_schema()) c
-  WHERE c.table_name IN (SELECT metric FROM views)),
+  WHERE c.table_name IN (SELECT view FROM views)),
 annotated AS MATERIALIZED (
-  SELECT split_part(subject, '.', 2) AS metric, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
+  SELECT split_part(subject, '.', 2) AS view, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
   -- one read per property: a result reads the stored results of these five alone
   FROM (FROM glossql_glossary(current_schema(), 'role', false)
         UNION ALL FROM glossql_glossary(current_schema(), 'additivity', false)
@@ -154,56 +155,56 @@ annotated AS MATERIALIZED (
         UNION ALL FROM glossql_glossary(current_schema(), 'time_grains', false)
         UNION ALL FROM glossql_glossary(current_schema(), 'temporal_profile', false))
   WHERE len(string_split(subject, '.')) >= 3
-    AND split_part(subject, '.', 2) IN (SELECT metric FROM bodies)),
+    AND split_part(subject, '.', 2) IN (SELECT view FROM bodies)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
-roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
+roles AS (SELECT view, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
 periods AS (
-  SELECT r.metric, list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) AS cols
-  FROM roles r JOIN cols c USING (metric, col) WHERE r.role = 'timestamp' GROUP BY r.metric),
+  SELECT r.view, list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) AS cols
+  FROM roles r JOIN cols c USING (view, col) WHERE r.role = 'timestamp' GROUP BY r.view),
 measures AS (
-  SELECT r.metric, list(r.col ORDER BY CASE WHEN r.col = 'value' THEN 0 ELSE 1 END, c.pos) AS cols
-  FROM roles r JOIN cols c USING (metric, col) WHERE r.role = 'measure' GROUP BY r.metric),
+  SELECT r.view, list(r.col ORDER BY CASE WHEN r.col = 'value' THEN 0 ELSE 1 END, c.pos) AS cols
+  FROM roles r JOIN cols c USING (view, col) WHERE r.role = 'measure' GROUP BY r.view),
 chosen AS (
-  SELECT b.metric,
+  SELECT b.view,
          CASE WHEN len(p.cols) = 1 OR p.cols[1] = 'period' THEN p.cols[1] END AS period_column,
          CASE WHEN len(m.cols) = 1 OR m.cols[1] = 'value' THEN m.cols[1] END AS value_column,
          p.cols AS period_cols, m.cols AS measure_cols,
-         b.metric IN (SELECT metric FROM views) AS served
-  FROM bodies b LEFT JOIN periods p USING (metric) LEFT JOIN measures m USING (metric)),
+         b.view IN (SELECT view FROM views) AS served
+  FROM bodies b LEFT JOIN periods p USING (view) LEFT JOIN measures m USING (view)),
 additivitys AS (
-  SELECT s.metric, s.col,
+  SELECT s.view, s.col,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'value' END AS additivity,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'numerator' END AS numerator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.value->>'denominator' END AS denominator,
          CASE WHEN s.state IN ('current', 'stale') THEN s.state ELSE 'conflict' END AS additivity_state
   FROM annotated s WHERE s.aspect = 'additivity' AND s.state <> 'missing'),
 profiles AS (
-  SELECT metric, col,
+  SELECT view, col,
          CASE WHEN (value->>'applicable') = 'true' AND (value->>'granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
               THEN value->>'granularity' END AS grain_detected,
          state = 'current' AS profile_current
   FROM claims WHERE aspect = 'temporal_profile'),
-ladders AS (SELECT metric, col, value->>'floor' AS floor, value->'windows' AS windows FROM claims WHERE aspect = 'time_grains'),
+ladders AS (SELECT view, col, value->>'floor' AS floor, value->'windows' AS windows FROM claims WHERE aspect = 'time_grains'),
 dims AS (
-  SELECT r.metric, list(r.col ORDER BY CASE d.rank WHEN 'primary' THEN 0 WHEN 'supporting' THEN 1 ELSE 2 END, c.pos) AS cols
-  FROM roles r JOIN cols c USING (metric, col)
-  LEFT JOIN (SELECT metric, col, value->>'value' AS rank FROM claims WHERE aspect = 'dimension') d USING (metric, col)
+  SELECT r.view, list(r.col ORDER BY CASE d.rank WHEN 'primary' THEN 0 WHEN 'supporting' THEN 1 ELSE 2 END, c.pos) AS cols
+  FROM roles r JOIN cols c USING (view, col)
+  LEFT JOIN (SELECT view, col, value->>'value' AS rank FROM claims WHERE aspect = 'dimension') d USING (view, col)
   WHERE r.role = 'dimension' AND coalesce(d.rank, '') <> 'none'
-  GROUP BY r.metric),
+  GROUP BY r.view),
 without_rank AS (
-  SELECT r.metric, list(r.col ORDER BY c.pos) AS cols
-  FROM roles r JOIN cols c USING (metric, col)
+  SELECT r.view, list(r.col ORDER BY c.pos) AS cols
+  FROM roles r JOIN cols c USING (view, col)
   WHERE r.role = 'dimension'
-    AND NOT EXISTS (SELECT 1 FROM claims d WHERE d.aspect = 'dimension' AND d.metric = r.metric AND d.col = r.col)
-  GROUP BY r.metric),
+    AND NOT EXISTS (SELECT 1 FROM claims d WHERE d.aspect = 'dimension' AND d.view = r.view AND d.col = r.col)
+  GROUP BY r.view),
 without_role AS (
-  SELECT c.metric, list(c.col ORDER BY c.pos) AS cols,
-         list('GLOSS role ON ' || ds.dataset || '.' || c.metric || '.' || c.col || ' AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;' ORDER BY c.pos) AS acts
+  SELECT c.view, list(c.col ORDER BY c.pos) AS cols,
+         list('GLOSS role ON ' || ds.dataset || '.' || c.view || '.' || c.col || ' AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;' ORDER BY c.pos) AS acts
   FROM cols c, ds
-  WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.metric = c.metric AND r.col = c.col)
-  GROUP BY c.metric),
+  WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.view = c.view AND r.col = c.col)
+  GROUP BY c.view),
 rows_ AS (
-  SELECT ch.metric,
+  SELECT ch.view,
          json_extract_string(a.schema, '$.x-kind') AS kind,
          json_extract_string(a.schema, '$.x-plan-of') AS plan_of,
          json_extract_string(a.schema, '$.x-covers') AS covers,
@@ -213,45 +214,45 @@ rows_ AS (
          pr.grain_detected, coalesce(pr.profile_current, false) AS profile_current,
          coalesce(la.floor, pr.grain_detected) AS floor, la.windows,
          coalesce(d.cols, []::VARCHAR[]) AS dims, coalesce(ur.cols, []::VARCHAR[]) AS dimensions_without_rank,
-         -- a single value is one number: nothing reads a role on its column
-         CASE WHEN json_extract_string(a.schema, '$.x-kind') = 'scalar' THEN []::VARCHAR[]
+         -- a table and a single value serve no series: no check on them reads a role
+         CASE WHEN json_extract_string(a.schema, '$.x-kind') IN ('scalar', 'relation') THEN []::VARCHAR[]
               ELSE coalesce(u.cols, []::VARCHAR[]) END AS columns_without_role,
-         CASE WHEN json_extract_string(a.schema, '$.x-kind') = 'scalar' THEN []::VARCHAR[]
+         CASE WHEN json_extract_string(a.schema, '$.x-kind') IN ('scalar', 'relation') THEN []::VARCHAR[]
               ELSE coalesce(u.acts, []::VARCHAR[]) END AS missing,
-         pr.metric IS NOT NULL AS profiled
+         pr.view IS NOT NULL AS profiled
   FROM chosen ch
-  JOIN aspects a ON a.name = ch.metric
-  LEFT JOIN bodies b USING (metric)
-  LEFT JOIN additivitys bh ON bh.metric = ch.metric AND bh.col = ch.value_column
-  LEFT JOIN profiles pr ON pr.metric = ch.metric AND pr.col = ch.period_column
-  LEFT JOIN ladders la ON la.metric = ch.metric AND la.col = ch.period_column
-  LEFT JOIN dims d ON d.metric = ch.metric
-  LEFT JOIN without_rank ur ON ur.metric = ch.metric
-  LEFT JOIN without_role u ON u.metric = ch.metric),
+  JOIN aspects a ON a.name = ch.view
+  LEFT JOIN bodies b USING (view)
+  LEFT JOIN additivitys bh ON bh.view = ch.view AND bh.col = ch.value_column
+  LEFT JOIN profiles pr ON pr.view = ch.view AND pr.col = ch.period_column
+  LEFT JOIN ladders la ON la.view = ch.view AND la.col = ch.period_column
+  LEFT JOIN dims d ON d.view = ch.view
+  LEFT JOIN without_rank ur ON ur.view = ch.view
+  LEFT JOIN without_role u ON u.view = ch.view),
 judged AS (
   SELECT *,
-    main.series_reason(ds.dataset, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
+    main.series_reason(ds.dataset, view, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
-         THEN ['temporal over ' || ds.dataset || '.' || metric || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
+         THEN ['temporal over ' || ds.dataset || '.' || view || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
   FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
 -- a plan's row: its columns through the metric it plans
-plan_cols AS (SELECT metric, list(col ORDER BY pos) AS cols FROM cols GROUP BY metric),
+plan_cols AS (SELECT view, list(col ORDER BY pos) AS cols FROM cols GROUP BY view),
 plans AS (
-  SELECT p.metric, p.kind, p.plan_of, p.covers, p.stopped, p.served,
+  SELECT p.view, p.kind, p.plan_of, p.covers, p.stopped, p.served,
          CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
          CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
-         m.metric IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
+         m.view IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
          m.period_column AS of_period, m.value_column AS of_value,
          m.numerator, m.denominator, m.additivity, m.additivity_state
   FROM rows_ p
-  LEFT JOIN plan_cols pc ON pc.metric = p.metric
-  LEFT JOIN judged m ON m.metric = p.plan_of
+  LEFT JOIN plan_cols pc ON pc.view = p.view
+  LEFT JOIN judged m ON m.view = p.plan_of
   WHERE p.kind = 'plan'),
 judged_plans AS (
   SELECT *,
     main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason
   FROM plans)
-SELECT metric AS view, kind, plan_of, covers, stopped,
+SELECT view, kind, plan_of, covers, stopped,
        CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN grain_detected END AS grain_detected, CASE WHEN series THEN floor END AS floor,
@@ -259,7 +260,7 @@ SELECT metric AS view, kind, plan_of, covers, stopped,
        additivity, additivity_state, dims, dimensions_without_rank, columns_without_role, missing, measurements_to_run, profile_current
 FROM (SELECT *, coalesce(kind, '') NOT IN ('scalar', 'relation') AS series FROM judged)
 UNION ALL
-SELECT metric, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
+SELECT view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
        period_column, value_column, numerator, denominator, NULL AS grain_detected, covers AS floor, NULL AS window_periods,
        additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
        []::VARCHAR[], true

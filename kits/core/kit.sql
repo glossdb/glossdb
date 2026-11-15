@@ -261,7 +261,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     WHERE g.aspect IN (SELECT name FROM to_test) AND g.actor_kind IN ('agent', 'human')
       AND NOT EXISTS (SELECT 1 FROM main.measurements m
                       WHERE m.dataset = g.dataset AND m.subject = g.subject AND m.aspect = g.aspect)),
-  metric_reads AS (
+  view_reads AS (
     SELECT DISTINCT split_part(path, '.', 1) AS dataset, split_part(path, '.', 2) AS table_name,
            split_part(path, '.', 3) AS column_name
     FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
@@ -271,7 +271,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
   assets AS (
     SELECT DISTINCT a.name, a.condition, r.dataset, r.table_name,
            CASE WHEN list_contains(a.grains, 'TABLE') THEN NULL ELSE r.column_name END AS column_name
-    FROM tested a, metric_reads r WHERE a.on_assets),
+    FROM tested a, view_reads r WHERE a.on_assets),
   open_assets AS (
     SELECT s.name FROM assets s
     WHERE (json_extract_string(s.condition, '$.aspect') IS NULL OR EXISTS (

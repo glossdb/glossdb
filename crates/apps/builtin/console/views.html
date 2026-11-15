@@ -295,9 +295,9 @@
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow" title="Every derived view of the dataset: shared SQL the metrics build on. A view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every metric built on it. The Export tab serves each as a file.">Views</span>
+    <header><span class="eyebrow" title="The table views of the dataset: each a named SQL query over its tables. A table view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every view that reads it. The Export tab serves each as a file.">Table views</span>
       <code class="chip">view_definitions</code></header>
-    <gl-rows frame="frames/views?stopped=0" empty="no view is declared: a derived view is a VIEW aspect with x-kind relation, defined by SQL the metrics build on">
+    <gl-rows frame="frames/views?stopped=0" empty="no table view is defined: a table view is a VIEW aspect with x-kind relation and the SQL query that defines it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
           <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>

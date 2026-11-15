@@ -222,11 +222,11 @@ CREATE OR REPLACE VIEW main.next AS
         SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))
     UNION ALL
     -- a metric's served column with no role: the statement its summary
-    -- row names (`missing`), on the view's own column, so that the
-    -- summary row and this list ask for the same annotation
+    -- row names (`missing`, empty for every other view), on the view's own
+    -- column, so that the summary row and this list ask for the same annotation
     SELECT ds.d || '.' || u.view || '.' || u.col, 'role', 'missing', u.view, ds.d || '.' || u.view, false, false, u.statement
     FROM (SELECT m.view, unnest(m.columns_without_role) AS col, unnest(m.missing) AS statement FROM summary m
-          WHERE m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation', 'plan')) u, ds),
+          WHERE m.stopped IS NULL) u, ds),
   s_load AS (
     SELECT 3 AS priority, 1 AS ord, 'integrate' AS step, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
