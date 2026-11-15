@@ -40,7 +40,7 @@ websites; then the backlog.
 
 | Kind of work | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|---|
-| Integrate | Harmonisation kit: the mapping of several systems of record onto one target model, and the reconciliation per load | Medium: the demo's statements are written for one case; the kit must hold for a second | `kits/`, a skill, a suite; the statements in `../glossdemo/statements/` (structure, harmonise, watch) and its Mapping and Reconciliation pages | The first use case | |
+| Integrate | Harmonisation kit: the mapping of several systems of record onto one target model, the lineage per output column of a view (the column mapping, from the SQL as JSON), and the reconciliation per load | Medium: the demo's statements are written for one case; the kit must hold for a second | `kits/`, a skill, a suite; the statements in `../glossdemo/statements/` (structure, harmonise, watch) and its Mapping and Reconciliation pages | The first use case | |
 | Integrate | Works with your platform: dbt, semantic models, lakes read in place, attached databases | See `platform.md` | | | #221 |
 | Integrate | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
 | Describe | The workspace as code: declarations as `.glossql` files, tested in CI | See `platform.md` | | | #219 |

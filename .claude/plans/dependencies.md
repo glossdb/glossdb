@@ -35,9 +35,10 @@ computed: no second list, no flag.
 | A write that computes nothing takes 0.56 s, a read 0.02 s. The write itself is 0.001 s; the rest is DuckDB planning the kits' SQL: `next` for the closing line 0.32 to 0.35 s (about 80% planning, the outlook kit's branches planned though no model service is named), `results_due()` 0.18 to 0.23 s | Low: known, and paid once per write | `kits/goals/kit.sql`, `kits/outlook/kit.sql` | When it hurts an agent's run | |
 | Where "metric" still stands for "view": `view_summary()` fills `missing` and `columns_without_role` on a table view though `next` asks for them only under describe; its column `metric` and the `metric_reads` read cover every view; the console's empty state on the views page and one line of `docs/usage/test.md` say metrics | Low | `kits/views/kit.sql`, `kits/goals/kit.sql`, `crates/apps/builtin/console`, `docs/usage/test.md` | With the harmonisation kit (`harness.md`) | |
 | Left from the review of the extension's changes: the write path's lost-race and interrupt handling is read, not run (no second writer, no Postgres catalog in the suites); glossval has no accepted goldens baseline at these commits | Medium | the extension (`glossql_store.cpp`, `glossql_runner.cpp`); `../glossval/goldens` | Before the pull requests | |
-| The outlook kit: the forecast is one result for all metrics of a dataset, so a new metric makes it and every plan due; a response of the model service is not kept under a hash of the request; a `metric_scenario` run takes 2.3 s (1.8 s before); newest-row windows are left in the kit and the console's frames | Medium | `kits/outlook/kit.sql`, `kits/views/kit.sql` (`view_axes_of`), the extension's service call, `crates/apps/builtin/console/frames` | With the outlook issue (`harness.md`) | |
+| `next` has no level: every open row is a must, and it names the outlook kit's reads. A row keeps its kind of work (integrate, describe, test, review) and gets a level: must (served data is wrong or cannot be served), should (the layer is incomplete for what is served), could (what sits on top or beside). A kit adds rows through its own tests; later a kit's configuration says how it enters `next` | Medium: it changes what an agent is told | `kits/goals/kit.sql`, `crates/serverd/src/window.rs`, `crates/serverd/src/mcp.rs`, the skills | After the rows in work | |
+| The outlook kit is a pull-in: nothing stored, nothing asked. Of its 1,557 lines 62 repeat what the model service decides, 141 could move there, about 270 are glue for `next` and `view_tests()`, 120 are its own count of how often ranges held. It disagrees with the service on the scenario history gate and the per-metric range state, serves an older forecast when the newest run failed, and puts the forecast model's coverage on scenario ranges. One forecast per metric; the newest-row windows go | Medium | `kits/outlook/kit.sql`, `../glossthesi` (a state per metric, a code per error) | After `next` | |
 | A body that reads past the read functions is not refused: its result has an input `unnamed` and is outdated once stored. A suite test holds our bodies | Low while every function is ours | the extension (`BodyReads`) | When a customer writes functions | |
-| Finer than needed today: lineage per output column of a view (from the SQL as JSON); an identical reload moves the table's version, so results are computed once more; an outdated result or annotation no view needs is listed nowhere | Low | the lineage kit, the extension (`glossql_runner.cpp`), `kits/goals/kit.sql` (`next`) | When one is measured as a cost | |
+| An identical reload moves the table's version, so results are computed once more | Low | the extension (`glossql_runner.cpp`) | In work: built if the comparison is cheap, else dropped with the number |
 
 ## What is built
 
@@ -111,14 +112,15 @@ dataset's preview measurements current.
 
 ## Next issue (draft)
 
-**The outlook kit keeps the request and the stored answer.** What it
-buys: a preview measurement is asked of the model service once per
-request, and a new metric does not make every plan due. What is
-there: `metric_ranges`, `metric_forecast`, `metric_scenario` and
-`metric_plan` on the read functions (`kits/outlook/kit.sql`), one
-forecast result per dataset, `view_axes_of` in `kits/views/kit.sql`,
-the extension's service call. Done when: a response is kept under a
-hash of the request and the service's version; a metric declared
-leaves the other metrics' forecasts and their plans current; a
-`metric_scenario` run is back at about 1.8 s; the newest-row windows
-are gone from the kit and the console's frames.
+**`next` with levels.** What it buys: an agent knows what it must do
+before a dataset can be served, what it should do, and what it could;
+a kit such as the outlook kit is used when asked for and not a chore.
+What is there: the `next` view and `results_due()` in
+`kits/goals/kit.sql`, the tests' own `finding` and `fix`
+(`view_tests()`), the closing lines of a call
+(`crates/serverd/src/window.rs`), `outlook_findings()` and
+`outlook_measurements()` named inside `next`. Done when: every row of
+`next` carries its kind of work and a level; the closing line counts
+must and should; work on a dataset is complete with no must open;
+`next` names no kit; a server without the outlook kit serves the
+same `next` for a dataset with no stored preview result.
