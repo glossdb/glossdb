@@ -29,12 +29,12 @@
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow" title="Every open row of the next-steps list, in its order: a red test first, then what a load changed or a person decided, then what is missing. The agent reads the same list after every call.">Open now</span>
+    <header><span class="eyebrow" title="What must be done on the dataset, then what should, as the next-steps list orders it: must where served data is wrong or cannot be served, should where the layer is incomplete for what is served. The agent reads the same list after every call. What could be done is read with SELECT * FROM next WHERE level = &#x27;could&#x27;.">Open now</span>
       <code class="chip">next</code></header>
     <div class="rrow rhead" style="grid-template-columns:6rem minmax(9rem,15rem) minmax(0,1fr) 7rem 6rem">
       <span>work</span><span>asset</span><span>what is open</span><span>waits for</span><span>state</span>
     </div>
-    <gl-rows frame="frames/next_rows" empty="nothing is open: every view is described and tested, and no question waits for an owner">
+    <gl-rows frame="frames/next_rows" empty="nothing must or should be done: every view is described and tested, and no question waits for an owner">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:6rem minmax(9rem,15rem) minmax(0,1fr) 7rem 6rem">
           <span class="r-meta">{kind}</span>

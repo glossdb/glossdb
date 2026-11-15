@@ -261,6 +261,36 @@ pub async fn app_on(dataset: &str) -> Served {
     served
 }
 
+/// The gated interfaces over a new workspace that holds `dataset`, the
+/// engine opened with every kit but `kits/<kit>/kit.sql`.
+pub async fn app_on_without(dataset: &str, kit: &str) -> Served {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
+    let left_out = std::path::Path::new(kit).join("kit.sql");
+    let before = config.kits.len();
+    config.kits.retain(|path| !path.ends_with(&left_out));
+    assert_eq!(config.kits.len(), before - 1, "no kit {kit} among the kits");
+    config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
+    let plane = Arc::new(
+        Plane::open(config).await.unwrap().with_pages(
+            glossdb_serverd::skills::served_pages()
+                .expect("the language's documents beside the extension's kits"),
+        ),
+    );
+    let app = router(
+        Arc::clone(&plane),
+        InterfaceConfig::default(),
+        Access::Gated(login()),
+    );
+    say(
+        &app,
+        "/mcp",
+        &format!("DECLARE DATASET {dataset} SET (purpose: 'the suite');"),
+    )
+    .await;
+    (app, plane, dir)
+}
+
 /// A `tools/call` of the one tool, stamped with `meta_value`; `answer`
 /// is a review form's answer under its key, sent back with the call.
 pub fn call_with(meta_value: Value, statements: &str, answer: Option<(&str, Value)>) -> Value {

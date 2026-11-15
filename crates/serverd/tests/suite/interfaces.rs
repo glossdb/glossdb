@@ -1284,7 +1284,7 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     let stored = "USE fin; \
         SELECT aspect, key, stance, note, folded_in FROM review_decisions; \
         SELECT aspect, actor_kind FROM glossary WHERE actor_kind = 'human'; \
-        SELECT step, asset, state, who, for_view FROM next WHERE step = 'review';";
+        SELECT level, kind, asset, state, who, for_view FROM next WHERE kind = 'review';";
     let body = tool(&app, "/mcp", stored).await;
     let outcomes = outcomes(&body);
     assert_eq!(
@@ -1301,7 +1301,7 @@ async fn an_alternative_taken_is_stored_as_the_persons_correction_and_handed_to_
     // What the agent is asked to do: apply the decision to the view.
     assert_eq!(
         outcomes[3]["rows"],
-        json!([{"step": "review", "asset": "fin.dso", "state": "decided",
+        json!([{"level": "must", "kind": "review", "asset": "fin.dso", "state": "decided",
                 "who": "agent", "for_view": "dso"}]),
         "{outcomes}"
     );

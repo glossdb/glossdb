@@ -1,12 +1,12 @@
 -- The overview's five functions of data intelligence, one row each,
 -- with the question each answers. `have` is what exists, from the
--- catalog. `open` is what `next` lists for the kind of work that
--- belongs to the function, so the page and the agent read the same
--- list. Lineage has no work of its own: it results from the load
+-- catalog. `open` is what `next` lists as must or should for the kind
+-- of work that belongs to the function, so the page and the agent read
+-- the same list. Lineage has no work of its own: it results from the load
 -- queries and the definitions. `link` opens the function's page.
 WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
-todo AS (SELECT step, who, count(*) AS n FROM next GROUP BY ALL),
+todo AS (SELECT kind AS work, who, count(*) AS n FROM next WHERE level <> 'could' GROUP BY ALL),
 recipe AS (
   SELECT r.table_name, r.source FROM recipes r JOIN d ON d.dataset = r.dataset
   QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1),
@@ -83,6 +83,6 @@ SELECT r.ord, r.title, r.question, r.have, r.more,
        CASE WHEN coalesce(a.n, 0) + coalesce(p.n, 0) = 0 THEN 'ok' ELSE 'warn' END AS scls,
        (SELECT b FROM base) || r.page AS link
 FROM rows r
-LEFT JOIN todo a ON a.step = r.kind AND a.who = 'agent'
-LEFT JOIN todo p ON p.step = r.kind AND p.who = 'person'
+LEFT JOIN todo a ON a.work = r.kind AND a.who = 'agent'
+LEFT JOIN todo p ON p.work = r.kind AND p.who = 'person'
 ORDER BY r.ord

@@ -54,13 +54,15 @@ a working example and names the references for depth. Every page this server ser
 row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
 Every result ends with `status:`: whether the last statement ran or was refused. A call on \
 a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
-is open on the dataset per kind of work, and `first:`, the first open row. A call that changed what \
-waits in the workspace adds `summary:`. \
-`SELECT step, asset, state, open, statement FROM next` lists every open row with the \
-statement that closes it; `<...>` marks what you fill in. Work on a dataset is complete when \
-`next` shows nothing open for you. Rows that wait for a person are counted apart and do not \
-hold you back. The list is context: what the person asked for decides what you work on. Read \
-live state through the tool instead of assuming it.";
+must and what should be done on the dataset per kind of work, and `first:`, the first of them. \
+A call that changed what waits in the workspace adds `summary:`. \
+`SELECT level, kind, asset, state, open, statement FROM next` lists every open row with the \
+statement that opens the work; `<...>` marks what you fill in. Each row has a level. Must: \
+served data is wrong or cannot be served. Should: the layer is incomplete for what is served. \
+Could: what sits beside it, read on request with `WHERE level = 'could'`. Work on a dataset is \
+complete when no must is open; the should rows make the layer complete. Rows that wait for a \
+person are counted apart and do not hold you back. The list is context: what the person asked \
+for decides what you work on. Read live state through the tool instead of assuming it.";
 
 /// What the summary is decided on: the store's counts plus the open
 /// question count. Movement is a comparison of these FACTS — never of
@@ -204,8 +206,8 @@ impl GlossqlMcp {
     fn instructions(&self, bound: Option<&str>) -> String {
         let opening = match bound {
             Some(dataset) => format!(
-                "Every call on this interface opens on `{dataset}`. Begin with `SELECT step, \
-                 asset, state, open, statement FROM next`."
+                "Every call on this interface opens on `{dataset}`. Begin with `SELECT level, \
+                 kind, asset, state, open, statement FROM next WHERE level <> 'could'`."
             ),
             None => self.summary.opening(),
         };
@@ -225,8 +227,8 @@ impl GlossqlMcp {
              workspace holds. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
              '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
         } else {
-            "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT step, asset, \
-             state, open, statement FROM next`."
+            "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT level, kind, \
+             asset, state, open, statement FROM next WHERE level <> 'could'`."
         }
         .to_string();
         match summary_counts(plane).await {
@@ -643,10 +645,10 @@ impl GlossqlMcp {
                  `view_summary()`. A refused statement is an error that names what was wrong \
                  and its place in the call; the statements before it stay stored \
                  (`{{completed}}`). Every result ends with `status:` (the last statement); a call \
-                 on a dataset adds `next:` (what is open on it per kind of work) and `first:` (the \
-                 first open row); \
-                 `SELECT step, asset, state, open, statement FROM next` gives each row's \
-                 statement. Start with `SELECT body FROM pages() WHERE uri = \
+                 on a dataset adds `next:` (what must and what should be done on it, per kind of \
+                 work) and `first:` (the first of them); \
+                 `SELECT level, kind, asset, state, open, statement FROM next` gives each row's \
+                 statement; work on a dataset is complete when no must is open. Start with `SELECT body FROM pages() WHERE uri = \
                  'skill://glossql/SKILL.md'`. While assumptions wait for a person, a call that \
                  only reads the catalog may carry the person's question forms; loads and \
                  data reads do not.",
@@ -996,13 +998,14 @@ impl ServerHandler for GlossqlMcp {
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
             resource_templates: vec![
-                ResourceTemplate::new("next://{dataset}/{step}", "next")
+                ResourceTemplate::new("next://{dataset}/{kind}", "next")
                     .with_description(
                         "What is open on a dataset for one kind of work (integrate, \
-                         describe, test, review): each row with its asset, its state, what \
-                         the newest load changed and the statement that opens the work. \
-                         `next://{dataset}` serves every row; the same rows through the \
-                         tool are `SELECT * FROM next WHERE step = '<kind>'`.",
+                         describe, test, review): each row with its level (must, should, \
+                         could), its asset, its state, what the newest load changed and the \
+                         statement that opens the work. `next://{dataset}` serves every \
+                         row; the same rows through the tool are `SELECT * FROM next WHERE \
+                         kind = '<kind>'`.",
                     )
                     .with_mime_type("text/markdown"),
             ],
@@ -1453,7 +1456,7 @@ impl GlossqlMcp {
         &self,
         actor: &Actor,
         dataset: &str,
-        step: Option<&str>,
+        kind: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, String> {
         let session = self
             .plane
@@ -1483,7 +1486,7 @@ impl GlossqlMcp {
         };
         Ok(rows
             .iter()
-            .filter(|row| step.is_none_or(|s| row["step"].as_str() == Some(s)))
+            .filter(|row| kind.is_none_or(|k| row["kind"].as_str() == Some(k)))
             .cloned()
             .collect())
     }
@@ -1497,12 +1500,12 @@ impl GlossqlMcp {
         context: &RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
         let actor = caller(context)?;
-        let (dataset, step) = match rest.split_once('/') {
+        let (dataset, kind) = match rest.split_once('/') {
             Some((d, s)) => (d, Some(s)),
             None => (rest, None),
         };
         let rows = self
-            .next_rows(&actor, dataset, step)
+            .next_rows(&actor, dataset, kind)
             .await
             .map_err(|e| McpError::resource_not_found(format!("`{uri}`: {e}"), None))?;
         let body = window::next_page(dataset, &rows);

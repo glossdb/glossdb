@@ -1,7 +1,8 @@
 //! The lines on every result: where the call left the agent, on its
 //! last outcome (`status:`), and, where the call is on a dataset, what
-//! is open on it (`next:`), a count per kind of work, and the first
-//! open row (`first:`) with a link into `next://` and the `next` read. A call
+//! is open on it (`next:`): what must and what should be done, a count
+//! per kind of work, and the first of them (`first:`) with a link into
+//! `next://` and the `next` read. What could be done is not counted. A call
 //! that reads `metric_series()` adds `window:`. The lines are context:
 //! the skills say how, the catalog says what is open, and the agent
 //! decides.
@@ -96,39 +97,60 @@ fn field(row: &Value, name: &str) -> String {
         .to_string()
 }
 
-/// The kinds of work a row of `next` is labelled with (its `step`
-/// column). They are labels, not stages: the list is ordered by
-/// priority, and this order is only the order of the counts.
+/// The kinds of work a row of `next` is labelled with (its `kind`
+/// column). They are labels, not stages: the list is ordered by level,
+/// and this order is only the order of the counts.
 const KINDS: [&str; 4] = ["integrate", "describe", "test", "review"];
 
-/// The `next:` line: how many rows are open for the agent per kind of
-/// work, then the first row of the list (the view orders by priority),
-/// with the link to the page of its kind. What waits for a person
-/// closes the line and never counts as the agent's.
+/// The levels the `next:` line counts, in the list's order. `could` is
+/// read on request and not counted.
+const COUNTED: [&str; 2] = ["must", "should"];
+
+/// The `next:` line: per level, must then should, how many rows are
+/// open for the agent per kind of work; `must 0` says the work on the
+/// dataset is complete. Then the first of them (the view orders by
+/// level), with the link to the page of its kind. What waits for a
+/// person closes the line and never counts as the agent's.
 pub fn next_line(dataset: &str, rows: &[Value]) -> String {
-    let mine: Vec<&Value> = rows
+    let counted: Vec<&Value> = rows
         .iter()
+        .filter(|r| COUNTED.contains(&field(r, "level").as_str()))
+        .collect();
+    let mine: Vec<&Value> = counted
+        .iter()
+        .copied()
         .filter(|r| field(r, "who") != "person")
         .collect();
-    let waiting = rows.len() - mine.len();
-    let mut parts: Vec<String> = KINDS
+    let waiting = counted.len() - mine.len();
+    let mut parts: Vec<String> = COUNTED
         .iter()
-        .filter_map(|kind| {
-            let n = mine.iter().filter(|r| field(r, "step") == *kind).count();
-            (n > 0).then(|| format!("{kind} {n}"))
+        .map(|level| {
+            let kinds: Vec<String> = KINDS
+                .iter()
+                .filter_map(|kind| {
+                    let n = mine
+                        .iter()
+                        .filter(|r| field(r, "level") == *level && field(r, "kind") == *kind)
+                        .count();
+                    (n > 0).then(|| format!("{kind} {n}"))
+                })
+                .collect();
+            if kinds.is_empty() {
+                format!("{level} 0")
+            } else {
+                format!("{level} {}", kinds.join(", "))
+            }
         })
         .collect();
-    if parts.is_empty() {
-        parts.push("nothing open".to_string());
-    }
     if waiting > 0 {
         parts.push(format!("waiting for a person {waiting}"));
     }
     let mut line = format!("next: {}", parts.join(" · "));
     if let Some(first) = mine.first() {
-        let kind = field(first, "step");
+        let kind = field(first, "kind");
         line.push_str(&format!(
-            "\nfirst: {kind} {} ({}): {} (next://{dataset}/{kind})",
+            "\nfirst: {} {kind} {} ({}): {} (next://{dataset}/{kind})",
+            field(first, "level"),
             field(first, "asset"),
             field(first, "state"),
             field(first, "open")
@@ -138,8 +160,8 @@ pub fn next_line(dataset: &str, rows: &[Value]) -> String {
 }
 
 /// The `next://<dataset>[/<kind>]` page: every open row in the list's
-/// own order (by priority), labelled with its kind of work, with its
-/// cause and the statement that opens the work.
+/// own order (by level), labelled with its level and its kind of work,
+/// with its cause and the statement that opens the work.
 pub fn next_page(dataset: &str, rows: &[Value]) -> String {
     let mut out = format!("# next on {dataset}\n\n");
     if rows.is_empty() {
@@ -147,9 +169,10 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
     }
     for row in rows {
         out.push_str(&format!(
-            "**{}**, {} ({}): {}\n",
+            "**{}**, {} {} ({}): {}\n",
             field(row, "asset"),
-            field(row, "step"),
+            field(row, "level"),
+            field(row, "kind"),
             field(row, "state"),
             field(row, "open")
         ));

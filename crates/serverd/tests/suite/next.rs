@@ -1,9 +1,9 @@
 //! `next`, the work list of a dataset, read through the agent
-//! interface: what is open, each row labelled with its kind of work
-//! (the `step` column: integrate, describe, test, review), with its
-//! asset, its state and the statement that opens the work. The tests
-//! check kind, asset and state, and that a row's statement names the
-//! asset and the property of the fixture.
+//! interface: what is open, each row with its level (must, should,
+//! could) and its kind of work (integrate, describe, test, review),
+//! with its asset, its state and the statement that opens the work.
+//! The tests check level, kind, asset and state, and that a row's
+//! statement names the asset and the property of the fixture.
 
 use axum::Router;
 use serde_json::{Value, json};
@@ -14,7 +14,7 @@ const FIN: &str = "/fin/mcp";
 
 /// The rows of `next` under "test", in the list's order.
 async fn open_tests(app: &Router) -> Vec<Value> {
-    rows(app, FIN, "SELECT * FROM next WHERE step = 'test'").await
+    rows(app, FIN, "SELECT * FROM next WHERE kind = 'test'").await
 }
 
 fn text(row: &Value, key: &str) -> String {
@@ -186,9 +186,10 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     assert!(page.contains("GLOSS role ON fin.spend.period"), "{page}");
 
     // Every result on the dataset's interface closes with the link to
-    // the page of the first open row's kind of work.
+    // the page of the kind of work of the first row it must or should
+    // work on: the additivity test that waits for its annotations.
     let closing = window(&tool(&app, FIN, "SELECT 1 AS one").await);
-    assert!(closing.contains("next://fin/describe"), "{closing}");
+    assert!(closing.contains("next://fin/test"), "{closing}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -213,7 +214,7 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     let describe = rows(
         &app,
         FIN,
-        "SELECT state, statement FROM next WHERE step = 'describe' AND asset = 'fin.ledger'",
+        "SELECT state, statement FROM next WHERE kind = 'describe' AND asset = 'fin.ledger'",
     )
     .await;
     assert_eq!(describe.len(), 1, "{describe:?}");
@@ -232,7 +233,7 @@ async fn bookings_rows(app: &Router) -> Vec<Value> {
     rows(
         app,
         FIN,
-        "SELECT state, cause FROM next WHERE step = 'describe' AND asset = 'fin.bookings' ORDER BY state",
+        "SELECT state, cause FROM next WHERE kind = 'describe' AND asset = 'fin.bookings' ORDER BY state",
     )
     .await
 }
@@ -299,46 +300,102 @@ async fn a_changed_load_is_named_with_what_it_changed() {
     assert_eq!(counts, [&json!(3), &json!(4)], "{loads:?}");
 }
 
-/// The `next:` line under a result counts the rows `next` lists. A call
-/// that defines a metric and reads `next` gets the same rows in the
-/// read and in the line: the server runs the metric's tests before the
-/// read, not after it.
+/// The `next:` line under a result counts the rows `next` lists that
+/// must and should be done, per kind of work; what could be done is not
+/// counted. A call that defines a metric and reads `next` gets the same
+/// rows in the read and in the line: the server runs the metric's tests
+/// before the read, not after it.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_line_counts_the_rows_the_same_call_lists() {
     let (app, _, _dir) = fin().await;
     let body = tool(
         &app,
         FIN,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+        r#"CREATE TABLE fin.funds AS SELECT 'general' AS fund;
+           DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
-           SELECT step, who FROM next"#,
+           SELECT level, kind, who FROM next"#,
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let outcomes = common::outcomes(&body);
-    let listed = outcomes[2]["rows"].as_array().unwrap();
+    let listed = outcomes[3]["rows"].as_array().unwrap();
     let window = window(&body);
     let line = window
         .lines()
         .find_map(|l| l.strip_prefix("next:"))
         .unwrap_or_else(|| panic!("{window}"));
-    for step in ["integrate", "describe", "test", "review"] {
-        let counted: usize = line
+    for level in ["must", "should"] {
+        let part = line
             .split('\u{b7}')
-            .find_map(|part| part.trim().strip_prefix(step)?.trim().parse().ok())
-            .unwrap_or(0);
-        let rows = listed
-            .iter()
-            .filter(|r| text(r, "step") == step && text(r, "who") != "person")
-            .count();
-        assert_eq!(counted, rows, "{step}: {window} against {listed:?}");
+            .find_map(|part| part.trim().strip_prefix(level))
+            .unwrap_or_else(|| panic!("no {level} in {window}"));
+        for kind in ["integrate", "describe", "test", "review"] {
+            let counted: usize = part
+                .split(',')
+                .find_map(|p| p.trim().strip_prefix(kind)?.trim().parse().ok())
+                .unwrap_or(0);
+            let rows = listed
+                .iter()
+                .filter(|r| {
+                    text(r, "level") == level
+                        && text(r, "kind") == kind
+                        && text(r, "who") != "person"
+                })
+                .count();
+            assert_eq!(counted, rows, "{level} {kind}: {window} against {listed:?}");
+        }
     }
+    // the table no view reads is described on request: listed, not counted
+    assert!(
+        listed.iter().any(|r| text(r, "level") == "could"),
+        "{listed:?}"
+    );
+    assert!(line.contains("must 0"), "{window}");
     // the metric's own tests ran before the read: none of them is listed
     assert_eq!(
-        listed.iter().filter(|r| text(r, "step") == "test").count(),
+        listed.iter().filter(|r| text(r, "kind") == "test").count(),
         0,
         "{listed:?}"
     );
+}
+
+/// The outlook kit is a pull-in: a server that leaves it out serves
+/// `next`, `view_tests()` and the console, and for a dataset with no
+/// stored preview result it serves the same `next` and the same tests
+/// as a server with it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_without_the_outlook_kit_serves_next_the_tests_and_the_console() {
+    let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
+                     (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
+                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
+    let next = "SELECT level, kind, asset, state, who, open, statement FROM next";
+    let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
+    let (with, _, _with_dir) = common::app_on("fin").await;
+    say(&with, FIN, build).await;
+    let (without, _, _without_dir) = common::app_on_without("fin", "outlook").await;
+    say(&without, FIN, build).await;
+    assert_eq!(
+        rows(&without, FIN, next).await,
+        rows(&with, FIN, next).await
+    );
+    let served = rows(&without, FIN, tests).await;
+    assert!(!served.is_empty());
+    assert_eq!(served, rows(&with, FIN, tests).await);
+    let closing = window(&tool(&without, FIN, "SELECT 1 AS one").await);
+    assert!(closing.contains("next: must 0"), "{closing}");
+    for page in [
+        "/fin/app/console",
+        "/fin/app/console/frames/next_rows",
+        "/fin/app/console/frames/functions",
+        "/fin/app/console/frames/front",
+        "/fin/app/console/frames/view_tests",
+        "/fin/app/console/frames/trend?view=spend&grain=month&span=24",
+    ] {
+        let response = common::get(&without, page).await;
+        assert_eq!(response.status(), axum::http::StatusCode::OK, "{page}");
+    }
 }
 
 /// The interface keeps a dataset's `next` rows while the lake's snapshot
