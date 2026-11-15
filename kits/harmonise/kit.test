@@ -317,21 +317,22 @@ WHERE m.function = 'contract_check' AND m.subject = 'supply.onhand' ORDER BY ALL
 ----
 part	required	1	(empty)
 
-# each system's unit codes the CASE does not name fall to its ELSE: listed per system with their rows, and the
-# test is red, since they reach a column with a contract
+# each system's unit codes the CASE does not name fall to its ELSE: listed per system with their rows, over the
+# rows the view reads (Poland's blocked row left out), and the test is red, since they reach a column with a
+# contract
 query TTTTT
 SELECT c.column, c.system, c.source, array_to_string(c.literals, ' '), (SELECT string_agg(u.value || ':' || u.rows, ' ' ORDER BY u.value) FROM unnest(c.unnamed) x(u))
 FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"column": "VARCHAR", "system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
 WHERE m.function = 'code_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
 ----
 cases	d365	stock_d365.unit_id	Pl	Cs:2
-cases	mono	stock_mono.unit	pal	kart:3
+cases	mono	stock_mono.unit	pal	kart:2
 cases	sap	stock_sap.uom	PAL	CS:2
 
 query TTR
 SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
 ----
-code_test	red	0.75
+code_test	red	0.6666666666666666
 contract_test	red	0.125
 
 # both red tests are musts of next, each with its fix
@@ -354,14 +355,14 @@ SELECT state, score FROM view_tests() WHERE test = 'code_test';
 green	0.0
 
 # the next deliveries: Denmark sends a second row for one part and site, Poland a warehouse the contract does
-# not allow and a pallet written a fourth way
+# not allow, a pallet written a fourth way, and pieces (szt) on a blocked row the view leaves out
 statement ok
 COPY (FROM (VALUES ('000000000000100001', 'DK01', '120', 'CS'), ('000000000000100002', 'DK01', '3', 'PAL'),
                    ('000000000000100003', 'DK02', '40', 'CS'), ('000000000000100001', 'DK01', '5', 'CS')) t("MATNR", "WERKS", "LABST", "MEINS"))
 TO '{TEST_DIR}/mard.csv' (HEADER);
 
 statement ok
-COPY (FROM (VALUES ('P100', 'PL01', '55,5', 'kart', 'D'), ('P300', 'PL01', '1', 'Pal', 'D'), ('P300', 'PL01', '7', 'kart', 'K'),
+COPY (FROM (VALUES ('P100', 'PL01', '55,5', 'kart', 'D'), ('P300', 'PL01', '1', 'Pal', 'D'), ('P300', 'PL01', '7', 'szt', 'K'),
                    ('X9', 'PL01', '12', 'kart', 'D'), ('P100', 'PL02', '4', 'kart', 'D')) t(indeks, magazyn, ilosc, jm, status))
 TO '{TEST_DIR}/stany.csv' (HEADER);
 
@@ -396,10 +397,12 @@ d365	stock_d365.unit_id	Cs Pl	NULL
 mono	stock_mono.unit	kart pal	Pal:1
 sap	stock_sap.uom	CS PAL	NULL
 
+# the pieces are on a row the view's condition (status D) leaves out: not listed, and the pallet's share is of
+# the four rows the view reads
 query TTR
 SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
 ----
-code_test	red	0.2
+code_test	red	0.25
 contract_test	red	0.1
 
 # a person accepts the rows as they are: their tolerance turns the test green
@@ -482,10 +485,10 @@ DECLARE RECIPE orders_sap ON supply FROM sap AS $$SELECT "VBELN" AS order_id, "M
 statement ok
 IMPORT orders_sap;
 
-query TTIIITT
-SELECT table_name, mode, rows, source_rows, changed_rows, key IS NULL, state FROM load_modes() WHERE state IS NOT NULL;
+query TTIITTT
+SELECT table_name, mode, rows, source_rows, identical, key IS NULL, state FROM load_modes() WHERE state IS NOT NULL;
 ----
-supply.orders_sap	replace	100000	100000	0	true	unchanged
+supply.orders_sap	replace	100000	100000	true	true	unchanged
 
 # with the table's grain stated, the row names it as the key to merge by
 statement ok

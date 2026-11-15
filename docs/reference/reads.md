@@ -142,14 +142,14 @@ and changed rows). A table needs two stored loads.
 | Column | Holds |
 |---|---|
 | `table_name`, `mode`, `delivery` | the table; `replace` or `merge`; what the source sends, NULL where nobody stated it |
-| `rows`, `rows_before`, `source_rows`, `changed_rows` | the table's rows after this load and the one before; the rows the load query returned; the rows the load changed |
+| `rows`, `rows_before`, `source_rows`, `changed_rows`, `identical` | the table's rows after this load and the one before; the rows the load query returned; the rows a merge wrote; whether a replace of 100,000 rows or more holds the same rows as the load before |
 | `keys_carried`, `keys_missed` | for a merge: the keys the table held that the file carried, and the keys the table holds that the file did not carry |
 | `key` | the key a load without one could merge by: the load query's, the table's `entity` grain, else a column whose stored profile is filled and unique |
-| `state`, `level` | `keys missing`: a merge whose file carried at least 90% of the keys the table held and missed some; `must` where `delivery` is `full`, else `should`. `unchanged`: a replace of at least 100,000 rows that changed at most 1% of them, where `delivery` is not `full`; `should`. NULL otherwise |
+| `state`, `level` | `keys missing`: a merge whose file carried at least 90% of the keys the table held and missed some; `must` where `delivery` is `full`, else `should`. `unchanged`: a replace that is `identical`, where `delivery` is not `full`; `should`. NULL otherwise |
 | `open`, `statement` | the finding and the statement that fixes it, as `next` lists them |
 
 ```sql
-SELECT table_name, mode, rows, source_rows, changed_rows, state, level FROM load_modes();
+SELECT table_name, mode, rows, source_rows, identical, state, level FROM load_modes();
 ```
 
 ## The views kit
@@ -255,7 +255,7 @@ with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
 | Test | Its check returns | Red when |
 |---|---|---|
 | `contract_test` | `breaches`: per column, `rule` (`key`, `required`, `values`, `codes`, `type`, `missing`), `count` of rows and up to three `examples`; `rows` | the key repeats or is empty, a required value is empty, a value is not allowed, a code has no row in its code table, a column is served as another type. `breach_rate` is the share of rows of the largest breach |
-| `code_test` | `codes`: per target column and source column, the `system`, the `literals` the expression names, `told`, `contracted`, `rows`, and `unnamed`, each value the literals do not name with its rows | a value the expression does not name reaches a column with a contract: it falls to the `ELSE` or to NULL. Name every code. Where a column is tested by a range, a pattern or a function of it, `told` is false; where no column is told, the check is not applicable and the test is yellow, not green |
+| `code_test` | `codes`: per target column and source column, the `system`, the `literals` the expression names, `told`, `contracted`, `rows`, and `unnamed`, each value the literals do not name with its rows | a value the expression does not name reaches a column with a contract: it falls to the `ELSE` or to NULL. Name every code. Values are counted over the rows the view's condition on the source table keeps (comparisons with literals joined by `and`). Where a column is tested by a range, a pattern or a function of it, or the condition has another form (a window, an `or`), `told` is false; where no column is told, the check is not applicable and the test is yellow, not green |
 
 A server opened without the kit serves the same `next`, the same
 tests and the same `column_mapping()` for a dataset with no contract.

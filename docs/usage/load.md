@@ -86,12 +86,14 @@ loaded logistics.deliveries: 48210 rows, 0 dropped (new)
 `imports` keeps one row per load: `table_name`, `mode` (`replace` or
 `merge`), `rows`, `dropped_rows_count`, `lineage` (each column's
 expression over the source's columns), `snapshot_id`, `imported_at`,
-`source_rows` (the rows the load query returned) and `changed_rows`
-(the rows the load inserted, updated or removed against the table
-before it).
+`source_rows` (the rows the load query returned), `changed_rows` (the
+rows a keyed load inserted or updated) and `identical` (a load without
+a key of 100,000 rows or more that holds the same rows as the load
+before, by a sum of row hashes; measured on 2,000,000 rows of 23
+columns, the hash adds 0.05 s to a load of 1.0 s).
 
 ```sql
-SELECT table_name, mode, rows, source_rows, changed_rows, dropped_rows_count, imported_at FROM imports;
+SELECT table_name, mode, rows, source_rows, changed_rows, identical, dropped_rows_count, imported_at FROM imports;
 ```
 
 ## Load again
@@ -135,8 +137,8 @@ before it. `next` lists two cases as `integrate` rows:
   its complete state, so rows deleted at the source stay in the table.
   The fix loads without the key. A `must` where `delivery` is `full`,
   a `should` otherwise.
-- **`unchanged`**: a load without a key of at least 100,000 rows that
-  changed at most 1% of them. The row names the key to merge by: the
+- **`unchanged`**: a load without a key of 100,000 rows or more that
+  wrote the same rows as the load before. The row names the key to merge by: the
   load query's key, the table's `entity` grain, else a column whose
   profile is filled and unique. A `should`, and only where `delivery`
   is not `full`.

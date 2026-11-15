@@ -108,7 +108,9 @@ WHERE l.newest AND l.rows_before IS NOT NULL;
 -- `delivery` annotation on the table): table_name (<dataset>.<table>),
 -- mode (replace or merge), delivery (full, incremental, or NULL where
 -- nobody stated it), rows (after the load), rows_before, source_rows
--- (what the file carried), changed_rows, keys_carried (of a merge: the
+-- (what the file carried), changed_rows (what a merge wrote), identical
+-- (a whole replace of 100,000 rows or more that holds the same rows as the
+-- load before, by the fingerprint the engine stores), keys_carried (of a merge: the
 -- keys the table held before that the file carried), keys_missed (of a
 -- merge: the keys the table holds that the file did not carry), key (the
 -- key a whole replace could merge by: the recipe's, the table's `entity`
@@ -118,8 +120,8 @@ WHERE l.newest AND l.rows_before IS NOT NULL;
 --     table held and missed some: the source likely sends its complete
 --     state, and a row it no longer sends is kept here. must where the
 --     delivery is stated full, should otherwise.
---   unchanged  a whole replace of at least 100,000 rows that changed at
---     most 1% of them, where the delivery is not stated full: a keyed
+--   unchanged  a whole replace that is identical to the load before,
+--     where the delivery is not stated full: a keyed
 --     load would write only the changed rows. should.
 -- The numbers, measured: a complete monthly file of EIA-860M carries
 -- 99.84% to 99.99% of the generators of the month before; a yearly
@@ -130,7 +132,7 @@ WHERE l.newest AND l.rows_before IS NOT NULL;
 --===------------------------------------------------------------------===--
 CREATE OR REPLACE MACRO main.load_modes() AS TABLE
 WITH loads AS (
-  SELECT table_name, mode, rows, source_rows, changed_rows, end_snapshot IS NULL AS newest,
+  SELECT table_name, mode, rows, source_rows, changed_rows, identical, end_snapshot IS NULL AS newest,
          lag(rows) OVER (PARTITION BY table_name ORDER BY begin_snapshot) AS rows_before
   FROM main.imports_history WHERE dataset = current_schema()),
 stated AS (
@@ -152,7 +154,7 @@ recipe AS (
   FROM main.recipes WHERE dataset = current_schema()),
 judged AS (
   SELECT current_schema() || '.' || l.table_name AS table_name, l.mode, d.delivery, l.rows, l.rows_before,
-         l.source_rows, l.changed_rows,
+         l.source_rows, l.changed_rows, l.identical,
          CASE WHEN l.mode = 'merge' THEN l.source_rows - (l.rows - l.rows_before) END AS keys_carried,
          CASE WHEN l.mode = 'merge' THEN l.rows - l.source_rows END AS keys_missed,
          coalesce(r.key, array_to_string(g.grain, ', '), u.col) AS key, r.table_name AS recipe_table, r.source, r.sql
@@ -165,10 +167,10 @@ judged AS (
 stated_state AS (
   SELECT *,
          CASE WHEN mode = 'merge' AND rows_before > 0 AND keys_missed > 0 AND keys_carried >= 0.9 * rows_before THEN 'keys missing'
-              WHEN mode = 'replace' AND rows >= 100000 AND changed_rows IS NOT NULL AND changed_rows <= 0.01 * rows
+              WHEN mode = 'replace' AND identical
                    AND delivery IS DISTINCT FROM 'full' THEN 'unchanged' END AS state
   FROM judged)
-SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows, keys_carried, keys_missed, key, state,
+SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows, identical, keys_carried, keys_missed, key, state,
        CASE WHEN state = 'keys missing' AND delivery = 'full' THEN 'must' WHEN state IS NOT NULL THEN 'should' END AS level,
        CASE state
          WHEN 'keys missing'
@@ -176,8 +178,7 @@ SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows,
               || ' keys the table held and missed ' || keys_missed || ': a row gone at the source is kept here'
               || CASE WHEN delivery = 'full' THEN ', and the source is stated to send its complete state' ELSE '' END
          WHEN 'unchanged'
-         THEN 'the newest load of ' || table_name || ' replaced ' || rows || ' rows and changed ' || changed_rows
-              || ' of them: a keyed load writes only the changed rows' END AS open,
+         THEN 'the newest load of ' || table_name || ' wrote its ' || rows || ' rows again, the same rows as the load before: a keyed load writes only the changed rows' END AS open,
        CASE state
          WHEN 'keys missing'
          THEN '-- where each file holds the complete state, load without the key: the table is then the file' || chr(10)

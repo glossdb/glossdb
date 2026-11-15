@@ -69,8 +69,8 @@ Declaring it loads the table, typed as the SQL types it.
 
   `next` lists a keyed load whose file carried at least 90% of the
   table's keys and missed some (`keys missing`), and a load without a
-  key of 100,000 rows or more that changed at most 1% of them
-  (`unchanged`), each with the statement that fixes it.
+  key of 100,000 rows or more that wrote the same rows as the load
+  before (`unchanged`), each with the statement that fixes it.
 - **Declared again with other SQL**, the load query replaces the old
   one and loads the table again. The annotations stay; those on a
   column the new load changed read `stale`.
@@ -88,7 +88,7 @@ The acknowledgement says what happened: `loaded fleet.readings: 48210
 rows, 0 dropped (new)`. The `imports` table keeps each load:
 
 ```sql
-SELECT table_name, mode, rows, source_rows, changed_rows, dropped_rows_count, imported_at FROM imports_history ORDER BY begin_snapshot DESC
+SELECT table_name, mode, rows, source_rows, changed_rows, identical, dropped_rows_count, imported_at FROM imports_history ORDER BY begin_snapshot DESC
 ```
 
 ## CSV files

@@ -200,8 +200,12 @@ DECLARE TEST contract_test ON contract_check BY (AGENT, HUMAN) DETECTOR rate_tol
 -- column and source column: the system (its table's system_of_record,
 -- else its load's source), the literals, the values not named, and told,
 -- false where the column is also tested by a range, a pattern or a
--- function of it (the literals do not tell what it handles). A code
--- mapped through a join is orphan_test's. Red where a value not named
+-- function of it (the literals do not tell what it handles), or where
+-- the view's condition on its table cannot be applied here. The values
+-- are counted over the rows the view's condition on the table keeps
+-- (definition()'s conditions: comparisons with literals joined by and);
+-- a row a join drops for want of a partner is orphan_test's, as is a
+-- code mapped through a join. Red where a value not named
 -- reaches a column with a contract: breach_rate is the largest share of a
 -- source column's rows whose value is not named. Not applicable where no
 -- column tests a code the literals tell.
@@ -237,16 +241,52 @@ DECLARE FUNCTION code_check FOR GLOBAL AS $$
                                          WHEN starts_with(l, 'cast(') THEN trim(trim(l[6:-4]), '''')
                                          ELSE l END)) AS literals
     FROM tests, unnest(literals) u(l) GROUP BY col, path),
+  -- what the view requires of each source table's rows (definition()'s conditions): one condition for
+  -- every read of the table, made of comparisons of its columns with literals joined by and, is applied;
+  -- reads with different conditions, or one with another form (a window, an or), are not
+  conds AS (
+    SELECT split_part(c.table_name, '.', 2) AS t, count(DISTINCT coalesce(c.condition, '')) AS n, max(c.condition) AS condition
+    FROM d, unnest(d.conditions) u(c) GROUP BY 1),
+  tellable AS (
+    SELECT t, n = 1 AND (condition IS NULL OR regexp_replace(regexp_replace(condition, '(?:=|in|<>|!=|<=|>=|<|>)\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:[A-Z][A-Z0-9_ ]*(?:, (?:''(?:[^'']|'''')*''|cast\([^()]* as [A-Z]+\)|-?[0-9][0-9.]*))+\)', '', 'g'), 'and\(|[(), ]', '', 'g') = '') AS ok
+    FROM conds),
+  conjuncts AS (
+    SELECT c.t, regexp_extract(m, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1) AS path, regexp_extract(m, '((?:=|in|<>|!=|<=|>=|<|>))\([A-Za-z_]', 1) AS op,
+           list_transform(regexp_extract_all(regexp_extract(m, ':[A-Z][A-Z0-9_ ]*(, .*)\)$', 1), '(?:''(?:[^'']|'''')*''|cast\([^()]* as|-?[0-9][0-9.]*)'),
+             lambda l: CASE WHEN starts_with(l, '''') THEN replace(l[2:-2], '''''', '''')
+                            WHEN starts_with(l, 'cast(') THEN trim(trim(l[6:-4]), '''') ELSE l END) AS literals
+    FROM conds c JOIN tellable USING (t), unnest(regexp_extract_all(c.condition, '(?:^|[^a-z_<>!~=])(?:=|in|<>|!=|<=|>=|<|>)\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:[A-Z][A-Z0-9_ ]*(?:, (?:''(?:[^'']|'''')*''|cast\([^()]* as [A-Z]+\)|-?[0-9][0-9.]*))+\)')) u(m)
+    WHERE tellable.ok AND c.condition IS NOT NULL),
   judged AS (
-    SELECT n.col, n.path, n.literals, NOT EXISTS (SELECT 1 FROM untold u WHERE u.col = n.col AND u.path = n.path) AS told FROM named n
+    SELECT n.col, n.path, n.literals,
+           NOT EXISTS (SELECT 1 FROM untold u WHERE u.col = n.col AND u.path = n.path)
+             AND coalesce((SELECT ok FROM tellable WHERE t = split_part(n.path, '.', 2)), true) AS told FROM named n
     UNION ALL
     SELECT u.col, u.path, []::VARCHAR[], false FROM untold u
     WHERE NOT EXISTS (SELECT 1 FROM named n WHERE n.col = u.col AND n.path = u.path)),
   cells AS MATERIALIZED (
-    SELECT split_part($subject, '.', 1) || '.' || "table" || '.' || "column" AS path, val
-    FROM dataset_cells(split_part($subject, '.', 1), 'its sources') WHERE val IS NOT NULL),
+    SELECT "table" AS t, split_part($subject, '.', 1) || '.' || "table" || '.' || "column" AS path, rn, val
+    FROM dataset_cells(split_part($subject, '.', 1), 'its sources')),
+  -- the rows of a source table the view's condition leaves out
+  dropped AS (
+    SELECT DISTINCT x.t, x.rn
+    FROM (SELECT DISTINCT t, rn FROM cells WHERE t IN (SELECT t FROM conjuncts)) x
+    JOIN conjuncts k ON k.t = x.t
+    LEFT JOIN cells v ON v.t = x.t AND v.rn = x.rn AND v.path = k.path
+    WHERE NOT coalesce(CASE
+      WHEN k.op IN ('=', 'in', '<>', '!=')
+      THEN (list_contains(k.literals, v.val)
+            OR coalesce(list_contains(list_transform(k.literals, lambda l: try_cast(l AS DOUBLE)), try_cast(v.val AS DOUBLE)), false))
+           = (k.op IN ('=', 'in'))
+      WHEN k.op = '<' THEN coalesce(try_cast(v.val AS DOUBLE) < try_cast(k.literals[1] AS DOUBLE), v.val < k.literals[1])
+      WHEN k.op = '<=' THEN coalesce(try_cast(v.val AS DOUBLE) <= try_cast(k.literals[1] AS DOUBLE), v.val <= k.literals[1])
+      WHEN k.op = '>' THEN coalesce(try_cast(v.val AS DOUBLE) > try_cast(k.literals[1] AS DOUBLE), v.val > k.literals[1])
+      WHEN k.op = '>=' THEN coalesce(try_cast(v.val AS DOUBLE) >= try_cast(k.literals[1] AS DOUBLE), v.val >= k.literals[1]) END
+      AND v.val IS NOT NULL, false)),
   present AS (
-    SELECT j.col, j.path, c.val, count(*) AS n FROM judged j JOIN cells c ON c.path = j.path WHERE j.told GROUP BY ALL),
+    SELECT j.col, j.path, c.val, count(*) AS n FROM judged j JOIN cells c ON c.path = j.path
+    WHERE j.told AND c.val IS NOT NULL AND NOT EXISTS (SELECT 1 FROM dropped x WHERE x.t = c.t AND x.rn = c.rn)
+    GROUP BY ALL),
   unnamed AS (
     SELECT p.* FROM present p JOIN judged j ON j.col = p.col AND j.path = p.path
     WHERE NOT list_contains(j.literals, p.val)
