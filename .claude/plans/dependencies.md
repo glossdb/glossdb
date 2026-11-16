@@ -1,109 +1,27 @@
 # Dependency plan
 
 How glossdb knows that a stored result is still valid, and who brings
-it current. It works as a build system does. The model is `model.md`,
-agreed with the project lead, and it is built:
+it current. What is built works as a build system does and is stated
+in the language's `SPEC.md` §6 and `docs/extending/kits.md`: a
+function's body says what it reads, a stored result keeps one input
+per read with a digest of what the read returned, a result is current
+while each read returns the same, `results_due()` lists what the
+views want that is missing or out of date, the server computes it
+after a write, and `next` lists what only an actor can do.
 
-1. **A function's body says what it reads**, through three read
-   functions whose arguments are a what and a where on the lineage:
-   `annotations(property, where)`, `results(function, where)`,
-   `definition(where)`. The reads are taken from the body as written
-   (its JSON) when the function is declared, and stored with it
-   (`functions.reads`).
-2. **A stored result keeps what those reads returned**: one `inputs`
-   row per read, with a digest; for data, DuckLake's version of each
-   table and view read.
-3. **A result is current while each read returns the same**, and no
-   result it read is outdated. Otherwise it is outdated: served and
-   marked. `glossql_outdated()` names the read that differs.
-4. **One read says what is due**: `results_due()` lists the results a
-   dataset's views want that are missing or outdated, with the
-   statement that computes each, an input before what reads it.
-5. **Two readers of that one read.** The server runs it after a
-   write, until nothing is left. `next` lists what the server leaves:
-   what only an actor can do (a statement to write, a red test, a
-   decision, a preview measurement that is due, since those call the
-   model service in `../glossthesi` and an actor starts them).
-
-A result no view wants is not due. Nothing else decides what is
-computed: no second list, no flag.
+What is open is the grain. A change is known for a whole set, and a
+result holds a whole set, so one change puts more out of date than it
+touched.
 
 ## Open, in risk order
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
-| A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
-
-## What is built
-
-- **One write, one transaction** (`Inner::Write`). A catalog write
-  takes the lake's next snapshot id with its rows. A new row ends the
-  row it replaces (`end_snapshot`); no row is deleted. `<name>` serves
-  the current rows, `<name>_history` every row. A write is tried again
-  only when another writer took its snapshot id.
-- **The lineage as one relation**, `lineage(dataset)`, in the
-  extension's lineage kit: what a dataset contains, what a view reads
-  and joins on, a relationship's two columns, the metric a plan plans.
-  The places a read names are walked over it: itself, its columns,
-  its sources, the columns it joins on, its relationships, its
-  metric, its dataset, the dataset's metrics, the dataset.
-- **Every shipped body reads through the read functions.** A test in
-  each suite holds them to it, with no exception. `join_check` is the
-  one check of a join that repeats rows. `relationship_coherence`
-  stores one result per relationship.
-- **Inputs are the reads**, written with the result. One SQL
-  definition computes a read's digest when the result is stored and
-  when it is checked.
-- **A computation that fails is a result**: stored with its inputs
-  and its error, current. A direct call computes it again.
-- **Snapshot expiry**: an annotation whose earlier catalog row is
-  gone reads as outdated. A load in place of a table with the same
-  columns leaves every result current.
-- **`results_due()`** is in `kits/goals/kit.sql`. It starts from every
-  view that is defined and not stopped (metric, table view, single
-  value) and wants the checks behind its tests and, before them, the
-  results those checks read, taken from the checks' stored reads. **The server**
-  (`bring_current` in `crates/duck/src/lib.rs`) runs it after a
-  write, in rounds, before the next read of the same call. **`next`**
-  reads the catalog's states and `load_changes()`.
-- **`next`** has, per row, a kind of work (integrate, describe,
-  test, review) and a level: must (served data is wrong or cannot be
-  served), should (the layer is incomplete for what is served), could
-  (what sits beside). Work on a dataset is complete with no must
-  open; the closing line of a call counts must and should. `next`
-  names no kit: a kit's tests and its stored results that are out of
-  date come in through `view_tests()` and `glossql_outdated()`, and a
-  function nobody ran is no row. A server runs without the outlook
-  kit.
-- **The outlook kit** (841 lines, 1,557 before) holds what needs the
-  model service: `metric_ranges` on the dataset, `metric_forecast`
-  and `metric_scenario` on a metric, the range test. The service
-  returns the verdicts and the kit stores and serves them. **The plan
-  kit** (323 lines) compares a plan with its metric's actuals with no
-  model service; its forecast column reads a stored forecast. Both
-  are pull-ins, run over MCP against glossthesi `976842b` (Measured).
-- **Gone**: the inputs from a body's bound plan, the C++ lineage,
-  `glossql_parts()`, `forecast_exists`, `scenario_exists`,
-  `open_items`, the console's re-measure button.
-- **A write that computes nothing takes 0.24 s** (0.54 s before; a
-  release build 0.28 s). Which results are out of date is checked
-  once per store version and kept; a kit's table macro is kept the
-  same way (`glossql_kept()` in the extension), so `view_tests()` and
-  the views' summary are planned once per write; `next` has no
-  correlated subquery. A kit's rows enter `next` as data in the kept
-  reads, so a kit no longer adds planning time. What `next`,
-  `results_due()` and the closing lines return is unchanged on the
-  Formula 1 and the three-systems walk. Left: the out-of-date check
-  (0.06 s) is computed whole on each write.
-- **A body that reads past the read functions is refused** at its
-  declaration (`untracked_read`): the catalog reached directly, a
-  what or where that is not a constant, a where that is no place.
-- **A keyed load of identical rows** writes nothing and leaves the
-  table's version (1.3 s against 2.0 s on 2,000,000 rows; a load
-  where every row changed 2.3 s against 2.0 s).
-- **Two writers at once** each land once; a test in
-  `crates/duck/tests` holds it.
+| A result's subject is the finest thing it is about. The scenario estimate is one result per metric with every scenario inside, the expected ranges one per dataset with every metric inside; declaring a scenario puts every stored estimate out of date, and an actor cannot ask for one scenario. A scenario becomes a subject as a plan is; the server loops over subjects | Medium: a scenario is an annotation on the dataset today, so the lineage gets a node and an edge | `kits/outlook/kit.sql`, the extension's lineage kit | Next | #246 |
+| An input per element of a read, not one digest for the set: the stored input says which column, relationship or scenario differs, and a result of several rows is out of date per row | High: the design is not written; a body is SQL, and which row used which element is known only where the function runs per element | the extension (`inputs`, `glossql_outdated()`), `SPEC.md` §6 | After a design page, tried on the shipped functions | |
+| A digest per asset built from its own statements and from what it contains and reads, as a version tree is. A write changes the digests on the path up from what it touched; the out-of-date check follows that path (today it is computed whole on each write, 0.06 s of 0.24 s). A result stored under the digest of what it read is found again when a change is undone, and a failed result does not replace a good one for another input | High: the lineage is not a strict tree (a view reads tables, a relationship has two ends) | the extension's catalog and runner | With the row above, on the same page | |
+| Data is a table's version, not its content: any load puts every result that read the table out of date; a replace load of identical rows computes once more (comparing costs 60 to 160% of the load) | Low until a workspace loads often | the extension | Not planned | |
+| An interrupt during a computation and the Postgres catalog's lost-race path are not run by a test | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | #247 |
 
 ## Measured
 
@@ -146,4 +64,15 @@ Per metric costs nothing measurable: at most 0.06 points of loss, 1 in 24 inside
 
 ## Next issue (draft)
 
-**The harmonisation kit** (`harness.md`, the first backlog row).
+**The design page for the grain** (rows 2 and 3). What it buys: a
+change puts out of date what read it and nothing beside, and the
+check after a write costs by what the write touched. What is there:
+`inputs` (one row per read, `docs/specification/tables/inputs.md` in
+the extension), `lineage()`, `glossql_outdated()`, the three cases
+that showed the grain (`relationship_coherence`, since split per
+relationship; #246; the temporal profile after a load). Done when:
+one page states the digest of an asset, what a read stores, and when
+a row of a result is out of date; it is tried on `metric_scenario`,
+`metric_ranges` and `orphan_check` in a scratch workspace with the
+same answers as today and the three cases named per element; the
+`SPEC.md` §6 diff is shown to the project lead.

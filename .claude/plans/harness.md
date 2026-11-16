@@ -11,37 +11,22 @@ plans beside it: `platform.md` (dbt, semantic models, lakes, the
 workspace as code), `sources.md` (spreadsheets, documents, search),
 `gate.md` (access per user), `clients.md` and `chat.md` (the hosted
 trial), `evaluation.md` (what glossval measures), `dependencies.md`
-(how a result becomes outdated and when it is computed again),
-`harmonise.md` (several systems of record onto one target model).
+(how a result becomes outdated and when it is computed again).
 
-## First: the release candidate
+## State
 
-The release candidate is the two branches `data-intelligence` as
-glossval measures them. Nothing new is picked before it. Work is
-committed locally after each step whose suites pass; nothing is
-pushed.
-
-| # | What | State |
-|---|---|---|
-| 1 | Names, text, tests, `next`, the console: the data intelligence direction | built |
-| 2 | Dependencies: the catalog's rows carry begin and end snapshots, a stored result records its inputs as rows, and one read, `results_due()`, says what the server computes after a write (`dependencies.md`) | built, committed |
-| 3 | glossval follows the catalog: its two reads of the old columns are changed; a run can replay an earlier run's statements with no model (`--replay`) | built |
-| 4 | The recorded `ferc-steam` build replayed on this server: the same score as the run it replays, no refusal, the review step stores its decisions | measured, on the host |
-| 5 | The goldens' baseline, accepted at these commits: rel-f1, the import path, the metric series, rel-event, booksql | done, every difference explained |
-| 6 | The server image at these commits; both contract test cases, three runs each, in the container (`evaluation.md`) | measured |
-| 7 | What an outside agent found when it built a workspace from the skill alone (20 items) | open: the list is not in this repository |
-| 8 | One pull request per repository; the extension's branch first, then the server's pin | when the project lead says the branches go up |
-
-After the release candidate, in this order: the outlook kit keeps the
-request and the stored answer and the model service returns the
-verdict; the rest of `dependencies.md`; the results page and the
-websites; then the backlog.
+The two branches `data-intelligence` are up as pull requests, measured
+by glossval at their heads (`evaluation.md`): the extension's first,
+then the server's pin moves to the extension's `main`. Next, in this
+order: a served column that empties is named (#243); the grain of a
+result and its inputs (`dependencies.md`, #246); the results page and
+the websites; then the backlog.
 
 ## The backlog, by kind of work
 
 | Kind of work | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|---|
-| Integrate | Harmonisation kit | See `harmonise.md` | | In work | |
+| Integrate | Harmonisation kit (built, preview): the faults no test covers; the reconciliation on an aggregated target. A key that is unique only inside one system waits for a real case (the extension's `corpus/29-identities-by-market.md`) | Medium | `kits/harmonise` | After #243 | #244, #245 |
 | Integrate | Works with your platform: dbt, semantic models, lakes read in place, attached databases | See `platform.md` | | | #221 |
 | Integrate | Spreadsheets, documents, search | See `sources.md` | | When a customer brings the data | |
 | Describe | The workspace as code: declarations as `.glossql` files, tested in CI | See `platform.md` | | | #219 |
@@ -63,7 +48,7 @@ Closed before the pull requests open, or moved to a row above.
 
 | What | Where | When |
 |---|---|---|
-| A kit cannot change a property that has values, not even to add a description, so an existing workspace cannot take a kit update | the extension | before a workspace lives longer than a release |
+| A kit cannot change a property that has values, so an existing workspace cannot take a kit update | the extension | #248 |
 | The spec says data-changing SQL is refused; the server allows it. It follows access control | `gate.md` | with `gate.md` |
 | The demo workspace is rebuilt on the new names | the demo server | before the pull requests |
 | A property that carries a test's expectation is required only where it is annotated | the extension (`SPEC.md` §5), six console frames | open |

@@ -16,7 +16,7 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A change that empties a served column is not named. A view defined again with a broken expression took a column from 0 to 81% NULL (272,821 of 338,186 rows) and no test or `next` row said so; in the running state on FERC three later years were loaded and `next` showed 0 rows come and 0 gone | Medium: it is what the layer adds over a built table | the views kit (a column held against its state before a load or a new definition), `load_changes()`, `next` | Next | |
+| A change that empties a served column is not named. A view defined again with a broken expression took a column from 0 to 81% NULL (272,821 of 338,186 rows) and no test or `next` row said so; in the running state on FERC three later years were loaded and `next` showed 0 rows come and 0 gone | Medium: it is what the layer adds over a built table | the views kit (a column held against its state before a load or a new definition), `load_changes()`, `next` | Next | #243 |
 | The running state on `eia-generators`; a third `erp-supply` run; the scorer's "handled" rule for a fault the builder removes at load (the second date format) | Low | glossval | With the row above | |
 | The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
@@ -72,7 +72,7 @@ DuckDB only as a comparison (a story for the docs later).
   rows (the emptied column of the first row above); 1.59 to 2.02 USD.
   `erp-supply` (generated data), two runs: the blank global ids and
   the unmapped local codes found in both; five of ten fault classes
-  have no test (`harmonise.md`). The running state on FERC, built on
+  have no test (#244). The running state on FERC, built on
   2021 and 2022, then three years loaded: 97.3% to 98.1% of cells so
   far, 83.3% to 85.6% on the new year alone. The goldens' baseline is
   accepted at these commits, every difference explained. 14.66 USD in
