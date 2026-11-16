@@ -174,7 +174,7 @@ One row per view of the dataset in use.
 | `additivity`, `additivity_state` | the value column's additivity; `none` where nobody stated it, `conflict` where it is withheld |
 | `dims`, `dimensions_without_rank` | the slicing columns, primary first; dimension columns without a `dimension` annotation |
 | `columns_without_role`, `missing` | served columns without a `role`; the annotation each needs. Both are empty for a single value |
-| `measurements_to_run` | measurements the row reads that nobody ran |
+| `measurements_to_run` | measurements the row reads that nobody ran or that are out of date; the server runs them after a write |
 | `profile_current` | the period column's temporal profile is current |
 
 ```sql
@@ -311,7 +311,7 @@ serve no rows.
 | Read | Columns |
 |---|---|
 | `range_points()` | `metric`, `applicable`, `reason`, `code`, `backtested`, `held_80`, `held_90`, `score`, `state`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `displacement`, `withheld`, `coverage_80`, `coverage_90`, `newest`, `point_seq`, `served_by`, `computed_at`, `error` |
-| `forecast_points()` | `metric`, `applicable`, `reason`, `code`, `error`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `coverage_80`, `coverage_80_se`, `coverage_90`, `coverage_90_se`, `coverage_points` |
+| `forecast_points()` | `metric`, `applicable`, `reason`, `code`, `error`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `coverage_80`, `coverage_80_se`, `coverage_90`, `coverage_90_se`, `coverage_points`, `coverage_datasets` |
 | `scenarios()` | `scenario`, `body`, `annotated`, `applicable`, `reason`, `levers`, `fix` |
 | `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `code`, `levers`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `sign`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |

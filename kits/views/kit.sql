@@ -72,7 +72,10 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- column it reads; `next` lists the same statements under the view; a
 -- table and a single value need none, since no check on them reads a
 -- role, so both are empty for them),
--- measurements_to_run (the measurement the row reads and nobody ran),
+-- measurements_to_run (the measurement the row reads that nobody ran or
+-- that is out of date: a load or a new definition moves the period
+-- column under its temporal profile, and every function that reads the
+-- view's grain reads that profile),
 -- profile_current (the period column's temporal profile is current at the
 -- data's own version). A table (x-kind relation) and a single value
 -- (x-kind scalar) have no series: applicable, period_column,
@@ -230,7 +233,7 @@ rows_ AS (
 judged AS (
   SELECT *,
     main.series_reason(ds.dataset, view, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
-    CASE WHEN period_column IS NOT NULL AND NOT profiled AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
+    CASE WHEN period_column IS NOT NULL AND NOT (profiled AND profile_current) AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || view || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
   FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
 -- a plan's row: its columns through the metric it plans

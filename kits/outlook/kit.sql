@@ -157,7 +157,7 @@ DECLARE FUNCTION metric_ranges FOR GLOBAL AS $$
               "period": "VARCHAR", "score": "DOUBLE", "state": "VARCHAR"}]')) u(m)
     WHERE a IS NOT NULL),
   errs AS (
-    SELECT e.e.member AS metric, list({'code': e.e.code, 'origin': e.e.origin, 'needed': e.e.needed, 'given': e.e.given} ORDER BY e.e.origin) AS errors
+    SELECT e.e.member AS metric, list({'code': e.e.code, 'origin': e.e.origin, 'needed': e.e.needed, 'given': e.e.given} ORDER BY e.e.origin NULLS FIRST) AS errors
     FROM a, unnest(main.answer_errors(a)) e(e) WHERE a IS NOT NULL GROUP BY e.e.member),
   per_metric AS (
     SELECT r.metric, r.additivity, r.applicable AND m.metric IS NOT NULL AS applicable,
@@ -410,7 +410,8 @@ $$ RETURNS metric_forecast;
 -- served_by, computed_at, current (false once the stored forecast is out
 -- of date), point_seq, step, span, to_go, period, p05 to p95,
 -- coverage_80, coverage_80_se, coverage_90, coverage_90_se,
--- coverage_points; a metric not forecast is one row with its reason.
+-- coverage_points, coverage_datasets; a metric not forecast is one row
+-- with its reason.
 CREATE OR REPLACE MACRO main.forecast_points() AS TABLE
 WITH stored AS (
   SELECT split_part(m.subject, '.', 2) AS metric, m.value, m.error, m.computed_at, coalesce(c.current, false) AS current
@@ -424,16 +425,17 @@ typed AS (
                             "grain": "VARCHAR", "origin": "VARCHAR",
                             "points": [{"step": "BIGINT", "span": "BIGINT", "to_go": "VARCHAR", "period": "VARCHAR", "p05": "DOUBLE", "p10": "DOUBLE",
                                         "p50": "DOUBLE", "p90": "DOUBLE", "p95": "DOUBLE", "coverage_80": "DOUBLE", "coverage_80_se": "DOUBLE",
-                                        "coverage_90": "DOUBLE", "coverage_90_se": "DOUBLE", "coverage_points": "BIGINT"}]}') AS f
+                                        "coverage_90": "DOUBLE", "coverage_90_se": "DOUBLE", "coverage_points": "BIGINT",
+                                        "coverage_datasets": "BIGINT"}]}') AS f
   FROM stored),
 pts AS (SELECT t.*, unnest(t.f.points) AS p, unnest(generate_series(0, len(t.f.points) - 1)) AS point_seq FROM typed t WHERE len(t.f.points) > 0)
 SELECT metric, f.applicable, f.reason, f.code, error, f.additivity, f.grain, f.origin, f.served_by, computed_at, current,
        point_seq, p.step, p.span, p.to_go, p.period, p.p05, p.p10, p.p50, p.p90, p.p95,
-       p.coverage_80, p.coverage_80_se, p.coverage_90, p.coverage_90_se, p.coverage_points
+       p.coverage_80, p.coverage_80_se, p.coverage_90, p.coverage_90_se, p.coverage_points, p.coverage_datasets
 FROM pts
 UNION ALL
 SELECT metric, coalesce(f.applicable, false), f.reason, f.code, error, f.additivity, f.grain, f.origin, f.served_by, computed_at, current,
-       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 FROM typed WHERE coalesce(len(f.points), 0) = 0
 ORDER BY metric, point_seq NULLS FIRST;
 

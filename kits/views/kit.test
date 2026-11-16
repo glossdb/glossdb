@@ -319,6 +319,13 @@ SELECT applicable, profile_current, additivity, additivity_state FROM view_summa
 ----
 true	false	semi-additive	stale
 
+# the profile out of date is run again: every function that reads the view's grain reads it, so the server
+# computes it after the write
+query T
+SELECT measurements_to_run FROM view_summary() WHERE view = 'headcount';
+----
+[temporal over fin.headcount.period]
+
 # --- a single value serves one number; a stopped view serves its reason
 
 statement ok
