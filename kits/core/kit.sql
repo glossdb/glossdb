@@ -73,9 +73,9 @@ CREATE OR REPLACE VIEW main.open_questions AS
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
     AND coalesce(o.dimension, '-') NOT IN ('additivity', 'sign', 'grain')
-    AND NOT EXISTS (SELECT 1 FROM main.review_decisions r
-                    WHERE r.dataset = o.dataset AND r.subject = o.subject
-                      AND r.aspect = o.aspect AND r.key = o.key)
+    AND {'dataset': o.dataset, 'subject': o.subject, 'aspect': o.aspect, 'key': o.key} NOT IN (
+          SELECT {'dataset': r.dataset, 'subject': r.subject, 'aspect': r.aspect, 'key': r.key} FROM main.review_decisions r
+          WHERE r.dataset IS NOT NULL AND r.subject IS NOT NULL AND r.aspect IS NOT NULL AND r.key IS NOT NULL)
   GROUP BY ALL;
 
 -- Apps authored as glosses, one row per file: the aspect says what kind
@@ -195,8 +195,8 @@ CREATE OR REPLACE MACRO main.tested_properties() AS TABLE
     AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN'))
     AND json_extract(a.schema, '$.x-subject') IS NULL
     AND json_extract(a.schema, '$.x-used-by') IS NULL
-    AND EXISTS (SELECT 1 FROM main.tests t WHERE t.aspect = a.name AND t.detector IS NOT NULL)
-    AND (a.kind = 'MEASUREMENT' OR EXISTS (SELECT 1 FROM main.functions f WHERE f.returns = a.name));
+    AND a.name IN (SELECT t.aspect FROM main.tests t WHERE t.detector IS NOT NULL)
+    AND (a.kind = 'MEASUREMENT' OR a.name IN (SELECT f.returns FROM main.functions f));
 
 -- What this workspace can be extended through, and its state on
 -- each: `existing` counts what exists, `open` what is unfinished on the

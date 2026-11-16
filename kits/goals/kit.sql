@@ -44,7 +44,7 @@ WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
   AND split_part(g.subject, '.', 2) IN (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW');
 
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
-WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
+WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM glossql_kept('view_tests')),
 fns AS MATERIALIZED (
   SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- the check that measures a test's property, as view_tests() names it
@@ -246,7 +246,8 @@ CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
 -- asset, state, who (agent or person), open (the finding), for_view (the
 -- views that read the asset), cause (what the newest load changed),
 -- statement (what opens the work; <...> marks what only the author can
--- fill). The rows are ordered by level, then ord, then asset.
+-- fill). The rows are ordered by level, then ord, then asset, then the
+-- finding (a test's starts with the test's name).
 --
 -- level:
 -- must: served data is wrong or cannot be served. No table is loaded, no
@@ -288,11 +289,12 @@ CREATE OR REPLACE VIEW main.next AS
   summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
   -- a load-query change a person approved, with no load of the table since
   approved AS (
-    SELECT json_extract_string(a.body, '$.table') AS tbl FROM main.glossary a, ds
+    SELECT json_extract_string(a.body, '$.table') AS tbl FROM main.glossary a CROSS JOIN ds
+    LEFT JOIN (SELECT i.table_name, max(i.imported_at) AS imported_at FROM main.imports i, ds WHERE i.dataset = ds.d GROUP BY i.table_name) l
+      ON l.table_name = json_extract_string(a.body, '$.table')
     WHERE a.dataset = ds.d AND a.aspect = 'recipe_change' AND a.actor_kind = 'human'
       AND json_extract_string(a.body, '$.table') IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM main.imports i WHERE i.dataset = ds.d
-                        AND i.table_name = json_extract_string(a.body, '$.table') AND i.imported_at >= a.written_at)),
+      AND NOT coalesce(l.imported_at >= a.written_at, false)),
   -- a person's formula newer than the agent's definition of the view:
   -- the view serves the recorded SQL until the agent records it again
   formulas AS (
@@ -303,7 +305,16 @@ CREATE OR REPLACE VIEW main.next AS
       AND h.aspect = 'definitions' AND h.actor_kind = 'human'
       AND json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
-  vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
+  -- what the newest load changed under each view, per table it scans
+  view_causes AS (
+    SELECT v.view, string_agg(r.tbl || ' ' || r.cause, chr(10) ORDER BY r.tbl) AS causes
+    FROM (SELECT DISTINCT view, tbl FROM scans) v JOIN reloaded r ON r.tbl = v.tbl GROUP BY v.view),
+  -- the statement that records each view's definition again, as it is now
+  redefines AS (
+    SELECT g.aspect AS view, main.gloss_statement(g.aspect, ds.d, g.body::VARCHAR) AS statement
+    FROM main.glossary g, ds WHERE g.dataset = ds.d AND g.subject = ds.d
+    QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1),
+  vt AS MATERIALIZED (SELECT * FROM glossql_kept('view_tests')),
   -- the tests that are open: not green, but a yellow test whose check ran, is current and returns no
   -- fix (not applicable: nothing to check), whose statement would compute it yellow again
   vo AS (
@@ -360,6 +371,11 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT ds.d || '.' || w.aspect AS home, w.aspect AS view, max(w.begin_snapshot) AS begin_snapshot FROM main.glossary w, ds
     WHERE w.dataset = ds.d AND w.subject = ds.d AND w.aspect IN (SELECT view FROM summary)
     GROUP BY ALL),
+  -- an outdated annotation on a view or under it, written before the
+  -- view's newest definition
+  redefined AS (
+    SELECT DISTINCT w.subject, w.aspect FROM written w JOIN defined d
+      ON d.begin_snapshot > w.begin_snapshot AND (w.subject = d.home OR starts_with(w.subject, d.home || '.'))),
   -- what the views read, and every value withheld as a conflict; a
   -- conflict a test reports is the test's row
   homed AS (
@@ -368,14 +384,13 @@ CREATE OR REPLACE VIEW main.next AS
                 ELSE array_to_string(string_split(g.subject, '.')[1:2], '.') END AS home,
            CASE WHEN g.state = 'conflict' THEN 'must' WHEN x.asset IS NOT NULL THEN 'should' ELSE 'could' END AS level,
            s.shape IS NULL AND g.state = 'missing' AS unshaped,
-           coalesce(g.state = 'stale' AND EXISTS (
-             SELECT 1 FROM defined d
-             WHERE d.begin_snapshot > w.begin_snapshot AND (g.subject = d.home OR starts_with(g.subject, d.home || '.'))), false) AS redefined,
+           coalesce(g.state = 'stale' AND rd.subject IS NOT NULL, false) AS redefined,
            'GLOSS ' || g.aspect || ' ON ' || g.subject || ' AS $$'
              || CASE WHEN g.state = 'stale' THEN coalesce(w.body, s.shape, '<value>') ELSE coalesce(s.shape, '<value>') END
              || '$$;' AS gloss
     FROM g JOIN stated s ON s.name = g.aspect LEFT JOIN reach x ON x.asset = g.subject
     LEFT JOIN written w ON w.aspect = g.aspect AND w.subject = g.subject
+    LEFT JOIN redefined rd ON rd.subject = g.subject AND rd.aspect = g.aspect
     -- a view's own columns are asked for where a view serves them (a
     -- table view's), not beside it
     WHERE (x.asset IS NOT NULL OR g.state = 'conflict'
@@ -383,10 +398,10 @@ CREATE OR REPLACE VIEW main.next AS
       AND NOT (s.expectation AND g.state = 'missing')
       -- `entity` says what one row of a table is: asked on a loaded
       -- table and on a table view, not on a metric, a single value or a plan
-      AND NOT (g.aspect = 'entity' AND g.state = 'missing' AND EXISTS (
-        SELECT 1 FROM summary m, ds WHERE g.subject = ds.d || '.' || m.view AND coalesce(m.kind, '') <> 'relation'))
-      AND NOT (g.state = 'conflict' AND EXISTS (
-        SELECT 1 FROM vt WHERE vt.subject = g.subject AND vt.aspect = g.aspect AND vt.state <> 'green'))
+      AND NOT (g.aspect = 'entity' AND g.state = 'missing'
+               AND g.subject IN (SELECT ds.d || '.' || m.view FROM summary m, ds WHERE coalesce(m.kind, '') <> 'relation'))
+      AND NOT (g.state = 'conflict'
+               AND {'subject': g.subject, 'aspect': g.aspect} IN (SELECT {'subject': subject, 'aspect': aspect} FROM vt WHERE state <> 'green'))
     UNION ALL
     -- a column property asked per table (x-asked: per table): once a
     -- column of a table or a view carries it, each other column is asked
@@ -396,10 +411,12 @@ CREATE OR REPLACE VIEW main.next AS
     FROM (SELECT DISTINCT name FROM main.aspects WHERE json_extract_string(schema, '$.x-asked') = 'per table') a
     JOIN stated s ON s.name = a.name CROSS JOIN ds CROSS JOIN glossql_columns(current_schema()) c
     LEFT JOIN reach x ON x.asset = ds.d || '.' || c.table_name || '.' || c.column_name
-    WHERE EXISTS (SELECT 1 FROM main.glossary w WHERE w.dataset = ds.d AND w.aspect = a.name AND w.actor_kind IN ('agent', 'human')
-                    AND starts_with(w.subject, ds.d || '.' || c.table_name || '.'))
-      AND NOT EXISTS (SELECT 1 FROM main.glossary w WHERE w.dataset = ds.d AND w.aspect = a.name
-                        AND w.subject = ds.d || '.' || c.table_name || '.' || c.column_name)
+    WHERE {'aspect': a.name, 'tbl': c.table_name} IN (
+            SELECT {'aspect': w.aspect, 'tbl': split_part(w.subject, '.', 2)} FROM main.glossary w, ds
+            WHERE w.dataset = ds.d AND w.actor_kind IN ('agent', 'human') AND len(string_split(w.subject, '.')) >= 3
+              AND starts_with(w.subject, ds.d || '.'))
+      AND {'aspect': a.name, 'subject': ds.d || '.' || c.table_name || '.' || c.column_name} NOT IN (
+            SELECT {'aspect': w.aspect, 'subject': w.subject} FROM main.glossary w, ds WHERE w.dataset = ds.d)
     UNION ALL
     -- a metric's served column with no role: the statement its summary
     -- row names (`missing`, empty for every other view), on the view's own
@@ -434,8 +451,7 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN h.state = 'stale'
                 THEN coalesce(max(l.cause),
                               CASE WHEN bool_or(h.redefined) THEN 'the definition of ' || h.home || ' was recorded again' END,
-                              (SELECT string_agg(r.tbl || ' ' || r.cause, chr(10) ORDER BY r.tbl) FROM reloaded r
-                               WHERE r.tbl IN (SELECT s.tbl FROM scans s, ds WHERE ds.d || '.' || s.view = h.home)),
+                              max(vc.causes),
                               '')
                 ELSE '' END,
            CASE h.state
@@ -452,6 +468,7 @@ CREATE OR REPLACE VIEW main.next AS
                        ELSE '' END
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss) END
     FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
+    LEFT JOIN view_causes vc ON current_schema() || '.' || vc.view = h.home
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state, h.level),
   -- how a rate is accepted where the data is right as it is: a
@@ -468,8 +485,7 @@ CREATE OR REPLACE VIEW main.next AS
   s_test AS (
     SELECT CASE t.state WHEN 'red' THEN 'must' ELSE 'should' END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
-           coalesce((SELECT string_agg(l.tbl || ' ' || l.cause, chr(10) ORDER BY l.tbl)
-                     FROM reloaded l WHERE l.tbl IN (SELECT s.tbl FROM scans s WHERE s.view = t.view)), ''),
+           coalesce(vc.causes, ''),
            coalesce(t.evidence->>'fix',
                     CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
                          THEN '-- the data breaks the rule. Fix the load query or the view''s definition, then run the check again:' || chr(10)
@@ -486,6 +502,7 @@ CREATE OR REPLACE VIEW main.next AS
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
     FROM vo t LEFT JOIN accepts k ON k.test = t.test
+    LEFT JOIN view_causes vc ON vc.view = t.view
     LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect),
   -- a join a view makes between two loaded tables on columns no declared
   -- relationship covers: the pairs of one join, its key, in the join's
@@ -525,8 +542,8 @@ CREATE OR REPLACE VIEW main.next AS
     WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
   sided AS (
     SELECT u.*,
-           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.lt AND list_has_all(u.lc, h.cols)) AS left_once,
-           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.rt AND list_has_all(u.rc, h.cols)) AS right_once
+           u.key IN (SELECT x.key FROM undeclared x JOIN held_once h ON h.t = x.lt AND list_has_all(x.lc, h.cols)) AS left_once,
+           u.key IN (SELECT x.key FROM undeclared x JOIN held_once h ON h.t = x.rt AND list_has_all(x.rc, h.cols)) AS right_once
     FROM undeclared u),
   -- from the side that repeats the key to the side that holds it once
   directed AS (
@@ -557,14 +574,15 @@ CREATE OR REPLACE VIEW main.next AS
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
              || '; the definition does not carry it yet', r.aspect, '',
            '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
-             || main.view_redefine(ds.d, r.aspect)
-    FROM main.review_decisions r, ds WHERE r.dataset = ds.d AND NOT r.folded_in
+             || coalesce(rd.statement, main.gloss_statement(r.aspect, ds.d, '<the current definition>'))
+    FROM main.review_decisions r CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = r.aspect
+    WHERE r.dataset = ds.d AND NOT r.folded_in
     UNION ALL
     SELECT 'must', 2, 'review', ds.d || '.' || o.view, 'decided', 'agent',
            'a person''s formula for ' || o.view || ' is newer than its definition', o.view, '',
            '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.view || '''; change the SQL to match it, then record the definition again:' || chr(10)
-             || main.view_redefine(ds.d, o.view)
-    FROM formulas o, ds
+             || coalesce(rd.statement, main.gloss_statement(o.view, ds.d, '<the current definition>'))
+    FROM formulas o CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = o.view
     UNION ALL
     SELECT 'should', 6, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',
@@ -596,11 +614,11 @@ CREATE OR REPLACE VIEW main.next AS
                 THEN 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
                 WHEN m.floor IS NULL
                 THEN 'GLOSS time_grains ON ' || ds.d || '.' || m.view || '.' || m.period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$;'
-                ELSE main.view_redefine(ds.d, m.view) END
-    FROM summary m, ds
+                ELSE coalesce(rd.statement, main.gloss_statement(m.view, ds.d, '<the current definition>')) END
+    FROM summary m CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = m.view
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
-      AND NOT EXISTS (SELECT 1 FROM vo t WHERE t.view = m.view)),
+      AND m.view NOT IN (SELECT view FROM vo)),
   -- a stored result out of date that the server does not compute: one
   -- about the dataset as a whole or about a view, whatever kit declares
   -- its function, but a check a test on the view runs (view_tests()
@@ -615,10 +633,10 @@ CREATE OR REPLACE VIEW main.next AS
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
           WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
-            AND NOT EXISTS (SELECT 1 FROM main.server_results() r WHERE r.function = u.function AND r.subject = u.subject)
+            AND {'function': u.function, 'subject': u.subject} NOT IN (SELECT {'function': function, 'subject': subject} FROM main.server_results())
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_joins
     UNION ALL SELECT * FROM s_test
     UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_results)
-  ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state;
+  ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state, open;

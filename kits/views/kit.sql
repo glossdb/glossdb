@@ -331,8 +331,11 @@ CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the da
 -- metric's own forecast the metric and its columns ('itself', 'its
 -- columns').
 
+-- view_summary() serves view_rows() as kept per store version
+-- (glossql_kept): the reads that compose it, view_tests(), `next` and
+-- results_due() among them, scan the rows of one computation per write.
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
-FROM main.view_rows() ORDER BY view;
+FROM glossql_kept('view_rows') ORDER BY view;
 
 --===------------------------------------------------------------------===--
 -- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
@@ -672,7 +675,7 @@ CREATE OR REPLACE MACRO main.redefine_statement(v) AS
   main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), '<the current definition>');
 
 -- view_redefine(ds, m): the same statement for view m of dataset ds,
--- read from the catalog, for the reads the interfaces serve (`next`)
+-- read from the catalog, as a stored result's fix serves it (with_definition())
 CREATE OR REPLACE MACRO main.view_redefine(ds, m) AS
   main.gloss_statement(m, ds, coalesce(
     (SELECT g.body::VARCHAR FROM main.glossary g
