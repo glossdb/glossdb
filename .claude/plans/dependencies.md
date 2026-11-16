@@ -34,7 +34,7 @@ computed: no second list, no flag.
 |---|---|---|---|---|
 | Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
 | A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
-| The outlook and plan kits are tested against the suite's stand-in service only; a run against glossthesi `976842b` (it loads models) has not been made. The forecast is one result per metric, which loses the service's joint forecast of a request's series (better or level on 18 of 21 datasets by its own measurement): the project lead decides per metric or per dataset. The scenario path is about 300 of the outlook kit's 841 lines | Medium until run | `kits/outlook/kit.sql`, `../glossthesi` | Before the pull requests | |
+| The outlook and plan kits are tested against the suite's stand-in service only; a run against glossthesi `976842b` (it loads models) has not been made. The forecast is one result per metric, decided by the project lead. The scenario path is about 300 of the outlook kit's 841 lines | Medium until run | `kits/outlook/kit.sql`, `../glossthesi` | Before the pull requests | |
 
 ## What is built
 
