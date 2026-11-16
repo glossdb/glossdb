@@ -943,7 +943,7 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
                                               ELSE '' END, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
                    || ' find no parent: an inner join drops them, an outer join keeps them with empty parent columns' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
+              THEN '-- add each key to the parent table at its source (a code table, a mapping table) and load that table again (IMPORT), or accept the rate with the reason:' || chr(10)
                    || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
   FROM n, plans
 $$ RETURNS orphan_check;
