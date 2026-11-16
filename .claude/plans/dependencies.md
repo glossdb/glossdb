@@ -32,7 +32,6 @@ computed: no second list, no flag.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A write that computes nothing takes 0.54 s, a read 0.02 s. It was 0.44 s before the harmonisation kit and has grown with each round that added rows to `next` (0.49, then 0.54). The write itself is 0.001 s; the rest is DuckDB planning `next` (0.31 s) and `results_due()` (about 0.2 s) | Medium: every write of an agent pays it | `kits/goals/kit.sql`, `kits/views/kit.sql` (`view_tests()`) | In work | |
 | Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
 | A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
 | The outlook and plan kits are tested against the suite's stand-in service only; a run against glossthesi `976842b` (it loads models) has not been made. The forecast is one result per metric, which loses the service's joint forecast of a request's series (better or level on 18 of 21 datasets by its own measurement): the project lead decides per metric or per dataset. The scenario path is about 300 of the outlook kit's 841 lines | Medium until run | `kits/outlook/kit.sql`, `../glossthesi` | Before the pull requests | |
@@ -92,6 +91,16 @@ computed: no second list, no flag.
   `fan_out_check` and `validity_check` as two, `open_items`, the
   console's re-measure button. `glossql_runner.cpp` went from 2947 to
   2401 lines in the last step.
+- **A write that computes nothing takes 0.24 s** (0.54 s before; a
+  release build 0.28 s). Which results are out of date is checked
+  once per store version and kept; a kit's table macro is kept the
+  same way (`glossql_kept()` in the extension), so `view_tests()` and
+  the views' summary are planned once per write; `next` has no
+  correlated subquery. A kit's rows enter `next` as data in the kept
+  reads, so a kit no longer adds planning time. What `next`,
+  `results_due()` and the closing lines return is unchanged on the
+  Formula 1 and the three-systems walk. Left: the out-of-date check
+  (0.06 s) is computed whole on each write.
 - **A body that reads past the read functions is refused** at its
   declaration (`untracked_read`): the catalog reached directly, a
   what or where that is not a constant, a where that is no place.
@@ -103,8 +112,8 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `df43dd8`: 119 tests pass. Extension at `b0478d1`: its SQL
-suite passes with 2990 assertions, lint clean. The extension's
+Server at `b447d3c`: 120 tests pass. Extension at `b61dbdb`: its SQL
+suite passes, lint clean. The extension's
 changes since `96b34b7` were reviewed line by line by two reviewers;
 the confirmed findings are fixed, each with a test. glossval's series
 capture equals each metric's own SQL (0 differing cells) and its
@@ -114,19 +123,19 @@ write one MCP call:
 
 | Write | Before any lineage | With the read functions |
 |---|---|---|
-| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.44 s, 0 |
-| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.44 s, 0 |
-| `role` on a source column of a metric | 1.17 s, 4 | 0.44 s, 0 |
-| `role` on a column a metric serves | not measured | 0.75 s, 1 |
-| The same annotation again; a new property declared | not measured | 0.44 s, 0 |
-| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.44 s, 0 |
-| A table view defined over three tables | not built | 1.99 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
-| A relationship declared that the table view joins over | not built | 0.87 s, 2: the relationship check and the view's orphan check |
-| `meaning` on a column the table view reads | not built | 0.45 s, 0 |
+| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.24 s, 0 |
+| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.24 s, 0 |
+| `role` on a source column of a metric | 1.17 s, 4 | 0.24 s, 0 |
+| `role` on a column a metric serves | not measured | 0.46 s, 1 |
+| The same annotation again; a new property declared | not measured | 0.24 s, 0 |
+| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.24 s, 0 |
+| A table view defined over three tables | not built | 1.73 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
+| A relationship declared that the table view joins over | not built | 0.57 s, 2: the relationship check and the view's orphan check |
+| `meaning` on a column the table view reads | not built | 0.24 s, 0 |
 
-Per call, reported by the build and not repeated here:
-`results_due()` 0.10 s, `next` 0.34 s, the currency check over 23
-results and 89 inputs 0.06 to 0.07 s. On the goals fixture: with two
+Per write, reported by the build and not repeated here:
+`results_due()` with the kept reads 0.15 s, `next` 0.05 s, the write
+itself 0.008 s. On the goals fixture: with two
 plans stored, a change to one leaves the other current; an unrelated
 annotation, an added assumption and a declared plan leave the
 dataset's preview measurements current.

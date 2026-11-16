@@ -57,8 +57,9 @@ The design, agreed with the project lead:
 - The unmapped code shows as an orphan rate only; the reconciliation
   names the codes.
 - Each kit that adds rows to `next` adds planning time to every
-  write: 0.44 s before the kit, 0.49 s with it, on a dataset that
-  does not use it (`dependencies.md`, the write-time row).
+  write: 0.44 s before the kit, 0.54 s with it. Fixed: a write is
+  0.24 s and a kit's rows no longer add planning time
+  (`dependencies.md`).
 
 - The reconciliation does not follow an aggregated target (GROUP
   BY), DISTINCT, LIMIT, joins other than inner, left and right, or a
