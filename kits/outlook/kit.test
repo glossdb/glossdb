@@ -217,10 +217,10 @@ true
 statement ok
 DECLARE TEST range_test ON metric_ranges BY (AGENT, HUMAN) DETECTOR range_state THRESHOLD 0.95;
 
-query T
-SELECT DISTINCT input FROM glossql_outdated() WHERE function = 'metric_ranges';
+query TT
+SELECT DISTINCT asset, what FROM glossql_outdated() WHERE function = 'metric_ranges';
 ----
-annotations(metric_ranges, itself)
+metric_ranges	declaration
 
 statement ok
 SELECT metric_ranges() FROM fin;

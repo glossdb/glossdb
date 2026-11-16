@@ -82,9 +82,10 @@ mode; this file is so nobody has to rediscover it.
   additivity, the time grains — are glosses on its columns. A re-gloss of
   the view retires its columns' glosses by the stale rule; the reads
   serve what the catalog says and re-mark nothing.
-- **Measurements carry their provenance.** A measurement is current
-  while its inputs — the data's snapshot and the catalog relations the
-  function read — are unchanged, and is stale once one moved. A
+- **Measurements carry their provenance.** The lake's snapshot id is
+  the only version. A measurement stores the snapshot it read at and
+  one `inputs` row per node it read; it is current while no node it
+  read changed after that snapshot. A
   measurement is no input of a data version: a next step that must compare two
   measurements compares them itself.
 - **A refusal is a value where the kit must hold.** The service

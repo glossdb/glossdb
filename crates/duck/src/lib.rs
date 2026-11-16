@@ -1715,8 +1715,8 @@ const ROUNDS: usize = 4;
 
 /// The results the bound dataset wants that are missing or out of
 /// date, computed until none is left: the kit's `results_due()` says
-/// which (a result whose inputs moved, by the catalog's own versions,
-/// or one never computed) and in which order, an input before what
+/// which (a result a node of whose inputs changed after the snapshot
+/// it read at, or one never computed) and in which order, an input before what
 /// reads it. As CI runs a suite after a commit. A statement that fails
 /// is logged and not tried again in this call; its result stays due and
 /// the test report says so.

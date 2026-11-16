@@ -60,8 +60,8 @@ DECLARE RELATIONSHIP absences.(employee_id, contract_no) -> staff.(employee_id, 
 ## Measure before you state
 
 A measurement is a function run over an asset. Its result is stored
-with the data version it read and served again until its inputs
-change.
+with the lake snapshot it read at and served again until something it
+read changes after that snapshot.
 
 ```glossql
 SELECT column_profile() FROM staff.department;

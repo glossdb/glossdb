@@ -7,8 +7,8 @@
 -- results_due(): the results the bound dataset wants that
 -- are missing or out of date, each with the statement that computes it,
 -- in the order to run them: ord, function, subject, run. A result is out
--- of date when an input it read has another version now (the catalog's
--- `inputs`), or a result it read is out of date. A check that failed is
+-- of date when a node it read (the catalog's `inputs`) changed after the
+-- snapshot it read at, or a result it read is out of date. A check that failed is
 -- a result with its error, due again once it is out of date. What is
 -- wanted follows from the tests on each view and on what it reads
 -- (view_tests()), whatever the kind of view: each test's check, and
@@ -628,7 +628,7 @@ CREATE OR REPLACE VIEW main.next AS
            o.function || ': computed before a read of it changed (' || o.inputs || ')',
            coalesce(o.view, ''), '',
            'SELECT ' || o.function || '() FROM ' || o.subject || ';'
-    FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.input, ', ' ORDER BY u.input) AS inputs
+    FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
           WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)

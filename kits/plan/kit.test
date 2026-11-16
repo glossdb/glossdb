@@ -279,10 +279,10 @@ month	2025-12	1000.0	NULL	NULL	80.0	100.0	120.0	above	0.75	2025-02-01
 
 # the stored comparison read the forecast on its metric: out of date now, and run again it is red with the
 # finding of the year outside the range and the fix that records the plan again
-query T
-SELECT DISTINCT input FROM glossql_outdated() WHERE function = 'metric_plan' AND subject = 'fin.sales_budget';
+query TT
+SELECT DISTINCT asset, what FROM glossql_outdated() WHERE function = 'metric_plan' AND subject = 'fin.sales_budget';
 ----
-results(metric_forecast, its metric)
+fin.sales	result metric_forecast
 
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;

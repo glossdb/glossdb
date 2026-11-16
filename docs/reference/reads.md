@@ -26,8 +26,8 @@ write replaced or removed, with its `end_snapshot`.
 | `aspects` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
 | `glossary` | `dataset`, `subject`, `aspect`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
 | `functions` | `name`, `scope`, `script`, `returns`, `declared_at`, `declared_by` |
-| `measurements` | `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at` |
-| `inputs` | `begin_snapshot`, `input`, `version` (what each stored result read, at the version read; joins `measurements` on `begin_snapshot`) |
+| `measurements` | `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at`, `read_at`, `changed_at` (the lake snapshot the result read at, and the one its value last changed at) |
+| `inputs` | `begin_snapshot`, `asset`, `what` (each node a stored result read: an asset and what was read of it; joins `measurements` on `begin_snapshot`) |
 | `tests` | `name`, `aspect`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
 | `kits` | `name`, `location`, `statements`, `loaded_at`, `hash` |
 
