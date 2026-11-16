@@ -220,7 +220,7 @@ DECLARE TEST range_test ON metric_ranges BY (AGENT, HUMAN) DETECTOR range_state 
 query TT
 SELECT DISTINCT asset, what FROM glossql_outdated() WHERE function = 'metric_ranges';
 ----
-metric_ranges	declaration
+metric_ranges	property
 
 statement ok
 SELECT metric_ranges() FROM fin;

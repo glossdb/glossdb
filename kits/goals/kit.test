@@ -192,8 +192,8 @@ SELECT (SELECT count(*) FROM next WHERE contains(statement, 'metric_')),
 ----
 0	0
 
-# a plan is declared and defined: nobody compared it yet, so it is no row; the forecast reads its metric, and a plan
-# is not one: it stays current. The ranges walk the dataset's assets to find its metrics, and the plan's view is one
+# a plan is declared and defined: nobody compared it yet, so it is no row; the ranges read the dataset's metrics and
+# the forecast its metric, and a plan is neither: they stay current
 statement ok
 DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
 
@@ -203,10 +203,10 @@ GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FRO
 statement ok
 GLOSS role ON orders_target.value AS $${"value": "measure"}$$;
 
-query TTT
-SELECT function, asset, what FROM glossql_outdated() WHERE function LIKE 'metric_%';
+query I
+SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%';
 ----
-metric_ranges	ops	assets
+0
 
 statement ok
 SELECT metric_plan() FROM ops.orders_target;
@@ -215,14 +215,6 @@ query TT
 SELECT view, subject FROM view_tests() WHERE test = 'plan_test';
 ----
 orders_target	ops.orders_target
-
-query T
-SELECT statement FROM next WHERE contains(statement, 'metric_');
-----
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_ranges() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'metric_');
