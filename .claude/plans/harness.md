@@ -27,8 +27,8 @@ pushed.
 | 2 | Dependencies: the catalog's rows carry begin and end snapshots, a stored result records its inputs as rows, and one read, `results_due()`, says what the server computes after a write (`dependencies.md`) | built, committed |
 | 3 | glossval follows the catalog: its two reads of the old columns are changed; a run can replay an earlier run's statements with no model (`--replay`) | built |
 | 4 | The recorded `ferc-steam` build replayed on this server: the same score as the run it replays, no refusal, the review step stores its decisions | measured, on the host |
-| 5 | The goldens' baseline, accepted at these commits: rel-f1, the import path, the metric series, rel-event, booksql | in work |
-| 6 | The server image at these commits; both contract test cases, three runs each, in the container (`evaluation.md`) | in work; a run calls a paid model |
+| 5 | The goldens' baseline, accepted at these commits: rel-f1, the import path, the metric series, rel-event, booksql | done, every difference explained |
+| 6 | The server image at these commits; both contract test cases, three runs each, in the container (`evaluation.md`) | measured |
 | 7 | What an outside agent found when it built a workspace from the skill alone (20 items) | open: the list is not in this repository |
 | 8 | One pull request per repository; the extension's branch first, then the server's pin | when the project lead says the branches go up |
 

@@ -107,7 +107,7 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server: 121 tests pass. Extension at `1074c04` (not pushed): its SQL
+Server: 121 tests pass. Extension at `3fa3d78`: its SQL
 suite passes, lint clean; its changes since `96b34b7` were reviewed
 line by line by two reviewers, the findings fixed with a test each.
 glossval's series capture equals each metric's own SQL. On the Formula

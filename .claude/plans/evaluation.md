@@ -16,11 +16,9 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| Both test cases run three times each, the server in the container; cost, turns and scores per run, before and after the review | Low | glossval scenarios `ferc-steam`, `eia-generators` | Next | |
-| The running state on real loads: build on the first periods, then load the later ones one by one. Scored: does the table stay right, and does `next` name what changed | Medium: it is what the layer adds over a built table | both test cases | Next | |
+| A change that empties a served column is not named. A view defined again with a broken expression took a column from 0 to 81% NULL (272,821 of 338,186 rows) and no test or `next` row said so; in the running state on FERC three later years were loaded and `next` showed 0 rows come and 0 gone | Medium: it is what the layer adds over a built table | the views kit (a column held against its state before a load or a new definition), `load_changes()`, `next` | Next | |
+| The running state on `eia-generators`; a third `erp-supply` run; the scorer's "handled" rule for a fault the builder removes at load (the second date format) | Low | glossval | With the row above | |
 | The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
-| The plant name on FERC: the reference writes it in lower case, the contract and the reference's documentation say "as reported". The builder kept the filed case and asked; the review confirmed it from the documentation; every row is wrong in that column | Medium: rows right stays 0% on FERC until the contract states the case or the scorer ignores it | glossval `ferc-steam` (`tools/gen_ferc.py`, `contract.yaml`) or `tools/contract_score.py` | Before the runs are reported | |
-| The rows the builder misses on FERC (the new filing system: 3,909 of 5,221 found by hand) | Medium: PUDL's own mapping may not be reachable from the sources | glossval `ferc-steam` | With the runs | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
 | Finance from `../glosstest`, labelled generated; one data set among others | Low | glossval | After the real data reports | |
 | The results page | Low | glossval, the websites | Last | |
@@ -64,13 +62,21 @@ DuckDB only as a comparison (a story for the docs later).
   server's renamed reads and the current `next`. The notes and tools
   of the old measurement are cut to what the contract test cases
   use.
-- **Measured so far.** By hand in plain SQL: EIA 99.0% of keys and
-  95.7% of cells; FERC 96.8% of keys, 96.4% of cells, 86.4% of rows.
-  One agent run on `ferc-steam` in the container (sonnet): 28 turns,
-  1.11 USD, 93.4% of keys, 90.6% of cells, 0% of rows. The builder
-  left 10 assumptions open. The review confirmed 2, corrected none
-  and left 8 open, because the documentation does not settle them.
-  The scores before and after the review are the same.
+- **Measured** at glossql `f3d2e14` and the extension `3fa3d78`, the
+  server in the container, builder and reviewer on sonnet; the tables
+  per run are in glossval's `evals/README.md`. `ferc-steam`, three
+  runs: 93.2%, 93.7% and 97.3% of cells, 81.3% to 83.4% of rows, 1.11
+  to 1.74 USD and 26 to 43 turns; one review correction took a run
+  from 93.1% to 97.3% of cells. `eia-generators`, three runs: 99.0%
+  of keys; 99.0%, 99.0% and 93.6% of cells; 98.7%, 98.7% and 18.9% of
+  rows (the emptied column of the first row above); 1.59 to 2.02 USD.
+  `erp-supply` (generated data), two runs: the blank global ids and
+  the unmapped local codes found in both; five of ten fault classes
+  have no test (`harmonise.md`). The running state on FERC, built on
+  2021 and 2022, then three years loaded: 97.3% to 98.1% of cells so
+  far, 83.3% to 85.6% on the new year alone. The goldens' baseline is
+  accepted at these commits, every difference explained. 14.66 USD in
+  all.
 
 ## What the scores are
 
@@ -86,13 +92,10 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**Both contract test cases, three runs each.** What it buys: the
-first scores with their spread, on a server that cannot read the
-reference. What is there: `tools/contract_run.py` runs a test case
-with the server in the container; one `ferc-steam` run is measured
-(above); `eia-generators` starts in the container and has not run
-with a model. Done when: three runs of each test case are in
-`evals/runs/`, each with `server: container` in `score.json`; a table
-gives cost, turns, keys, cells and rows per run, before and after the
-review; what the review confirmed, corrected and left open is counted
-per run.
+**A served column that empties is named.** What it buys: a load or a
+new definition that takes a column of a served view from filled to
+mostly NULL, or drops its rows, is a row in `next` with the column
+and both shares. What is there: `column_profile` per column of a
+table view, `load_changes()`, the two cases above in glossval's runs
+(`eia-generators` 113746Z, the FERC running replay). Done when: on
+both cases replayed, `next` names the column and the period.
