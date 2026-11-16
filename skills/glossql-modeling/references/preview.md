@@ -30,7 +30,8 @@ them before one is stored.
 | `metric_scenario()` | a metric | a scenario sets one of its levers |
 | `metric_plan()` | a plan | it is defined; with the forecast of its metric stored, it holds the open periods against its range |
 
-A call took 2 to 6 seconds on one metric (measured).
+With the service on the same machine, a forecast took 0.7 seconds, the
+expected ranges up to 1.4, a scenario estimate 2 to 4 (measured).
 
 Once a result is stored, `next` lists it as any stored result:
 

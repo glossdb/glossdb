@@ -313,7 +313,7 @@ serve no rows.
 | `range_points()` | `metric`, `applicable`, `reason`, `code`, `backtested`, `held_80`, `held_90`, `score`, `state`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `displacement`, `withheld`, `coverage_80`, `coverage_90`, `newest`, `point_seq`, `served_by`, `computed_at`, `error` |
 | `forecast_points()` | `metric`, `applicable`, `reason`, `code`, `error`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `coverage_80`, `coverage_80_se`, `coverage_90`, `coverage_90_se`, `coverage_points`, `coverage_datasets` |
 | `scenarios()` | `scenario`, `body`, `annotated`, `applicable`, `reason`, `levers`, `fix` |
-| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `code`, `levers`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `sign`, `basis`, `explains`, `error`, `served_by`, `computed_at` |
+| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `code`, `levers`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `sign`, `basis`, `explains`, `level_error`, `served_by`, `computed_at`, `error` |
 | `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
 | `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `coverage_80`, `origin` |
 
@@ -339,7 +339,9 @@ serve no rows.
 - `scenario_points()`: `baseline` is the same estimate with every
   lever as planned; `effect` is the service's difference of the two.
   `code` is the service's code for a scenario it could not answer,
-  such as `nothing_changed`.
+  such as `nothing_changed`. `level_error` is the service's error of
+  the level on the periods it held back. A run that failed is one row
+  per metric with its `error`.
 - `world_series(<grain>)`: `metric`, `series`, `world`, `period`,
   `value`, `additivity`, `low`, `high`, `held`: each plan and each
   stored forecast beside a metric's actual series, as the console's

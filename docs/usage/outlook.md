@@ -41,8 +41,13 @@ result carries the `finding` and the `fix` of a red one.
 The examples are from one run against a model service: New York
 subway service per month. The metric `trains_run` is the trains that
 ran, with the actuals loaded through August 2025. The timetable is
-loaded through August 2026. Each call took 2 to 6 seconds for this
-one metric with the service on the same machine (measured).
+loaded through August 2026.
+
+With the service on the same machine and 48 months of history
+(measured): the expected ranges of three metrics took 0.7 to 1.4
+seconds, a forecast of one metric 0.7 seconds, a scenario estimate 2
+to 4 seconds (a forecast of each lever, then the estimate), a plan
+comparison 1 second.
 
 ## When to run each one
 

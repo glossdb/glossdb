@@ -678,8 +678,9 @@ ORDER BY b.scenario, b.metric;
 -- parts (per lever, what it alone does by the history). No coverage is
 -- stated for a what-if range. scenario_points(s): the stored estimates,
 -- one row per scenario (or every one, NULL), metric and period ahead; a
--- scenario not estimated is one row with its reason. scenario_levers(s):
--- the parts.
+-- scenario not estimated is one row with its reason, a run that failed
+-- one row per metric with its error (the service's error of the level is
+-- level_error). scenario_levers(s): the parts.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_scenario WITH $${
@@ -807,16 +808,25 @@ SELECT * FROM typed WHERE s IS NULL OR sc.scenario = s;
 CREATE OR REPLACE MACRO main.scenario_points(s) AS TABLE
 WITH stepped AS (
   SELECT r.*, unnest(r.sc.points) AS p, unnest(generate_series(1, len(r.sc.points))) AS step
-  FROM main.scenario_rows(s) r WHERE len(r.sc.points) > 0)
+  FROM main.scenario_rows(s) r WHERE len(r.sc.points) > 0),
+-- a run that failed stores no scenario: it is one row per metric, under each scenario that sets one of its levers
+failed AS (
+  SELECT split_part(subject, '.', 2) AS metric, error, computed_at FROM main.measurements
+  WHERE dataset = current_schema() AND function = 'metric_scenario' AND value IS NULL AND error IS NOT NULL)
 SELECT sc.scenario, metric, sc.grain, sc.origin, sc.applicable, sc.reason, sc.code, list_transform(sc.levers, lambda l: l.lever) AS levers,
        step, p.period::TIMESTAMP AS period, p.low, p.value, p.high, p.baseline, p.effect, p.history_value, p.history_low, p.history_high,
-       sc.sign, sc.basis, sc.explains, sc.error, served_by, computed_at
+       sc.sign, sc.basis, sc.explains, sc.error AS level_error, served_by, computed_at, NULL::VARCHAR AS error
 FROM stepped
 UNION ALL
 SELECT sc.scenario, metric, sc.grain, sc.origin, sc.applicable, sc.reason, sc.code, list_transform(sc.levers, lambda l: l.lever),
-       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, sc.sign, sc.basis, sc.explains, sc.error, served_by, computed_at
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, sc.sign, sc.basis, sc.explains, sc.error, served_by, computed_at, NULL
 FROM main.scenario_rows(s) WHERE coalesce(len(sc.points), 0) = 0
-ORDER BY scenario, metric, step NULLS FIRST;
+UNION ALL
+SELECT s, f.metric, NULL, NULL, false, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+       NULL, NULL, NULL, NULL, NULL, f.computed_at, f.error
+FROM failed f
+WHERE s IS NULL OR EXISTS (SELECT 1 FROM main.scenarios() sc, unnest(sc.levers) AS u(l) WHERE sc.scenario = s AND u.l.metric = f.metric)
+ORDER BY scenario NULLS FIRST, metric, step NULLS FIRST;
 
 CREATE OR REPLACE MACRO main.scenario_levers(s) AS TABLE
 SELECT r.sc.scenario AS scenario, r.metric, r.sc.applicable AS applicable, r.sc.reason AS reason, r.sc.sign AS sign,

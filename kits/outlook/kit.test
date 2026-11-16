@@ -700,3 +700,24 @@ SELECT (SELECT max(period)::DATE FROM metric_series() WHERE metric = 'spend' AND
        (SELECT origin::DATE FROM forecast_request() WHERE metric = 'spend');
 ----
 2025-02-01	2025-01-01
+
+# --- a scenario estimate that fails is served as failed: one row per metric with its error, under each scenario that
+# sets one of its levers, and no estimate of the run before
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS error('the service at http://127.0.0.1:1/forecast did not answer: Could not connect to server')::JSON;
+
+statement error
+SELECT metric_scenario() FROM fin.priced;
+----
+service_failed
+
+query TTTT
+SELECT scenario, metric, applicable, (error) IS NOT NULL FROM scenario_points('price_up');
+----
+price_up	priced	false	true
+
+query TI
+SELECT metric, count(*) FROM scenario_points(NULL) WHERE error IS NOT NULL GROUP BY ALL;
+----
+priced	1
