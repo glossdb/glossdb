@@ -26,16 +26,16 @@ not answer. The kit stores them as they come.
 
 | Feature | Kit | Run | Read | Test |
 |---|---|---|---|---|
-| Expected ranges | outlook | `SELECT metric_ranges() FROM <dataset>` | `range_points()` | `range_test` |
+| Expected ranges | outlook | `SELECT metric_ranges() FROM <dataset>.<metric>` | `range_points()` | `range_test` |
 | Forecast | outlook | `SELECT metric_forecast() FROM <dataset>.<metric>` | `forecast_points()`, `metric_series(world := 'forecast')` | |
-| Scenario | outlook | `SELECT metric_scenario() FROM <dataset>.<metric>` | `scenario_points('<name>')`, `scenario_levers('<name>')`, `metric_series(world := 'scenario', scenario := '<name>')` | |
+| Scenario | outlook | `SELECT metric_scenario() FROM <dataset>.<scenario>` | `scenario_points('<name>')`, `scenario_levers('<name>')`, `metric_series(world := 'scenario', scenario := '<name>')` | |
 | Plan | plan | `SELECT metric_plan() FROM <dataset>.<plan>` | `plan_points()`, `metric_series(world := 'plan', plan := '<name>')` | `plan_test` |
 
 The columns of each read:
 [reads](../reference/reads.md#the-outlook-and-plan-kits-preview).
-`range_test` and `plan_test` are rows of `TESTS(<dataset>)` and
-`TESTS(<dataset>.<plan>)`, and rows of `view_tests()`: the range test
-on the dataset, with no view, the plan's test on the plan. The stored
+`range_test` and `plan_test` are rows of `TESTS(<dataset>.<metric>)`
+and `TESTS(<dataset>.<plan>)`, and rows of `view_tests()`: the range
+test on the metric, the plan's test on the plan. The stored
 result carries the `finding` and the `fix` of a red one, and of a
 yellow `plan_test`.
 
@@ -55,12 +55,12 @@ comparison 1 second.
 The server runs none of them after a write, and `next` does not ask
 for them before one is stored.
 
-- `metric_ranges` once the metrics are served. It runs on the
-  dataset: the service scores every metric in one request.
+- `metric_ranges` once a metric is served, on that metric.
 - `metric_forecast` once a metric is served, on that metric. A plan is
   held against its ranges.
 - `metric_scenario` once a scenario is annotated and its levers hold,
-  on each metric whose lever it sets.
+  on the scenario: `<dataset>.<scenario>`, one result holding each
+  metric it sets a lever on.
 - `metric_plan` once per plan.
 
 Once a result is stored, `next` lists it as any stored result. A red
@@ -73,14 +73,14 @@ changed. What each one reads:
 
 | Result | On | Reads |
 |---|---|---|
-| expected ranges | the dataset | every metric of the dataset: its data and definition, `role`, `additivity`, `dimension` and `time_grains` on its columns, its period column's temporal profile; the threshold of `range_test` |
-| forecast | a metric | the same for that metric alone |
-| scenario estimate | a metric | the same for that metric, the scenarios and its `lever` annotations |
+| expected ranges | a metric | its data and definition, `role`, `additivity`, `dimension` and `time_grains` on its columns, its period column's temporal profile; the threshold of `range_test` and the tolerance on the metric |
+| forecast | a metric | the same, without the threshold and the tolerance |
+| scenario estimate | a scenario | its own annotation, and the same for each metric it sets a lever on, with their `lever` annotations |
 | plan comparison | a plan | the plan, its metric, and the forecast stored on its metric |
 
 So a metric defined or loaded beside the others leaves their
-forecasts, and the plans that read them, current. It puts the
-expected ranges out of date.
+forecasts, ranges and the plans that read them current, and a scenario
+declared or changed leaves the other scenarios' estimates current.
 
 All of them read the metric's series: the newest periods inside the
 metric's window, 48 months by default ([views](views.md)). A longer
@@ -97,7 +97,7 @@ a backtest. The request carries the threshold of `range_test` (0.98
 unless the test is declared with another).
 
 ```glossql
-SELECT metric_ranges() FROM subway;
+SELECT metric_ranges() FROM subway.trains_run;
 ```
 
 ```sql
@@ -128,12 +128,12 @@ as proof of a defect.
 A defect in the data and a real change look the same here. Fix a
 defect in the load or the definition, then run the backtest again.
 Where a person accepts a real change, they record a tolerance at or
-above the score on the dataset, with their reason, as for the views'
+above the score on the metric, with their reason, as for the views'
 checks; a person's tolerance outranks an agent's. The row in `next`
 gives the statement:
 
 ```glossql
-GLOSS metric_ranges ON subway AS $${"tolerance": 1.0,
+GLOSS metric_ranges ON subway.trains_run AS $${"tolerance": 1.0,
   "basis": "the timetable changed in August, decided by operations"}$$;
 ```
 
@@ -259,7 +259,7 @@ GLOSS timetable_cut ON subway AS $${"levers": [
    "factor": {"2025-10": 0.95, "2025-11": 0.95, "2025-12": 0.95},
    "basis": "a proposal to schedule 5% fewer trains in the last quarter"}
 ]}$$;
-SELECT metric_scenario() FROM subway.trains_run;
+SELECT metric_scenario() FROM subway.timetable_cut;
 ```
 
 A period is a month (`YYYY-MM`) or a day (`YYYY-MM-DD`); a period not

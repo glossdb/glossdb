@@ -1811,7 +1811,7 @@ async fn a_preview_measurement_whose_service_does_not_answer_is_unavailable_and_
                    GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
     say(&app, "/fin/mcp", setup).await;
 
-    let (status, answered) = query(&app, "SELECT metric_ranges() FROM fin").await;
+    let (status, answered) = query(&app, "SELECT metric_ranges() FROM fin.spend").await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
     assert_eq!(answered["code"], json!("service_failed"), "{answered}");
 
@@ -1839,7 +1839,7 @@ async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interf
                    GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
     say(&app, "/fin/mcp", setup).await;
 
-    let measure = "SELECT metric_ranges() FROM fin";
+    let measure = "SELECT metric_ranges() FROM fin.spend";
     let (status, answered) = query(&app, measure).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     let reason = answered["error"].as_str().unwrap().to_string();

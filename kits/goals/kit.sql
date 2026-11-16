@@ -63,7 +63,7 @@ wants AS (
   FROM served v JOIN fns f ON f.name = v.function,
        unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
   WHERE r.kind = 'read' AND r.read = 'results'),
-anchored AS (SELECT p."where" FROM unnest(main.place_list()) u(p) WHERE p.anchored),
+anchored AS (SELECT p."where" FROM (SELECT unnest(main.place_list()) AS p) WHERE p.anchored),
 places AS MATERIALIZED (FROM main.places(current_schema()) WHERE "where" IN (SELECT "where" FROM wants)),
 wanted AS (
   SELECT DISTINCT w.function, f.returns AS aspect, w.subject FROM wants w JOIN fns f ON f.name = w.function
@@ -362,7 +362,9 @@ CREATE OR REPLACE VIEW main.next AS
            -- an expectation a test scores: asked for where it is set, not on every asset
            name IN (SELECT p.name FROM main.tested_properties() p) AS expectation
     FROM main.aspects
-    WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL),
+    WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL
+      -- a kit's own result, such as a metric's expected ranges, is computed, not stated
+      AND name NOT IN (SELECT returns FROM main.functions WHERE returns IS NOT NULL AND declared_by LIKE 'kit:%')),
   g AS (SELECT subject, aspect, state FROM glossql_glossary(current_schema(), NULL, false)),
   -- the newest annotation on each asset: an outdated one is offered
   -- back to be checked and recorded again
@@ -625,7 +627,8 @@ CREATE OR REPLACE VIEW main.next AS
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
       AND m.view NOT IN (SELECT view FROM vo)),
   -- a stored result out of date that the server does not compute: one
-  -- about the dataset as a whole or about a view, whatever kit declares
+  -- about the dataset as a whole, a view or an asset of a kind a kit
+  -- declares (a scenario), whatever kit declares
   -- its function, but a check a test on the view runs (view_tests()
   -- names it as the test's `run`)
   s_results AS (
@@ -636,7 +639,9 @@ CREATE OR REPLACE VIEW main.next AS
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
-          WHERE u.dataset = current_schema() AND u.reason = 'changed' AND (u.subject = current_schema() OR v.view IS NOT NULL)
+          WHERE u.dataset = current_schema() AND u.reason = 'changed'
+            AND (u.subject = current_schema() OR v.view IS NOT NULL
+                 OR u.subject IN (SELECT asset FROM glossql_kind_assets(current_schema())))
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
             AND {'function': u.function, 'subject': u.subject} NOT IN (SELECT {'function': function, 'subject': subject} FROM main.server_results())
           GROUP BY u.function, u.subject) o)

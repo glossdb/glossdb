@@ -298,8 +298,8 @@ JSON list.
 ## The outlook and plan kits (preview)
 
 Stored results, read back as SQL ([outlook](../usage/outlook.md)).
-They are functions an actor may run: `metric_ranges()` over the
-dataset, `metric_forecast()` and `metric_scenario()` over a metric
+They are functions an actor may run: `metric_ranges()` and
+`metric_forecast()` over a metric, `metric_scenario()` over a scenario
 (the outlook kit, with a model service), `metric_plan()` over a plan
 (the plan kit, without one). The server runs none of them after a
 write, and `next` asks for none. Once one is stored, `next` lists it

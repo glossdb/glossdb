@@ -25,9 +25,9 @@ them before one is stored.
 
 | Function | Run on | Once |
 |---|---|---|
-| `metric_ranges()` | the dataset | the metrics are served |
+| `metric_ranges()` | a metric | it is served |
 | `metric_forecast()` | a metric | it is served |
-| `metric_scenario()` | a metric | a scenario sets one of its levers |
+| `metric_scenario()` | a scenario, `<dataset>.<scenario>` | it is annotated with its levers |
 | `metric_plan()` | a plan | it is defined; with the forecast of its metric stored, it holds the open periods against its range |
 
 With the service on the same machine, a forecast took 0.7 seconds, the
@@ -42,11 +42,12 @@ Once a result is stored, `next` lists it as any stored result:
   forecast's `forecast_code`, its fix runs the forecast and the
   comparison again.
 - The result out of date (what it read changed): a `should` row with
-  the statement that computes it again. The expected ranges read
-  every metric of the dataset; a forecast or a scenario estimate its
-  own metric; a plan comparison the plan, its metric and the forecast
-  stored on it. A new metric leaves the other metrics' forecasts and
-  plan comparisons current.
+  the statement that computes it again. The expected ranges and a
+  forecast read their own metric; a scenario estimate its own
+  annotation and the metrics it sets a lever on; a plan comparison the
+  plan, its metric and the forecast stored on it. A new metric leaves
+  the other metrics' results current, and a new scenario the other
+  scenarios' estimates.
 
 Each function reads the metric's series inside its window, 48 months
 by default (`time-grains.md`), up to the last complete period: where
@@ -58,19 +59,19 @@ are refused with a reason that names `GLOSSDB_SERVICE_URL`, the
 server's setting. A call that fails is stored as the newest result,
 with its `error`.
 
-`range_test` is a row of `view_tests()` on the dataset, with no view;
-`plan_test` on the plan.
+`range_test` is a row of `view_tests()` on the metric; `plan_test` on
+the plan.
 
 ## Expected ranges
 
 For each of a metric's latest six months: given the months before,
-what range would this month fall in? That is a backtest. The service
-scores every metric in one request against the threshold of
-`range_test`. The ranges are monthly: a metric served by quarter or
-year has none, and its `reason` says so.
+what range would this month fall in? That is a backtest, one request
+per metric, scored against the threshold of `range_test`. The ranges
+are monthly: a metric served by quarter or year has none, and its
+`reason` says so.
 
 ```glossql
-SELECT metric_ranges() FROM subway;
+SELECT metric_ranges() FROM subway.trains_run;
 ```
 
 ```sql
@@ -87,7 +88,7 @@ metric's. `next` then has a `must` row that names the value and the
 range. A change in the business and a defect in the data look the
 same here. Fix a defect in the load or the definition, and run the
 backtest again. A real change is a person's to accept: they record a
-tolerance at or above the score on the dataset, with their reason, as
+tolerance at or above the score on the metric, with their reason, as
 the statement in `next` shows. Do not record it for them.
 
 ## Forecasts
@@ -165,14 +166,16 @@ for a `role` on the view's column, with the statement the view's
 summary row names in `missing`, and for the annotations on the
 column of the table it reads. A scenario changes levers
 by a factor per period (`YYYY-MM` or `YYYY-MM-DD`; a period not named
-keeps 1) and asks what the metric would do.
+keeps 1) and asks what each metric it sets a lever on would do. The
+annotated scenario is an asset of its own, `<dataset>.<scenario>`, and
+the estimate runs on it.
 
 ```glossql
 GLOSS lever ON trains_run.scheduled AS $${"value": true, "basis": "the timetable, set by the operator for each month"}$$;
 DECLARE ASPECT timetable_cut WITH $${"title": "Timetable cut by 5% from October 2025", "x-kind": "scenario", "type": "object",
   "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
 GLOSS timetable_cut ON subway AS $${"levers": [{"column": "trains_run.scheduled", "factor": {"2025-10": 0.95, "2025-11": 0.95, "2025-12": 0.95}, "basis": "a proposal to schedule 5% fewer trains in the last quarter"}]}$$;
-SELECT metric_scenario() FROM subway.trains_run;
+SELECT metric_scenario() FROM subway.timetable_cut;
 ```
 
 The scenario must name a period after the metric's last complete

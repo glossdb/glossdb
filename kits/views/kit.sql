@@ -270,7 +270,8 @@ ORDER BY view;
 
 CREATE OR REPLACE MACRO main.view_axes_of(views_at, columns_at) AS TABLE
 WITH defs AS MATERIALIZED (
-  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
+  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind,
+         json_extract_string(schema, '$.x-plan-of') AS plan_of, json_extract_string(schema, '$.x-covers') AS covers, stopped, columns
   FROM definition(views_at)),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
@@ -1189,16 +1190,20 @@ declared AS (
   LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
   LEFT JOIN checks f ON f.aspect = r.aspect
   WHERE r.test NOT IN (SELECT test FROM expected)),
--- a test on a result an actor stored about the dataset as a whole or
--- about a view with no tests of its own: a kit's measurement and its
--- test come in here, by their results alone
+-- a test on a result an actor stored about the dataset as a whole,
+-- about a view with no tests of its own, or about a view by a kit's
+-- test no view expects (a metric's expected ranges): a kit's measurement
+-- and its test come in here, by their results alone
 stored AS (
-  SELECT coalesce(o.view, '') AS view, r.test, r.aspect, r.subject, r.state, r.current, r.score, v.value::JSON AS evidence, '' AS run
+  SELECT coalesce(o.view, k.view, '') AS view, r.test, r.aspect, r.subject, r.state, r.current, r.score, v.value::JSON AS evidence, '' AS run
   FROM results r
   LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL AND view NOT IN (SELECT view FROM all_views)) o
     ON r.subject = current_schema() || '.' || o.view
+  LEFT JOIN (SELECT view FROM all_views) k
+    ON r.subject = current_schema() || '.' || k.view AND r.test NOT IN (SELECT test FROM expected)
+   AND r.test IN (SELECT test FROM authors WHERE declared_by LIKE 'kit:%')
   LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
-  WHERE r.subject = current_schema() OR o.view IS NOT NULL)
+  WHERE r.subject = current_schema() OR o.view IS NOT NULL OR k.view IS NOT NULL)
 SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared UNION ALL SELECT * FROM stored) t
 LEFT JOIN authors a USING (test)

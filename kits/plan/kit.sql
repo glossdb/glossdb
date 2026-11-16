@@ -13,6 +13,32 @@
 --   FROM glossql_kit('kits/plan/kit.sql');
 
 --===------------------------------------------------------------------===--
+-- A plan is an asset of a kind of its own, the view under its name. Its
+-- edge to the metric it plans (plans) and the place 'its metric' (the
+-- metric it plans and its columns) are this kit's: the lineage reads them
+-- through these three macros (SPEC §4). Called with the empty dataset,
+-- the places macro names the place it adds.
+--===------------------------------------------------------------------===--
+
+CREATE OR REPLACE MACRO main.lineage_assets_plan(dataset_name) AS TABLE
+SELECT dataset_name || '.' || name AS asset, 'plan' AS kind, dataset_name || '.' || name AS node_asset,
+       'definition' AS node_what
+FROM main.aspects
+WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan'
+  AND name IN (SELECT DISTINCT table_name FROM glossql_columns(dataset_name) WHERE table_type = 'VIEW');
+
+CREATE OR REPLACE MACRO main.lineage_edges_plan(dataset_name) AS TABLE
+SELECT p.asset AS "from", dataset_name || '.' || json_extract_string(a.schema, '$.x-plan-of') AS "to", 'plans' AS kind
+FROM main.lineage_assets_plan(dataset_name) p JOIN main.aspects a ON dataset_name || '.' || a.name = p.asset
+WHERE json_extract_string(a.schema, '$.x-plan-of') IS NOT NULL;
+
+CREATE OR REPLACE MACRO main.lineage_places_plan(dataset_name) AS TABLE
+SELECT NULL::VARCHAR AS subject, 'its metric' AS "where", NULL::VARCHAR AS asset
+UNION ALL SELECT "from", 'its metric', "to" FROM main.lineage_edges_plan(dataset_name)
+UNION ALL SELECT e."from", 'its metric', c."to" FROM main.lineage_edges_plan(dataset_name) e
+          JOIN main.contains_edges(dataset_name) c ON c."from" = e."to";
+
+--===------------------------------------------------------------------===--
 -- plan_axes_of(plans_at, metrics_at): one row per plan of the place
 -- plans_at: view, kind, plan_of, covers, stopped, applicable, reason, its
 -- period and value columns, its metric's additivity, the grain it covers
@@ -28,7 +54,8 @@
 
 CREATE OR REPLACE MACRO main.plan_axes_of(plans_at, metrics_at) AS TABLE
 WITH defs AS MATERIALIZED (
-  SELECT split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
+  SELECT split_part(view, '.', 2) AS metric, kind, json_extract_string(schema, '$.x-plan-of') AS plan_of,
+         json_extract_string(schema, '$.x-covers') AS covers, stopped, columns
   FROM definition(plans_at) WHERE kind = 'plan'),
 pc AS (SELECT d.metric, list(c.name ORDER BY c.position) AS cols FROM defs d, unnest(d.columns) t(c) GROUP BY d.metric),
 m AS MATERIALIZED (FROM main.view_axes_of(metrics_at, metrics_at)),
