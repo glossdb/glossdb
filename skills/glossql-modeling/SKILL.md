@@ -153,6 +153,7 @@ row count, a metric's total. Then report in three lists:
 |---|---|
 | `references/load.md` | sources, load queries, CSV files, dropped rows |
 | `references/define.md` | the three kinds of view; a table to a data contract; metric shapes; stopping a view |
+| `references/harmonise.md` | several systems of record mapped onto one target table: the branches, the contract, the mapping, the reconciliation (preview) |
 | `references/tests.md` | the built-in tests, tests of your own, tolerances |
 | `references/time-grains.md` | reading a metric: grains, windows, dimensions |
 | `references/preview.md` | expected ranges, forecasts, plans, scenarios (preview) |

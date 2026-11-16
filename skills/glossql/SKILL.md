@@ -344,7 +344,7 @@ is `information_schema.columns`.
 
 | Page | When |
 |---|---|
-| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each kind of work; its references: `load.md`, `define.md`, `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
+| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each kind of work; its references: `load.md`, `define.md`, `harmonise.md` (several systems of record onto one table), `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
 | `references/review.md` | assumptions, review decisions, conflicts |
 | `skill://glossql-apps/SKILL.md` | a data app over the views |
 | `skill://glossql-functions/SKILL.md` | a function of your own |
