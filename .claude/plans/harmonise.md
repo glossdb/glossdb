@@ -36,10 +36,10 @@ The design, agreed with the project lead:
 | 2 | The source system of a loaded table, readable by a function through a place of the lineage (a table's load and its source) | Low | the extension's lineage kit (`lineage()`, a place), `kits/harmonise` | Built: the edge `loaded from`, the place `its source systems` | |
 | 3 | The contract on a target view's columns: key, type, meaning, allowed values; a test that the view's rows keep it (key unique, values allowed) | Low: the forms exist (a FACT property, a function, `rate_tolerance`) | `kits/harmonise`, the modeling skill | Built: `contract` per column, `contract_check`, `contract_test` | |
 | 4 | Reconciliation per system and period, with its test | Medium: "dropped and why" must come from the view's joins and filters, which the lineage does not carry today (row filters, literals in a join) | `kits/harmonise`, the extension's lineage (filters) | Built: `reconciliation` on a view with a contract, computed by the server after each load; `branch_rows()` in the extension; no test of its own (it cannot be red where it can follow a view) | |
-| 5 | Codes that are unique only inside a system (a Swiss and a Polish item with the same local code): a relationship that holds under a condition. Open question in `SPEC.md` §9 (the polymorphic reference). Through the corpus: two forms on the demo's identity sheet and one real switching case, a constant inside the key (`t.('CH', code) -> m.(market, code)`) and a condition on the relationship (`WHEN`, which today reads a sibling annotation on a property declaration, so the word would shift), shown to the project lead | Medium: a grammar change; every reader of a relationship follows the condition | the extension (`corpus/`, `grammar.ebnf`, `SPEC.md`, the checks) | Beside 1 to 4; the lead reviews | |
+| 5 | Codes that are unique only inside a system (a Swiss and a Polish item with the same local code): a relationship that holds under a condition. Open question in `SPEC.md` §9 (the polymorphic reference). Through the corpus: two forms on the demo's identity sheet and one real switching case, a constant inside the key (`t.('CH', code) -> m.(market, code)`) and a condition on the relationship (`WHEN`, which today reads a sibling annotation on a property declaration, so the word would shift), shown to the project lead | Medium: a grammar change; every reader of a relationship follows the condition | the extension (`corpus/`, `grammar.ebnf`, `SPEC.md`, the checks) | Corpus test done (`corpus/29-identities-by-market.md` in the extension): no artifact has a code that collides across systems, and none has a switching target. Not built; taken up when a case appears. If built: a constant inside the key for the scoped key, `WHERE` rather than `WHEN` for a condition | |
 | 6 | Value codes mapped in a view (`status = 'D'`, units written three ways): a test that every value in the data is handled by the expression, listing the ones that fall through | Low: the literals come from row 1 | `kits/harmonise` | Built: `code_check`, `code_test`; counts the rows a branch keeps | |
 | 7 | Full load or append/update load, stated and tested. An agent states per load whether the source sends its complete state or only changes (an assumption a person confirms). A full load (no key) is right where rows can disappear unflagged, and when unsure; a keyed load where only new or changed rows arrive. Tested at each load: a keyed load whose file covers most keys of the table and misses some is a finding with the fix to load without the key; a large full load that changes almost nothing is a should row naming a key | Low | `kits/core` or `kits/harmonise`, `load_changes()` in `kits/goals/kit.sql`, the load skill, `docs/usage/load.md` | Built: `delivery` on a table, `load_modes()`; a full load of 100,000 rows or more keeps a sum of row hashes (5% of the load) | |
-| 8 | The skill: how an agent harmonises with the kit, on both cases | Low | `skills/` | After 4 | |
+| 8 | The skill: how an agent harmonises with the kit, on both cases | Low | `skills/` | Built: `skills/glossql-modeling/references/harmonise.md`, walked from an empty workspace to `must 0` in 9 calls | |
 | 9 | The demo rebuilt on the kit: its statements run on this server, its Mapping and Reconciliation pages read the kit's reads | Medium: the demo is behind the server (`cube`, `metric_bands`, `ruling` no longer exist) | `../glossdemo`, the project lead's repository | After 8; the lead says when | |
 
 ## Found while building
@@ -66,6 +66,12 @@ The design, agreed with the project lead:
   step. Unmatched keys are counted over the whole table, not per
   period. The sum at the source appears only where a measure comes
   from the driving table alone.
+
+- Found by the walk and fixed: a join with no declared relationship
+  is a should with its statement; a loaded table's stated grain is
+  tested at each load (`grain_check`); a join on several columns is
+  judged as one key; the mapping read shows the column a value is
+  looked up by (`lookup`); a test with nothing to check is no row.
 
 ## What is there
 
