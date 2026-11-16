@@ -248,7 +248,7 @@ target is defined:
 | the code table | a relationship from the view's column: `DECLARE RELATIONSHIP <view>.<column> -> <code table>.<code>` |
 
 Once one column of a view carries a `contract`, `next` asks for one on
-each other column (`should`), and the server runs three tests on the
+each other column (`should`), and the server runs two tests on the
 view after each write. Each is red above a tolerance a person accepts
 with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
 
@@ -256,16 +256,31 @@ with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
 |---|---|---|
 | `contract_test` | `breaches`: per column, `rule` (`key`, `required`, `values`, `codes`, `type`, `missing`), `count` of rows and up to three `examples`; `rows` | the key repeats or is empty, a required value is empty, a value is not allowed, a code has no row in its code table, a column is served as another type. `breach_rate` is the share of rows of the largest breach |
 | `code_test` | `codes`: per target column and source column, the `system`, the `literals` the expression names, `told`, `contracted`, `rows`, and `unnamed`, each value the literals do not name with its rows | a value the expression does not name reaches a column with a contract: it falls to the `ELSE` or to NULL. Name every code. Values are counted over the rows the view's condition on the source table keeps (comparisons with literals joined by `and`). Where a column is tested by a range, a pattern or a function of it, or the condition has another form (a window, an `or`), `told` is false; where no column is told, the check is not applicable and the test is yellow, not green |
-| `reconciliation_test` | `rows`: per system and period, `system`, `branch`, `table` (the table that drives the branch: the first of its `FROM`, followed into a subquery or a CTE), `period`, `read`, `filtered` (per condition, its `rows`), `unmatched` (per inner join, its `rows`, the `relationship` it follows, and that relationship's orphan `keys` with their `rows` and `distinct_keys`), `repeated`, `reached`, `vanished`, `told`, `not_told`, and `measures`: per column with role `measure`, the `target` sum and, where the branch computes the column from the driving table alone, the `source` sum over every row read; `period_column` | rows vanish that no step explains. `vanished` is read minus filtered minus unmatched plus repeated minus reached; `breach_rate` is the largest share of a row's rows read that vanished. The period is the view's `time_axis` (its `entity`), else its column with role `timestamp`; a date is truncated to its `time_grains` floor, a month where none is stated. A branch that computes the period from a joined table, or a view with no time column, has one row per branch. A branch with a step the read does not follow (a `GROUP BY`, a `DISTINCT`, a `LIMIT`, a join that is not inner, left or right) is `told: false`: its rows read are the driving table's, and what it leaves out vanishes. Filtered and unmatched rows do not make it red: the contract and `orphan_test` judge them |
+
+**The reconciliation.** `reconciliation()` over a target view answers:
+did every row of each system arrive, and if not, which rows and why.
+An actor runs it; once a load or a definition moves what it read,
+`next` asks for it again (`should`). No test judges it. Its value:
+
+| Field | What |
+|---|---|
+| `rows` | per system and period: `system`, `branch`, `table` (the table that drives the branch: the first of its `FROM`, followed into a subquery or a CTE), `period`, `read`, `filtered` (per condition, its `rows`), `unmatched` (per inner join, its `rows`, the `relationship` it follows, and that relationship's orphan `keys` with their `rows` and `distinct_keys`), `repeated`, `reached`, `vanished`, `told`, `not_told`, and `measures`: per column with role `measure`, the `target` sum and, where the branch computes the column from the driving table alone, the `source` sum over every row read |
+| `applicable`, `reason` | false where a branch has a step the read does not follow (a `GROUP BY`, a `DISTINCT`, a `LIMIT`, a join that is not inner, left or right); the reason names it. The rows of the other branches are served all the same |
+| `period_column` | the view's `time_axis` (its `entity`), else its column with role `timestamp`; a date is truncated to its `time_grains` floor, a month where none is stated. A branch that computes the period from a joined table, or a view with no time column, has one row per branch |
+
+`vanished` is read minus filtered minus unmatched plus repeated minus
+reached, on a branch whose steps are told; it is NULL on a branch that
+is not told.
 
 A server opened without the kit serves the same `next`, the same
 tests and the same `column_mapping()` for a dataset with no contract.
 
 ```sql
 SELECT source_systems() FROM onhand;
-SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test IN ('contract_test', 'code_test', 'reconciliation_test');
+SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test IN ('contract_test', 'code_test');
+SELECT reconciliation() FROM onhand;
 SELECT r->>'system' AS system, r->>'period' AS period, r->'read' AS read, r->'reached' AS reached, r->'unmatched' AS unmatched
-FROM view_tests(), unnest(from_json(evidence->'rows', '["JSON"]')) t(r) WHERE test = 'reconciliation_test';
+FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
 ```
 
 `orphan_test` names the keys that find no parent on each relationship

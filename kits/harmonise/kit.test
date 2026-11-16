@@ -355,11 +355,6 @@ SELECT relationship_coherence() FROM supply.stock_mono.indeks -> supply.model_id
 statement ok
 GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 
-query TT
-SELECT view, state FROM view_tests() WHERE test = 'reconciliation_test';
-----
-onhand	not_run
-
 statement ok
 SELECT reconciliation() FROM onhand;
 
@@ -401,10 +396,10 @@ d365	cases	123.0	NULL
 mono	cases	79.5	NULL
 sap	cases	220.0	NULL
 
-query TR
-SELECT state, score FROM view_tests() WHERE test = 'reconciliation_test';
+query TT
+SELECT m.value->>'applicable', m.value->>'reason' FROM main.measurements m WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand';
 ----
-green	0.0
+true	NULL
 
 # the orphan test on the same join names the code too: 1 of the 4 Polish rows has no identity
 statement ok
@@ -485,6 +480,12 @@ SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'cod
 code_test	red	0.25
 contract_test	red	0.1
 
+# the loads moved what the reconciliation read: next asks for it again, a should with the statement
+query TT
+SELECT level, statement FROM next WHERE asset = 'supply.onhand' AND open LIKE 'reconciliation:%';
+----
+should	SELECT reconciliation() FROM supply.onhand;
+
 # the second deliveries reconciled: Denmark's second row arrives, Poland's pieces are left out by the status,
 # X9 again by the join, the new warehouse arrives (the contract judges it)
 statement ok
@@ -557,8 +558,9 @@ SELECT state FROM view_tests() WHERE test = 'code_test' AND view = 'stock_states
 ----
 yellow
 
-# a loss the reconciliation cannot follow: a DISTINCT folds Denmark's four rows into its two sites. The
-# branch's steps are not told, and the rows that vanish make the test red
+# a step the reconciliation cannot follow: a DISTINCT folds Denmark's four rows into its two sites. The branch
+# is not told: nothing vanishes, the result is not applicable with the step as its reason, and next has no row
+# for it
 statement ok
 DECLARE ASPECT sites WITH $${"title": "Sites", "x-kind": "relation"}$$ AS VIEW;
 
@@ -576,12 +578,17 @@ SELECT r.system, r.read, r.reached, r.vanished, r.told
 FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
 WHERE m.function = 'reconciliation' AND m.subject = 'supply.sites';
 ----
-sap	4	2	2	false
+sap	4	2	NULL	false
 
-query TR
-SELECT state, score FROM view_tests() WHERE test = 'reconciliation_test' AND view = 'sites';
+query TT
+SELECT m.value->>'applicable', m.value->>'reason' IS NOT NULL FROM main.measurements m WHERE m.function = 'reconciliation' AND m.subject = 'supply.sites';
 ----
-red	0.5
+false	true
+
+query I
+SELECT count(*) FROM next WHERE asset = 'supply.sites' AND open LIKE 'reconciliation%';
+----
+0
 
 # === Full or keyed loads, held against what the source sends (the goals kit's load_modes()). No finding
 # without a load before the newest; the unit tables loaded again above are small and replaced whole

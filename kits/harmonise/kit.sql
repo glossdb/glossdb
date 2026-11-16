@@ -355,29 +355,30 @@ DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 --               where no declared relationship covers the join
 --   repeated    rows a join adds: more partners than rows
 --   reached     rows the branch serves
---   vanished    read - filtered - unmatched + repeated - reached
+--   vanished    read - filtered - unmatched + repeated - reached, on a
+--               branch whose steps are told; NULL on one that is not
 --   told        false where the branch has a step the read does not
 --               follow (a GROUP BY, a DISTINCT, a LIMIT, a join of
 --               another kind): its rows read are the driving table's,
---               and what it leaves out vanishes (why: not_told)
+--               and not_told names the step
 --   measures    per column with role measure, the sum the target serves
 --               and, where the branch computes it from the driving table
 --               alone, the sum over every row read, to hold against the
 --               system's own report
--- A row a step explains is not a breach here: the contract and
--- orphan_test judge them. breach_rate is the largest share of a row's
--- rows read that vanished; red where rows vanish unexplained.
+-- applicable is false where a branch is not told, with the step as the
+-- reason; the told branches' rows are served all the same. A function an
+-- actor runs, as source_systems, with no test: on a told branch the
+-- re-read and the branch's own rows agree by construction, so a test on
+-- vanished rows could not fail. What a person reads is the account.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT reconciliation WITH $${
-  "description": "Preview. Per source system and period, the rows a target view reads, the rows its conditions and joins leave out and why, the rows it serves, and the sums of its measures. Fails where rows vanish that no step explains.",
-  "type": "object", "x-subject": "view", "x-set-by": "contract",
+  "description": "Preview. Per source system and period, the rows a target view reads, the rows its conditions and joins leave out and why, the rows it serves, and the sums of its measures.",
+  "type": "object",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "breach_rate": {"type": ["number", "null"]}, "period_column": {"type": ["string", "null"]},
-                 "rows": {"type": ["array", "null"], "items": {"type": "object"}},
-                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
-                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE;
+                 "period_column": {"type": ["string", "null"]},
+                 "rows": {"type": ["array", "null"], "items": {"type": "object"}}}
+}$$ AS MEASUREMENT ON TABLE;
 
 -- reconciliation_period(value, grain): a period as text, a date or a
 -- timestamp truncated to the grain (a month where none is stated)
@@ -478,39 +479,25 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
                                   'keys': from_json(f.keys, '[{"key": "VARCHAR", "rows": "BIGINT"}]'), 'distinct_keys': f.distinct_keys} ORDER BY s.step)
                      FROM dropped x JOIN steps s USING (branch, step) LEFT JOIN followed f USING (branch, step)
                      WHERE x.branch = c.branch AND x.period IS NOT DISTINCT FROM c.period AND s.kind = 'join'), []) AS unmatched,
-           c.partners - c.read AS repeated, c.reached, c.kept - c.reached AS vanished,
+           c.partners - c.read AS repeated, c.reached, CASE WHEN b.untold IS NULL THEN c.kept - c.reached END AS vanished,
            b.untold IS NULL AS told, b.untold AS not_told,
            (SELECT list({'column': x.col, 'target': coalesce(t.total, 0.0), 'source': r.total} ORDER BY x.pos)
             FROM measures x LEFT JOIN served_sums t ON t.branch = c.branch AND t.period IS NOT DISTINCT FROM c.period AND t.col = x.col
             LEFT JOIN read_sums r ON r.branch = c.branch AND r.period IS NOT DISTINCT FROM c.period AND r.col = x.col) AS measures
     FROM counted c JOIN branches b USING (branch) LEFT JOIN systems y ON y.table_name = b.table_name),
   state AS (
-    SELECT EXISTS (SELECT 1 FROM out) AS applicable,
-           (SELECT max(abs(vanished) / greatest(read, reached, 1)::DOUBLE) FROM out) AS worst,
-           (SELECT bool_or(c.derivation IS NOT NULL) FROM d, unnest(d.columns) t(c)) IS TRUE AS plans,
-           (SELECT redefine_statement(view) FROM d) AS redefine)
-  SELECT state.applicable,
+    SELECT EXISTS (SELECT 1 FROM out) AS rows_read,
+           (SELECT string_agg(DISTINCT 'branch ' || branch || ' (' || coalesce(system, table_name, 'no table') || '): ' || not_told, '; ')
+            FROM out WHERE NOT told) AS untold,
+           (SELECT bool_or(c.derivation IS NOT NULL) FROM d, unnest(d.columns) t(c)) IS TRUE AS plans)
+  SELECT state.rows_read AND state.untold IS NULL AS applicable,
          CASE WHEN NOT state.plans THEN 'its definition does not plan'
-              WHEN NOT state.applicable THEN 'the view reads no loaded table' END AS reason,
-         CASE WHEN state.applicable THEN coalesce(state.worst, 0.0) END AS breach_rate,
+              WHEN NOT state.rows_read THEN 'the view reads no loaded table'
+              WHEN state.untold IS NOT NULL THEN 'a step the reconciliation does not follow: ' || state.untold END AS reason,
          (SELECT col FROM period) AS period_column,
          (SELECT list({'system': system, 'branch': branch, 'table': table_name, 'period': period, 'read': read,
                        'filtered': filtered, 'unmatched': unmatched, 'repeated': repeated, 'reached': reached,
                        'vanished': vanished, 'told': told, 'not_told': not_told, 'measures': measures}
-                      ORDER BY system, period, branch) FROM out) AS rows,
-         CASE WHEN state.worst > 0
-              THEN split_part($subject, '.', 2) || ' loses rows no step explains: '
-                   || (SELECT string_agg(coalesce(system, table_name) || coalesce(' ' || period, '') || ' '
-                                         || abs(vanished) || ' of ' || read || ' rows read'
-                                         || CASE WHEN told THEN '' ELSE ' (a step the reconciliation does not follow: ' || not_told || ')' END,
-                                         '; ' ORDER BY system, period, branch) FROM out WHERE vanished <> 0) END AS finding,
-         CASE WHEN state.worst > 0 THEN concat_ws(chr(10),
-           '-- read each branch''s rows as its steps leave them: SELECT * FROM branch_rows(''' || $subject || '''); fix the definition, then record it again:',
-           state.redefine,
-           '-- where a person accepts the rows as they go, record the rate with their reason:',
-           '-- ' || main.gloss_statement('reconciliation', $subject,
-                    '{"tolerance": ' || ceil(state.worst * 1000) / 1000 || ', "basis": "<who accepted the loss and why>"}')) END AS fix
+                      ORDER BY system, period, branch) FROM out) AS rows
   FROM state
 $$ RETURNS reconciliation;
-
-DECLARE TEST reconciliation_test ON reconciliation BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
