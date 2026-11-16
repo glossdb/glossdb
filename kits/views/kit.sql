@@ -875,7 +875,8 @@ DECLARE TEST measure_additivity_test ON additivity_check BY (AGENT, HUMAN) DETEC
 
 -- orphan_check: the share of rows on a declared relationship the view
 -- joins over whose key finds no parent, from the coherence result stored
--- on each relationship (relationship_coherence); an inner join drops them,
+-- on each relationship (relationship_coherence), with the keys that find
+-- none (the three with the most rows, and how many); an inner join drops them,
 -- an outer join keeps them with empty parent columns. A relationship is joined over
 -- when each of its columns is among the columns the definition joins on;
 -- one between the tables it reads on other columns is not judged. Where
@@ -914,7 +915,11 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
     WHERE NOT EXISTS (SELECT 1 FROM endpoints e WHERE e.relationship = c.relationship
                       AND e.column_path NOT IN (SELECT column_path FROM joined))),
   declared AS (SELECT * FROM rels WHERE left_table <> right_table),
-  mine AS (SELECT relationship, try_cast(json_extract(value, '$.orphan_rate') AS DOUBLE) AS orphan_rate FROM rels WHERE value IS NOT NULL)
+  mine AS (
+    SELECT relationship, try_cast(json_extract(value, '$.orphan_rate') AS DOUBLE) AS orphan_rate,
+           coalesce(from_json(value->'orphan_keys', '[{"key": "VARCHAR", "rows": "BIGINT"}]'), []) AS orphan_keys,
+           try_cast(value->>'orphan_distinct' AS BIGINT) AS orphan_distinct
+    FROM rels WHERE value IS NOT NULL)
   SELECT CASE WHEN n.tables = 0 THEN plans.ok WHEN n.tables = 1 THEN true
               WHEN NOT EXISTS (SELECT 1 FROM declared) THEN true
               ELSE NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) END AS applicable,
@@ -926,9 +931,15 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
          CASE WHEN n.tables = 1 OR (n.tables = 0 AND plans.ok) THEN 0.0
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared) THEN 0.0
               WHEN n.tables > 1 AND NOT EXISTS (SELECT 1 FROM declared WHERE value IS NULL) THEN coalesce((SELECT max(orphan_rate) FROM mine), 0.0) END AS breach_rate,
-         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate} ORDER BY relationship) FROM mine) AS edges,
+         (SELECT list({'relationship': relationship, 'orphan_rate': orphan_rate, 'orphan_keys': orphan_keys, 'orphan_distinct': orphan_distinct}
+                      ORDER BY relationship) FROM mine) AS edges,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
+              THEN (SELECT string_agg(round(orphan_rate * 100, 1) || '% of rows on ' || relationship
+                                      || CASE WHEN len(orphan_keys) > 0
+                                              THEN ' (' || list_aggregate(list_transform(orphan_keys, lambda k: k.key || ': ' || k.rows
+                                                         || CASE WHEN k.rows = 1 THEN ' row' ELSE ' rows' END), 'string_agg', ', ')
+                                                   || CASE WHEN orphan_distinct > len(orphan_keys) THEN '; ' || orphan_distinct || ' keys in all' ELSE '' END || ')'
+                                              ELSE '' END, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
                    || ' find no parent: an inner join drops them, an outer join keeps them with empty parent columns' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
               THEN '-- fix the load that leaves rows without a parent, or accept the rate with the reason:' || chr(10)
