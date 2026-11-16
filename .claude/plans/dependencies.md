@@ -34,7 +34,6 @@ computed: no second list, no flag.
 |---|---|---|---|---|
 | Not tested: an interrupt during a computation is not stored as a failed result (the server's interfaces expose no interrupt); the Postgres catalog's lost-race path is read, not run | Low | the extension (`glossql_runner.cpp`) | With a Postgres catalog in CI | |
 | A replace load of identical rows builds a new table, so results are computed once more. Comparing costs 60 to 160% of the load (1.00 s on 2,000,000 rows), so it is not built | Low | the extension | Not planned |
-| The outlook and plan kits are tested against the suite's stand-in service only; a run against glossthesi `976842b` (it loads models) has not been made. The forecast is one result per metric, decided by the project lead. The scenario path is about 300 of the outlook kit's 841 lines | Medium until run | `kits/outlook/kit.sql`, `../glossthesi` | Before the pull requests | |
 
 ## What is built
 
@@ -83,14 +82,10 @@ computed: no second list, no flag.
   returns the verdicts and the kit stores and serves them. **The plan
   kit** (323 lines) compares a plan with its metric's actuals with no
   model service; its forecast column reads a stored forecast. Both
-  are pull-ins.
-- **Gone**: the inputs derived from a body's bound plan, the lineage
-  computed in C++ with its widenings, the filter on what a running
-  function sees, `glossql_parts()`, the outlook kit's hand-made
-  inputs digest, `forecast_exists`, `scenario_exists`,
-  `fan_out_check` and `validity_check` as two, `open_items`, the
-  console's re-measure button. `glossql_runner.cpp` went from 2947 to
-  2401 lines in the last step.
+  are pull-ins, run over MCP against glossthesi `976842b` (Measured).
+- **Gone**: the inputs from a body's bound plan, the C++ lineage,
+  `glossql_parts()`, `forecast_exists`, `scenario_exists`,
+  `open_items`, the console's re-measure button.
 - **A write that computes nothing takes 0.24 s** (0.54 s before; a
   release build 0.28 s). Which results are out of date is checked
   once per store version and kept; a kit's table macro is kept the
@@ -112,35 +107,43 @@ computed: no second list, no flag.
 
 ## Measured
 
-Server at `b447d3c`: 120 tests pass. Extension at `b61dbdb`: its SQL
-suite passes, lint clean. The extension's
-changes since `96b34b7` were reviewed line by line by two reviewers;
-the confirmed findings are fixed, each with a test. glossval's series
-capture equals each metric's own SQL (0 differing cells) and its
-import path agrees with a fresh load. On the server on
-127.0.0.1:8080 with the Formula 1 data (9 tables, 4 metrics, 1 table view), each
-write one MCP call:
+Server: 121 tests pass. Extension at `1074c04` (not pushed): its SQL
+suite passes, lint clean; its changes since `96b34b7` were reviewed
+line by line by two reviewers, the findings fixed with a test each.
+glossval's series capture equals each metric's own SQL. On the Formula
+1 data (9 tables, 4 metrics, 1 table view), one MCP call each: an
+annotation or a relationship no view's checks read 0.24 s, 0 results
+(1.00 to 3.2 s, 4 to 12, before the read functions); `role` on a
+served column 0.46 s, 1; a table view over three tables 1.73 s, 10.
+Per write: `results_due()` 0.15 s, `next` 0.05 s, the write 0.008 s.
 
-| Write | Before any lineage | With the read functions |
-|---|---|---|
-| `meaning` on a column no metric scans | 1.00 s, 4 results computed | 0.24 s, 0 |
-| `meaning` on a table two metrics scan | 1.00 s, 4 | 0.24 s, 0 |
-| `role` on a source column of a metric | 1.17 s, 4 | 0.24 s, 0 |
-| `role` on a column a metric serves | not measured | 0.46 s, 1 |
-| The same annotation again; a new property declared | not measured | 0.24 s, 0 |
-| A relationship declared between tables no metric joins | 3.2 s, 12 (with the C++ lineage) | 0.24 s, 0 |
-| A table view defined over three tables | not built | 1.73 s, 10: 7 column profiles, 1 relationship check, its join and orphan checks |
-| A relationship declared that the table view joins over | not built | 0.57 s, 2: the relationship check and the view's orphan check |
-| `meaning` on a column the table view reads | not built | 0.24 s, 0 |
+**The outlook and plan kits against glossthesi `976842b`**, over MCP
+on the MTA subway data (48 months sent; two metrics with dimensions,
+a 4-month metric, a plan, three scenarios). Each function, read, code
+and refusal holds as used; a load puts each stored result out of date
+in `next` and calls no service; an unrelated annotation leaves them
+current. Per call: ranges 0.7 to 1.4 s, forecast 0.7 s, scenario 2.3
+to 3.5 s, plan 1.0 s. Fixed on the way: a temporal profile out of
+date after a load kept every result out of date; a short metric read
+`history_short` with one month; no `coverage_datasets`; a failed
+scenario run not served; a service that does not answer not classed
+`service_failed` (the extension).
 
-Per write, reported by the build and not repeated here:
-`results_due()` with the kept reads 0.15 s, `next` 0.05 s, the write
-itself 0.008 s. On the goals fixture: with two
-plans stored, a change to one leaves the other current; an unrelated
-annotation, an added assumption and a declared plan leave the
-dataset's preview measurements current.
+Each metric in its own request against a dataset's two in one,
+one-step backtest at 24 origins on 48 months, measured. Quantile loss
+as % of the mean actual; share inside 10-90 and 5-95; alone / together:
+
+| Dataset | Metric | Loss % | Inside 10-90 | Inside 5-95 |
+|---|---|---|---|---|
+| MTA subway | trains run | 0.74 / 0.70 | 0.75 / 0.75 | 0.92 / 0.92 |
+| MTA subway | trains scheduled | 0.70 / 0.71 | 0.79 / 0.83 | 0.96 / 0.96 |
+| BIRD bank | transactions | 1.63 / 1.64 | 0.88 / 0.88 | 0.88 / 0.88 |
+| BIRD bank | amount | 1.40 / 1.46 | 0.92 / 0.96 | 0.96 / 0.96 |
+| rel-stack | votes | 1.39 / 1.38 | 0.79 / 0.79 | 0.92 / 0.96 |
+| rel-stack | edits | 1.29 / 1.31 | 0.83 / 0.83 | 0.96 / 1.00 |
+
+Per metric costs nothing measurable: at most 0.06 points of loss, 1 in 24 inside a range.
 
 ## Next issue (draft)
 
-**The harmonisation kit** (`harness.md`, the first backlog row). The
-outlook cut closes this plan's last medium row before it.
+**The harmonisation kit** (`harness.md`, the first backlog row).

@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::common::{
-    self, app, app_on, body_json, body_text, elicit, expect_ok, get, mcp_on, meta, outcomes,
-    post_query, query, rows, rpc, say, tool, window,
+    self, app, app_on, app_on_service, body_json, body_text, elicit, expect_ok, get, mcp_on, meta,
+    outcomes, post_query, query, rows, rpc, say, tool, window,
 };
 
 const INT: &str = "Int32";
@@ -1793,6 +1793,35 @@ async fn the_instructions_of_an_empty_workspace_name_workspace_status() {
     let body = expect_ok(mcp_at(&app, "127.0.0.1", initialize()).await).await;
     let instructions = body["result"]["instructions"].as_str().unwrap();
     assert!(instructions.contains("workspace_status"), "{instructions}");
+}
+
+/// A model service that does not answer, here a port nobody listens
+/// on, is unavailable as one that refuses: 503 with the code
+/// `service_failed` on the query interface, and the failure is stored
+/// as the newest result, which the backtest's read serves.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_preview_measurement_whose_service_does_not_answer_is_unavailable_and_stored_as_failed() {
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let (app, _, _dir) = app_on_service("fin", &url).await;
+    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
+                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
+                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
+    say(&app, "/fin/mcp", setup).await;
+
+    let (status, answered) = query(&app, "SELECT metric_ranges() FROM fin").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
+    assert_eq!(answered["code"], json!("service_failed"), "{answered}");
+
+    let failed = rows(
+        &app,
+        "/fin/mcp",
+        "SELECT count(*) AS n FROM range_points() WHERE error IS NOT NULL",
+    )
+    .await;
+    assert_eq!(failed[0]["n"], json!(1), "{failed:?}");
 }
 
 /// A preview measurement calls the model service. Where none is named

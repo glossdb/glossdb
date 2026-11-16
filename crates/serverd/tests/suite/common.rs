@@ -278,6 +278,27 @@ pub async fn app_on_without(dataset: &str, kits: &[&str]) -> Served {
         before - kits.len(),
         "a kit of {kits:?} is not among the kits"
     );
+    app_on_config(dataset, config, dir).await
+}
+
+/// The gated interfaces over a new workspace that holds `dataset`, the
+/// engine opened with the model service at `url`.
+pub async fn app_on_service(dataset: &str, url: &str) -> Served {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
+    config.service = Some(glossdb_serverd::engine::Service {
+        url: url.to_string(),
+        token: None,
+        audience: None,
+    });
+    app_on_config(dataset, config, dir).await
+}
+
+async fn app_on_config(
+    dataset: &str,
+    mut config: glossdb_serverd::engine::Config,
+    dir: tempfile::TempDir,
+) -> Served {
     config.root = vec![glossdb_serverd::BOOTSTRAP.into()];
     let plane = Arc::new(
         Plane::open(config).await.unwrap().with_pages(
