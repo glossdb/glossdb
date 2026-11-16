@@ -41,8 +41,9 @@ asks for alone.
 | The out-of-date check, whole per snapshot, then cached (`glossql_kept`, the kept check) | built | the cache around the missing graph. It goes |
 | A scenario, the range tolerance: annotations on the dataset; `metric_scenario` per metric, `metric_ranges` per dataset | built | not nodes; one change puts all of it out of date (#246) |
 
-Size today: the extension's `src/` 9,851 lines, the kits' SQL 5,704.
-Each step below ends with both counted again, and smaller.
+Size before step 1: the extension's `src/` with headers 10,188 lines,
+the kits' SQL 5,704. After step 1 (branch `snapshot-version`): 10,085
+and 5,733; the kits grew by the lineage kit's walk nodes.
 
 ## Steps, in order
 
