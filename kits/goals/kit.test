@@ -732,8 +732,21 @@ DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-k
 statement ok
 GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.results r JOIN harm.drivers d ON d.driver_id = r.driver_id"}$$;
 
+# the view joins two loaded tables on a column pair no relationship covers: a should under describe, its statement
+# the relationship from the join's left input to its right while no profile says which side holds each key once
+query TTTTTT
+SELECT level, kind, asset, state, for_view, contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
+FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+----
+should	describe	harm.results.driver_id -> harm.drivers.driver_id	missing	driver_results	true
+
 statement ok
-DECLARE RELATIONSHIP results.driver_id -> drivers.driver_id;
+DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;
+
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+----
+0
 
 query ITT
 SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
@@ -819,3 +832,59 @@ SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
 1	column_profile	harm.circuits.name
 2	join_check	harm.circuit_count
 2	orphan_check	harm.circuit_count
+
+# --- a stored profile turns the relationship round: drivers holds each driver_id once, so the relationship runs
+# from laps to drivers, though the join writes drivers first
+statement ok
+CREATE TABLE harm.laps AS SELECT i AS lap_id, i % 5 AS driver_ref FROM range(20) t(i);
+
+statement ok
+DECLARE ASPECT driver_laps WITH $${"title": "Laps with their driver", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS driver_laps ON harm AS $${"sql": "SELECT d.surname, l.lap_id FROM harm.drivers d JOIN harm.laps l ON l.driver_ref = d.driver_id"}$$;
+
+query TT
+SELECT asset, contains(statement, 'DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;') FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+----
+harm.laps.driver_ref -> harm.drivers.driver_id	true
+
+statement ok
+DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;
+
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+----
+0
+
+# --- a loaded table's stated grain is tested at each load: the server runs grain_check on each table whose entity
+# states one; a key the load sends twice is a must on the table, with the keys
+statement ok
+GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["driver_ref"]}$$;
+
+query ITT
+SELECT ord, function, subject FROM results_due() WHERE function = 'grain_check';
+----
+2	grain_check	harm.laps
+
+statement ok
+SELECT grain_check() FROM harm.laps;
+
+query TTTRT
+SELECT level, kind, state, (SELECT round(score, 4) FROM view_tests() WHERE test = 'grain_test'),
+       (SELECT evidence->>'repeated' FROM view_tests() WHERE test = 'grain_test')
+FROM next WHERE asset = 'harm.laps' AND kind = 'test';
+----
+must	test	red	0.75	15
+
+# the grain stated as the rows have it: green, and no row
+statement ok
+GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["lap_id"]}$$;
+
+statement ok
+SELECT grain_check() FROM harm.laps;
+
+query TI
+SELECT (SELECT state FROM view_tests() WHERE test = 'grain_test'), count(*) FROM next WHERE asset = 'harm.laps' AND kind = 'test';
+----
+green	0

@@ -90,13 +90,17 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
   metric alone, as here: a check on the measure. Its function runs
   over `<dataset>.<view>`. Before it, the server computes the results
   its body reads (`results(...)`) at the place it names.
+  `"x-subject": "table"` marks one it expects on each loaded table,
+  run over `<dataset>.<table>` after a load (`grain_check`).
   `"x-subject": "dataset"` marks a check on the dataset as a whole that
   an actor runs: the server expects it nowhere and `next` asks for no
   annotation of it, and a person accepts a result with a `tolerance`
   on the dataset, as for the views' checks.
 - **Rows in `next`.** A kit adds rows to `next` through its tests and
   its stored results, and through nothing else. A test that is not
-  green is a row: `must` where it is red, `should` otherwise. A check
+  green is a row: `must` where it is red, `should` otherwise, but a
+  `yellow` test whose check ran, is current and returns no `fix`: it
+  has nothing to check, and running it again changes nothing. A check
   that returns `finding` and `fix` has them served as the row's `open`
   and `statement`. A result about the dataset or a view that no test
   on the view runs is one an actor runs: the server does not compute

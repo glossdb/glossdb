@@ -52,9 +52,11 @@ types and meanings, and the code tables.
    that line nobody learns that a choice was made.
 4. **Describe the table**: `entity` and `meaning` on the view,
    `meaning` and `role` on each column; `next` lists them.
-5. **Declare tests for the contract**: the key is unique, required
-   columns are filled, coded columns hold only values of their code
-   table.
+5. **State the contract on the view**: the key as the `grain` of its
+   `entity`, a `contract` on each column (type, required, allowed
+   values). The server tests the rows against it after each write
+   (`contract_test`). The forms, the tests and how to close them:
+   `harmonise.md`, step 5, which holds for one source as for several.
 
 ```glossql
 DECLARE ASPECT staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
@@ -69,33 +71,17 @@ GLOSS staff ON hr AS $${
 }$$;
 ```
 
-One check can cover the contract; its `finding` names the rule that
-breaks. One test per rule gives one row of `next` per rule
-(`tests.md`).
-
 ```glossql
-DECLARE ASPECT staff_contract WITH $${"type": "object",
-  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
-                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
-DECLARE FUNCTION staff_contract_check FOR hr AS $$
-  WITH r AS (
-    SELECT count(*) AS n,
-           count(*) - count(DISTINCT employee_id) AS repeated,
-           count(*) FILTER (WHERE full_name IS NULL OR hired_on IS NULL) AS unfilled,
-           count(*) FILTER (WHERE department_code NOT IN ('ENG', 'OPS', 'FIN')) AS uncoded
-    FROM staff)
-  SELECT greatest(repeated, unfilled, uncoded) / greatest(n, 1)::DOUBLE AS breach_rate,
-         nullif(concat_ws('; ',
-           CASE WHEN repeated > 0 THEN repeated || ' rows repeat an employee_id' END,
-           CASE WHEN unfilled > 0 THEN unfilled || ' rows lack a name or a hire date' END,
-           CASE WHEN uncoded > 0 THEN uncoded || ' rows carry a department outside ENG, OPS, FIN' END), '') AS finding
-  FROM r
-$$ RETURNS staff_contract;
-DECLARE TEST staff_contract_test ON staff_contract BY (AGENT, HUMAN) DETECTOR rate_tolerance;
-GLOSS staff_contract ON staff AS $${"outcome": "the key is unique, name and hire date are filled, each department is in the code table",
-  "tolerance": 0.0, "basis": "the data contract"}$$;
-SELECT staff_contract_check() FROM staff;
+GLOSS entity ON hr.staff AS $${"value": "one employee", "role": "dimension", "grain": ["employee_id"]}$$;
+GLOSS contract ON hr.staff.employee_id AS $${"type": "VARCHAR", "required": true}$$;
+GLOSS contract ON hr.staff.hired_on AS $${"type": "DATE", "required": true}$$;
+GLOSS contract ON hr.staff.department_code AS $${"type": "VARCHAR", "required": true, "values": ["ENG", "OPS", "FIN"]}$$;
 ```
+
+A rule the contract has no word for (a hire date not in the future) is
+a test of your own (`tests.md`). Where the export states its own key,
+state it on the loaded table as well: `grain_test` holds each load
+against it, before any view reads the rows.
 
 ## A metric
 

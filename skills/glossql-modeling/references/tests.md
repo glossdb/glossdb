@@ -45,10 +45,16 @@ relationship between the tables it reads.
 | `join_test` | the view joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
 | `orphan_test` | rows on a declared relationship the view joins over find no parent: an inner join drops them, an outer join keeps them with empty parent columns | fix the load (trim, pad, cast the key), or load the missing parents |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
+| `grain_test` | on a loaded table whose `entity` states a `grain`: a key repeats in the loaded rows | keep one row per key in the load query, or state the grain the rows have |
 
-`orphan_test` reads declared relationships only: declare the joins a
-view uses. `join_test` judges a join on an effective-dated table by its
-validity dates once the table is marked as such:
+`orphan_test` reads declared relationships only: `next` lists each
+join a view makes between two loaded tables with no declared
+relationship, with the `DECLARE RELATIONSHIP` to run. `join_test`
+judges a join on several columns on its key as a whole; where no
+unique column and no stated grain says which side holds each key
+once, it is `yellow` and its fix states the grain. It judges a join on
+an effective-dated table by its validity dates once the table is
+marked as such:
 
 ```glossql
 GLOSS validity ON price_list AS $${"valid_from": "valid_from", "valid_to": "valid_to"}$$;

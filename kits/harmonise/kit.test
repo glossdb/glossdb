@@ -207,6 +207,15 @@ SELECT DISTINCT branch, source_table, condition FROM column_mapping('onhand') WH
 3	model_identities	=(supply.model_identities.market:VARCHAR, 'PL')
 3	stock_mono	=(supply.stock_mono.status:VARCHAR, 'D')
 
+# the system's own code each mapping table is looked up by: the join's equality, the driving table's column first
+query ITT
+SELECT DISTINCT branch, source_table, lookup FROM column_mapping('onhand') WHERE target_column = 'part' ORDER BY ALL;
+----
+1	model_identities	=(supply.stock_sap.matnr:VARCHAR, supply.model_identities.local_code:VARCHAR)
+2	model_identities	=(supply.stock_d365.item_id:VARCHAR, supply.model_identities.local_code:VARCHAR)
+2	product_d365	=(supply.stock_d365.item_id:VARCHAR, supply.product_d365.item_id:VARCHAR)
+3	model_identities	=(supply.stock_mono.indeks:VARCHAR, supply.model_identities.local_code:VARCHAR)
+
 query IT
 SELECT DISTINCT branch, expression FROM column_mapping('onhand') WHERE target_column = 'part' ORDER BY ALL;
 ----
@@ -811,6 +820,12 @@ SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'cod
 ----
 code_test	yellow	0.0
 contract_test	green	0.0
+
+# the yellow code_test has nothing to check: its result is current and brings no fix, so it is no row of next
+query I
+SELECT count(*) FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'test' AND state = 'yellow';
+----
+0
 
 # the two columns with no contract are asked for one
 query TTT

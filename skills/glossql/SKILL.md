@@ -73,7 +73,8 @@ changed. `level` says how much the row matters:
   that serves nothing, a conflict between two values, a decision a
   person made that the definition does not carry yet.
 - `should`: the layer is incomplete for what is served. A missing or
-  outdated annotation on what a view reads or serves, a test not run,
+  outdated annotation on what a view reads or serves, a join with no
+  declared relationship, a test not run,
   an assumption waiting for a person, a stored result out of date.
 - `could`: what sits beside it, such as the tables no view reads. Read
   it on request: `SELECT kind, asset, open, statement FROM next WHERE

@@ -224,6 +224,23 @@ SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows,
               || 'GLOSS delivery ON ' || table_name || ' AS $${"value": "<full|incremental>", "basis": "<what the source sends>"}$$;' END AS statement
 FROM stated_state;
 
+-- pairs_key(lt, rt, lc, rc): the column pairs of a join or a relationship
+-- between tables lt and rt (lc and rc their columns, pair by pair) as one
+-- key, the same whichever side is written first.
+-- relationship_side(ds, t, cols, quoted): one side of a relationship,
+-- dataset.table.column or dataset.table.(a, b), each name quoted where a
+-- statement needs it.
+CREATE OR REPLACE MACRO main.pairs_key(lt, rt, lc, rc) AS
+  CASE WHEN lt <= rt
+       THEN lt || '|' || rt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: lc[i] || '=' || rc[i])), ',')
+       ELSE rt || '|' || lt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: rc[i] || '=' || lc[i])), ',') END;
+
+CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
+  ds || '.' || t || '.' || CASE WHEN len(cols) = 1 THEN '' ELSE '(' END
+  || array_to_string(list_transform(cols, lambda c: CASE WHEN NOT quoted OR regexp_full_match(c, '[a-z_][a-z0-9_]*') THEN c
+                                                         ELSE '"' || replace(c, '"', '""') || '"' END), ', ')
+  || CASE WHEN len(cols) = 1 THEN '' ELSE ')' END;
+
 -- next: what is open on the bound dataset, read from the states the
 -- catalog holds. One row per asset, state and level: level, ord, kind,
 -- asset, state, who (agent or person), open (the finding), for_view (the
@@ -237,10 +254,15 @@ FROM stated_state;
 --   conflict, a person decided something (a load query, a review
 --   decision, a formula) that is not carried yet.
 -- should: the layer is incomplete for what is served. An annotation is
---   missing or outdated on what a view reads or serves, a test on it is
---   neither green nor red, an assumption waits for a person, a stored
---   result is out of date and the server does not compute it
---   (results_due() does not list it).
+--   missing or outdated on what a view reads or serves, a join a view
+--   makes between two loaded tables has no declared relationship, a test
+--   on it is neither green nor red, an assumption waits for a person, a
+--   stored result is out of date and the server does not compute it
+--   (results_due() does not list it). A test stays a should while it has
+--   not run, its result is out of date, it is orange or failed, or it is
+--   yellow with a fix; a yellow test whose check ran, is current and
+--   returns no fix has nothing to check and is no row: its statement
+--   would compute it yellow again.
 -- could: what sits beside. An annotation is missing or outdated on a
 --   table, a column, a relationship or the dataset that no view reads.
 -- Work on a dataset is complete when no must is open.
@@ -282,6 +304,11 @@ CREATE OR REPLACE VIEW main.next AS
       AND json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
   vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
+  -- the tests that are open: not green, but a yellow test whose check ran, is current and returns no
+  -- fix (not applicable: nothing to check), whose statement would compute it yellow again
+  vo AS (
+    SELECT * FROM vt
+    WHERE state <> 'green' AND NOT (state = 'yellow' AND current AND evidence IS NOT NULL AND evidence->>'fix' IS NULL)),
   -- the assets a view reads, the view itself, and the columns of a
   -- table view: a table is handed over with its columns described
   reach AS (
@@ -458,9 +485,69 @@ CREATE OR REPLACE VIEW main.next AS
                                                || ' DETECTOR rate_tolerance THRESHOLD ' || ceil(t.score * 1000) / 1000 || ';' END, '') END,
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
-    FROM vt t LEFT JOIN accepts k ON k.test = t.test
-    LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect
-    WHERE t.state <> 'green'),
+    FROM vo t LEFT JOIN accepts k ON k.test = t.test
+    LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect),
+  -- a join a view makes between two loaded tables on columns no declared
+  -- relationship covers: the pairs of one join, its key, in the join's
+  -- order; a relationship covers it where its pairs are the join's, either
+  -- way round. The statement declares it from the side that repeats the key
+  -- to the side that holds it once, as a stored profile (a unique column)
+  -- or the table's stated grain says; where neither does, left to right
+  loaded AS (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'BASE TABLE'),
+  joined AS (
+    SELECT j.view, j.join_number, split_part(j.left_column, '.', 2) AS lt, split_part(j.right_column, '.', 2) AS rt,
+           list(regexp_replace(j.left_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS lc,
+           list(regexp_replace(j.right_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS rc
+    FROM glossql_views_joins(current_schema()) j
+    WHERE split_part(j.left_column, '.', 1) = current_schema() AND split_part(j.right_column, '.', 1) = current_schema()
+      AND split_part(j.left_column, '.', 2) <> split_part(j.right_column, '.', 2)
+      AND split_part(j.left_column, '.', 2) IN (SELECT table_name FROM loaded)
+      AND split_part(j.right_column, '.', 2) IN (SELECT table_name FROM loaded)
+      AND j.view IN (SELECT view FROM summary WHERE stopped IS NULL)
+    GROUP BY j.view, j.join_number, split_part(j.left_column, '.', 2), split_part(j.right_column, '.', 2)),
+  declared_pairs AS (
+    SELECT main.pairs_key(split_part(left_side, '.', 2), split_part(right_side, '.', 2),
+             string_split(regexp_replace(regexp_replace(left_side, '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', '),
+             string_split(regexp_replace(regexp_replace(right_side, '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', ')) AS key
+    FROM main.relationships, ds WHERE dataset = ds.d),
+  undeclared AS (
+    SELECT key, string_agg(DISTINCT view, ', ' ORDER BY view) AS views,
+           arg_min(lt, view) AS lt, arg_min(rt, view) AS rt, arg_min(lc, view) AS lc, arg_min(rc, view) AS rc
+    FROM (SELECT *, main.pairs_key(lt, rt, lc, rc) AS key FROM joined)
+    WHERE key NOT IN (SELECT key FROM declared_pairs WHERE key IS NOT NULL)
+    GROUP BY key),
+  held_once AS (
+    SELECT split_part(subject, '.', 2) AS t, [split_part(subject, '.', 3)] AS cols FROM main.measurements, ds
+    WHERE dataset = ds.d AND function = 'column_profile' AND value IS NOT NULL AND (value->>'total')::BIGINT > 0
+      AND (value->>'distinct')::BIGINT >= round((value->>'total')::DOUBLE * (1 - coalesce((value->>'null_ratio')::DOUBLE, 0)))
+    UNION ALL
+    SELECT split_part(subject, '.', 2), from_json(value->'grain', '["VARCHAR"]') FROM glossql_glossary(current_schema(), 'entity', false)
+    WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
+  sided AS (
+    SELECT u.*,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.lt AND list_has_all(u.lc, h.cols)) AS left_once,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.rt AND list_has_all(u.rc, h.cols)) AS right_once
+    FROM undeclared u),
+  -- from the side that repeats the key to the side that holds it once
+  directed AS (
+    SELECT views, left_once, right_once,
+           CASE WHEN left_once AND NOT right_once THEN rt ELSE lt END AS ft, CASE WHEN left_once AND NOT right_once THEN rc ELSE lc END AS fc,
+           CASE WHEN left_once AND NOT right_once THEN lt ELSE rt END AS tt, CASE WHEN left_once AND NOT right_once THEN lc ELSE rc END AS tc,
+           CASE WHEN left_once AND right_once THEN ' <-> ' ELSE ' -> ' END AS op
+    FROM sided),
+  s_joins AS (
+    SELECT 'should', 4, 'describe',
+           main.relationship_side(ds.d, ft, fc, false) || op || main.relationship_side(ds.d, tt, tc, false), 'missing', 'agent',
+           'no relationship is declared for the join of ' || ft || ' and ' || tt || ' on '
+             || array_to_string(list_transform(range(1, len(fc) + 1), lambda i: ft || '.' || fc[i] || ' = ' || tt || '.' || tc[i]), ' and ')
+             || ': the orphan check and the reconciliation name no keys on it', views, '',
+           CASE WHEN left_once AND right_once THEN '-- each side holds each key once'
+                WHEN left_once OR right_once THEN '-- ' || tt || ' holds each key once'
+                ELSE '-- no stored profile or grain says which side holds each key once: the direction is the join''s, left to right; where '
+                     || ft || ' holds each key once, write it the other way round' END
+             || '. Declare the relationship, and the server checks each key against the data:' || chr(10)
+             || 'DECLARE RELATIONSHIP ' || main.relationship_side(ds.d, ft, fc, true) || op || main.relationship_side(ds.d, tt, tc, true) || ';'
+    FROM directed, ds),
   -- a load that does not fit what the source sends (load_modes())
   s_loads AS (
     SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''), '', l.statement
@@ -513,7 +600,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM summary m, ds
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
-      AND NOT EXISTS (SELECT 1 FROM vt t WHERE t.view = m.view AND t.state <> 'green')),
+      AND NOT EXISTS (SELECT 1 FROM vo t WHERE t.view = m.view)),
   -- a stored result out of date that the server does not compute: one
   -- about the dataset as a whole or about a view, whatever kit declares
   -- its function, but a check a test on the view runs (view_tests()
@@ -531,6 +618,7 @@ CREATE OR REPLACE VIEW main.next AS
             AND NOT EXISTS (SELECT 1 FROM main.server_results() r WHERE r.function = u.function AND r.subject = u.subject)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
-    SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test
+    SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_joins
+    UNION ALL SELECT * FROM s_test
     UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_results)
   ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state;

@@ -583,7 +583,10 @@ ORDER BY f.metric;
 -- source it is loaded from), source_table,
 -- source_column, alias (where the view reads the table more than once),
 -- condition (what the view's joins and filters require of that read of the
--- table alone), expression (the branch's derivation), literals (the codes
+-- table alone), lookup (the equalities of the join that joins that read to
+-- the rows before it: the columns it is looked up by against the columns of
+-- the side it is joined to, such as the system's own code a mapping table is
+-- looked up by), expression (the branch's derivation), literals (the codes
 -- the expression tests or returns, as written), complete. A column computed
 -- from no source column (a constant, count(*)) has one row with no source.
 -- complete is false where the lineage could not follow a step, or reads two
@@ -603,7 +606,7 @@ systems AS (
   FROM main.loaded_from_edges(current_schema()) l LEFT JOIN stated s ON s.t = l."from")
 SELECT m.view, m."column" AS target_column, m.branch, s.system,
        split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
-       m.alias, m.condition, m.derivation AS expression, m.literals, m.complete
+       m.alias, m.condition, m.lookup, m.derivation AS expression, m.literals, m.complete
 FROM glossql_views_mapping(current_schema()) m
 LEFT JOIN systems s ON s.t = m.table_name
 WHERE m.view IN (SELECT view FROM views);
@@ -623,7 +626,8 @@ WHERE m.view IN (SELECT view FROM views);
 -- person who accepts a result records a tolerance at or above it on the
 -- view; their value outranks the agent's. `x-subject: view` marks a test
 -- view_tests() expects on every view, run or not, `x-subject: metric` one
--- it expects on every metric; `x-set-by: <property>` beside either one
+-- it expects on every metric, `x-subject: table` one it expects on every
+-- loaded table (grain_check); `x-set-by: <property>` beside any one
 -- it expects only where the view or one of its columns carries an
 -- annotation of that property (a property no test reads, so marked, is a
 -- result the server computes there: results_due() in the goals kit); the
@@ -697,13 +701,88 @@ DECLARE ASPECT validity WITH $${
                  "open_end": {"type": "string"}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
+-- key_repeats(path, cols): the keys on the columns cols that repeat in the
+-- rows of a table or a view (dataset.table): shown (the key; its values in
+-- parentheses where it has several columns), n (its rows), rows (the rows
+-- read). A row with an empty key column has no key. Where the rows lack a
+-- column of cols, one row with no key and n 0. The one count of a repeated
+-- key: grain_check (a loaded table's stated grain) and the harmonise kit's
+-- contract_check (a target view's key) read it.
+CREATE OR REPLACE MACRO main.key_repeats(path, cols) AS TABLE
+WITH keyed AS (
+  SELECT rn, list(val ORDER BY list_position(cols, "column")) AS k, bool_or(val IS NULL) AS empty, count(*) AS width
+  FROM dataset_cells(path, true) WHERE list_contains(cols, "column") GROUP BY rn),
+read_ AS (SELECT count(*) AS rows, coalesce(bool_or(width < len(cols)), false) AS short FROM keyed)
+SELECT CASE WHEN len(k) = 1 THEN k[1] ELSE '(' || array_to_string(k, ', ') || ')' END AS shown, count(*) AS n, any_value(r.rows) AS rows
+FROM keyed, read_ r WHERE NOT empty AND NOT r.short GROUP BY k HAVING count(*) > 1
+UNION ALL
+SELECT NULL, 0, rows FROM read_ WHERE short;
+
+-- grain_check: the rows of a loaded table keep the grain its `entity`
+-- states, tested at each load as a target view's contract key is: the keys
+-- that repeat (key_repeats()), with the rows past the first per key.
+-- breach_rate is their share of the rows. Not applicable where the entity
+-- states no grain, or names a column the table does not have. Set on each
+-- loaded table that carries an `entity` (x-subject: table, x-set-by:
+-- entity); the server runs it after a load.
+DECLARE ASPECT grain_check WITH $${
+  "description": "The rows of a loaded table keep the grain its entity states: no key repeats.",
+  "type": "object", "x-subject": "table", "x-set-by": "entity",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]}, "grain": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "repeated": {"type": ["integer", "null"]}, "keys": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION grain_check FOR GLOBAL AS $$
+  WITH stated AS (
+    SELECT value AS entity, CASE WHEN json_array_length(value->'grain') > 0 THEN from_json(value->'grain', '["VARCHAR"]') END AS cols
+    FROM annotations('entity', 'itself') WHERE value IS NOT NULL AND state IN ('current', 'stale')),
+  repeated AS (SELECT * FROM key_repeats($subject, (SELECT cols FROM stated))),
+  state AS (
+    SELECT (SELECT cols FROM stated) AS cols, (SELECT entity FROM stated) AS entity,
+           EXISTS (SELECT 1 FROM repeated WHERE shown IS NULL) AS short,
+           (SELECT sum(n - 1) FROM repeated WHERE shown IS NOT NULL)::BIGINT AS extra,
+           (SELECT max(rows) FROM repeated) AS rows)
+  SELECT state.cols IS NOT NULL AND NOT state.short AS applicable,
+         CASE WHEN state.cols IS NULL THEN 'the entity of ' || split_part($subject, '.', 2) || ' states no grain'
+              WHEN state.short THEN 'the grain names a column ' || split_part($subject, '.', 2) || ' does not have: '
+                                    || array_to_string(state.cols, ', ') END AS reason,
+         CASE WHEN state.cols IS NOT NULL AND NOT state.short THEN coalesce(state.extra / greatest(state.rows, 1)::DOUBLE, 0.0) END AS breach_rate,
+         state.cols AS grain,
+         CASE WHEN state.cols IS NOT NULL AND NOT state.short THEN coalesce(state.extra, 0) END AS repeated,
+         (SELECT list(shown ORDER BY n DESC, shown)[1:3] FROM repeated WHERE shown IS NOT NULL) AS keys,
+         CASE WHEN state.extra > 0
+              THEN split_part($subject, '.', 2) || ' repeats its grain (' || array_to_string(state.cols, ', ') || ') in ' || state.extra
+                   || CASE WHEN state.extra = 1 THEN ' more row: ' ELSE ' more rows: ' END
+                   || (SELECT array_to_string(list(shown ORDER BY n DESC, shown)[1:3], ', ') FROM repeated WHERE shown IS NOT NULL)
+                   || ', so a row counts twice in what reads it' END AS finding,
+         CASE WHEN state.extra > 0 THEN concat_ws(chr(10),
+           '-- find why at the source (a line sent twice, a key that needs another column). Keep one row per key in the load query (QUALIFY row_number() OVER (PARTITION BY '
+             || array_to_string(state.cols, ', ') || ' ORDER BY <column>) = 1) and declare it again, or state the grain the rows have:',
+           main.gloss_statement('entity', $subject, state.entity::VARCHAR),
+           '-- where a person accepts the rows as they are, record the rate with their reason:',
+           '-- ' || main.gloss_statement('grain_check', $subject,
+                    '{"tolerance": ' || ceil(state.extra / greatest(state.rows, 1)::DOUBLE * 1000) / 1000
+                    || ', "basis": "<who accepted the rows and why>"}')) END AS fix
+  FROM state
+$$ RETURNS grain_check;
+
+DECLARE TEST grain_test ON grain_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
 -- join_check: a join in the view repeats rows. Two ways: the view
 -- joins two tables on columns whose values repeat on both sides, so each
 -- match multiplies rows (join fan-out); or it reads an effective-dated
 -- table without bounding both validity dates, so a key counts once per
 -- version. The join columns come from the definition's own plan, whether
 -- a column repeats from its stored column_profile, which the server runs
--- for a view's join columns. A side the definition reduces to one row
+-- for a view's join columns. A join on several columns is judged on its
+-- key as a whole, the pairs of one join between two tables: a side holds
+-- each key once where one of its columns is unique, or where its columns
+-- hold the grain its table's `entity` states (which grain_check tests at
+-- each load); where neither side does, the profiles cannot tell, and the
+-- check is not applicable until a grain is stated. A side the definition reduces to one row
 -- per value before the join (grouped by the join columns, DISTINCT on
 -- them, or the latest row per value by row_number() = 1) does not repeat,
 -- whatever its table holds. A join on an effective-dated table repeats its
@@ -738,11 +817,12 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
   owners AS (
     SELECT DISTINCT r.table_name, r.table_name || '.' || c AS column_path FROM d, unnest(d.reads) t(r), unnest(r.columns) u(c)),
   sided AS (
-    SELECT j.left_column, j.right_column, j.left_unique OR j.right_unique AS reduced, l.table_name AS left_table, r.table_name AS right_table
+    SELECT j.left_column, j.right_column, j.join_number, j.left_unique OR j.right_unique AS reduced,
+           l.table_name AS left_table, r.table_name AS right_table
     FROM d, unnest(d.joins) t(j)
     LEFT JOIN owners l ON l.column_path = j.left_column LEFT JOIN owners r ON r.column_path = j.right_column),
   joins AS (
-    SELECT left_column, right_column, reduced FROM sided
+    SELECT * FROM sided
     WHERE left_table IS DISTINCT FROM right_table
       AND coalesce(left_table NOT IN (SELECT table_path FROM dated), true)
       AND coalesce(right_table NOT IN (SELECT table_path FROM dated), true)),
@@ -750,25 +830,58 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
     SELECT asset AS subject, try_cast(json_extract(value, '$.distinct') AS BIGINT) AS distinct_values,
            round(try_cast(json_extract(value, '$.total') AS DOUBLE) * (1 - coalesce(try_cast(json_extract(value, '$.null_ratio') AS DOUBLE), 0))) AS filled
     FROM results('column_profile', 'the columns it joins on') WHERE value IS NOT NULL OR error IS NOT NULL),
-  judged AS (
-    SELECT j.left_column, j.right_column, j.reduced OR (l.subject IS NOT NULL AND r.subject IS NOT NULL) AS profiled,
-           NOT j.reduced AND coalesce(l.distinct_values < l.filled AND r.distinct_values < r.filled, false) AS repeats
+  -- the entity each table the view reads states, and its grain
+  entities AS (
+    SELECT asset AS table_path, value AS entity,
+           CASE WHEN json_array_length(value->'grain') > 0 THEN from_json(value->'grain', '["VARCHAR"]') END AS grain
+    FROM annotations('entity', 'its sources') WHERE value IS NOT NULL AND state IN ('current', 'stale')),
+  pairs AS (
+    SELECT j.*, l.subject IS NOT NULL AS left_profiled, r.subject IS NOT NULL AS right_profiled,
+           coalesce(l.distinct_values < l.filled, false) AS left_repeats, coalesce(r.distinct_values < r.filled, false) AS right_repeats
     FROM joins j LEFT JOIN profiles l ON l.subject = j.left_column LEFT JOIN profiles r ON r.subject = j.right_column),
+  -- a join's key: its pairs between the same two tables
+  keys AS (
+    SELECT join_number, left_table, right_table, count(*) AS width,
+           list(left_column ORDER BY left_column, right_column) AS lefts, list(right_column ORDER BY left_column, right_column) AS rights,
+           bool_or(reduced) AS reduced, bool_and(left_profiled AND right_profiled) AS profiled,
+           bool_and(left_repeats) AND bool_and(right_repeats) AS both_repeat,
+           bool_or(left_profiled AND NOT left_repeats) AS left_column_once, bool_or(right_profiled AND NOT right_repeats) AS right_column_once
+    FROM pairs GROUP BY join_number, left_table, right_table),
+  judged AS (
+    SELECT k.*,
+           k.reduced OR k.left_column_once OR coalesce(list_has_all(list_transform(k.lefts, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', '')), l.grain), false)
+             OR k.right_column_once OR coalesce(list_has_all(list_transform(k.rights, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', '')), r.grain), false) AS once,
+           l.entity AS left_entity, r.entity AS right_entity
+    FROM keys k LEFT JOIN entities l ON l.table_path = k.left_table LEFT JOIN entities r ON r.table_path = k.right_table),
+  -- a single column repeats where both profiles say so; a key of several columns holds once on a
+  -- side, or the profiles cannot tell
+  decided AS (
+    SELECT *, CASE WHEN width = 1 THEN reduced OR profiled ELSE once OR profiled END AS measured,
+           CASE WHEN width = 1 THEN NOT reduced AND both_repeat ELSE false END AS repeats,
+           width > 1 AND profiled AND NOT once AS untold,
+           CASE WHEN width = 1 THEN regexp_replace(lefts[1], '^[^.]*\.', '') || ' ~ ' || regexp_replace(rights[1], '^[^.]*\.', '')
+                ELSE split_part(left_table, '.', 2) || '.(' || list_aggregate(list_transform(lefts, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', '')), 'string_agg', ', ')
+                     || ') ~ ' || split_part(right_table, '.', 2) || '.(' || list_aggregate(list_transform(rights, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', '')), 'string_agg', ', ') || ')' END AS pair
+    FROM judged),
   unprofiled AS (
-    SELECT string_agg(c, ', ' ORDER BY c) AS columns
-    FROM (SELECT left_column AS c FROM judged WHERE NOT profiled AND left_column NOT IN (SELECT subject FROM profiles)
-          UNION SELECT right_column FROM judged WHERE NOT profiled AND right_column NOT IN (SELECT subject FROM profiles))),
-  repeating AS (
-    SELECT regexp_replace(left_column, '^[^.]*\.', '') || ' ~ ' || regexp_replace(right_column, '^[^.]*\.', '') AS pair
-    FROM judged WHERE repeats),
+    SELECT string_agg(DISTINCT c, ', ' ORDER BY c) AS columns
+    FROM (SELECT p.left_column AS c FROM pairs p JOIN decided k USING (join_number, left_table, right_table) WHERE NOT k.measured AND NOT p.left_profiled
+          UNION SELECT p.right_column FROM pairs p JOIN decided k USING (join_number, left_table, right_table) WHERE NOT k.measured AND NOT p.right_profiled)),
+  repeating AS (SELECT DISTINCT pair FROM decided WHERE repeats),
+  untold AS (SELECT DISTINCT pair, left_table, right_table, lefts, rights, left_entity, right_entity FROM decided WHERE untold),
   state AS (
-    SELECT (n.tables > 0 OR plans.ok) AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM judged WHERE NOT profiled)) AS applicable,
+    SELECT (n.tables > 0 OR plans.ok)
+             AND (EXISTS (SELECT 1 FROM undated) OR NOT EXISTS (SELECT 1 FROM decided WHERE NOT measured OR untold)) AS applicable,
            EXISTS (SELECT 1 FROM repeating) AS fans, EXISTS (SELECT 1 FROM undated) AS versions,
+           EXISTS (SELECT 1 FROM decided WHERE NOT measured) AS unmeasured,
            (SELECT redefine_statement(view) FROM d) AS redefine
     FROM n, plans)
   SELECT state.applicable,
          CASE WHEN n.tables = 0 AND NOT state.applicable THEN 'its definition does not plan'
-              WHEN NOT state.applicable THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled) END AS reason,
+              WHEN NOT state.applicable AND state.unmeasured THEN 'the join columns are not profiled yet: run column_profile() over ' || (SELECT columns FROM unprofiled)
+              WHEN NOT state.applicable
+                THEN split_part($subject, '.', 2) || ' joins on ' || (SELECT string_agg(pair, ', ' ORDER BY pair) FROM untold)
+                     || ': a key of several columns is judged as a whole, and neither a unique column nor a stated grain says which side holds each key once' END AS reason,
          CASE WHEN NOT state.applicable THEN NULL WHEN state.fans OR state.versions THEN 1.0 ELSE 0.0 END AS breach_rate,
          (SELECT list(pair ORDER BY pair) FROM repeating) AS pairs,
          (SELECT list(scan ORDER BY scan) FROM undated) AS tables,
@@ -790,7 +903,17 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
                 THEN '-- where one of the tables holds a row per version, say so, and this check judges the join by its validity dates:' || chr(10)
                      || '-- ' || main.gloss_statement('validity', '<table>', '{"valid_from": "<column>", "valid_to": "<column>"}') END,
            '-- where the join is meant as it is, accept it with the reason:',
-           '-- ' || main.gloss_statement('join_check', $subject, '{"tolerance": 1.0, "basis": "<why the join is meant>"}')) END AS fix
+           '-- ' || main.gloss_statement('join_check', $subject, '{"tolerance": 1.0, "basis": "<why the join is meant>"}'))
+              WHEN NOT state.applicable AND NOT state.unmeasured AND EXISTS (SELECT 1 FROM untold) THEN concat_ws(chr(10),
+           '-- state the grain of the table that holds each key once; the server tests it at each load, and this check judges the join by it:',
+           (SELECT string_agg(main.gloss_statement('entity', right_table,
+                     json_merge_patch(coalesce(right_entity::VARCHAR, '{"value": "<what one row is>", "role": "<fact|dimension>"}'),
+                       json_object('grain', list_transform(rights, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', ''))))::VARCHAR)
+                     || chr(10) || '-- where ' || split_part(left_table, '.', 2) || ' holds each key once instead:' || chr(10) || '-- '
+                     || main.gloss_statement('entity', left_table,
+                     json_merge_patch(coalesce(left_entity::VARCHAR, '{"value": "<what one row is>", "role": "<fact|dimension>"}'),
+                       json_object('grain', list_transform(lefts, lambda c: regexp_replace(c, '^[^.]*\.[^.]*\.', ''))))::VARCHAR),
+                   chr(10) ORDER BY pair) FROM untold)) END AS fix
   FROM n, state
 $$ RETURNS join_check;
 
@@ -967,8 +1090,9 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 -- view with no tests, which an actor stores and the server does not
 -- compute after a write). The tests marked x-subject view appear on
 -- every view, run or not, those marked x-subject metric on every metric,
+-- those marked x-subject table on every loaded table with no view (''),
 -- those marked x-set-by too only where the property it names is
--- annotated on the view or on one of its columns.
+-- annotated on the view or the table or on one of its columns.
 -- Each view carries the tests on what it reads and the tests declared on
 -- it; a plan and a sample have none of these, and a test on a result
 -- about one carries the plan or the sample as its view. A test on the
@@ -990,12 +1114,13 @@ authors AS (
 -- a kit's check on each view (x-subject view), or on each metric alone
 -- (x-subject metric: a check that needs a measure)
 expected AS (
-  SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
+  SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') AS on_,
+         json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
          json_extract_string(a.schema, '$.x-set-by') AS set_by
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
   JOIN main.aspects a ON a.name = t.aspect
-  WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
--- the views that carry an annotation of a property on themselves or on a column
+  WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric', 'table')),
+-- the views and the loaded tables that carry an annotation of a property on themselves or on a column
 set_on AS (
   SELECT DISTINCT g.aspect, split_part(g.subject, '.', 2) AS view FROM main.glossary g
   WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
@@ -1008,10 +1133,20 @@ own AS (
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
-  FROM all_views m JOIN expected e ON (m.metric OR NOT e.metrics_only)
+  FROM all_views m JOIN expected e ON e.on_ <> 'table' AND (m.metric OR NOT e.metrics_only)
    AND (e.set_by IS NULL OR EXISTS (SELECT 1 FROM set_on o WHERE o.aspect = e.set_by AND o.view = m.view))
   LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
-  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect),
+  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect
+  UNION ALL
+  -- a kit's check on each loaded table (x-subject table), whatever view reads it: no view
+  SELECT '', e.test, e.aspect, current_schema() || '.' || l.table_name,
+         coalesce(r.state, 'not_run'), coalesce(r.current, false), r.score, v.value::JSON,
+         'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || l.table_name
+  FROM (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'BASE TABLE') l
+  JOIN expected e ON e.on_ = 'table'
+   AND (e.set_by IS NULL OR EXISTS (SELECT 1 FROM set_on o WHERE o.aspect = e.set_by AND o.view = l.table_name))
+  LEFT JOIN results r ON r.subject = current_schema() || '.' || l.table_name AND r.test = e.test
+  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || l.table_name AND v.aspect = e.aspect),
 reads AS (
   SELECT m.view, current_schema() || '.' || r.table_name || '.' || r.column_name AS subject
   FROM all_views m, main.view_reads_of(current_schema(), m.view) r

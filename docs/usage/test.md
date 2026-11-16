@@ -15,13 +15,15 @@ data. It has a state, and the state is read again after each load.
 ## The built-in tests
 
 Each view gets the join and orphan tests, on the tables its definition
-scans; each metric also gets the additivity test:
+scans; each metric also gets the additivity test; each loaded table
+whose `entity` states a `grain` gets the grain test:
 
 | Test | Checks | Red when |
 |---|---|---|
-| `join_test` | join fan-out, and effective-dated tables (annotated `validity` with `valid_from`, `valid_to`) | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without bounding both validity dates, so a row counts once per version |
+| `join_test` | join fan-out, and effective-dated tables (annotated `validity` with `valid_from`, `valid_to`) | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without bounding both validity dates, so a row counts once per version. A join on several columns is judged on its key as a whole: a side holds each key once where one of its columns is unique or its columns hold the grain its table states; where neither side does, the test is `yellow` and its fix states the grain |
 | `orphan_test` | referential integrity on the declared relationships between the scanned tables | rows find no parent; the score is the highest orphan rate |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
+| `grain_test` | the grain the table's `entity` states, at each load | a key repeats in the loaded rows, such as a line sent twice; the score is the share of rows past the first per key |
 
 The server runs them after a call that defines the view, annotates
 what a test reads or loads a table the view scans. They read the

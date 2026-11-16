@@ -58,12 +58,13 @@ DECLARE RECIPE model_identities ON supply FROM model AS $$
 DECLARE RELATIONSHIP stock_mono.indeks -> model_identities.local_code;
 ```
 
-Declare one relationship per join a branch makes from a system's
-table to a mapping table. The server checks each against the data
-(`relationship_coherence`) and names the codes that find no mapping
-row, with their rows, in the view's `orphan_test` and in the
-reconciliation. A relationship on the local code alone holds where
-the systems' codes do not collide; say so in its `meaning`.
+Declare one relationship per join a branch makes between two loaded
+tables: `next` lists each join with none, with the statement. The
+server checks each against the data (`relationship_coherence`) and
+names the codes that find no mapping row, with their rows, in the
+view's `orphan_test` and in the reconciliation. A relationship on the
+local code alone holds where the systems' codes do not collide; say
+so in its `meaning`.
 
 ## 4. Define the target, one branch per system
 
@@ -92,7 +93,8 @@ GLOSS onhand ON supply AS $${"sql": "SELECT i.global_material AS part, s.site, C
   `FROM (SELECT * FROM stock_sap QUALIFY row_number() OVER (PARTITION
   BY matnr, site ORDER BY unrestricted DESC) = 1) s`. Where the rows
   add up (two storage bins), the target's grain is the systems'
-  grain: sum in a second view that reads the target.
+  grain: sum in a second view that reads the target. A `grain` stated
+  in a loaded table's `entity` is tested at each load (`grain_test`).
 
 ## 5. State the contract
 
@@ -121,18 +123,17 @@ o.respondent_id`) and make that column the grain.
 ## 6. Read the mapping
 
 ```sql
-SELECT target_column, branch, system, source_table, source_column, condition, expression, literals FROM column_mapping(for_view := 'onhand') ORDER BY target_column, branch
+SELECT target_column, branch, system, source_table, source_column, condition, lookup, expression, literals FROM column_mapping(for_view := 'onhand') ORDER BY target_column, branch
 ```
 
 One row per target column, branch and source column: the `system`,
 the source column, the `expression` that maps it, and in `literals`
 the codes it names. `condition` is what the branch's filters and
 literal join conditions require of that table (`market = 'PL'`).
-`complete` is false where the lineage could not follow a step. A
-column taken from a mapping table lists the mapping table's column;
-the system's code it is looked up by is the join, which the
-relationship names. For a person, one line per target column and
-branch:
+`lookup` is the join that looks a mapping table up: the system's own
+code first (`=(supply.stock_mono.indeks, supply.model_identities.local_code)`).
+`complete` is false where the lineage could not follow a step. For a
+person, one line per target column and branch:
 
 ```sql
 SELECT target_column, branch, string_agg(DISTINCT system || ': ' || source_table || '.' || source_column, ', ') AS reads, max(array_to_string(literals, ' ')) AS codes FROM column_mapping(for_view := 'onhand') GROUP BY ALL ORDER BY ALL
@@ -157,7 +158,8 @@ A `must` here is served data that is wrong:
 | a keyed load missed keys, and the source is stated `full` | the load query declared again without the key |
 
 A `should` is the layer incomplete: a column with no `contract`,
-`meaning` or `role`, an assumption waiting for a person. Where the fix
+`meaning` or `role`, a join with no declared relationship, an
+assumption waiting for a person. Where the fix
 is a judgment, not a fact, state it as an assumption beside `sql` in
 the definition, with a `key`, the `alternative` and a confidence
 below 1. Two examples: the same SAP line sent twice is kept once
@@ -166,9 +168,9 @@ below 1. Two examples: the same SAP line sent twice is kept once
 count", "confidence": 0.6}`); Switzerland's brand wins over Denmark's
 for a part both sell. A person decides it in the review. Where a
 person accepts rows as they are, each test's fix gives the annotation
-that records the rate with their reason. A target that maps no codes
-through a `CASE` keeps `code_test` yellow, a `should` with nothing to
-do.
+that records the rate with their reason. A test with nothing to check
+(`code_test` on a target that maps no codes through a `CASE`) stays
+yellow and is no row of `next`.
 
 ## 8. Read the reconciliation
 

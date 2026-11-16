@@ -90,7 +90,8 @@ CREATE OR REPLACE MACRO main.contract_type_holds(served, stated) AS
 
 -- contract_check: the view's rows keep its contract. Per column, the
 -- breaches with how many rows and up to three example values: key (the
--- key repeats: the rows past the first per key, the repeated keys),
+-- key repeats: the rows past the first per key, the repeated keys, as the
+-- views kit's key_repeats() counts them for a loaded table's grain too),
 -- required (rows with no value; every key column is required), values
 -- (rows whose value is not an allowed one), codes (rows whose value finds
 -- no row in the code table, from the relationship's stored coherence; no
@@ -121,12 +122,8 @@ DECLARE FUNCTION contract_check FOR GLOBAL AS $$
     SELECT from_json(value->'grain', '["VARCHAR"]') AS cols
     FROM annotations('entity', 'itself')
     WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
-  keyed AS (
-    SELECT c.rn, list(c.val ORDER BY list_position(k.cols, c.col)) AS k, bool_or(c.val IS NULL) AS empty
-    FROM cells c, key k WHERE list_contains(k.cols, c.col) GROUP BY c.rn),
-  repeated AS (
-    SELECT CASE WHEN len(k) = 1 THEN k[1] ELSE '(' || array_to_string(k, ', ') || ')' END AS shown, count(*) AS n
-    FROM keyed WHERE NOT empty GROUP BY k HAVING count(*) > 1),
+  -- the views kit's count of a repeated key, as a loaded table's grain is tested
+  repeated AS (SELECT shown, n FROM key_repeats($subject, (SELECT cols FROM key)) WHERE shown IS NOT NULL),
   required AS (
     SELECT col FROM stated WHERE coalesce(value->>'required' = 'true', false)
     UNION SELECT unnest(cols) FROM key),
@@ -460,7 +457,8 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
   systems AS (
     SELECT r.table_name, coalesce(o.system, r.source) AS system
     FROM d, unnest(d.reads) t(r) LEFT JOIN records o ON o.asset = r.table_name),
-  -- the relationship a join follows: each of its columns among those the join equates
+  -- the relationship a join follows: each of its columns among those the join equates, the one with
+  -- the most columns where several are (a key of several columns over one of its columns)
   coherence AS (
     SELECT c.asset AS relationship, any_value(c.value) AS value,
            list(regexp_extract(e.side, '^([^.]+\.[^.]+)\.', 1) || '.' || trim(k.name)) AS endpoints
@@ -469,11 +467,9 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
          unnest(string_split(trim(regexp_replace(e.side, '^[^.]+\.[^.]+\.', ''), '()'), ',')) k(name)
     WHERE c.value IS NOT NULL GROUP BY c.asset),
   followed AS (
-    SELECT s.branch, s.step, min(c.relationship) AS relationship,
-           arg_min(c.value->'orphan_keys', c.relationship) AS keys,
-           arg_min((c.value->>'orphan_distinct')::BIGINT, c.relationship) AS distinct_keys
+    SELECT s.branch, s.step, c.relationship, c.value->'orphan_keys' AS keys, (c.value->>'orphan_distinct')::BIGINT AS distinct_keys
     FROM steps s JOIN coherence c ON s.kind = 'join' AND list_has_all(s.columns, c.endpoints)
-    GROUP BY ALL),
+    QUALIFY row_number() OVER (PARTITION BY s.branch, s.step ORDER BY len(c.endpoints) DESC, c.relationship) = 1),
   out AS (
     SELECT y.system, c.branch, b.table_name, c.period, c.read,
            coalesce((SELECT list({'condition': s.text, 'rows': x.n} ORDER BY s.step) FROM dropped x JOIN steps s USING (branch, step)

@@ -746,3 +746,77 @@ SELECT (SELECT json_extract(d, '$.primary_key')::VARCHAR FROM unnest(json_extrac
 FROM semantic_model();
 ----
 ["booked","fund"]	money booked per month
+
+# --- a loaded table whose entity states a grain carries grain_test, with no view: the ledger keeps its grain
+statement ok
+SELECT grain_check() FROM fin.ledger;
+
+query TTT
+SELECT view, subject, state FROM view_tests() WHERE test = 'grain_test';
+----
+(empty)	fin.ledger	green
+
+# a grain the rows do not keep: each line is booked three times, so 180 of the 270 rows repeat a key
+statement ok
+GLOSS entity ON lines AS $${"value": "one booking of a line", "role": "fact", "grain": ["line_id"]}$$;
+
+statement ok
+SELECT grain_check() FROM fin.lines;
+
+query TRII
+SELECT state, round(score, 4), (evidence->>'repeated')::INT, len(from_json(evidence->'keys', '["VARCHAR"]'))
+FROM view_tests() WHERE test = 'grain_test' AND subject = 'fin.lines';
+----
+red	0.6667	180	3
+
+# --- a join on a key of two columns is judged on the key as a whole: each column repeats on both sides, but the
+# chart of accounts holds each business and code once, and the join repeats no row
+statement ok
+CREATE TABLE fin.txn AS SELECT i % 3 AS business_id, ['4000', '5000'][i % 2 + 1] AS account, DATE '2024-01-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(60) r(i);
+
+statement ok
+CREATE TABLE fin.coa AS SELECT b AS business_id, a AS code, 'account ' || a AS name FROM range(3) t(b), (VALUES ('4000'), ('5000')) v(a);
+
+statement ok
+DECLARE ASPECT booked_by_business WITH $${"title": "Booked by business", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS booked_by_business ON fin AS $${"sql": "SELECT t.business_id, c.name, t.amount FROM fin.txn t JOIN fin.coa c ON c.business_id = t.business_id AND c.code = t.account"}$$;
+
+query I
+SELECT count(*) FROM fin.booked_by_business;
+----
+60
+
+statement ok
+SELECT column_profile() FROM fin.txn.business_id;
+
+statement ok
+SELECT column_profile() FROM fin.txn.account;
+
+statement ok
+SELECT column_profile() FROM fin.coa.business_id;
+
+statement ok
+SELECT column_profile() FROM fin.coa.code;
+
+statement ok
+SELECT join_check() FROM fin.booked_by_business;
+
+# no profile and no grain tell which side holds each key once: not applicable, and the fix states the grain
+query TTT
+SELECT state, (evidence->>'applicable')::BOOLEAN, contains(evidence->>'fix', 'GLOSS entity ON fin.coa AS ')
+FROM view_tests() WHERE view = 'booked_by_business' AND test = 'join_test';
+----
+yellow	false	true
+
+statement ok
+GLOSS entity ON coa AS $${"value": "one account of one business", "role": "dimension", "grain": ["business_id", "code"]}$$;
+
+statement ok
+SELECT join_check() FROM fin.booked_by_business;
+
+query TT
+SELECT state, evidence->>'pairs' FROM view_tests() WHERE view = 'booked_by_business' AND test = 'join_test';
+----
+green	NULL

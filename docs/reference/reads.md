@@ -110,7 +110,12 @@ What each level holds:
   state.
 - `should`: a load does not fit what the source likely sends
   (`load_modes()`); an annotation is missing or outdated on an asset a view
-  reads or serves; a test on it is not run, yellow, orange or failed;
+  reads or serves; a join a view makes between two loaded tables has no
+  declared relationship (the statement declares it, from the side that
+  repeats the key where a profile or a stated grain says which side
+  holds it once); a test on it is not run, out of date, orange or
+  failed, or yellow with a fix (a yellow test whose current result has
+  no fix has nothing to check and is no row);
   an assumption waits for a person; a stored result about the dataset
   or about a plan is out of date, and the server does not compute it
   (`results_due()` does not list it).
@@ -201,7 +206,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 | Read | Columns |
 |---|---|
 | `fact_values()` | `view`, `value`, `reason`: each single value |
-| `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
+| `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
 | `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset or a plan, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (spec 0.3.0.dev0) |
 | `lineage_events()` | `event`: OpenLineage run events (spec 2-0-2), one per load and one per view |
