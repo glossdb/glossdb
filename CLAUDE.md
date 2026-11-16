@@ -96,9 +96,9 @@ workspace version.
   name, a kit that becomes an add-on, the grain of what one asks
   for), the structure behind it changes in the same work. An old
   structure is not kept behind a new surface.
-- **Both repositories shrink.** A larger change reports the lines of
-  `src/` and of the kits before and after. A change that grows them
-  says why before it is built.
+- **Both repositories shrink** over time, by deleting what a change
+  replaces. Correct behaviour comes first: lines are not counted per
+  change.
 
 ## How we work
 
@@ -176,6 +176,7 @@ workspace version.
   against the grammar and real table shapes, the forks shown to the
   project lead. The chosen fork is a SPEC.md diff that shrinks or
   holds the spec.
-- **One owner.** The project lead reviews every grammar change.
-  Propose SPEC.md edits with the reason; the grammar does not drift
-  through implementation convenience.
+- **One owner.** The project lead approves every change to
+  `grammar.ebnf` before it is made. SPEC.md follows an agreed design
+  and is edited with the work; the report names what changed in it.
+  The grammar does not drift through implementation convenience.
