@@ -78,6 +78,20 @@ current through early cutoff.
 | 4 | Pull features are verified when asked: a forecast, ranges, a scenario, a plan is served marked "possibly out of date" while a result it read is out of date, and enters `next` once that result is computed again and differs | Low after step 2 | `kits/goals` (`next`), the extension's `current` mark | the reason `outdated` |
 | 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
+## Left out of these steps, by the project lead
+
+Built first without them; their form is settled once the rest runs.
+
+- **Removing a function or a macro.** The open compares each kit
+  declaration with the stored one and writes a row only when it
+  differs; a declaration no kit brings any more is left as it is.
+  Direction: a removal is soft (the row ends, nothing is deleted),
+  and the results computed with it are retired, not deleted.
+- **Compaction and expiry.** Nothing is compacted or expired. Direction:
+  only what no result references and no audit needs, or an archive
+  instead: rows that are plainly out of date move out of the database
+  monthly or quarterly.
+
 ## Done when, measured on the running server
 
 - One version: no digest, counter or fingerprint is compared anywhere
