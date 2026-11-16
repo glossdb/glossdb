@@ -44,12 +44,12 @@ Cowork, and ChatGPT render it; Claude Code does not. Limits:
   routers (`crates/serverd/src/lib.rs`) and not the MCP code.
 - The question forms render in Claude Code and not in claude.ai. The
   server skips them when the client lacks the capability
-  (`question_round` in `mcp.rs`), and the questions reach the person
+  (`question_review` in `mcp.rs`), and the questions reach the person
   as text. The model cannot record an answer: what arrives over MCP
   is stored as the agent's, and SPEC.md §1 keeps an agent from
   answering as a person.
 - The console stores a decision as the person's, by cookie
-  (`crates/apps/src/rule.rs`). A page refreshes only after its own
+  (`crates/apps/src/decide.rs`). A page refreshes only after its own
   write (`HX-Trigger: glossql:written`, and `glossql:remeasured` from
   `remeasure.rs`). The catalog's version changes on any write;
   nothing notifies on it. The page's security policy allows a

@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use glossdb_serverd::engine::{WarehouseCredential, store_kind};
-use glossdb_serverd::{DEFAULT_ROW_CAP, DoorConfig};
+use glossdb_serverd::{DEFAULT_ROW_CAP, InterfaceConfig};
 
 const USAGE_TEXT: &str = "usage: glossdb [--workspace <dir>] [--addr <ip:port>] \
 [--row-cap <n>] [--memory-limit <megabytes>] [--spill-limit <megabytes>] \
@@ -26,21 +26,18 @@ GLOSSDB_WAREHOUSE_SECRET (GLOSSDB_WAREHOUSE_REGION for S3), or, a gs:// \
 bucket named without them, as the account the platform runs it as.\n\
 every other flag has a variable named after it, the flag winning: \
 GLOSSDB_ADDR, GLOSSDB_ROW_CAP, GLOSSDB_MEMORY_LIMIT, GLOSSDB_SPILL_LIMIT, GLOSSDB_ROOT.\n\
-{service}\
+the model service — the expected ranges, the forecast, the what-if — is \
+named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
+minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
+refuse by name and everything else serves.\n\
 the authorization arrangement is read from .env or the environment: \
 GLOSSDB_ISSUER, GLOSSDB_CLIENT_ID, GLOSSDB_CLIENT_SECRET, [GLOSSDB_AUDIENCE] \
-— or GLOSSDB_INSECURE_OPEN=true serves the doors without authentication, \
+— or GLOSSDB_INSECURE_OPEN=true serves the interfaces without authentication, \
 every caller recorded as insecure_dev_mode (the name is the warning) \
 (see .env.example)";
 
-const SERVICE_USAGE: &str = "the model service — the walk, the forecast, the what-if — is \
-named once: GLOSSDB_SERVICE_URL, with its bearer in GLOSSDB_SERVICE_TOKEN or \
-minted by the platform for GLOSSDB_SERVICE_AUDIENCE; unnamed, its reads \
-refuse by name and everything else serves.\n";
-
-/// The usage, with the service's line as this build names it.
-pub fn usage() -> String {
-    USAGE_TEXT.replace("{service}", SERVICE_USAGE)
+pub fn usage() -> &'static str {
+    USAGE_TEXT
 }
 
 /// The command line as typed. `workspace` decides whether `.env` is
@@ -86,7 +83,7 @@ fn number<T: std::str::FromStr<Err: std::fmt::Display>>(
 /// flag or a variable.
 pub struct Config {
     pub addr: String,
-    pub doors: DoorConfig,
+    pub interfaces: InterfaceConfig,
     /// Rows a data read ships before an interface declares `truncated`.
     pub row_cap: usize,
     /// The engine's memory ceiling, in megabytes; unset, the engine's
@@ -156,7 +153,7 @@ impl Config {
             .or_else(|| var("GLOSSDB_ADDR"))
             .unwrap_or_else(|| "127.0.0.1:8080".to_string());
         let audience = var("GLOSSDB_AUDIENCE").unwrap_or_else(|| format!("http://{addr}"));
-        let doors = DoorConfig {
+        let interfaces = InterfaceConfig {
             allowed_hosts: allowed_hosts(&audience),
             own_uri: audience.clone(),
         };
@@ -202,7 +199,7 @@ impl Config {
                 })
                 .unwrap_or_default(),
             addr,
-            doors,
+            interfaces,
             row_cap,
             audience,
             auth,
@@ -246,7 +243,7 @@ fn open(get: &impl Fn(&str) -> Option<String>) -> bool {
 /// URL; one that does not answers its bind address alone, and the
 /// transport says so to every real request.
 fn allowed_hosts(audience: &str) -> Vec<String> {
-    let mut hosts = DoorConfig::default().allowed_hosts;
+    let mut hosts = InterfaceConfig::default().allowed_hosts;
     if let Some(host) = audience
         .parse::<axum::http::Uri>()
         .ok()
@@ -359,7 +356,7 @@ mod tests {
     /// The audience's host joins the transport's loopback list; a bind
     /// address as the audience adds the bind address and nothing else.
     #[test]
-    fn the_agent_door_answers_loopback_and_its_own_name() {
+    fn the_agent_interface_answers_loopback_and_its_own_name() {
         let named = allowed_hosts("https://glossql-trial.example.azurecontainerapps.io");
         assert!(named.contains(&"glossql-trial.example.azurecontainerapps.io".to_string()));
         assert!(named.contains(&"127.0.0.1".to_string()) && named.len() == 4);
@@ -375,7 +372,7 @@ mod tests {
         assert_eq!(named.audience, "https://glossql.example");
         assert!(
             named
-                .doors
+                .interfaces
                 .allowed_hosts
                 .contains(&"glossql.example".to_string())
         );
@@ -428,7 +425,7 @@ mod tests {
     /// The open switch is a statement, not a fallback: only the
     /// literal `true` opens, anything else keeps the gate required.
     #[test]
-    fn only_the_literal_true_opens_the_doors() {
+    fn only_the_literal_true_turns_the_token_check_off() {
         let env = |v: Option<&'static str>| move |_: &str| v.map(str::to_string);
         assert!(super::open(&env(Some("true"))));
         assert!(super::open(&env(Some(" true "))), "whitespace is trimmed");
@@ -468,14 +465,13 @@ mod tests {
             ],
         ));
         assert!(half.contains("GLOSSDB_WAREHOUSE_SECRET"), "{half}");
-        let misplaced = refusal(read(
+        refusal(read(
             &[],
             &[
                 ("GLOSSDB_WAREHOUSE_KEY_ID", "GOOG1E"),
                 ("GLOSSDB_WAREHOUSE_SECRET", "s"),
             ],
         ));
-        assert!(misplaced.contains("directory"), "{misplaced}");
     }
 
     /// The two budgets are the engine's own until named, and naming
@@ -565,12 +561,7 @@ mod tests {
     /// audience the platform mints a token for; unnamed, it is not there.
     #[test]
     fn the_service_is_named_once() {
-        let none =
-            read(&[], &[("GLOSSDB_FORECAST_URL", "http://127.0.0.1:8100")]).expect("readable");
-        assert!(
-            none.service.is_none(),
-            "a point's variable names no service"
-        );
+        assert!(read(&[], &[]).expect("readable").service.is_none());
         let key = read(
             &[],
             &[

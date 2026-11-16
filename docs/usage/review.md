@@ -1,95 +1,106 @@
-# The review queue
+# Review and decide
 
-The review queue holds the questions only a person can answer: the
-assumptions in metric definitions that the agent holds below full
-confidence. A person answers in the console or in the agent's client,
-and the answer is stored as that person's annotation.
+Some statements about the data are judgment: which bookings count,
+which date a delivery is measured at. An agent states them as
+assumptions in a view definition. A person confirms or corrects each
+one. The decision is stored as the person's annotation and outranks
+the agent's.
 
-## What becomes a question
+## The review queue
 
-An assumption in a metric definition becomes a question when:
+`open_questions` is the review queue. It is a view over the catalog,
+not a stored list. An assumption is in it when:
 
-- the agent's confidence is below 1;
-- it carries a `key` ([keys](#keys));
-- its dimension is not one a measurement settles, such as
-  stock-or-flow, sign conventions or grain: those are the agent's work;
-- no person has already decided that key.
-
-A required property nobody annotated is not a question either: it is
-the agent's backlog, and the shipped measurements settle it. The queue
-holds judgment only: definitions, conventions, business meaning, a
-choice between readings.
-
-The queue is not stored. It is a view, `open_questions`, computed from
-the catalog, least confident first. A question disappears once it is
-answered or the agent raises its confidence.
+- it is in a view definition and carries a `key`;
+- its `confidence` is below 1;
+- its `dimension` is not `additivity`, `sign` or `grain`: those are
+  measured, not asked;
+- no person has decided that key on that view.
 
 ```sql
-SELECT o.aspect, o.dimension, o.key, o.assumption, o.conf
+SELECT o.aspect AS view, o.key, o.assumption, o.basis, o.alternative, o.conf
 FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
-ORDER BY o.conf ASC;
+ORDER BY o.conf;
 ```
 
-`open_questions` covers the whole workspace and carries `dataset` on
-every row; a table name is unique only within a dataset, so the same
-claim in two datasets is two questions. Join `current_dataset`, as
-above, for the dataset in use.
+`open_questions` covers the workspace and carries `dataset` on each
+row. The join narrows it to the dataset in use.
 
-## Answer a question
+The `key` is the assumption's identity. Questions and decisions join
+on it; wording is not compared. An assumption without a key is not
+asked.
 
-**In the agent's client.** Over MCP, a call that only reads the catalog
-carries one form per open question. Each form offers:
+## Decide
 
-- **Correct as stated**;
-- **Wrong**, with your correction in your own words;
-- **Unclear**: the question is reworded and asked again;
-- where you already decided the same key for another metric, that
-  decision, offered back so agreeing takes one click.
+**In the console.** The Review section of `/<dataset>/app` lists the
+questions. Choose **Correct as stated**, or correct it in your own
+words.
 
-**In the console.** The Review tab shows the same rows, with the same
-choices ([the console](console.md)).
+**In the agent's client.** While questions are open, a tool call that
+only reads the catalog carries one form per question, where the
+client supports MCP elicitation. A form offers:
 
-The answer is stored as the decision alone, as the person's own annotation.
-`Unclear` defers; it is not a decision. A person's value outranks the
-agent's at every read, so the answer takes effect at once.
+- Correct as stated;
+- Rather, this reading: the alternative the agent named;
+- Same as before: your decision on the same key for another view;
+- The question itself is unclear: it is asked again in other words;
+- What is right instead: your own words, which outrank the boxes.
 
-A person can also answer by annotating directly:
+Where the client shows no forms, the agent relays the question in
+chat.
+
+**With a statement**, over the query endpoint, which writes as a
+person:
 
 ```glossql
-GLOSS definitions ON fin AS $${"definitions": {
-  "revenue": {"meaning": "Product and Service revenue families only"},
-  "gross_profit": {"meaning": "revenue minus COGS"}
-}}$$;
+GLOSS review_decision ON logistics AS $${"decisions": [
+  {"aspect": "on_time_rate", "key": "promise-date", "stance": "corrected",
+   "note": "measure against the first promised date, not the rescheduled one"}
+]}$$;
 ```
 
-## Apply a decision
+`stance` is `confirmed`, `corrected` or `unclear`. The console and the
+form add one decision to the list on that asset. A statement replaces
+the whole list, so include the earlier entries.
 
-A decision leaves the agent one action: record the metric definition
-again, with the decided assumption under the same key at full
-confidence and citing the decision, or rewritten as the correction
-says. Until then the decision keeps the question closed for both
-sides. `review_decisions` shows each decision and whether it has been
-applied; the `review` goal on the `next:` line points to the ones
-that wait.
+## Apply the decision
 
-## Keys
+A decision leaves the agent one action: record the view definition
+again, with the decided assumption at confidence 1.0, or rewritten as
+the correction says. `next` lists it as a `review` row, with the
+statement to edit:
 
-Every assumption carries a `key`: a short name the agent writes when
-it records the assumption. The key is the claim's identity, and the
-only thing questions and decisions join on. Wording is never compared.
-So:
+```sql
+SELECT level, asset, state, who, open, statement FROM next WHERE kind = 'review';
+```
 
-- an assumption without a key is never asked;
-- the same claim under two keys reads as two claims;
-- a key dropped from the definition drops its question.
+| `level` | `state` | `who` | Meaning |
+|---|---|---|---|
+| `should` | `waiting` | person | questions open on this view |
+| `must` | `decided` | agent | a decision the definition does not carry yet |
 
-## What else waits
+`review_decisions` shows each decision and whether it is applied:
 
-What waits on an action rather than an answer is a different view,
-`open_items`: an approved load-query change not yet loaded, a formula answer
-newer than the stored result, a conflicting value, a measurement stale or
-never run, a decision not yet applied. `open_items` covers the dataset in
-use ([views and table functions](../reference/reads.md)).
+```sql
+SELECT subject, aspect, key, stance, note, folded_in FROM review_decisions;
+```
 
-The forms confirm or correct existing claims. Anything that decides
-what the work is happens in conversation first.
+`folded_in` turns true once no assumption below full confidence
+carries the decided key on that view. Nothing is marked done by hand.
+
+## Which value is served
+
+Annotations are appended, not updated. A person's value, an agent's
+value and each measurement stay side by side. A read serves one value
+per asset and property: the person's, else the agent's, else the
+measurement's. Only a signed-in person, on the console or the query
+endpoint, writes a person's value.
+
+Two more things a person decides:
+
+- **A test result.** Accept a measured rate as a tolerance with a
+  reason ([test](test.md#accept-a-result)).
+- **A view's meaning or formula.** Annotate `meaning` on the view;
+  write a formula into `definitions`
+  ([define views](views.md)). A person's formula newer than the
+  view's definition shows in `next` as a `review` row.

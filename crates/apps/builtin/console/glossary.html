@@ -10,10 +10,10 @@
 {% set tab = state.tab | default(value="description") %}
 
 {% if table %}
-{# ---- one table: the same five tabs as every object --------------- #}
+{# ---- one table ---------------------------------------------------- #}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=table) }}
 {{ object::title(name=table, kind="table") }}
-<gl-rows frame="frames/table_head?table={{ table }}" empty="no landed table is named {{ table }}">
+<gl-rows frame="frames/table_head?table={{ table }}" empty="no loaded table is named {{ table }}">
   <template>
     <p class="page-h"><span class="r-what">{entity}</span> <span class="v {mcls}" title="{mark_title}">{mark}</span></p>
     <p class="f-meta">{shape} · {rows} rows · {columns} columns · loaded {at} from {source} · {read_by}</p>
@@ -74,12 +74,12 @@
 {{ object::tests(subject=table) }}
 {% elif tab == "used" %}
   <section class="tile">
-    <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
-      <code class="chip">metric_sources()</code></header>
-    <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no metric reads it">
+    <header><span class="eyebrow" title="Every view that reads this object, column by column. A row opens the view.">Views that read it</span>
+      <code class="chip">column_mapping()</code></header>
+    <gl-rows frame="frames/obj_used?subject={{ table }}" empty="no view reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
-          <span class="r-subj">{metric}</span>
+          <span class="r-subj">{view}</span>
           <span class="r-meta">{field}</span>
           <span class="r-meta">{source}</span>
         </a>
@@ -87,9 +87,9 @@
     </gl-rows>
   </section>
   <div><section class="tile">
-    <header><span class="eyebrow" title="Every declared relationship this table is part of, its meaning, and what the coherence measurement found.">Joins</span>
+    <header><span class="eyebrow" title="Every declared relationship this table is part of, its meaning, and what the coherence measurement found.">Relationships</span>
       <code class="chip">relationships · relationship_coherence</code></header>
-    <gl-rows frame="frames/joins?table={{ table }}&column=" empty="no declared join touches this table">
+    <gl-rows frame="frames/joins?table={{ table }}&column=" empty="no declared relationship includes this table">
       <template>
         <div class="rrow" style="grid-template-columns:minmax(0,1fr)">
           <span class="r-subj">{rel}</span>
@@ -104,7 +104,7 @@
   <section class="tile">
     <header><span class="eyebrow" title="The table&#x27;s newest load: what the load query read, what was loaded and when, the rows it dropped where it can count them, the cells its casts could not read, the source&#x27;s conventions, and the load query&#x27;s SQL.">The load</span>
       <code class="chip">imports · recipes · conventions</code></header>
-    <gl-rows frame="frames/table_landing?table={{ table }}" empty="nothing is loaded under this name">
+    <gl-rows frame="frames/table_loads?table={{ table }}" empty="nothing is loaded under this name">
       <template>
         <div class="rrow" style="grid-template-columns:9rem minmax(0,1fr)">
           <span class="r-meta">{label}</span>
@@ -118,12 +118,12 @@
 </div>
 
 {% elif column %}
-{# ---- one column: the same five tabs as every object -------------- #}
+{# ---- one column --------------------------------------------------- #}
 {% set ctable = column | split(pat=".") | first %}
 {% set cname = column | split(pat=".") | last %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Tables", object=ctable, object_link="/" ~ dataset ~ "/app/console/p/glossary?table=" ~ ctable, child=cname) }}
 {{ object::title(name=column, kind="column") }}
-<gl-rows frame="frames/column_head?column={{ column }}" empty="no landed column is named {{ column }}">
+<gl-rows frame="frames/column_head?column={{ column }}" empty="no loaded column is named {{ column }}">
   <template>
     <p class="page-h"><span class="r-what">{meaning}</span></p>
     <p class="f-meta">{role} · {typed} · {read_by} · {refused}</p>
@@ -138,12 +138,12 @@
     <div class="rrow rhead" style="grid-template-columns:11rem minmax(0,1fr) 9rem 7rem 9rem">
       <span>property</span><span>value</span><span>written by</span><span>state</span><span>when</span>
     </div>
-    <gl-rows frame="frames/column_slots?column={{ column }}" empty="nothing is known about this column, and nothing is required">
+    <gl-rows frame="frames/column_values?column={{ column }}" empty="nothing is known about this column, and nothing is required">
       <template>
         <div class="rrow" style="grid-template-columns:11rem minmax(0,1fr) 9rem 7rem 9rem">
           <span class="r-subj">{aspect}<br><span class="r-meta">{kind}</span></span>
           <span class="r-what">{value} <span class="v {mcls}" title="{mark_title}">{mark}</span></span>
-          <span class="r-meta">{voice}</span>
+          <span class="r-meta">{written_by}</span>
           <span class="r-meta">{state}</span>
           <span class="r-meta">{at}</span>
         </div>
@@ -170,12 +170,12 @@
 {{ object::tests(subject=column) }}
 {% elif tab == "used" %}
   <section class="tile">
-    <header><span class="eyebrow" title="Every metric whose view reads this object, column by column. A row opens the metric.">Metrics that read it</span>
-      <code class="chip">metric_sources()</code></header>
-    <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no metric reads it">
+    <header><span class="eyebrow" title="Every view that reads this object, column by column. A row opens the view.">Views that read it</span>
+      <code class="chip">column_mapping()</code></header>
+    <gl-rows frame="frames/obj_used?subject={{ column }}" empty="no view reads it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem 12rem minmax(0,1fr)">
-          <span class="r-subj">{metric}</span>
+          <span class="r-subj">{view}</span>
           <span class="r-meta">{field}</span>
           <span class="r-meta">{source}</span>
         </a>
@@ -183,9 +183,9 @@
     </gl-rows>
   </section>
   <section class="tile">
-    <header><span class="eyebrow" title="Every declared relationship this column is part of, its meaning, and what the coherence measurement found.">Joins</span>
+    <header><span class="eyebrow" title="Every declared relationship this column is part of, its meaning, and what the coherence measurement found.">Relationships</span>
       <code class="chip">relationships · relationship_coherence</code></header>
-    <gl-rows frame="frames/joins?table=&column={{ column }}" empty="no declared join uses this column">
+    <gl-rows frame="frames/joins?table=&column={{ column }}" empty="no declared relationship uses this column">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:minmax(0,1fr)">
           <span class="r-subj">{rel}</span>
@@ -201,10 +201,10 @@
 </div>
 
 {% elif source %}
-{# ---- one source: the same five tabs as every object -------------- #}
+{# ---- one source: how it is declared, the tables it loads, its loads #}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Sources", object=source) }}
 {{ object::title(name=source, kind="source") }}
-{{ object::subtabs(q="source=" ~ source, tab=tab) }}
+{{ object::subtabs(q="source=" ~ source, tab=tab, used="Tables", history="Loads", measured=false) }}
 <div class="tiles">
 {% if tab == "description" %}
   <section class="tile">
@@ -220,13 +220,9 @@
       </template>
     </gl-rows>
   </section>
-{% elif tab == "measurements" %}
-  <p class="rows-empty">Nothing is measured on a source itself: the tables it loads carry the measurements.</p>
-{% elif tab == "tests" %}
-  <p class="rows-empty">Tests apply to the tables a source loads, not to the source.</p>
 {% elif tab == "used" %}
   <section class="tile">
-    <header><span class="eyebrow" title="The load queries of this dataset that read this source: the table each loads, its key, and its SQL. A row opens the table.">The tables it loads</span>
+    <header><span class="eyebrow" title="The load queries of this dataset that read this source: the table each loads, its key, and its SQL. A row opens the table.">Tables loaded from it</span>
       <code class="chip">recipes</code></header>
     <gl-rows frame="frames/source_recipes" empty="no load query of this dataset reads this source">
       <template>
@@ -263,7 +259,7 @@
 <gl-rows frame="frames/aspect_head?aspect={{ aspect }}" empty="no aspect is named {{ aspect }}">
   <template>
     <p class="page-h"><code>{name}</code> — <span class="r-what">{kind}</span></p>
-    <p class="f-meta">holds {holds} · {owed_on} · {guard} · {spoken}</p>
+    <p class="f-meta">holds {holds} · {required_on} · {guard} · {annotated}</p>
     <p class="hint">{description}</p>
     <details class="fold"><summary>the schema</summary><p class="dict">{schema}</p></details>
   </template>
@@ -280,7 +276,7 @@
         <a class="rrow" href="{link}" style="grid-template-columns:14rem minmax(0,1fr) 9rem 7rem 9rem">
           <span class="r-subj">{subject}</span>
           <span class="r-what">{value} <span class="v {mcls}" title="{mark_title}">{mark}</span></span>
-          <span class="r-meta">{voice}</span>
+          <span class="r-meta">{written_by}</span>
           <span class="r-meta">{state}</span>
           <span class="r-meta">{at}</span>
         </a>
@@ -291,28 +287,25 @@
 
 {% else %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Properties") }}
-{# ---- the Glossary: the vocabulary, then the words ----------------- #}
-{# The dataset's words as the language holds them. First the
-   vocabulary: every declared aspect with what it holds, where it is
-   required, how many required subjects carry a value and who may speak it —
-   in three groups by kind, the workspace's own six folded. Then the
-   terms, every table with its columns, the joins and the sources.
-   All of it the catalog read collapsed — a person's entry outranks
-   the agent's, marked once and quietly. Nothing here is a write, and
-   nothing here is data: the Query tab reads the rows. #}
+{# ---- the glossary -------------------------------------------------- #}
+{# First every declared property: what it holds, where it is required,
+   how many required assets carry a value and who may annotate it, in
+   three groups by kind. Then the terms, every table with its columns,
+   the relationships and the sources. A person's annotation outranks
+   the agent's. The page writes nothing. #}
 <div class="tiles">
   <section class="tile">
-    <header><span class="eyebrow" title="Every declared property: what it holds (from its schema), where it is required (its scope and condition), who may annotate it (the test, or the function that computes it), and how many required assets carry a value; the rail shows the share. A row opens the property with every value.">The harness schema</span>
+    <header><span class="eyebrow" title="Every declared property: what it holds (from its schema), where it is required (its scope and condition), who may annotate it (the test, or the function that computes it), and how many required assets carry a value; the rail shows the share. A row opens the property with every value.">Properties</span>
       <code class="chip">aspects · tests · functions · GLOSSARY()</code></header>
-    <p class="hint">What the harness asks about every asset. A fact is written by the agent or a person; a view is SQL; a measurement is computed by a function and never written by hand. A row opens the property with every value under it.</p>
+    <p class="hint">What is recorded about every asset. A fact is written by the agent or a person; a view is SQL; a measurement is computed by a function and never written by hand. A row opens the property with every value under it.</p>
     <p class="grp">Written about the data, by the agent or a person</p>
     <gl-rows frame="frames/vocabulary?kind=fact" empty="no asserted property is declared">
       <template>
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -323,8 +316,8 @@
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -335,8 +328,8 @@
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
           <span class="r-subj">{aspect}</span>
           <span class="r-what">{holds}</span>
-          <span class="r-meta">{owed_on}</span>
-          <span class="r-meta">{spoken}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
+          <span class="r-meta">{required_on}</span>
+          <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
           <span class="r-meta">{actors}</span>
         </a>
       </template>
@@ -348,8 +341,8 @@
           <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
             <span class="r-subj">{aspect}</span>
             <span class="r-what">{holds}</span>
-            <span class="r-meta">{owed_on}</span>
-            <span class="r-meta">{spoken}</span>
+            <span class="r-meta">{required_on}</span>
+            <span class="r-meta">{annotated}</span>
             <span class="r-meta">{actors}</span>
           </a>
         </template>
@@ -359,7 +352,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="The words as the business uses them: every metric and view with its agreed meaning (the business glossary), and every column whose meaning names a term. A person&#x27;s decision or word shows as a mark, with the date on hover. A row opens the metric&#x27;s or the column&#x27;s page.">Terms</span>
-      <code class="chip">definitions · metric_surfaces · meaning.term · review_decisions</code></header>
+      <code class="chip">definitions · view_definitions · meaning.term · review_decisions</code></header>
     <p class="hint">The words as the business uses them, and what each one means here. A row opens its page.</p>
     <gl-rows frame="frames/terms" empty="no metric, view or term is declared yet: a definition is written when a metric is defined">
       <template>
@@ -388,9 +381,9 @@
   </section>
 
   <div class="half"><section class="tile">
-    <header><span class="eyebrow" title="Every declared relationship, its meaning, and what the coherence measurement found: every row resolving, or how many do not. A row opens the left table&#x27;s page.">Joins</span>
+    <header><span class="eyebrow" title="Every declared relationship, its meaning, and what the coherence measurement found: every row resolving, or how many do not. A row opens the left table&#x27;s page.">Relationships</span>
       <code class="chip">relationships · meaning · relationship_coherence</code></header>
-    <gl-rows frame="frames/joins?table=&column=" empty="no relationship is declared yet — the next read's structure goal hands the statement">
+    <gl-rows frame="frames/joins?table=&column=" empty="no relationship is declared yet (DECLARE RELATIONSHIP)">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:minmax(0,1fr)">
           <span class="r-subj">{rel}</span>
@@ -404,7 +397,7 @@
   <div class="half"><section class="tile">
     <header><span class="eyebrow" title="For every source a load query reads, what was learned about the system that wrote it: the source&#x27;s conventions, its system under the name and every other entry as a line.">Sources</span>
       <code class="chip">conventions</code></header>
-    <gl-rows frame="frames/conventions" empty="no recipe names a source yet">
+    <gl-rows frame="frames/conventions" empty="no load query names a source yet">
       <template>
         <div class="rrow" style="grid-template-columns:minmax(0,1fr)">
           <span class="r-subj">{source} <span class="r-meta">{system}</span></span>

@@ -1,6 +1,8 @@
 //! The kits' suites on the engine. A suite is DuckDB's sqllogictest
 //! form in the four directives the kits' suites use: `statement ok`;
-//! `statement error`, with the text the refusal carries after `----`;
+//! `statement error`, with the refusal's code after `----`
+//! ([`SessionError::code`]: its class, or the code the kit raised it
+//! under), not a part of its sentence;
 //! `query <types>`, with its rows after `----` (one per line, cells
 //! tab-separated, `NULL` and `(empty)` as DuckDB's own runner spells
 //! them, an `R` cell equal within one percent); and `require
@@ -25,7 +27,7 @@ enum Record {
     Statement {
         ok: bool,
         sql: String,
-        carries: Option<String>,
+        code: Option<String>,
     },
     Query {
         types: String,
@@ -85,14 +87,14 @@ fn parse(text: &str) -> Result<Vec<(usize, Record)>, String> {
             Record::Statement {
                 ok: true,
                 sql,
-                carries: None,
+                code: None,
             }
         } else if directive == "statement error" {
-            let carries = (!answer.is_empty()).then(|| answer.join("\n"));
+            let code = (!answer.is_empty()).then(|| answer.join("\n").trim().to_string());
             Record::Statement {
                 ok: false,
                 sql,
-                carries,
+                code,
             }
         } else if let Some(rest) = directive.strip_prefix("query ") {
             let mut words = rest.split_whitespace();
@@ -122,12 +124,13 @@ fn check(conn: &Connection, record: &Record) -> Result<(), String> {
         Record::Require(name) if LOADED.contains(&name.as_str()) => Ok(()),
         Record::Require(name) => Err(format!("require {name}: not an extension the engine loads")),
         Record::Statement { ok: true, sql, .. } => run(conn, sql).map_err(|e| e.to_string()),
-        Record::Statement { sql, carries, .. } => match run(conn, sql) {
+        Record::Statement { sql, code, .. } => match run(conn, sql) {
             Ok(()) => Err(format!("ran, a refusal expected: {}", first_line(sql))),
-            Err(e) => match carries {
-                Some(text) if !e.to_string().contains(text.as_str()) => {
-                    Err(format!("the refusal does not carry {text:?}: {e}"))
-                }
+            Err(e) => match code {
+                Some(code) if e.code() != Some(code.as_str()) => Err(format!(
+                    "the refusal's code is {:?}, {code:?} expected: {e}",
+                    e.code()
+                )),
                 _ => Ok(()),
             },
         },
@@ -233,10 +236,10 @@ mod tests {
         let lines: Vec<usize> = records.iter().map(|(l, _)| *l).collect();
         assert_eq!(lines, vec![3, 5, 8, 13]);
         match &records[2].1 {
-            Record::Statement { ok, sql, carries } => {
+            Record::Statement { ok, sql, code } => {
                 assert!(!ok);
                 assert_eq!(sql, "SELECT nothing;");
-                assert_eq!(carries.as_deref(), Some("nothing"));
+                assert_eq!(code.as_deref(), Some("nothing"));
             }
             _ => panic!("a statement"),
         }

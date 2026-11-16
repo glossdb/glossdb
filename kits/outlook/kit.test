@@ -1,5 +1,5 @@
 # name: kits/outlook/kit.test
-# description: the outlook kit — the walk's request from the metric series, complete months only and seven at least; the walk loaded as a measurement carrying the service's result; the reads and the test over it
+# description: the outlook kit — the requests built from the metric series, complete periods only; the service's answer stored as it is, its verdicts, codes and coverage served back; the backtest on the dataset, the forecast and the scenario estimate on each metric; a red range accepted by a person
 # group: [sql]
 
 require glossql
@@ -20,13 +20,16 @@ statement ok
 PRAGMA glossql;
 
 statement ok
+FROM glossql_kit('{KITS}/core/kit.sql');
+
+statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/kpi/kit.sql');
 
 statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
 
 statement ok
-FROM glossql_kit('{KITS}/metrics/kit.sql');
+FROM glossql_kit('{KITS}/views/kit.sql');
 
 statement ok
 FROM glossql_kit('{KITS}/outlook/kit.sql');
@@ -64,7 +67,7 @@ SELECT temporal() FROM spend.period;
 statement ok
 GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
 
-# a second metric with four whole months: too short for the walk
+# a second metric with four whole months
 statement ok
 CREATE TABLE fin.recent AS SELECT DATE '2024-10-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(126) r(i);
 
@@ -86,92 +89,106 @@ SELECT temporal() FROM hires.period;
 statement ok
 GLOSS additivity ON hires.value AS $${"value": "additive"}$$;
 
-# --- the request: whole months only, the month the edge falls inside left out; seven at least
+# --- the backtest's request: whole months only, the month the edge falls inside left out; how many months a backtest
+# needs is the service's to say
 
 query TTIT
-SELECT metric, additivity, months, walkable FROM band_request();
+SELECT metric, additivity, months, applicable FROM range_request();
 ----
-hires	additive	4	false
+hires	additive	4	true
 spend	additive	13	true
 
-query T
-SELECT reason FROM band_request() WHERE metric = 'hires';
+# both metrics in one request, with the test's threshold
+query IRITTT
+SELECT json_extract(body, '$.spec.origins')::INTEGER, json_extract(body, '$.spec.threshold')::DOUBLE,
+       json_array_length(json_extract(body, '$.table.period')),
+       json_extract_string(body, '$.table.period[0]'), json_extract_string(body, '$.table.member[4]'), json_extract_string(body, '$.table.period[16]')
+FROM range_body((SELECT max(threshold) FROM annotations('metric_ranges', 'itself')));
 ----
-the walk needs seven complete months, and hires has 4
+6	0.98	17	2024-10	spend	2025-01
 
-query IIRTTTR
-SELECT json_extract(body, '$.spec.origins')::INTEGER, json_array_length(json_extract(body, '$.table.period')),
-       json_extract(body, '$.spec.threshold')::DOUBLE, json_extract_string(body, '$.table.period[0]'),
-       json_extract_string(body, '$.table.period[12]'), json_extract_string(body, '$.table.member[12]'),
-       json_extract(body, '$.table.value[0]')::DOUBLE
-FROM band_body();
-----
-6	13	0.98	2024-01	2025-01	spend	118.0
-
-# the test's threshold is the red line the walk is asked with
-statement ok
-DECLARE TEST bands_test ON metric_bands DETECTOR band_breach THRESHOLD 0.9;
-
-query R
-SELECT json_extract(body, '$.spec.threshold')::DOUBLE FROM band_body();
-----
-0.9
-
-# --- no service named: the walk refuses by name, before any call
+# --- no service named: the backtest refuses by name, before any call
 
 statement error
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 ----
-no service is named for /forecast
+service_not_configured
 
-# --- the service stood in for: two walked months, the newest outside the corridor, the older one withheld
+# --- the service stood in for, as its contract answers: the backtest echoes the threshold it was sent and answers
+# spend's two months, the older withheld and the newest red, and hires with the code of what it could not answer
 
 statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table": {"member": ["spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend", "spend"], "period": ["2024-12", "2024-12", "2024-12", "2024-12", "2024-12", "2025-01", "2025-01", "2025-01", "2025-01", "2025-01"], "level": [0.05, 0.1, 0.5, 0.9, 0.95, 0.05, 0.1, 0.5, 0.9, 0.95], "value": [100, 110, 120, 130, 140, 200, 210, 220, 230, 240], "actual": [125, 125, 125, 125, 125, 300, 300, 300, 300, 300], "pit": [null, null, null, null, null, 1.0, 1.0, 1.0, 1.0, 1.0], "withheld": ["the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", "the training series is constant and the actual equals it", null, null, null, null, null]}, "answer": {"service": "glossthesi", "version": "test", "errors": [{"member": "spend", "origin": "2024-07", "error": "6 known values of history: a forecast needs 7"}], "coverage": [], "walk": {"score": 1.0, "band": "red", "threshold": 0.9, "members": [{"member": "spend", "column": "value", "walked": 2, "held_80": 0.0, "held_90": 0.0, "newest": {"origin": "2024-12", "period": "2025-01", "pit": 1.0, "displacement": 1.0, "withheld": null}}]}}}'::JSON;
+CREATE OR REPLACE MACRO main.service(path, body) AS (CASE
+  WHEN path = '/whatif' AND (SELECT coalesce(bool_or(p1 IS DISTINCT FROM s1 OR p2 IS DISTINCT FROM s2), false) FROM (
+         SELECT max(v1) FILTER (WHERE st = 'plan') AS p1, max(v1) FILTER (WHERE st = 'scenario') AS s1,
+                max(v2) FILTER (WHERE st = 'plan') AS p2, max(v2) FILTER (WHERE st = 'scenario') AS s2
+         FROM (SELECT unnest(json_extract(body, '$.table.period')::VARCHAR[]) AS period, unnest(json_extract(body, '$.table.status')::VARCHAR[]) AS st,
+                      unnest(json_extract(body, '$.table."priced.price"')::DOUBLE[]) AS v1, unnest(json_extract(body, '$.table."priced.promo"')::DOUBLE[]) AS v2)
+         WHERE st <> 'actual' GROUP BY period))
+    THEN '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08","2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08","2025-02-03","2025-02-03","2025-02-03","2025-02-04","2025-02-04","2025-02-04","2025-02-05","2025-02-05","2025-02-05"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"status":["plan","plan","plan","plan","plan","plan","plan","plan","plan","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","held_back","held_back","held_back","held_back","held_back","held_back","held_back","held_back","held_back"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[3.6,4.5,5.4,3.7,4.6,5.5,3.8,4.7,5.6,4.1,5.0,5.9,4.2,5.1,6.0,4.3,5.2,6.1,3.2,4.1,5.0,3.2,4.1,5.0,3.2,4.1,5.0],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4.0,4.0,4.0,4.2,4.2,4.2,4.1,4.1,4.1],"effect":[null,null,null,null,null,null,null,null,null,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,null,null,null,null,null,null,null,null,null],"history_value":[null,null,null,null,null,null,null,null,null,5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7,null,null,null,null,null,null,null,null,null],"history_low":[null,null,null,null,null,null,null,null,null,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,null,null,null,null,null,null,null,null,null],"history_high":[null,null,null,null,null,null,null,null,null,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,null,null,null,null,null,null,null,null,null],"sign":["+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5],"history_error":[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}],"assumptions":[{"field":"coverage","value":null,"basis":"assumed: no interval of the what-if has a stated coverage"}]}}'
+  WHEN path = '/whatif' THEN '{"table":{"member":[],"period":[],"column":[],"status":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"priced","column":"value","code":"nothing_changed","error":"words"}],"changed":[],"parts":[],"assumptions":[{"field":"coverage","value":null,"basis":"assumed"}]}}'
+  WHEN json_extract(body, '$.spec.origins') IS NOT NULL
+    THEN replace('{"table":{"member":["spend","spend","spend","spend","spend","spend","spend","spend","spend","spend"],"origin":["2024-11","2024-11","2024-11","2024-11","2024-11","2024-12","2024-12","2024-12","2024-12","2024-12"],"step":[1,1,1,1,1,1,1,1,1,1],"period":["2024-12","2024-12","2024-12","2024-12","2024-12","2025-01","2025-01","2025-01","2025-01","2025-01"],"span":[null,null,null,null,null,null,null,null,null,null],"column":["value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140,200,210,220,230,240],"actual":[125,125,125,125,125,300,300,300,300,300],"pit":[null,null,null,null,null,1.0,1.0,1.0,1.0,1.0],"displacement":[null,null,null,null,null,1.0,1.0,1.0,1.0,1.0],"withheld":["the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it",null,null,null,null,null],"coverage_80":[0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79],"coverage_80_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02],"coverage_90":[0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88],"coverage_90_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02],"coverage_points":[7816,7816,7816,7816,7816,7816,7816,7816,7816,7816],"coverage_datasets":[21,21,21,21,21,21,21,21,21,21]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"hires","origin":"2024-10-03","column":"value","code":"history_short","needed":6,"given":1,"error":"words"},{"member":"hires","code":"origins_short","needed":7,"given":4,"error":"words"}],"assumptions":[{"field":"backtest","value":THRESHOLD,"basis":"assumed: the test''s threshold"}],"backtest":{"threshold":THRESHOLD,"members":[{"member":"spend","column":"value","backtested":2,"held_80":0.5,"held_90":0.5,"period":"2025-01","score":1.0,"state":"red"}]}}}', 'THRESHOLD', coalesce(json_extract(body, '$.spec.threshold')::VARCHAR, '0.98'))
+  WHEN json_extract_string(body, '$.table.member[0]') = 'sales' THEN '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"displacement":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"coverage_80":[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79],"coverage_80_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_90":[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89],"coverage_90_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_points":[1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,500,500,500,500,500,500,500,500,500,500],"coverage_datasets":[10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]},"answer":{"service":"glossthesi","version":"test","errors":[],"assumptions":[{"field":"coverage","value":null,"basis":"measured: held-out datasets"}]}}'
+  WHEN json_extract_string(body, '$.table.member[0]') = 'priced.price' THEN '{"table":{"member":["priced.price","priced.price","priced.price"],"origin":["2025-02-05","2025-02-05","2025-02-05"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"span":[null,null,null],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7],"actual":[null,null,null],"pit":[null,null,null],"displacement":[null,null,null],"withheld":[null,null,null],"coverage_80":[null,null,null],"coverage_80_se":[null,null,null],"coverage_90":[null,null,null],"coverage_90_se":[null,null,null],"coverage_points":[null,null,null],"coverage_datasets":[null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[]}}'
+  ELSE replace('{"table":{"member":[],"origin":[],"step":[],"period":[],"span":[],"column":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"MEMBER","column":"value","origin":null,"code":"history_short","needed":6,"given":3,"error":"words"}]}}', 'MEMBER', json_extract_string(body, '$.table.member[0]')) END)::JSON;
 
 statement ok
-SELECT metric_bands() FROM fin;
+DECLARE TEST range_test ON metric_ranges BY (AGENT, HUMAN) DETECTOR range_state THRESHOLD 0.9;
 
-query TTRTR
-SELECT served_by, grain, score, band, threshold FROM band_verdict();
+statement ok
+SELECT metric_ranges() FROM fin;
+
+query TRRT
+SELECT json_extract_string(value, '$.served_by'), (value->>'threshold')::DOUBLE, (value->>'score')::DOUBLE, value->>'state'
+FROM measurements WHERE function = 'metric_ranges';
 ----
-glossthesi test	month	1.0	red	0.9
+glossthesi test	0.9	1.0	red
 
-query TTRRRRRT
-SELECT metric, period, actual, p05, p50, p95, pit, withheld FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
+query TTRRRRRRTR
+SELECT metric, period, actual, p05, p50, p95, pit, displacement, (withheld) IS NOT NULL, coverage_80
+FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
-spend	2024-12	125.0	100.0	120.0	140.0	NULL	the training series is constant and the actual equals it
-spend	2025-01	300.0	200.0	220.0	240.0	1.0	NULL
+spend	2024-12	125.0	100.0	120.0	140.0	NULL	NULL	true	0.79
+spend	2025-01	300.0	200.0	220.0	240.0	1.0	1.0	false	0.79
 
-query TRTIRR
-SELECT period, displacement, newest, walked, held_80, held_90 FROM band_points() WHERE metric = 'spend' ORDER BY point_seq;
+query TTIRRT
+SELECT period, newest, backtested, held_80, score, state FROM range_points() WHERE metric = 'spend' ORDER BY point_seq;
 ----
-2024-12	NULL	false	2	0.0	0.0
-2025-01	1.0	true	2	0.0	0.0
+2024-12	false	2	0.5	1.0	red
+2025-01	true	2	0.5	1.0	red
 
-query TTT
-SELECT metric, applicable, reason FROM band_points() WHERE metric = 'hires';
+# the metric the service could not backtest: its code and the reason the kit reads from it. The service also names
+# each origin with too short a history; the metric's own code is the backtest's, with the periods it has
+query TTTTI
+SELECT metric, applicable, code, (reason) IS NOT NULL, list_extract(list_filter(m.errors, lambda e: e.origin IS NULL), 1).given
+FROM range_points() r, (SELECT unnest(from_json(json_extract(value, '$.metrics'), '[{"metric": "VARCHAR", "errors": [{"code": "VARCHAR", "origin": "VARCHAR", "given": "BIGINT"}]}]')) AS m
+                        FROM measurements WHERE function = 'metric_ranges') s
+WHERE r.metric = 'hires' AND s.m.metric = 'hires';
 ----
-hires	false	the walk needs seven complete months, and hires has 4
+hires	false	origins_short	true	4
 
-query T
-SELECT json_extract_string(value, '$.metrics[1].errors[0]') FROM measurements WHERE function = 'metric_bands';
-----
-6 known values of history: a forecast needs 7
-
-# the result is the service's, repeated by the test's detector
 query TTTR
-SELECT subject, test, band, score FROM TESTS() WHERE test = 'bands_test';
+SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
-fin	bands_test	red	1.0
+fin	range_test	red	1.0
 
-# --- a repeat is served; a change to what the walk read owes a new one
+# the test is a row of view_tests() on the dataset, with no view: the result carries the finding (the metric the
+# service judged red) and the fix, which runs the backtest again or records a person's acceptance
+query TTTTTT
+SELECT view, subject, state, run, contains(evidence->>'finding', 'spend is 300.0 at 2025-01'),
+       contains(evidence->>'fix', 'GLOSS metric_ranges ON fin AS $${"tolerance": 1.0')
+FROM view_tests() WHERE test = 'range_test';
+----
+(empty)	fin	red	(empty)	true	true
+
+# --- a repeat is served; a change to what the backtest read owes a new one
 
 statement ok
-SELECT metric_bands() FROM fin;
+SELECT metric_ranges() FROM fin;
 
 query I
-SELECT count(*) FROM measurements WHERE function = 'metric_bands';
+SELECT count(*) FROM measurements_history WHERE function = 'metric_ranges' AND error IS NULL;
 ----
 1
 
@@ -179,19 +196,67 @@ statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-04', 3.0, 'water');
 
 query T
-SELECT current FROM TESTS() WHERE test = 'bands_test';
+SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
 false
 
 statement ok
-SELECT metric_bands() FROM fin;
+SELECT temporal() FROM spend.period;
 
-query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_bands' AND a.test = 'bands_test';
+statement ok
+SELECT metric_ranges() FROM fin;
+
+query T
+SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
-2	true
+true
 
-# --- the forecast: a monthly metric, twelve months ahead from the last period with a value, the quarter and the year to go
+# --- the threshold is the test's: declared again, the stored backtest is out of date through it, and the next one
+# sends the new threshold and stores the states the service judged with it
+
+statement ok
+DECLARE TEST range_test ON metric_ranges BY (AGENT, HUMAN) DETECTOR range_state THRESHOLD 0.95;
+
+query T
+SELECT DISTINCT input FROM glossql_outdated() WHERE function = 'metric_ranges';
+----
+annotations(metric_ranges, itself)
+
+statement ok
+SELECT metric_ranges() FROM fin;
+
+query R
+SELECT (value->>'threshold')::DOUBLE FROM measurements WHERE function = 'metric_ranges';
+----
+0.95
+
+# --- a red range accepted: an agent's tolerance below the score leaves it red, a person's at or above it outranks the
+# agent's and makes the test green, as for the views' checks
+
+statement ok
+GLOSS metric_ranges ON fin AS $${"tolerance": 0.5, "basis": "a guess"}$$;
+
+query T
+SELECT state FROM TESTS() WHERE test = 'range_test';
+----
+red
+
+statement ok
+SET VARIABLE glossql_actor = 'human';
+
+statement ok
+GLOSS metric_ranges ON fin AS $${"tolerance": 1.0, "basis": "the January price change, decided by finance"}$$;
+
+statement ok
+RESET VARIABLE glossql_actor;
+
+query TT
+SELECT subject, state FROM view_tests() WHERE test = 'range_test';
+----
+fin	green
+
+# --- the forecast, on a metric: a monthly metric, twelve months ahead from the last complete period, the quarter
+# and the year to go
 
 statement ok
 CREATE TABLE fin.budget AS
@@ -222,12 +287,76 @@ SELECT metric, additivity, grain, horizon, applicable, origin::DATE, len(ahead),
 ----
 sales	additive	month	12	true	2025-02-01	12	[{'span': 1, 'to_go': quarter}, {'span': 10, 'to_go': year}]
 
-# a stock at month grain asks no total: a second body at the month, beside the flow's
+# one request per metric: the history as actual rows, the periods ahead as forecast rows
+query TTTITT
+SELECT metric, grain, totals::VARCHAR, json_array_length(json_extract(body, '$.table.member')),
+       json_extract_string(body, '$.table.status[13]'), json_extract_string(body, '$.table.period[25]')
+FROM forecast_bodies_of('the dataset''s metrics', 'the dataset''s metrics') ORDER BY metric;
+----
+hires	day	[24]	158	actual	2024-10-26
+sales	month	[1, 10]	26	actual	2026-02-01
+spend	day	[24]	432	actual	2024-01-26
+
+statement ok
+SELECT metric_forecast() FROM fin.sales;
+
+query I
+SELECT count(*) FROM forecast_points() WHERE metric = 'sales';
+----
+14
+
+# the service's coverage of each range, on held-out data, stored with the point
+query IIITTRRRRRII
+SELECT point_seq, step, span, to_go, period, p10, p50, p90, coverage_80, coverage_80_se, coverage_points, coverage_datasets
+FROM forecast_points() WHERE metric = 'sales' AND point_seq IN (0, 2, 12, 13) ORDER BY point_seq;
+----
+0	1	NULL	NULL	2025-03-01	80.0	100.0	120.0	0.8	0.02	1000	10
+2	3	NULL	NULL	2025-05-01	80.0	100.0	120.0	0.75	0.02	1000	10
+12	1	1	quarter	2025-03-01	80.0	100.0	120.0	0.79	0.03	500	10
+13	10	10	year	2025-12-01	1000.0	1100.0	1400.0	0.79	0.03	500	10
+
+query TTTT
+SELECT grain, origin, served_by, current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
+----
+month	2025-02-01	glossthesi test	true
+
+# a metric the service could not forecast: its code, and the reason read from the code's needed and given
+statement ok
+SELECT metric_forecast() FROM fin.hires;
+
+query TTTT
+SELECT metric, applicable, code, contains(reason, '6') AND contains(reason, '3') FROM forecast_points() WHERE metric = 'hires';
+----
+hires	false	history_short	true
+
+# a view that is no metric is refused by name
+statement ok
+DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS ledger_rows ON fin AS $${"sql": "SELECT booked, amount FROM fin.ledger"}$$;
+
+statement error
+SELECT metric_forecast() FROM fin.ledger_rows;
+----
+not_a_metric
+
+# the forecast world: the medians at the forecast's grain, under the metric
+query TTIR
+SELECT metric, world, count(*), any_value(value) FROM metric_series(world := 'forecast', grain := 'month') GROUP BY ALL;
+----
+sales	forecast	12	100.0
+
+# --- one forecast per metric: a metric defined, annotated and loaded beside it leaves sales's forecast current
+
+statement ok
+CREATE TABLE fin.counts AS SELECT (DATE '2024-01-01' + INTERVAL (m) MONTH)::DATE AS month, (10 + m)::DOUBLE AS n FROM range(13) r(m);
+
 statement ok
 DECLARE ASPECT balance WITH $${"title": "Balance"}$$ AS VIEW;
 
 statement ok
-GLOSS balance ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*)::DOUBLE AS value FROM fin.ledger GROUP BY ALL"}$$;
+GLOSS balance ON fin AS $${"sql": "SELECT month AS period, n AS value FROM fin.counts"}$$;
 
 statement ok
 GLOSS role ON balance.period AS $${"value": "timestamp"}$$;
@@ -236,226 +365,76 @@ statement ok
 GLOSS role ON balance.value AS $${"value": "measure"}$$;
 
 statement ok
-SELECT temporal() FROM balance.period;
-
-statement ok
 GLOSS additivity ON balance.value AS $${"value": "semi-additive"}$$;
 
-# the daily flows ask the month to go from the data's edge, which they share; one request per grain and set of totals
-query TTI
-SELECT grain, totals::VARCHAR, json_array_length(json_extract(body, '$.table.member')) FROM forecast_bodies() ORDER BY grain, totals;
-----
-day	[24]	590
-month	[]	26
-month	[1, 10]	26
-
-query TTT
-SELECT json_extract_string(body, '$.table.period[13]'), json_extract_string(body, '$.table.status[13]'), json_extract_string(body, '$.table.period[25]') FROM forecast_bodies() WHERE grain = 'month' AND totals <> [];
-----
-2025-02-01	actual	2026-02-01
-
 statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[{"step":1,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.1,"high":0.9,"share":0.8,"se":0.02,"points":1000,"datasets":10},{"step":2,"span":null,"low":0.05,"high":0.95,"share":0.9,"se":0.02,"points":1000,"datasets":10},{"step":1,"span":1,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":1,"span":1,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.1,"high":0.9,"share":0.79,"se":0.03,"points":500,"datasets":10},{"step":10,"span":10,"low":0.05,"high":0.95,"share":0.89,"se":0.03,"points":500,"datasets":10}]}}'::JSON;
-
-statement ok
-SELECT metric_forecast() FROM fin;
-
-# the other metrics got no point from the stand-in; sales its twelve steps and two totals, each once,
-# though both month bodies answered the service's coverage at the month
-query TTT
-SELECT metric, applicable, reason FROM forecast_points() WHERE metric <> 'sales' ORDER BY metric;
-----
-balance	false	the service answered no point for this metric
-hires	false	the service answered no point for this metric
-spend	false	the service answered no point for this metric
+INSERT INTO fin.counts VALUES (DATE '2025-02-01', 30.0);
 
 query I
-SELECT count(*) FROM forecast_points() WHERE metric = 'sales';
-----
-14
-
-query IIITTRRRRT
-SELECT point_seq, step, span, to_go, period, p10, p50, p90, held_80, held_from FROM forecast_points() WHERE metric = 'sales' AND point_seq IN (0, 2, 12, 13) ORDER BY point_seq;
-----
-0	1	NULL	NULL	2025-03-01	80.0	100.0	120.0	0.8	service
-2	3	NULL	NULL	2025-05-01	80.0	100.0	120.0	NULL	NULL
-12	1	1	quarter	2025-03-01	80.0	100.0	120.0	0.79	service
-13	10	10	year	2025-12-01	1000.0	1100.0	1400.0	0.79	service
-
-query TTTT
-SELECT grain, origin, served_by, current FROM forecast_points() WHERE metric = 'sales' LIMIT 1;
-----
-month	2025-02-01	glossthesi test	true
-
-# nothing has loaded past the origin: the catalog tallies no point yet, and says so with no row
-query I
-SELECT count(*) FROM forecast_coverage();
+SELECT count(*) FROM glossql_outdated() WHERE function = 'metric_forecast' AND subject = 'fin.sales';
 ----
 0
 
-# the forecast world: the medians at the forecast's grain, under the metric
-query TTIR
-SELECT metric, world, count(*), any_value(value) FROM metric_series(world := 'forecast', grain := 'month') GROUP BY ALL;
-----
-sales	forecast	12	100.0
-
-# --- the plan: a VIEW aspect with x-kind plan and x-plan-of, read through the metric it plans
+# --- a run that fails is served as failed: the newest result is the failure, never the run before it
 
 statement ok
-DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
+CREATE OR REPLACE MACRO main.service(path, body) AS error('the service answered 503: draining')::JSON;
 
-# declared and not grounded: no fact row yet, as for a metric; the plan goal asks for the metric definition
-query I
-SELECT count(*) FROM metric_summary() WHERE metric = 'sales_budget';
+statement error
+SELECT metric_forecast() FROM fin.sales;
 ----
-0
+service_failed
 
-statement ok
-GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
-
-query TTTTTT
-SELECT metric, plan_of, applicable, period_column, value_column, additivity FROM metric_summary() WHERE metric = 'sales_budget';
+query TTII
+SELECT metric, applicable, count(*), count(step) FROM forecast_points() WHERE metric = 'sales' AND error IS NOT NULL GROUP BY ALL;
 ----
-sales_budget	sales	true	period	value	additive
-
-# a plan is no metric of the actual world, and neither the walk nor the forecast reads it
-query I
-SELECT count(*) FROM metric_series(grain := 'month') WHERE metric = 'sales_budget';
-----
-0
+sales	false	1	0
 
 query I
-SELECT count(*) FROM band_request() WHERE metric = 'sales_budget';
-----
-0
-
-query TTIR
-SELECT metric, world, count(*), sum(value) FROM metric_series(world := 'plan', plan := 'sales_budget', grain := 'month') GROUP BY ALL;
-----
-sales	plan	12	2120.0
-
-query TR
-SELECT period::DATE, value FROM metric_series(world := 'plan', plan := 'sales_budget', grain := 'year');
-----
-2025-01-01	2120.0
-
-query I
-SELECT count(*) FROM metric_series(world := 'plan', plan := 'sales_budget', grain := 'day');
+SELECT count(*) FROM forecast_points() WHERE metric = 'sales' AND error IS NULL;
 ----
 0
 
 statement error
-SELECT * FROM metric_series(world := 'plan', grain := 'month');
+SELECT metric_ranges() FROM fin;
 ----
-names the plan it serves
+service_failed
 
-statement error
-SELECT * FROM metric_series(world := 'plan', plan := 'nothing');
+query TI
+SELECT (error) IS NOT NULL, count(*) FROM range_points() GROUP BY ALL;
 ----
-no aspect of that name is declared
-
-statement error
-SELECT * FROM metric_series(world := 'plan', plan := 'sales');
-----
-sales is no plan
-
-statement error
-SELECT * FROM metric_series(world := 'dream');
-----
-the worlds are actual, plan, forecast and scenario
-
-# plan_points(): the year first — whole, begun, not complete: the actual to date plus the year to go bands it; then the months,
-# loaded through the origin with their variance, the rest against their own step's band
-query TTTRRRRRRTTRT
-SELECT grain, label, period::DATE, value, actual, variance, low, expected, high, planned, covers, held_80, origin
-FROM plan_points() WHERE plan = 'sales_budget' AND (grain = 'year' OR label IN ('2025-01', '2025-02', '2025-03', '2025-04', '2025-12'))
-ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
-----
-year	2025	2025-01-01	2120.0	141.0	NULL	1141.0	1241.0	1541.0	above	NULL	0.79	2025-02-01
-month	2025-01	2025-01-01	120.0	124.0	4.0	NULL	NULL	NULL	complete	NULL	NULL	NULL
-month	2025-02	2025-02-01	10.0	17.0	7.0	NULL	NULL	NULL	complete	NULL	NULL	NULL
-month	2025-03	2025-03-01	90.0	NULL	NULL	80.0	100.0	120.0	inside	NULL	0.8	2025-02-01
-month	2025-04	2025-04-01	200.0	NULL	NULL	80.0	100.0	120.0	above	NULL	0.8	2025-02-01
-month	2025-12	2025-12-01	1000.0	NULL	NULL	80.0	100.0	120.0	above	NULL	NULL	2025-02-01
-
-query I
-SELECT count(*) FROM plan_points() WHERE plan = 'sales_budget';
-----
-13
-
-# --- the judgement is stored on the plan: wanted on its row until one holds, measured over it, tested; the routes read it
-query T
-SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
-----
-[metric_plan over fin.sales_budget]
+true	1
 
 statement ok
-SELECT metric_plan() FROM fin.sales_budget;
-
-query T
-SELECT wanted FROM metric_summary() WHERE metric = 'sales_budget';
-----
-[]
-
-query TTTTI
-SELECT plan, metric, plan_grain, forecast_run = (SELECT max(seq) FROM measurements WHERE function = 'metric_forecast'), count(*)
-FROM plan_record() GROUP BY ALL;
-----
-sales_budget	sales	month	true	13
-
-query TTR
-SELECT label, planned, value FROM plan_record() WHERE planned IN ('below', 'above')
-ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period;
-----
-2025	above	2120.0
-2025-04	above	200.0
-2025-12	above	1000.0
-
-query TTTR
-SELECT subject, test, band, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
-----
-fin.sales_budget	plan_test	red	0.27
-
-# a change to what the judgement read owes it again
-statement ok
-INSERT INTO fin.ledger VALUES (DATE '2025-02-05', 2.0, 'water');
-
-query T
-SELECT current FROM TESTS() WHERE test = 'plan_test';
-----
-false
+CREATE OR REPLACE MACRO main.service(path, body) AS (CASE
+  WHEN path = '/whatif' AND (SELECT coalesce(bool_or(p1 IS DISTINCT FROM s1 OR p2 IS DISTINCT FROM s2), false) FROM (
+         SELECT max(v1) FILTER (WHERE st = 'plan') AS p1, max(v1) FILTER (WHERE st = 'scenario') AS s1,
+                max(v2) FILTER (WHERE st = 'plan') AS p2, max(v2) FILTER (WHERE st = 'scenario') AS s2
+         FROM (SELECT unnest(json_extract(body, '$.table.period')::VARCHAR[]) AS period, unnest(json_extract(body, '$.table.status')::VARCHAR[]) AS st,
+                      unnest(json_extract(body, '$.table."priced.price"')::DOUBLE[]) AS v1, unnest(json_extract(body, '$.table."priced.promo"')::DOUBLE[]) AS v2)
+         WHERE st <> 'actual' GROUP BY period))
+    THEN '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08","2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08","2025-02-03","2025-02-03","2025-02-03","2025-02-04","2025-02-04","2025-02-04","2025-02-05","2025-02-05","2025-02-05"],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"status":["plan","plan","plan","plan","plan","plan","plan","plan","plan","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","held_back","held_back","held_back","held_back","held_back","held_back","held_back","held_back","held_back"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[3.6,4.5,5.4,3.7,4.6,5.5,3.8,4.7,5.6,4.1,5.0,5.9,4.2,5.1,6.0,4.3,5.2,6.1,3.2,4.1,5.0,3.2,4.1,5.0,3.2,4.1,5.0],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4.0,4.0,4.0,4.2,4.2,4.2,4.1,4.1,4.1],"effect":[null,null,null,null,null,null,null,null,null,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,null,null,null,null,null,null,null,null,null],"history_value":[null,null,null,null,null,null,null,null,null,5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7,null,null,null,null,null,null,null,null,null],"history_low":[null,null,null,null,null,null,null,null,null,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,null,null,null,null,null,null,null,null,null],"history_high":[null,null,null,null,null,null,null,null,null,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,null,null,null,null,null,null,null,null,null],"sign":["+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+","+"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5],"history_error":[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}],"assumptions":[{"field":"coverage","value":null,"basis":"assumed: no interval of the what-if has a stated coverage"}]}}'
+  WHEN path = '/whatif' THEN '{"table":{"member":[],"period":[],"column":[],"status":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"priced","column":"value","code":"nothing_changed","error":"words"}],"changed":[],"parts":[],"assumptions":[{"field":"coverage","value":null,"basis":"assumed"}]}}'
+  WHEN json_extract(body, '$.spec.origins') IS NOT NULL
+    THEN replace('{"table":{"member":["spend","spend","spend","spend","spend","spend","spend","spend","spend","spend"],"origin":["2024-11","2024-11","2024-11","2024-11","2024-11","2024-12","2024-12","2024-12","2024-12","2024-12"],"step":[1,1,1,1,1,1,1,1,1,1],"period":["2024-12","2024-12","2024-12","2024-12","2024-12","2025-01","2025-01","2025-01","2025-01","2025-01"],"span":[null,null,null,null,null,null,null,null,null,null],"column":["value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140,200,210,220,230,240],"actual":[125,125,125,125,125,300,300,300,300,300],"pit":[null,null,null,null,null,1.0,1.0,1.0,1.0,1.0],"displacement":[null,null,null,null,null,1.0,1.0,1.0,1.0,1.0],"withheld":["the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it","the history is constant and the actual equals it",null,null,null,null,null],"coverage_80":[0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79],"coverage_80_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02],"coverage_90":[0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88,0.88],"coverage_90_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02],"coverage_points":[7816,7816,7816,7816,7816,7816,7816,7816,7816,7816],"coverage_datasets":[21,21,21,21,21,21,21,21,21,21]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"hires","origin":"2024-10-03","column":"value","code":"history_short","needed":6,"given":1,"error":"words"},{"member":"hires","code":"origins_short","needed":7,"given":4,"error":"words"}],"assumptions":[{"field":"backtest","value":THRESHOLD,"basis":"assumed: the test''s threshold"}],"backtest":{"threshold":THRESHOLD,"members":[{"member":"spend","column":"value","backtested":2,"held_80":0.5,"held_90":0.5,"period":"2025-01","score":1.0,"state":"red"}]}}}', 'THRESHOLD', coalesce(json_extract(body, '$.spec.threshold')::VARCHAR, '0.98'))
+  WHEN json_extract_string(body, '$.table.member[0]') = 'sales' THEN '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"displacement":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"coverage_80":[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79],"coverage_80_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_90":[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89],"coverage_90_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_points":[1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,500,500,500,500,500,500,500,500,500,500],"coverage_datasets":[10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]},"answer":{"service":"glossthesi","version":"test","errors":[],"assumptions":[{"field":"coverage","value":null,"basis":"measured: held-out datasets"}]}}'
+  WHEN json_extract_string(body, '$.table.member[0]') = 'priced.price' THEN '{"table":{"member":["priced.price","priced.price","priced.price"],"origin":["2025-02-05","2025-02-05","2025-02-05"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"span":[null,null,null],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7],"actual":[null,null,null],"pit":[null,null,null],"displacement":[null,null,null],"withheld":[null,null,null],"coverage_80":[null,null,null],"coverage_80_se":[null,null,null],"coverage_90":[null,null,null],"coverage_90_se":[null,null,null],"coverage_points":[null,null,null],"coverage_datasets":[null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[]}}'
+  ELSE replace('{"table":{"member":[],"origin":[],"step":[],"period":[],"span":[],"column":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"MEMBER","column":"value","origin":null,"code":"history_short","needed":6,"given":3,"error":"words"}]}}', 'MEMBER', json_extract_string(body, '$.table.member[0]')) END)::JSON;
 
 statement ok
-SELECT metric_plan() FROM fin.sales_budget;
-
-query IT
-SELECT count(*), bool_and(current) FROM measurements m, TESTS() a WHERE m.function = 'metric_plan' AND a.test = 'plan_test';
-----
-2	true
-
-# the routes judge the plan from the catalog: the judgement asked for, asked again, then the gap; served only where a model service is named
-query I
-SELECT count(*) FILTER (WHERE arms <> '') FROM routes_outlook();
-----
-0
+SELECT metric_forecast() FROM fin.sales;
 
 statement ok
-SET GLOBAL glossql_service_url = 'http://model.test';
+SELECT metric_ranges() FROM fin;
 
-query II
-SELECT count(*) FILTER (WHERE arms LIKE '%''outlook'', 2, ''next'', ''metric_plan''%'),
-       count(*) FILTER (WHERE arms LIKE '%''plan_test''%')
-FROM routes_outlook();
-----
-1	1
-
-# --- the scenario: a lever on a column of a metric's view, a scenario of a factor per period, the estimate ahead from the service
+# --- the scenario: a lever on a column of a metric's view, a scenario of a factor per period, the estimate ahead from
+# the service
 
 statement ok
 DECLARE ASPECT priced WITH $${"title": "Priced spend"}$$ AS VIEW;
 
 statement ok
-GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price FROM fin.ledger"}$$;
+GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price, CASE WHEN booked >= DATE '2025-02-01' THEN 0.0 ELSE 1.0 END AS promo FROM fin.ledger"}$$;
 
 statement ok
 GLOSS role ON priced.period AS $${"value": "timestamp"}$$;
@@ -474,93 +453,82 @@ DECLARE ASPECT price_up WITH $${"title": "Price +10% in February", "x-kind": "sc
 
 # declared and not annotated
 query TTTT
-SELECT scenario, glossed, applicable, reason FROM scenarios();
+SELECT scenario, annotated, applicable, (reason) IS NOT NULL FROM scenarios();
 ----
-price_up	false	false	declared and not annotated: a scenario is a factor per period on declared levers
+price_up	false	false	true
 
-# a lever nobody glossed refuses the scenario at read
+# a lever nobody annotated: the scenario is judged once, and its fix annotates it again with the body judged, a
+# person's over an agent's
+statement ok
+GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.2}, "basis": "the agent's draft"}]}$$;
+
+statement ok
+SET VARIABLE glossql_actor = 'human';
+
 statement ok
 GLOSS price_up ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.1}, "basis": "the February price list"}]}$$;
 
-query TT
-SELECT applicable, reason FROM scenarios();
-----
-false	priced.price is not annotated as a lever: a lever is a column someone sets, annotated lever true on the metric's view
-
 statement ok
-GLOSS lever ON priced.price AS $${"value": true, "grounds": "the list price, set each quarter"}$$;
+RESET VARIABLE glossql_actor;
 
 query TTT
-SELECT applicable, reason, len(levers) FROM scenarios();
+SELECT applicable, contains(fix, 'GLOSS price_up ON fin AS $$'), contains(fix, '"factor":{"2025-02":1.1}') OR contains(fix, '"factor": {"2025-02": 1.1}')
+FROM scenarios();
 ----
-true	NULL	1
-
-# the reach: priced runs daily, its last actual 2025-02-05; the scenario names February, so 23 days ahead
-query TTTTII
-SELECT scenario, metric, grain, origin::DATE, history, len(ahead) FROM scenario_request();
-----
-price_up	priced	day	2025-02-05	402	23
-
-# a scenario whose factors are all one, or whose lever holds at nothing, moves no input: judged, never sent
-statement ok
-DECLARE ASPECT price_flat WITH $${"title": "Prices held", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
+false	true	true
 
 statement ok
-GLOSS price_flat ON fin AS $${"levers": [{"column": "priced.price", "factor": {"2025-02": 1.0}, "basis": "nothing changes"}]}$$;
+GLOSS lever ON priced.price AS $${"value": true, "basis": "the list price, set each quarter"}$$;
 
-query TTT
-SELECT scenario, applicable, reason FROM scenario_request() WHERE scenario = 'price_flat';
-----
-price_flat	false	the scenario moves no input of priced: every factor on priced.price over the periods ahead is one
+statement ok
+GLOSS lever ON priced.promo AS $${"value": true, "basis": "the promotion flag"}$$;
 
-query I
-SELECT count(*) FROM scenario_bodies() WHERE body IS NOT NULL;
+query TTTT
+SELECT applicable, reason, len(levers), fix FROM scenarios();
 ----
-1
+true	NULL	1	NULL
 
-# the request: the history, then each day ahead twice; the lever held at its last value as planned, times the factor under the scenario
-query TITTRR
-SELECT metric, json_array_length(json_extract(body, '/table/member')), json_extract_string(body, '/table/status/402'), json_extract_string(body, '/table/status/403'),
-       json_extract(body, '/table/priced.price/402')::DOUBLE, round(json_extract(body, '/table/priced.price/403')::DOUBLE, 2)
-FROM scenario_bodies();
+# the reach: priced runs daily, its last day 2025-02-04; the scenario names February, so 24 days ahead
+query TTTTI
+SELECT scenario, metric, grain, origin::DATE, len(ahead) FROM scenario_request();
 ----
-priced	448	plan	scenario	10.2	11.22
+price_up	priced	day	2025-02-04	24
 
-query TR
-SELECT json_extract_string(body, '/table/period/401'), json_extract(body, '/table/priced.price/401')::DOUBLE FROM scenario_bodies();
+# the request: the history, then each day ahead twice; the lever held at its last value as planned, times the factor
+# under the scenario
+query TTTRR
+SELECT metric, json_extract_string(body, '$.table.status[401]'), json_extract_string(body, '$.table.status[402]'),
+       json_extract(body, '$.table."priced.price"[401]')::DOUBLE, round(json_extract(body, '$.table."priced.price"[402]')::DOUBLE, 2)
+FROM scenario_bodies_of('the dataset''s metrics', 'the dataset''s metrics', NULL, NULL);
 ----
-2025-02-05	10.2
+priced	plan	scenario	10.3	11.33
 
 # with the lever's forecast as the planned input: its median where it reaches, its last median past that
 query RRRR
-SELECT json_extract(body, '/table/priced.price/402')::DOUBLE, round(json_extract(body, '/table/priced.price/403')::DOUBLE, 2),
-       json_extract(body, '/table/priced.price/406')::DOUBLE, round(json_extract(body, '/table/priced.price/407')::DOUBLE, 2)
-FROM scenario_bodies(paths := '{"price_up|priced|priced.price": [{"period": "2025-02-06", "value": 10.5}, {"period": "2025-02-07", "value": 10.6}]}');
+SELECT json_extract(body, '$.table."priced.price"[403]')::DOUBLE, round(json_extract(body, '$.table."priced.price"[404]')::DOUBLE, 2),
+       json_extract(body, '$.table."priced.price"[407]')::DOUBLE, round(json_extract(body, '$.table."priced.price"[408]')::DOUBLE, 2)
+FROM scenario_bodies_of('the dataset''s metrics', 'the dataset''s metrics', NULL,
+                        '{"price_up|priced.price": [{"period": "2025-02-06", "value": 10.5}, {"period": "2025-02-07", "value": 10.6}]}');
 ----
 10.5	11.55	10.6	11.66
 
-# the lever's own forecast request: the series as the member, 23 days ahead within the day grain's reach of 31
-query TTTIIT
-SELECT lever, grain, horizon, json_array_length(json_extract(body, '/table/member')), json_extract(body, '/spec/horizon')::INTEGER, json_extract_string(body, '/table/status/402')
-FROM lever_bodies();
+# the lever's own forecast request: the series as the member, the days ahead within the day grain's reach of 31
+query TTIT
+SELECT lever, grain, horizon, json_extract_string(body, '$.table.status[401]')
+FROM lever_bodies_of('the dataset''s metrics', 'the dataset''s metrics', NULL);
 ----
-priced.price	day	23	425	23	forecast
+priced.price	day	24	forecast
 
 statement ok
-CREATE OR REPLACE MACRO main.service_soft(route, body) AS '{"table":{"member":["priced.price","priced.price","priced.price"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7]},"answer":{"service":"glossthesi","version":"test","errors":[],"coverage":[]}}'::JSON;
+SELECT metric_scenario() FROM fin.priced;
 
-statement ok
-CREATE OR REPLACE MACRO main.service(route, body) AS '{"table":{"member":["priced","priced","priced","priced","priced","priced","priced","priced","priced"],"period":["2025-02-06","2025-02-06","2025-02-06","2025-02-07","2025-02-07","2025-02-07","2025-02-08","2025-02-08","2025-02-08"],"column":["value","value","value","value","value","value","value","value","value"],"status":["scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario","scenario"],"level":[0.1,0.5,0.9,0.1,0.5,0.9,0.1,0.5,0.9],"value":[4.0,5.0,6.0,4.1,5.1,6.1,4.2,5.2,6.2],"history_value":[5.5,5.5,5.5,5.6,5.6,5.6,5.7,5.7,5.7],"history_low":[5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0,5.0],"history_high":[6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0,6.0],"sign":["+","+","+","+","+","+","+","+","+"],"confidence":["direction","direction","direction","direction","direction","direction","direction","direction","direction"],"basis":["the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher","the history shows spend up where the price was higher"],"explains":[0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4],"error":[1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5,1.5]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["priced.price"],"parts":[{"member":"priced","column":"value","input":"priced.price","history_shift":0.5,"history_low":0.2,"history_high":0.8}]}}'::JSON;
-
-statement ok
-SELECT metric_scenario() FROM fin;
-
-query TTTITRRRTT
-SELECT scenario, metric, grain, step, period::DATE, low, value, high, sign, confidence FROM scenario_points('price_up');
+# each period ahead answered twice, as planned (the baseline) and under the scenario, with the service's effect
+query TTTITRRRRRT
+SELECT scenario, metric, grain, step, period::DATE, low, value, high, baseline, effect, sign FROM scenario_points('price_up');
 ----
-price_up	priced	day	1	2025-02-06	4.0	5.0	6.0	+	direction
-price_up	priced	day	2	2025-02-07	4.1	5.1	6.1	+	direction
-price_up	priced	day	3	2025-02-08	4.2	5.2	6.2	+	direction
+price_up	priced	day	1	2025-02-06	4.1	5.0	5.9	4.5	0.5	+
+price_up	priced	day	2	2025-02-07	4.2	5.1	6.0	4.6	0.5	+
+price_up	priced	day	3	2025-02-08	4.3	5.2	6.1	4.7	0.5	+
 
 query TTTRRR
 SELECT metric, lever, planned_from, history_shift, history_low, history_high FROM scenario_levers('price_up');
@@ -576,68 +544,180 @@ priced	scenario	3	15.3
 statement error
 SELECT * FROM metric_series(world := 'scenario');
 ----
-names the scenario it serves
+scenario_not_named
 
 statement error
 SELECT * FROM metric_series(world := 'scenario', scenario := 'nothing');
 ----
-no scenario of that name is declared
+unknown_scenario
 
-query TTTT
-SELECT subject, test, band, current FROM TESTS() WHERE test = 'scenario_test';
+statement error
+SELECT * FROM metric_series(world := 'dream');
 ----
-fin	scenario_test	green	true
+unknown_world
 
-# a lever whose forecast the service refuses is held, and the estimate holds
-statement ok
-CREATE OR REPLACE MACRO main.service_soft(route, body) AS '{"error": "the service answered 422 on /forecast: 3 periods of history, a forecast needs 6"}'::JSON;
-
-statement ok
-INSERT INTO fin.ledger VALUES (DATE '2025-02-06', 4.0, 'parks');
-
-statement ok
-SELECT metric_scenario() FROM fin;
-
-query TT
-SELECT lever, planned_from FROM scenario_levers('price_up');
-----
-priced.price	held: the service answered 422 on /forecast: 3 periods of history, a forecast needs 6
-
-# a lever that holds at nothing as planned — held at zero, its forecast refused — moves nothing: judged in the measurement, no call
-statement ok
-GLOSS priced ON fin AS $${"sql": "SELECT booked AS period, amount AS value, 10.0 + amount / 10 AS price, CASE WHEN booked >= DATE '2025-02-01' THEN 0.0 ELSE 1.0 END AS promo FROM fin.ledger"}$$;
-
-statement ok
-GLOSS lever ON priced.promo AS $${"value": true, "grounds": "the promotion flag"}$$;
-
+# a scenario that moves no input — the lever held at nothing as planned — is sent, and the service answers its code
 statement ok
 DECLARE ASPECT promo_on WITH $${"title": "Promotion doubled", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
 
 statement ok
 GLOSS promo_on ON fin AS $${"levers": [{"column": "priced.promo", "factor": {"2025-02": 2.0}, "basis": "twice the promotion"}]}$$;
 
-query TTT
-SELECT scenario, applicable, reason FROM scenario_request() WHERE scenario = 'promo_on';
-----
-promo_on	true	NULL
-
-query TT
-SELECT scenario, unmoved FROM scenario_bodies() WHERE scenario = 'promo_on';
-----
-promo_on	priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
-
 statement ok
-SELECT metric_scenario() FROM fin;
+SELECT metric_scenario() FROM fin.priced;
 
 query TTTT
-SELECT scenario, metric, applicable, reason FROM scenario_points('promo_on');
+SELECT scenario, applicable, code, (reason) IS NOT NULL FROM scenario_points('promo_on');
 ----
-promo_on	priced	false	the scenario moves no input of priced: priced.promo is at 0.0 as planned over the periods ahead, and a factor on nothing is nothing
+promo_on	false	nothing_changed	true
 
-# the routes: the estimate asked for, asked again, and the gap judged under the scenario
-query II
-SELECT count(*) FILTER (WHERE arms LIKE '%metric_scenario%'),
-       count(*) FILTER (WHERE arms LIKE '%scenario_points(%')
-FROM routes_outlook();
+query TT
+SELECT lever, planned_from FROM scenario_levers('promo_on');
 ----
-1	1
+priced.promo	held: the history is too short: 6 periods are needed, 3 are loaded
+
+# a metric whose levers no scenario sets stores no scenario
+statement ok
+SELECT metric_scenario() FROM fin.sales;
+
+query I
+SELECT count(*) FROM scenario_points(NULL) WHERE metric = 'sales';
+----
+0
+
+# --- a dataset where nothing can be estimated: four months of history, and a scenario whose only period is loaded
+
+statement ok
+DECLARE DATASET thin SET (purpose: 'too short');
+
+statement ok
+USE thin;
+
+statement ok
+CREATE TABLE thin.visits_raw AS
+  SELECT (DATE '2025-01-01' + INTERVAL (m) MONTH)::DATE AS month, (100 + m)::DOUBLE AS n, 9.0 + m AS price FROM range(4) r(m);
+
+statement ok
+DECLARE ASPECT visits WITH $${"title": "Visits"}$$ AS VIEW;
+
+statement ok
+GLOSS visits ON thin AS $${"sql": "SELECT month AS period, n AS value, price FROM thin.visits_raw"}$$;
+
+statement ok
+GLOSS role ON visits.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON visits.value AS $${"value": "measure"}$$;
+
+statement ok
+SELECT temporal() FROM visits.period;
+
+statement ok
+GLOSS additivity ON visits.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS lever ON visits.price AS $${"value": true, "basis": "the ticket price"}$$;
+
+statement ok
+DECLARE ASPECT cheaper WITH $${"title": "Cheaper in February", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
+
+statement ok
+GLOSS cheaper ON thin AS $${"levers": [{"column": "visits.price", "factor": {"2025-02": 0.9}, "basis": "a price cut"}]}$$;
+
+# a scenario declared for another dataset is none of this one's
+query T
+SELECT scenario FROM scenarios() WHERE annotated;
+----
+cheaper
+
+query TT
+SELECT applicable, (reason) IS NOT NULL FROM scenario_request();
+----
+false	true
+
+statement ok
+SELECT metric_scenario() FROM thin.visits;
+
+query TT
+SELECT applicable, code FROM scenario_points('cheaper');
+----
+false	NULL
+
+# a backtest the service scored no month of is no green: its test has no result, and no row of view_tests()
+statement ok
+SELECT metric_ranges() FROM thin;
+
+query I
+SELECT count(*) FROM TESTS() WHERE test = 'range_test';
+----
+0
+
+query I
+SELECT count(*) FROM view_tests() WHERE test = 'range_test';
+----
+0
+
+# --- a metric served by year has no monthly series: its row says so and the backtest leaves it out
+
+statement ok
+USE fin;
+
+statement ok
+DECLARE ASPECT spend_by_year WITH $${"title": "Spend by year"}$$ AS VIEW;
+
+statement ok
+GLOSS spend_by_year ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger"}$$;
+
+statement ok
+GLOSS role ON spend_by_year.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON spend_by_year.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON spend_by_year.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS time_grains ON spend_by_year.period AS $${"floor": "year"}$$;
+
+query I
+SELECT count(*) FROM range_request() WHERE metric = 'ledger_rows';
+----
+0
+
+query TIT
+SELECT r.applicable, r.months, coalesce(r.reason, '') <> '' FROM range_request() r WHERE r.metric = 'spend_by_year';
+----
+false	0	true
+
+# --- a series that ends inside its last period: the backtest and the forecast leave it out alike
+
+statement ok
+GLOSS time_grains ON spend.period AS $${"floor": "month"}$$;
+
+query TT
+SELECT (SELECT max(period)::DATE FROM metric_series() WHERE metric = 'spend' AND dimension = ''),
+       (SELECT origin::DATE FROM forecast_request() WHERE metric = 'spend');
+----
+2025-02-01	2025-01-01
+
+# --- a scenario estimate that fails is served as failed: one row per metric with its error, under each scenario that
+# sets one of its levers, and no estimate of the run before
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS error('the service at http://127.0.0.1:1/forecast did not answer: Could not connect to server')::JSON;
+
+statement error
+SELECT metric_scenario() FROM fin.priced;
+----
+service_failed
+
+query TTTT
+SELECT scenario, metric, applicable, (error) IS NOT NULL FROM scenario_points('price_up');
+----
+price_up	priced	false	true
+
+query TI
+SELECT metric, count(*) FROM scenario_points(NULL) WHERE error IS NOT NULL GROUP BY ALL;
+----
+priced	1

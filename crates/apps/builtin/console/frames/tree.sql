@@ -10,7 +10,7 @@ root AS (SELECT '/' || dataset || '/app/console' AS r FROM d),
 recipe AS (
   SELECT r.table_name, r.source
   FROM recipes r JOIN d ON d.dataset = r.dataset
-  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY r.table_name ORDER BY r.begin_snapshot DESC) = 1),
 loaded AS (
   SELECT DISTINCT i.table_name
   FROM imports i JOIN d ON d.dataset = i.dataset),
@@ -20,22 +20,21 @@ cols AS (
   JOIN d ON d.dataset = c.table_schema
   JOIN loaded l ON l.table_name = c.table_name
   WHERE c.table_catalog = current_database()),
-surfaces AS (
-  SELECT name, kind FROM metric_surfaces WHERE kind <> 'plan'),
+views AS (
+  SELECT name, kind FROM view_definitions WHERE kind <> 'plan'),
 test AS (
   SELECT name, aspect, detector
   FROM tests
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 pages(top, label, link, o) AS (
-  SELECT 'Overview', 'Scorecard', (SELECT * FROM root), 1
-  UNION ALL SELECT 'Overview', 'Model', (SELECT * FROM base) || 'model', 2
-  UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 3
-  UNION ALL SELECT 'Overview', 'Lineage', (SELECT * FROM base) || 'lineage', 4
-  UNION ALL SELECT 'Catalog', 'Properties', (SELECT * FROM base) || 'glossary', 1
-  UNION ALL SELECT 'Metrics', 'All metrics', (SELECT * FROM base) || 'metrics', 1
+  SELECT 'Overview', 'Summary', (SELECT * FROM root), 1
+  UNION ALL SELECT 'Overview', 'History', (SELECT * FROM base) || 'history', 2
+  UNION ALL SELECT 'Integration', 'Sources and views', (SELECT * FROM base) || 'views', 1
+  UNION ALL SELECT 'Metadata', 'Glossary', (SELECT * FROM base) || 'glossary', 1
   UNION ALL SELECT 'Quality', 'All results', (SELECT * FROM base) || 'quality', 1
-  UNION ALL SELECT 'Review', 'The queue', (SELECT * FROM base) || 'review', 1
-  UNION ALL SELECT 'Review', 'Decisions', (SELECT * FROM base) || 'review#decisions', 2
+  UNION ALL SELECT 'Governance', 'Review queue', (SELECT * FROM base) || 'review', 1
+  UNION ALL SELECT 'Governance', 'Decisions', (SELECT * FROM base) || 'review#decisions', 2
+  UNION ALL SELECT 'Lineage', 'Model and lineage', (SELECT * FROM base) || 'lineage', 1
   UNION ALL SELECT 'Data', 'Export', (SELECT * FROM base) || 'export', 1
   UNION ALL SELECT 'Data', 'Query', (SELECT * FROM base) || 'query', 2)
 SELECT top, section, parent, name, label, link
@@ -43,38 +42,34 @@ FROM (
   SELECT top, 0 AS s, '' AS section, '' AS parent, label AS name, label, link, o
   FROM pages
   UNION ALL
-  SELECT 'Catalog', 1, 'Sources', '', source, source,
+  SELECT 'Metadata', 1, 'Sources', '', source, source,
          (SELECT * FROM base) || 'glossary?source=' || source, 0
   FROM (SELECT DISTINCT source FROM recipe)
   UNION ALL
-  SELECT 'Catalog', 2, 'Tables', '', table_name, table_name,
+  SELECT 'Metadata', 2, 'Tables', '', table_name, table_name,
          (SELECT * FROM base) || 'glossary?table=' || table_name, 0
   FROM loaded
   UNION ALL
-  SELECT 'Catalog', 2, 'Tables', table_name, table_name || '.' || column_name, column_name,
+  SELECT 'Metadata', 2, 'Tables', table_name, table_name || '.' || column_name, column_name,
          (SELECT * FROM base) || 'glossary?column=' || table_name || '.' || column_name, ordinal_position
   FROM cols
   UNION ALL
-  SELECT 'Catalog', 3, 'Views', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name || '&kind=' || kind, 0
-  FROM surfaces WHERE kind IN ('scalar', 'relation')
+  SELECT 'Integration', 1, 'Tables', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=relation', 0
+  FROM views WHERE kind = 'relation'
   UNION ALL
-  SELECT 'Metrics', 1, 'Metrics', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name, 0
-  FROM surfaces WHERE kind NOT IN ('scalar', 'relation')
+  SELECT 'Integration', 3, 'Metrics', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name, 0
+  FROM views WHERE kind NOT IN ('scalar', 'relation')
   UNION ALL
-  SELECT 'Metrics', 2, 'Single values', '', name, name,
-         (SELECT * FROM base) || 'metrics?metric=' || name || '&kind=scalar', 0
-  FROM surfaces WHERE kind = 'scalar'
+  SELECT 'Integration', 2, 'Single values', '', name, name,
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=scalar', 0
+  FROM views WHERE kind = 'scalar'
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
-         (SELECT * FROM base) || 'quality?check=' || name || '&kind=' || CASE detector
-           WHEN 'band_breach' THEN 'corridor'
-           WHEN 'slot_entropy' THEN 'voices'
-           WHEN 'rate_tolerance' THEN 'rate'
-           ELSE 'verdicts' END, 0
+         (SELECT * FROM base) || 'quality?test=' || name || CASE WHEN detector = 'range_state' THEN '&kind=range' ELSE '' END, 0
   FROM test)
-ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Catalog' THEN 1 WHEN 'Metrics' THEN 2
-                  WHEN 'Quality' THEN 3 WHEN 'Review' THEN 4 ELSE 5 END,
+ORDER BY CASE top WHEN 'Overview' THEN 0 WHEN 'Integration' THEN 1 WHEN 'Metadata' THEN 2
+                  WHEN 'Quality' THEN 3 WHEN 'Governance' THEN 4 WHEN 'Lineage' THEN 5 ELSE 6 END,
          s, CASE WHEN s = 0 THEN o END,
          CASE WHEN parent = '' THEN name ELSE parent END, parent <> '', o, name

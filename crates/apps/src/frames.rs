@@ -15,21 +15,23 @@ use axum::response::{IntoResponse, Response};
 use crate::engine::{Actor, ActorKind};
 use futures::StreamExt;
 
-use crate::AppDoor;
+use crate::AppInterface;
 use crate::app::AppDef;
 
 pub async fn frame(
-    State(door): State<AppDoor>,
+    State(interface): State<AppInterface>,
     Path((dataset, app, frame)): Path<(String, String, String)>,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
-    if let Some(missing) = crate::missing(&door, &dataset).await {
+    if let Some(missing) = crate::missing(&interface, &dataset).await {
         return fail(StatusCode::NOT_FOUND, missing);
     }
     // `draft` among the params asks for the newest parts, not the
     // release's; the page's params reach every frame it fetches.
     let draft = params.iter().any(|(k, _)| k == "draft");
-    let glossed = crate::glossed::parts(&door, &dataset, draft).await.parts;
+    let glossed = crate::glossed::parts(&interface, &dataset, draft)
+        .await
+        .parts;
     let def = match AppDef::load(&app, &glossed) {
         Ok(Some(def)) => def,
         Ok(None) => return fail(StatusCode::NOT_FOUND, format!("no app `{app}`")),
@@ -53,7 +55,7 @@ pub async fn frame(
         kind: ActorKind::Human,
         id: format!("app:{}", def.name),
     };
-    let session = match door.plane.channel(actor, Some(&dataset)).await {
+    let session = match interface.plane.channel(actor, Some(&dataset)).await {
         Ok(session) => session,
         Err(e) => return fail(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
     };
@@ -79,7 +81,7 @@ pub async fn frame(
         first => (
             [
                 (header::CONTENT_TYPE.as_str(), crate::ipc::ARROW_STREAM),
-                (FRAME_CLASS, if query.record { "record" } else { "data" }),
+                (FRAME_CLASS, if query.catalog { "catalog" } else { "data" }),
             ],
             crate::ipc::body(query.schema, query.stream, first),
         )
@@ -156,9 +158,9 @@ pub(crate) async fn one_open_question(
     Ok(None)
 }
 
-/// The frame-class header: `record` when the frame's text reads the
-/// record anywhere (the engine's own reading of it, never curated),
-/// `data` when it does not. The browser's frame store evicts record
+/// The frame-class header: `catalog` when the frame's text reads the
+/// catalog anywhere (the engine's own reading of it, never curated),
+/// `data` when it does not. The browser's frame store evicts catalog
 /// entries on a review decision and keeps data entries, which no glossary write
 /// moves.
 pub const FRAME_CLASS: &str = "glossql-frame-class";

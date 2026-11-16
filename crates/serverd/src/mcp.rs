@@ -5,7 +5,8 @@
 //! everything live (declared functions, the glossary, the tables) is
 //! read through the language itself, where it is always current.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ElicitRequest,
@@ -28,47 +29,109 @@ use crate::engine::{CallShape, Plane, Session, SessionError};
 use crate::window;
 use crate::wire;
 
-type BriefCounts = crate::engine::BriefCounts;
+type SummaryCounts = crate::engine::SummaryCounts;
 
-/// The brief's counts, as each engine serves them.
-async fn brief_counts(plane: &Plane) -> Result<BriefCounts, String> {
-    plane.brief_counts().await.map_err(|e| e.to_string())
+/// The summary's counts, as each engine serves them.
+async fn summary_counts(plane: &Plane) -> Result<SummaryCounts, String> {
+    plane.summary_counts().await.map_err(|e| e.to_string())
 }
 
-const INSTRUCTIONS: &str = "glossdb — a harness for data agents. One tool, `glossql`, \
-runs glossql statements and plain SQL over the workspace's data and its catalog; its \
-description is the contract for every call. Start here, in this order. \
-1. Read the two skills through the tool: `SELECT body FROM pages() WHERE uri IN \
-('skill://glossql/SKILL.md', 'skill://glossql-metrics/SKILL.md')` — the interface and the \
-language, then the work; each names its references (`skill://<name>/references/…`) \
-for when they matter, and every page this server serves is a row of `pages()`. \
-2. `SELECT * FROM datasets`, then what the brief below names. \
-The objects: a dataset holds tables, loaded from sources by load queries (recipes); an \
-aspect is a property the harness requires, with a JSON Schema; a gloss is an annotation: \
-an aspect's value on an asset (a table, a column, the dataset itself). A VIEW aspect's \
-gloss is SQL, served as a view under the aspect's name — a metric, a single value, or a \
-derived relation, which the metrics skill tells apart. Functions measure the data, and \
-their measurements are the evidence. Tests (TEST) score where measurements, agents and \
-people disagree. A person's review decision outranks every agent's annotation. Read live \
-state through the tool; never assume it. Every result ends with `next:`, the test report: \
-per served metric its worst test (join fan-out, orphaned keys, additivity, the team's own) \
-with the statement that settles it, and the review queue; the work is done when every \
-served metric's tests are green or accepted and nothing waits on you; a goal's link gives \
-the statement. The docs are `doc://docs/…`, the language `doc://SPEC.md` and \
-`doc://grammar.ebnf` — rows of `pages()` too.";
+const INSTRUCTIONS: &str = "glossdb is the data harness for people and agents. Here you \
+build this workspace's data intelligence layer in the lake, beside the data: source data in; \
+described and tested tables, single values and metrics out, readable by any tool that opens \
+the lake. There are four kinds of work. Integrate: declare a source, load its tables with \
+load queries, and define views, each a named SQL query on the dataset: a table, a single \
+value, or a metric (a value per period with dimensions). Describe: annotate the dataset, its \
+tables, columns and relationships. Test: the built-in tests run after each load, and you \
+declare your own. Review: state each judgment call as an assumption with a key and a \
+confidence; a person confirms or corrects it, and their decision outranks your annotation. \
+The kinds are not stages. A view needs a loaded table, a test needs something defined, a \
+review needs an open question; apart from that, work in the order the task asks for. Lineage \
+is recorded as you load and define, and a view can be queried once it is defined. \
+One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
+body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It shows each kind of work with \
+a working example and names the references for depth. Every page this server serves is a \
+row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
+Every result ends with `status:`: whether the last statement ran or was refused. A call on \
+a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
+must and what should be done on the dataset per kind of work, and `first:`, the first of them. \
+A call that changed what waits in the workspace adds `summary:`. \
+`SELECT level, kind, asset, state, open, statement FROM next` lists every open row with the \
+statement that opens the work; `<...>` marks what you fill in. Each row has a level. Must: \
+served data is wrong or cannot be served. Should: the layer is incomplete for what is served. \
+Could: what sits beside it, read on request with `WHERE level = 'could'`. Work on a dataset is \
+complete when no must is open; the should rows make the layer complete. Rows that wait for a \
+person are counted apart and do not hold you back. The list is context: what the person asked \
+for decides what you work on. Read live state through the tool instead of assuming it.";
 
-/// What the brief is decided on: the store's counts plus the open
+/// What the summary is decided on: the store's counts plus the open
 /// question count. Movement is a comparison of these FACTS — never of
 /// rendered lines (string equality on non-keys is forbidden; a
 /// rendered string is display, not identity).
 #[derive(Clone, PartialEq, Eq)]
-pub struct BriefFacts {
-    counts: BriefCounts,
+pub struct SummaryFacts {
+    counts: SummaryCounts,
     questions: usize,
     datasets: usize,
 }
 
-/// The brief's shared state, one per interface process: the composed line
+/// The `_meta` key a tool result carries its moved summary under.
+pub const SUMMARY_META: &str = "glossdb/summary";
+
+/// The `_meta` key a refused call carries its refusal's code under,
+/// as `{"code": …}`, where the refusal has one.
+pub const REFUSAL_META: &str = "glossdb/refusal";
+
+/// A refused call: the reason the agent reads, and the refusal's code
+/// where it has one (`SessionError::code`).
+struct Refusal {
+    reason: String,
+    code: Option<String>,
+}
+
+impl Refusal {
+    fn of(e: &SessionError) -> Refusal {
+        Refusal {
+            reason: e.to_string(),
+            code: e.code().map(str::to_string),
+        }
+    }
+}
+
+impl From<String> for Refusal {
+    fn from(reason: String) -> Refusal {
+        Refusal { reason, code: None }
+    }
+}
+
+/// The summary a call moved: the line, as the `summary:` block carries
+/// it, and the counts it renders, as the result's `_meta` carries them.
+struct SummaryMoved {
+    line: String,
+    facts: SummaryFacts,
+}
+
+impl SummaryMoved {
+    /// The counts as the result's `_meta` field, beside the line: what
+    /// a client or a test reads without parsing the text.
+    fn meta(&self) -> rmcp::model::MetaObject {
+        let mut meta = rmcp::model::MetaObject::new();
+        meta.0.insert(
+            SUMMARY_META.to_string(),
+            serde_json::json!({
+                "line": self.line,
+                "datasets": self.facts.datasets,
+                "assumptions_waiting": self.facts.questions,
+                "decisions_to_apply": self.facts.counts.decisions_open,
+                "load_changes_to_declare": self.facts.counts.approvals_pending,
+                "annotations_by_a_person": self.facts.counts.human_writings,
+            }),
+        );
+        meta
+    }
+}
+
+/// The summary's shared state, one per interface process: the composed line
 /// (served in the initialize instructions and on the tool result that
 /// moved it), the opening (how to begin here — served at initialize
 /// only, since it is the same on every call and a tool result that
@@ -78,13 +141,21 @@ pub struct BriefFacts {
 /// its own call moves something; that is a known gap, kept open rather
 /// than paid for with per-actor state no run has needed.
 #[derive(Default)]
-pub struct Brief {
+pub struct Summary {
     line: std::sync::RwLock<String>,
     opening: std::sync::RwLock<String>,
-    facts: std::sync::RwLock<Option<BriefFacts>>,
+    facts: std::sync::RwLock<Option<SummaryFacts>>,
+    /// The `next` rows of each dataset, with the lake's snapshot they
+    /// were read at. `next` reads the catalog and the lake's shape and
+    /// no data, so its rows hold while the snapshot does; a load or a
+    /// write to the catalog takes the next one.
+    next: Mutex<HashMap<String, KeptNext>>,
 }
 
-impl Brief {
+/// A dataset's `next` rows as kept: the snapshot they were read at.
+type KeptNext = (String, Arc<Vec<serde_json::Value>>);
+
+impl Summary {
     pub fn line(&self) -> String {
         self.line.read().map(|l| l.clone()).unwrap_or_default()
     }
@@ -97,92 +168,89 @@ impl Brief {
 #[derive(Clone)]
 pub struct GlossqlMcp {
     plane: Arc<Plane>,
-    /// The brief: one composed line over live counts, appended to
+    /// The summary: one composed line over live counts, appended to
     /// the instructions every initialize/discover serves — and, since
     /// a client fetches those once per connection, ALSO appended as a
     /// content block to any tool result whose call moved the facts.
     /// Shared across the per-session handler instances; refreshed after
     /// every tool call.
-    brief: Arc<Brief>,
+    summary: Arc<Summary>,
 }
 
 impl GlossqlMcp {
-    pub fn new(plane: Arc<Plane>, brief: Arc<Brief>) -> Self {
-        GlossqlMcp { plane, brief }
+    pub fn new(plane: Arc<Plane>, summary: Arc<Summary>) -> Self {
+        GlossqlMcp { plane, summary }
     }
 
-    /// Recompose the brief from the store and the question derivation.
+    /// Recompose the summary from the store and the question derivation.
     /// Cheap (four bounded reads), awaited at the end of every tool
     /// call and once at boot.
-    pub async fn refresh_brief(plane: &Plane, brief: &Brief) {
-        let (facts, line, opening) = Self::compose_brief(plane).await;
-        if let Ok(mut slot) = brief.facts.write() {
-            *slot = facts;
+    pub async fn refresh_summary(plane: &Plane, summary: &Summary) {
+        let (facts, line, opening) = Self::compose_summary(plane).await;
+        if let Ok(mut held) = summary.facts.write() {
+            *held = facts;
         }
-        if let Ok(mut slot) = brief.line.write() {
-            *slot = line;
+        if let Ok(mut held) = summary.line.write() {
+            *held = line;
         }
-        if let Ok(mut slot) = brief.opening.write() {
-            *slot = opening;
+        if let Ok(mut held) = summary.opening.write() {
+            *held = opening;
         }
     }
 
     /// What the handshake serves: the standing instructions, the
-    /// brief's line, and how to begin at this door. The workspace
-    /// interface's opening is composed with the brief; a bound interface's
+    /// summary's line, and how to begin on this interface. The workspace
+    /// interface's opening is composed with the summary; a bound interface's
     /// caller already holds on its dataset, so the opening is the
-    /// brief on it.
+    /// summary on it.
     fn instructions(&self, bound: Option<&str>) -> String {
         let opening = match bound {
             Some(dataset) => format!(
-                "Open with the brief the glossql skill teaches — human annotations, conflicts, red \
-                 bands, `open_items` on `{dataset}` — once, before the first write. It is a read, \
-                 not a gate: what it counts waits for the human while the work goes on."
+                "Every call on this interface opens on `{dataset}`. Begin with `SELECT level, \
+                 kind, asset, state, open, statement FROM next WHERE level <> 'could'`."
             ),
-            None => self.brief.opening(),
+            None => self.summary.opening(),
         };
-        format!("{INSTRUCTIONS}\n\n{} {opening}", self.brief.line())
+        format!("{INSTRUCTIONS}\n\n{} {opening}", self.summary.line())
     }
 
     /// The facts, their rendering, and the opening, in one read pass.
-    async fn compose_brief(plane: &Plane) -> (Option<BriefFacts>, String, String) {
+    async fn compose_summary(plane: &Plane) -> (Option<SummaryFacts>, String, String) {
         let questions = open_question_count(plane).await.unwrap_or(0);
         let datasets = plane.datasets().await.map(|d| d.len()).unwrap_or(0);
         // How to begin, decided by whether anything holds to read: a
-        // workspace before its first dataset has no brief to sweep —
-        // `open_items`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
-        // the metrics skill's load page is where it starts.
+        // workspace before its first dataset has no summary to sweep —
+        // `next`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
+        // the modeling skill's load page is where it starts.
         let opening = if datasets == 0 {
-            "No dataset exists yet, so there is nothing to brief: `SELECT * FROM \
-             workspace_status` is the whole live state, and \
-             `skill://glossql-metrics/SKILL.md` is where to begin."
+            "No dataset exists yet. `SELECT * FROM workspace_status` shows what the \
+             workspace holds. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
+             '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
         } else {
-            "Open with the brief the glossql skill teaches — `USE` a dataset, then the \
-             human annotations, conflicts, red bands, `open_items` — once, before the \
-             first write. It is a read, not a gate: what waits for a person waits while \
-             the work goes on."
+            "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT level, kind, \
+             asset, state, open, statement FROM next WHERE level <> 'could'`."
         }
         .to_string();
-        match brief_counts(plane).await {
+        match summary_counts(plane).await {
             Ok(counts) => {
                 // Debt first, presence last: what owes an act is what
                 // the reader acts on, and a count of human writings is
                 // the catalog's size, not a task. The required acts are
-                // exactly `open_items`' kinds that the whole workspace can
-                // count; the questions are `open_questions`'s rows.
-                let mut owed = Vec::new();
-                if counts.rulings_owed > 0 {
-                    owed.push(format!(
-                        "{} review decision{} wait{} to be applied — record each decided metric \
-                         definition again, citing its decision",
-                        counts.rulings_owed,
-                        if counts.rulings_owed == 1 { "" } else { "s" },
-                        if counts.rulings_owed == 1 { "s" } else { "" },
+                // the kinds of `next` row the whole workspace can count;
+                // the questions are `open_questions`'s rows.
+                let mut open = Vec::new();
+                if counts.decisions_open > 0 {
+                    open.push(format!(
+                        "{} review decision{} wait{} to be applied: `next` lists each as a `review` \
+                         row with the definition to record again",
+                        counts.decisions_open,
+                        if counts.decisions_open == 1 { "" } else { "s" },
+                        if counts.decisions_open == 1 { "s" } else { "" },
                     ));
                 }
                 if counts.approvals_pending > 0 {
-                    owed.push(format!(
-                        "{} approved load-query change{} wait{} to be declared again",
+                    open.push(format!(
+                        "{} approved load-query change{} wait{} to be declared",
                         counts.approvals_pending,
                         if counts.approvals_pending == 1 {
                             ""
@@ -197,34 +265,31 @@ impl GlossqlMcp {
                     ));
                 }
                 if questions > 0 {
-                    owed.push(format!(
-                        "{} judgment question{} wait{} for a person (assumptions below \
-                         full confidence — conventions and definitions, never \
-                         statistics): each is served once as a form on a catalog read \
-                         (glossary, GLOSSARY(), TESTS()), or relayed in chat where \
-                         forms are absent, and stays open until the person decides — \
-                         the work goes on meanwhile",
+                    open.push(format!(
+                        "{} assumption{} wait{} for a person's decision. The person sees each as \
+                         a form on a catalog read or in the console; where the client shows \
+                         no forms, ask them in chat. The work goes on meanwhile",
                         questions,
                         if questions == 1 { "" } else { "s" },
                         if questions == 1 { "s" } else { "" },
                     ));
                 }
-                let mut line = if owed.is_empty() {
-                    "Live now: nothing open, the review queue is empty".to_string()
+                let mut line = if open.is_empty() {
+                    "Live now: no review decision to apply, no assumption waits for a person"
+                        .to_string()
                 } else {
-                    format!("Live now: {}", owed.join("; "))
+                    format!("Live now: {}", open.join("; "))
                 };
                 line.push_str(&format!(
-                    ". Catalog: {} human annotation{}{}.",
+                    ". Annotations by a person: {}{}.",
                     counts.human_writings,
-                    if counts.human_writings == 1 { "" } else { "s" },
                     match &counts.latest_human_at {
                         Some(at) => format!(", latest {at}"),
                         None => String::new(),
                     },
                 ));
                 (
-                    Some(BriefFacts {
+                    Some(SummaryFacts {
                         counts,
                         questions,
                         datasets,
@@ -238,7 +303,7 @@ impl GlossqlMcp {
             // silence as "nothing moved".
             Err(e) => (
                 None,
-                format!("Live now: the brief could not be read ({e})."),
+                format!("Live now: the summary could not be read ({e})."),
                 opening,
             ),
         }
@@ -250,25 +315,25 @@ impl GlossqlMcp {
     /// measurement can settle — additivity, unit,
     /// role — is the agent's work through the shipped functions, and
     /// the interface never asks the human for it. A workspace with no
-    /// dataset bound (or nothing open) derives nothing, and the round
+    /// dataset bound (or nothing open) derives nothing, and the review
     /// stays silent.
-    /// The round: every open claim on ONE metric definition, and how many
+    /// The review: every open claim on ONE metric definition, and how many
     /// stand open in the whole workspace.
     ///
     /// The bound is the metric definition, not a number. An aspect's
     /// assumptions were authored in one act against one query and are
     /// read together, so they are what one sitting is. The reason a
     /// bound is needed at all is mechanical: the client fulfils every
-    /// entry of a round before it retries the call, so the agent's
+    /// entry of a review before it retries the call, so the agent's
     /// read does not return until the human has cleared the whole
-    /// batch. A round is what someone can finish, and a metric definition is
+    /// batch. A review is what someone can finish, and a metric definition is
     /// where the catalog already draws that line.
     ///
     /// The total rides back so every dialog can say where it sits in
-    /// it. A bounded round that did not would let someone answer three
+    /// it. A bounded review that did not would let someone answer three
     /// questions, see the queue end, and believe they were done while
     /// nine claims the numbers rest on stood untouched.
-    async fn derive_round(&self, session: &Session) -> (Vec<(usize, Question)>, usize) {
+    async fn derive_review(&self, session: &Session) -> (Vec<(usize, Question)>, usize) {
         let loose = read_rows(session, LOOSE_SQL).await;
         if let Err(e) = &loose {
             tracing::warn!(error = %e, "review: the loose derivation failed");
@@ -282,15 +347,15 @@ impl GlossqlMcp {
         let Some(first) = open.first().map(|q| q.aspect.clone()) else {
             return (Vec::new(), 0);
         };
-        // The rank is against the whole, never against the round, so
+        // The rank is against the whole, never against the review, so
         // the count means the same thing on every dialog.
-        let round = open
+        let review = open
             .into_iter()
             .enumerate()
             .filter(|(_, q)| q.aspect == first)
             .map(|(i, q)| (i + 1, q))
             .collect();
-        (round, total)
+        (review, total)
     }
 
     /// The retry is stateless, so re-derivation is the only trust: an
@@ -305,7 +370,7 @@ impl GlossqlMcp {
             .find(|q| q.id() == key)
     }
 
-    /// Land what the human said — or defer, or hand a correction to
+    /// Store what the human said — or defer, or hand a correction to
     /// the agent. The monitor note is the whole account.
     ///
     /// The boxes are independent, so more than one can be ticked, and
@@ -315,15 +380,15 @@ impl GlossqlMcp {
     /// then the plain confirmation — each a narrower claim than the
     /// one before. Words the human typed outrank every box, because
     /// they are the only part of the answer nobody wrote for them.
-    async fn digest_round(&self, key: &str, answer: ElicitResult, session: &Session) -> String {
+    async fn digest_review(&self, key: &str, answer: ElicitResult, session: &Session) -> String {
         // The person behind the agent: the token's subject, which the
         // agent's session carries. Their answer is stored under their own
-        // name with human standing — the server witnessed the act.
+        // name as a human actor — the server witnessed the act.
         let who = session.actor().id.clone();
         // Two outcomes, not three. Accepting with something said is
         // the save; every other way out of the dialog is a defer, and
         // a defer is not an opinion. Nothing is recorded, the claim
-        // still derives, and the next round asks it again — answering
+        // still derives, and the next review asks it again — answering
         // is required, and an interface that let someone opt out of being asked
         // would be an interface that hides what the numbers rest on.
         //
@@ -351,7 +416,7 @@ impl GlossqlMcp {
             sibling_note,
             ..
         } = question;
-        let entry = RulingEntry {
+        let entry = DecisionEntry {
             subject: &subject,
             aspect: &aspect,
             dimension: &dimension,
@@ -375,10 +440,10 @@ impl GlossqlMcp {
         // be deferred.
         if ticked(UNCLEAR) {
             return self
-                .land_ruling(
+                .store_decision(
                     &dataset,
                     &who,
-                    RulingEntry {
+                    DecisionEntry {
                         stance: "unclear",
                         note: typed,
                         ..entry
@@ -395,46 +460,46 @@ impl GlossqlMcp {
                 return "review: there is no alternative reading on that claim to take".into();
             };
             let note = typed.clone().unwrap_or(rival);
-            let landed = self
-                .land_ruling(
+            let stored = self
+                .store_decision(
                     &dataset,
                     &who,
-                    RulingEntry {
+                    DecisionEntry {
                         stance: "corrected",
                         note: Some(note.clone()),
                         ..entry
                     },
                 )
                 .await;
-            return format!("{landed} — the alternative taken: {note}");
+            return format!("{stored} — the alternative taken: {note}");
         }
         // The sibling review decision, replayed onto this aspect: the same
         // stance and the same words the human wrote next interface, now
-        // standing here in its own right. Nothing is inferred — the
+        // current here in its own right. Nothing is inferred — the
         // human chose it.
         if ticked(SAME_AS) {
             let Some(stance) = sibling_stance.as_deref() else {
                 return "review: no earlier decision on that key to repeat".into();
             };
-            let landed = self
-                .land_ruling(
+            let stored = self
+                .store_decision(
                     &dataset,
                     &who,
-                    RulingEntry {
+                    DecisionEntry {
                         stance,
                         note: typed.or(sibling_note),
                         ..entry
                     },
                 )
                 .await;
-            return format!("{landed} — repeated from the earlier decision on that key");
+            return format!("{stored} — repeated from the earlier decision on that key");
         }
-        if ticked(STANDS) {
+        if ticked(CORRECT) {
             return self
-                .land_ruling(
+                .store_decision(
                     &dataset,
                     &who,
-                    RulingEntry {
+                    DecisionEntry {
                         note: typed,
                         ..entry
                     },
@@ -444,41 +509,46 @@ impl GlossqlMcp {
         // No box, but words: a human who writes what is right instead
         // of ticking has still decided, and the correction writes its own
         // record — a message alone would leave the question deriving
-        // forever. The re-grounding stays the agent's work; the review decision
+        // forever. The new definition stays the agent's work; the review decision
         // holds the question closed while they do it.
         if let Some(correction) = typed {
-            let landed = self
-                .land_ruling(
+            let stored = self
+                .store_decision(
                     &dataset,
                     &who,
-                    RulingEntry {
+                    DecisionEntry {
                         stance: "corrected",
                         note: Some(correction.clone()),
                         ..entry
                     },
                 )
                 .await;
-            return format!("{landed} — the person's correction: {correction}");
+            return format!("{stored} — the person's correction: {correction}");
         }
         // Saved with nothing ticked and nothing typed. An empty form
         // says as little as a dismissed one, so it is the same defer.
         format!("review: `{subject}:{aspect}:{key}` deferred — no answer given, it stays open")
     }
 
-    /// The human rules an assumption: the review decision is stored as ITS OWN
+    /// A person decides an assumption: the review decision is stored as ITS OWN
     /// record — an entry appended to the human's `review_decision` value on the
     /// subject — and the decided aspect's values stay agent-authored.
     /// The entry names the claim by `key` (the agent's declared
     /// identity, the only thing joined on) and carries the prose the
     /// human actually read as a snapshot — display, never compared.
-    /// The agent owes applying the decision (re-record the metric definition citing the
-    /// review decision); until then the brief counts the debt and the round
+    /// The agent still has to apply the decision (re-record the metric definition citing the
+    /// review decision); until then the summary counts it and the review
     /// holds the question closed. Copying the winning body into the
     /// human value is forbidden: the frozen
     /// copy would outrank every later correction — the human value
     /// carries only what the human actually said.
-    async fn land_ruling(&self, dataset: &str, who: &str, ruling: RulingEntry<'_>) -> String {
-        let RulingEntry {
+    async fn store_decision(
+        &self,
+        dataset: &str,
+        who: &str,
+        decision: DecisionEntry<'_>,
+    ) -> String {
+        let DecisionEntry {
             subject,
             aspect,
             dimension,
@@ -486,8 +556,8 @@ impl GlossqlMcp {
             assumption,
             stance,
             note,
-        } = ruling;
-        // ONE KEY IS STILL RULED PER ASPECT, deliberately. The same key
+        } = decision;
+        // ONE KEY IS STILL DECIDED PER ASPECT, deliberately. The same key
         // recurs across aspects (`days-in-period` on dso, dpo and dio),
         // and fanning one answer across every aspect that discloses the
         // key is the obvious cure — but it is the wrong one: a human may
@@ -498,11 +568,11 @@ impl GlossqlMcp {
         // The cheap answer (`params` below) is how the repeat stops
         // costing a re-read.
         //
-        // The composing and the writing are `crate::engine::rulings`,
+        // The composing and the writing are `crate::engine::decisions`,
         // shared with the app interface — the console answers these same
         // questions when a person comes back to a page rather than to a
         // form. This interface's part is to say WHO is speaking: the token's
-        // subject, with human standing, on their own channel — the
+        // subject, as a human actor, on their own channel — the
         // server witnessed the act (SPEC.md §1).
         let human = match self
             .plane
@@ -518,9 +588,9 @@ impl GlossqlMcp {
             Ok(session) => session,
             Err(e) => return format!("review: refused: {e}"),
         };
-        match crate::engine::rulings::land(
+        match crate::engine::decisions::store(
             &human,
-            crate::engine::rulings::Ruling {
+            crate::engine::decisions::Decision {
                 subject,
                 aspect,
                 dimension,
@@ -542,11 +612,11 @@ impl GlossqlMcp {
     fn tool(&self, bound: Option<&str>) -> Tool {
         let opens = match bound {
             Some(dataset) => format!(
-                "Every call opens on `{dataset}`: its tables and columns resolve unprefixed, \
-                 another dataset's with the dataset's name in front."
+                "Every call opens on `{dataset}`: its tables and columns resolve without a \
+                 prefix, another dataset's with the dataset's name in front."
             ),
-            None => "Every call opens unbound: begin any call that names a dataset's tables or \
-                     columns with `USE <dataset>;` — a call without one is workspace-scoped."
+            None => "A call opens on no dataset: begin a call that names a dataset's tables, \
+                     columns or views with `USE <dataset>;`. It holds for that call."
                 .to_string(),
         };
         let serde_json::Value::Object(schema) = serde_json::json!({
@@ -564,21 +634,24 @@ impl GlossqlMcp {
         Tool::new(
             "glossql",
             format!(
-                "Execute glossql statements against the workspace; one outcome per statement. \
-                 Statements only: the skill and doc pages are rows of `pages()` — `SELECT \
-                 body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'` — and resources \
-                 for a client that reads those. \
+                "Run glossql statements and SQL on the workspace: load sources, annotate, define \
+                 views, declare tests, read data and the catalog. One outcome per statement, \
+                 `;`-separated. \
                  {opens} \
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
-                 {} (GLOSSARY(), TESTS() and the catalog tables are uncapped); a write is `{{done}}` or `{{affected}}`; a GLOSS on a \
-                 VIEW aspect — a metric definition — answers with the metric's summary row in \
-                 the `metric_summary()` shape: whether the SQL plans, its additivity and where \
-                 that came from, the axes admitted, and every served column not admitted with \
-                 how to admit it — read it before the next write. A refused statement is an \
-                 error naming its place; what was stored before it stays stored \
-                 (`{{completed}}`). While the workspace holds open questions, a call that only \
-                 reads the catalog (glossary, GLOSSARY(), TESTS(), the catalog tables) \
-                 carries the person's question forms; loads and data reads never do.",
+                 {} (`GLOSSARY()`, `TESTS()` and the catalog tables are not capped; a null \
+                 field is left out of its row); a write is `{{done}}` or `{{affected}}`; a view \
+                 definition (`GLOSS <view> ON <dataset>`) answers with the view's row of \
+                 `view_summary()`. A refused statement is an error that names what was wrong \
+                 and its place in the call; the statements before it stay stored \
+                 (`{{completed}}`). Every result ends with `status:` (the last statement); a call \
+                 on a dataset adds `next:` (what must and what should be done on it, per kind of \
+                 work) and `first:` (the first of them); \
+                 `SELECT level, kind, asset, state, open, statement FROM next` gives each row's \
+                 statement; work on a dataset is complete when no must is open. Start with `SELECT body FROM pages() WHERE uri = \
+                 'skill://glossql/SKILL.md'`. While assumptions wait for a person, a call that \
+                 only reads the catalog may carry the person's question forms; loads and \
+                 data reads do not.",
                 self.plane.row_cap()
             ),
             schema,
@@ -586,16 +659,18 @@ impl GlossqlMcp {
     }
 }
 
-/// One read, rows as JSON — the round's derivations run through
+/// One read, rows as JSON — the review's derivations run through
 /// the session exactly as frames do.
 async fn read_rows(session: &Session, sql: &str) -> Result<Vec<serde_json::Value>, String> {
     let query = session.query_stream(sql).await.map_err(|e| e.to_string())?;
-    let out = wire::stream_json(query, usize::MAX).await?;
+    let out = wire::stream_json(query, usize::MAX)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(out["rows"].as_array().cloned().unwrap_or_default())
 }
 
 /// How many questions the workspace would serve right now, across every
-/// dataset — the same span the round itself asks over, since each row
+/// dataset — the same span the review itself asks over, since each row
 /// carries its own dataset and a review decision is stored where its question came
 /// from. No dataset, no count: a workspace before its first load has
 /// nothing to ask.
@@ -626,15 +701,15 @@ async fn open_question_count(plane: &Plane) -> Option<usize> {
     None
 }
 
-/// The round's opaque state tag, echoed by MRTR retries. Untrusted —
+/// The review's opaque state tag, echoed by MRTR retries. Untrusted —
 /// load rests on re-derivation, never on the echo.
-const ROUND_STATE: &str = "review:v1";
+const REVIEW_STATE: &str = "review:v1";
 
 /// One entry of the human's `review_decision` value, as the interface composes it.
 /// `key` names the claim (the join column); `assumption` is the prose
 /// the human read, kept for the catalog and never matched; `note` is
 /// display.
-struct RulingEntry<'a> {
+struct DecisionEntry<'a> {
     subject: &'a str,
     aspect: &'a str,
     dimension: &'a str,
@@ -644,7 +719,7 @@ struct RulingEntry<'a> {
     note: Option<String>,
 }
 
-/// What still holds open for a human to judge, and the round's ONLY
+/// What still holds open for a human to judge, and the review's ONLY
 /// derivation — missing tested claims (additivity, unit, role) are
 /// the agent's measurement backlog, never human questions, and the
 /// shipped functions settle them. The derivation itself is the core's
@@ -678,7 +753,7 @@ fn loose_from(row: &serde_json::Value) -> Option<Question> {
 /// the key pairs them. `alternative` is the rival reading the agent
 /// named beside it, and `sibling` is what the human already decided on
 /// that same key under another aspect; both are carried by the read so
-/// the round can offer them as answers rather than only naming them.
+/// the review can offer them as answers rather than only naming them.
 struct Question {
     /// The dataset the claim belongs to, carried by the read. A
     /// workspace holds many datasets and the agent's `USE` is its own
@@ -699,7 +774,7 @@ struct Question {
     alternative: Option<String>,
     confidence: f64,
     sibling: Option<String>,
-    /// The sibling review decision in parts, so the round can offer it back as
+    /// The sibling review decision in parts, so the review can offer it back as
     /// an answer rather than only naming it.
     sibling_stance: Option<String>,
     sibling_note: Option<String>,
@@ -719,14 +794,14 @@ struct Question {
 /// opens on the free-text box with the claim third; sorted by these
 /// prefixes it opens on the claim, which is what the human came to
 /// read. Nobody sees these names — the titles are what render.
-const STANDS: &str = "1_correct";
+const CORRECT: &str = "1_correct";
 const RATHER: &str = "2_rather";
 const SAME_AS: &str = "3_same_as";
 const UNCLEAR: &str = "4_unclear";
 const CORRECTION: &str = "5_correction";
 
 impl Question {
-    /// The round's transport id — the MRTR map key and the deferred
+    /// The review's transport id — the MRTR map key and the deferred
     /// set's member. Built from identity (subject, aspect, the
     /// assumption's key), so it survives a re-record that reorders the
     /// assumptions array.
@@ -771,7 +846,7 @@ impl Question {
             sibling_note,
             ..
         } = self;
-        let mut schema = ElicitationSchema::builder().optional_bool_with(STANDS, |b| {
+        let mut schema = ElicitationSchema::builder().optional_bool_with(CORRECT, |b| {
             b.title("Correct as stated")
                 .description(format!("{assumption}\nbasis: {basis}"))
                 .with_default(false)
@@ -788,7 +863,7 @@ impl Question {
         // What they already decided on this same claim elsewhere, offered
         // back as an answer. One decision spelled with one key across
         // several metric definitions is asked once per metric definition, because a
-        // human may rule the same key differently on two aspects and
+        // human may decide the same key differently on two aspects and
         // has. What the repeat must not cost is a re-reading.
         if let Some(prior) = sibling {
             let note = sibling_note.clone().unwrap_or_default();
@@ -815,7 +890,7 @@ impl Question {
             meta: None,
             // Identity, then where this sits in everything that holds
             // open. The position is the whole point of a bounded
-            // round: nobody reaches the end of one and believes it was
+            // review: nobody reaches the end of one and believes it was
             // the end of the work.
             message: format!(
                 "{subject} · {aspect} — {dimension} · confidence {confidence} \
@@ -842,7 +917,7 @@ impl ServerHandler for GlossqlMcp {
 
     /// The handshake, with the opening said for the interface it came
     /// through: a bound interface's caller has its dataset already, so the
-    /// opening names the brief alone.
+    /// opening names the summary alone.
     async fn initialize(
         &self,
         request: InitializeRequestParams,
@@ -923,14 +998,14 @@ impl ServerHandler for GlossqlMcp {
     ) -> Result<ListResourceTemplatesResult, McpError> {
         Ok(ListResourceTemplatesResult {
             resource_templates: vec![
-                ResourceTemplate::new("next://{dataset}/{surface}", "next")
+                ResourceTemplate::new("next://{dataset}/{kind}", "next")
                     .with_description(
-                        "Where one goal stands on a dataset — a served metric, named by \
-                         the metric, with its worst test and the statement that settles it; \
-                         `review`, what a person decided and the agent has not applied; \
-                         `outlook`, the forecast runs due, where a model service is named. \
-                         `next://{dataset}` serves every goal; the same rows through the tool \
-                         are `SELECT * FROM next WHERE surface = '<surface>'`.",
+                        "What is open on a dataset for one kind of work (integrate, \
+                         describe, test, review): each row with its level (must, should, \
+                         could), its asset, its state, what the newest load changed and the \
+                         statement that opens the work. `next://{dataset}` serves every \
+                         row; the same rows through the tool are `SELECT * FROM next WHERE \
+                         kind = '<kind>'`.",
                     )
                     .with_mime_type("text/markdown"),
             ],
@@ -943,7 +1018,7 @@ impl ServerHandler for GlossqlMcp {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
-        // `next://<dataset>[/<surface>]` is computed from the catalog for
+        // `next://<dataset>[/<kind of work>]` is computed from the catalog for
         // the caller, never a page of the binary.
         if let Some(rest) = request.uri.strip_prefix("next://") {
             return self.next_resource(rest, &request.uri, &context).await;
@@ -1023,14 +1098,14 @@ impl ServerHandler for GlossqlMcp {
         // Actor rides the transport (SPEC.md §1). The gate verified a
         // token and left the caller in the HTTP extensions, which rmcp
         // forwards to this handler as `http::request::Parts`; this interface
-        // is the agent interface, so the gate stamped agent standing. The
+        // is the agent interface, so the gate stamped the agent actor kind. The
         // client's own `clientInfo` name is not used: it is a string the
         // caller picks for itself on each request, so recording it would
-        // put an unproven name in the actor column of the record.
+        // put an unproven name in the actor column of the catalog.
         let actor = caller(&context)?;
         let id = actor.id.clone();
         // The call opens where the interface says: on the dataset a bound
-        // interface's URL names, or unbound at the workspace door. There is
+        // interface's URL names, or unbound at the workspace interface. There is
         // no session to hold a dataset between calls; within one, the
         // statements say where they are, as `USE`, and `execute` moves
         // with them. An unbound call that names none is
@@ -1044,24 +1119,27 @@ impl ServerHandler for GlossqlMcp {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let shape = crate::engine::call_shape(statements);
-        // The brief as it stood when the call arrived: what the call's
+        // The summary as it stood when the call arrived: what the call's
         // own refresh is compared against, whatever else is stored
         // meanwhile — the boot's refresh included.
-        let before = self.brief.facts.read().ok().and_then(|f| f.clone());
-        let probed = match self
-            .question_round(&request, &context, &shape, &session, &id)
+        let before = self.summary.facts.read().ok().and_then(|f| f.clone());
+        let reviewed = match self
+            .question_review(&request, &context, &shape, &session, &id)
             .await
         {
-            Round::Ask(forms) => return Ok(*forms),
-            Round::Digested(note) => note,
+            Review::Ask(forms) => return Ok(*forms),
+            Review::Digested(note) => note,
         };
-        let (rendered, landed) = self
+        let (rendered, completed) = self
             .run_statements(&session, &actor, bound.as_deref(), statements)
             .await;
         // A write (or a loaded review decision) moves the counts; a call before
         // the boot's own refresh has loaded composes them too.
-        let brief_moved = self
-            .brief_moved(shape.writes || probed.is_some() || before.is_none(), before)
+        let summary_moved = self
+            .summary_moved(
+                shape.writes || reviewed.is_some() || before.is_none(),
+                before,
+            )
             .await;
         // Where the call left the agent and one act per goal from there,
         // on every call (`window`). It rides the result, never the
@@ -1071,22 +1149,23 @@ impl ServerHandler for GlossqlMcp {
                 &actor,
                 shape.dataset.as_deref().or(bound.as_deref()),
                 &rendered,
+                statements,
             )
             .await;
-        Ok(call_result(&id, rendered, probed, landed, window, brief_moved).into())
+        Ok(call_result(&id, rendered, reviewed, completed, window, summary_moved).into())
     }
 }
 
-/// What the question round decided for a call: the batch of forms,
+/// What the question review decided for a call: the batch of forms,
 /// returned in place of a result, or the account of a retry's answers
-/// — none where no round rode the call.
-enum Round {
+/// — none where no review rode the call.
+enum Review {
     Ask(Box<CallToolResponse>),
     Digested(Option<String>),
 }
 
 impl GlossqlMcp {
-    /// The question round rides ahead of execution as an MRTR
+    /// The question review rides ahead of execution as an MRTR
     /// `input_required` result (SEP-2322): the ask is the result, and
     /// the answer arrives on the client's retry of this same call.
     /// There is no other mechanism — the spec is explicit that a server
@@ -1094,37 +1173,37 @@ impl GlossqlMcp {
     /// and the older server-initiated request is gone.
     ///
     /// Cadence: forms ride only calls that read the catalog — a metadata
-    /// read, no writes — so the brief sweep and the stage read-backs
-    /// carry the round while loads and judging queries run
+    /// read, no writes — so the summary sweep and the stage read-backs
+    /// carry the review while loads and judging queries run
     /// uninterrupted. A writing call re-opens what a decline deferred.
     /// One question per call, only while the workspace derives open
     /// items; the capability must come from the request's own stamp,
     /// since the transport's peer_info is synthetic when every request
     /// holds alone.
-    async fn question_round(
+    async fn question_review(
         &self,
         request: &CallToolRequestParams,
         context: &RequestContext<RoleServer>,
         shape: &CallShape,
         session: &Session,
         id: &str,
-    ) -> Round {
+    ) -> Review {
         if let Some(note) = self.digest_retry(request, session, id).await {
-            return Round::Digested(Some(note));
+            return Review::Digested(Some(note));
         }
         if shape.reviews
             && context
                 .client_capabilities()
                 .and_then(|caps| caps.elicitation)
                 .is_some()
-            && let Some(forms) = self.ask_round(session, id).await
+            && let Some(forms) = self.ask_review(session, id).await
         {
-            return Round::Ask(Box::new(forms));
+            return Review::Ask(Box::new(forms));
         }
-        Round::Digested(None)
+        Review::Digested(None)
     }
 
-    /// A retry's answers, digested: a round is a batch, so a retry
+    /// A retry's answers, digested: a review is a batch, so a retry
     /// carries a batch. Each answer is digested against its own
     /// re-derived question; one that no longer holds is said and
     /// skipped, never taken as a result on another. None for a call
@@ -1136,13 +1215,13 @@ impl GlossqlMcp {
         id: &str,
     ) -> Option<String> {
         let responses = request.input_responses.as_ref()?;
-        let note = if request.request_state.as_deref() != Some(ROUND_STATE) {
+        let note = if request.request_state.as_deref() != Some(REVIEW_STATE) {
             "review: a retry without the echoed state".to_string()
         } else if !responses.is_empty() {
             let mut notes = Vec::new();
             for (key, raw) in responses.iter() {
                 notes.push(match serde_json::from_value::<ElicitResult>(raw.clone()) {
-                    Ok(answer) => Box::pin(self.digest_round(key, answer, session)).await,
+                    Ok(answer) => Box::pin(self.digest_review(key, answer, session)).await,
                     Err(e) => format!("review: the answer does not parse: {e}"),
                 });
             }
@@ -1152,22 +1231,22 @@ impl GlossqlMcp {
         };
         // The account can carry the human's typed words and a rival's
         // prose, so it is a `debug` event like a call's text; `info`
-        // says only that a round was digested.
+        // says only that a review was digested.
         tracing::info!(subject = %id, "review: digested");
         tracing::debug!(subject = %id, note = %note, "review");
         Some(note)
     }
 
-    /// The round's forms as one result: the whole batch travels in it,
+    /// The review's forms as one result: the whole batch travels in it,
     /// the call ends normally, the client fulfils every entry before it
-    /// retries, and nothing on the server waits — the round costs the
+    /// retries, and nothing on the server waits — the review costs the
     /// agent no time whether or not a person is there. None where no
-    /// form stands.
-    async fn ask_round(&self, session: &Session, id: &str) -> Option<CallToolResponse> {
-        let (round, total) = self.derive_round(session).await;
+    /// form is kept.
+    async fn ask_review(&self, session: &Session, id: &str) -> Option<CallToolResponse> {
+        let (review, total) = self.derive_review(session).await;
         let mut asks = InputRequests::new();
         let mut ids = Vec::new();
-        for (rank, q) in &round {
+        for (rank, q) in &review {
             match q.params(*rank, total) {
                 Ok(params) => {
                     ids.push(q.id());
@@ -1191,7 +1270,7 @@ impl GlossqlMcp {
             ids = %ids.join(", "),
             "review"
         );
-        Some(InputRequiredResult::new(Some(asks), Some(ROUND_STATE.into())).into())
+        Some(InputRequiredResult::new(Some(asks), Some(REVIEW_STATE.into())).into())
     }
 
     /// The statements, run: a single query streams from the engine;
@@ -1208,37 +1287,41 @@ impl GlossqlMcp {
         actor: &Actor,
         bound: Option<&str>,
         statements: &str,
-    ) -> (Result<serde_json::Value, String>, Option<serde_json::Value>) {
-        let mut landed_json: Option<serde_json::Value> = None;
+    ) -> (
+        Result<serde_json::Value, Refusal>,
+        Option<serde_json::Value>,
+    ) {
+        let mut completed_json: Option<serde_json::Value> = None;
         let rendered = match session.query_page(statements).await {
             Ok(query) => {
                 let cap = query.cap;
                 wire::stream_json(query, cap)
                     .await
                     .map(|rows| serde_json::Value::Array(vec![rows]))
+                    .map_err(|e| Refusal::of(&e))
             }
             // Statement sequences run at the plane: `USE` moves the
             // statements after it onto another channel for the rest of
             // this call, and never rebinds a session.
             Err(SessionError::NotOneRead) => {
                 match self.plane.execute(actor.clone(), bound, statements).await {
-                    Ok(outcomes) => wire::outcomes_json(&outcomes),
+                    Ok(outcomes) => wire::outcomes_json(&outcomes).map_err(Refusal::from),
                     Err(e) => {
-                        if let SessionError::Sequence { landed, .. } = &e
-                            && !landed.is_empty()
+                        if let SessionError::Sequence { loaded, .. } = &e
+                            && !loaded.is_empty()
                         {
-                            landed_json = wire::outcomes_json(landed).ok();
+                            completed_json = wire::outcomes_json(loaded).ok();
                         }
-                        Err(e.to_string())
+                        Err(Refusal::of(&e))
                     }
                 }
             }
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(Refusal::of(&e)),
         };
-        (rendered, landed_json)
+        (rendered, completed_json)
     }
 
-    /// The brief travels on the call that moved it: initialize
+    /// The summary travels on the call that moved it: initialize
     /// instructions are fetched once per connection, so a long-lived
     /// session would never see the counts change. Two rules hold it
     /// honest: movement is decided on the COUNTS, never on the rendered
@@ -1249,67 +1332,94 @@ impl GlossqlMcp {
     /// keeping per-actor state the run has never asked for. Scoped to
     /// the cause: only a write (or a loaded review decision) can move the
     /// counts, so a pure read never pays the recomposition.
-    async fn brief_moved(&self, moved: bool, before: Option<BriefFacts>) -> Option<String> {
+    async fn summary_moved(
+        &self,
+        moved: bool,
+        before: Option<SummaryFacts>,
+    ) -> Option<SummaryMoved> {
         if !moved {
             return None;
         }
-        Self::refresh_brief(&self.plane, &self.brief).await;
-        let after = self.brief.facts.read().ok().and_then(|f| f.clone());
-        (after.is_some() && after != before).then(|| format!("summary: {}", self.brief.line()))
+        Self::refresh_summary(&self.plane, &self.summary).await;
+        let after = self.summary.facts.read().ok().and_then(|f| f.clone());
+        after
+            .filter(|facts| Some(facts) != before.as_ref())
+            .map(|facts| SummaryMoved {
+                line: self.summary.line(),
+                facts,
+            })
     }
 }
 
-/// The call's result: the rows, the round's account, the window and
-/// the brief where it moved. A failed statement is the agent's
+/// The call's result: the rows, the review's account, the window and
+/// the summary where it moved, as a closing `summary:` block and as
+/// counts under `_meta`. A failed statement is the agent's
 /// business, not the transport's: an error result, never a protocol
-/// error — and the brief still travels: an input_responses review decision may
+/// error — and the summary still travels: an input_responses review decision may
 /// have loaded even when the statement then refused.
 fn call_result(
     id: &str,
-    rendered: Result<serde_json::Value, String>,
-    probed: Option<String>,
-    landed: Option<serde_json::Value>,
+    rendered: Result<serde_json::Value, Refusal>,
+    reviewed: Option<String>,
+    completed: Option<serde_json::Value>,
     window: String,
-    brief_moved: Option<String>,
+    summary_moved: Option<SummaryMoved>,
 ) -> CallToolResult {
-    match rendered {
+    let mut meta = summary_moved.as_ref().map(SummaryMoved::meta);
+    if let Err(Refusal {
+        code: Some(code), ..
+    }) = &rendered
+    {
+        meta.get_or_insert_with(rmcp::model::MetaObject::new)
+            .0
+            .insert(
+                REFUSAL_META.to_string(),
+                serde_json::json!({ "code": code }),
+            );
+    }
+    let summary_moved = summary_moved.map(|moved| format!("summary: {}", moved.line));
+    let mut result = match rendered {
         Ok(body) => {
             let mut blocks = vec![ContentBlock::text(body.to_string())];
-            if let Some(note) = probed {
+            if let Some(note) = reviewed {
                 blocks.push(ContentBlock::text(note));
             }
             blocks.push(ContentBlock::text(window));
-            if let Some(brief) = brief_moved {
-                blocks.push(ContentBlock::text(brief));
+            if let Some(summary) = summary_moved {
+                blocks.push(ContentBlock::text(summary));
             }
             CallToolResult::success(blocks)
         }
-        Err(e) => {
-            tracing::warn!(subject = %id, error = %e, "refused");
-            let mut blocks = vec![ContentBlock::text(e)];
-            if let Some(landed) = landed {
+        Err(Refusal { reason, .. }) => {
+            tracing::warn!(subject = %id, error = %reason, "refused");
+            let mut blocks = vec![ContentBlock::text(reason)];
+            if let Some(completed) = completed {
                 blocks.push(ContentBlock::text(
-                    serde_json::json!({ "completed": landed }).to_string(),
+                    serde_json::json!({ "completed": completed }).to_string(),
                 ));
             }
             blocks.push(ContentBlock::text(window));
-            if let Some(brief) = brief_moved {
-                blocks.push(ContentBlock::text(brief));
+            if let Some(summary) = summary_moved {
+                blocks.push(ContentBlock::text(summary));
             }
             CallToolResult::error(blocks)
         }
-    }
+    };
+    result.meta = meta;
+    result
 }
 
 impl GlossqlMcp {
-    /// The two lines every result carries: where the call left the
-    /// agent, and one act per goal from there (`window`) on the
-    /// dataset the call's last `USE` named, else the interface's own.
+    /// The lines every result carries: where the call left the agent
+    /// (`status:`), and what is open (`next:`, `first:`) on the dataset
+    /// the call's last `USE` named, else the interface's own; none of
+    /// the two where the call is on no dataset.
     async fn situation_block(
         &self,
         actor: &Actor,
         dataset: Option<&str>,
-        rendered: &Result<serde_json::Value, String>,
+        rendered: &Result<serde_json::Value, Refusal>,
+        statements: &str,
     ) -> String {
         // The last statement's one row, where it served one — a
         // metric definition's fact row. The wire renders an outcome as
@@ -1325,14 +1435,18 @@ impl GlossqlMcp {
             .filter(|r| r.len() == 1)
             .and_then(|r| r.first())
             .cloned();
-        let refusal = rendered.as_ref().err().map(String::as_str);
+        let refusal = rendered.as_ref().err().map(|r| r.reason.as_str());
         let mut lines = vec![window::situation(refusal, last_row.as_ref())];
         if let Some(dataset) = dataset {
             match self.next_rows(actor, dataset, None).await {
-                Ok(rows) if !rows.is_empty() => lines.push(window::next_line(dataset, &rows)),
-                Ok(_) => {}
+                Ok(rows) => lines.push(window::next_line(dataset, &rows)),
                 Err(e) => tracing::debug!(error = %e, "next: not served"),
             }
+        }
+        if rendered.is_ok()
+            && let Some(line) = window::series_window(statements)
+        {
+            lines.push(line.to_string());
         }
         lines.join("\n")
     }
@@ -1342,24 +1456,42 @@ impl GlossqlMcp {
         &self,
         actor: &Actor,
         dataset: &str,
-        surface: Option<&str>,
+        kind: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, String> {
         let session = self
             .plane
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        let sql = match surface {
-            Some(s) => format!(
-                "SELECT * FROM next WHERE surface = '{}'",
-                s.replace('\'', "''")
-            ),
-            None => "SELECT * FROM next ORDER BY goal, surface".to_string(),
+        // the snapshot is read before the rows: rows read across a
+        // write are kept under the snapshot before it, which no later
+        // call asks for
+        let snapshot = session.lake_snapshot().await;
+        let kept = snapshot.as_ref().and_then(|at| {
+            let kept = self.summary.next.lock().ok()?;
+            let (read_at, rows) = kept.get(dataset)?;
+            (read_at == at).then(|| Arc::clone(rows))
+        });
+        let rows = match kept {
+            Some(rows) => rows,
+            None => {
+                let rows = Arc::new(read_rows(&session, "SELECT * FROM next").await?);
+                if let Some(at) = snapshot
+                    && let Ok(mut kept) = self.summary.next.lock()
+                {
+                    kept.insert(dataset.to_string(), (at, Arc::clone(&rows)));
+                }
+                rows
+            }
         };
-        read_rows(&session, &sql).await
+        Ok(rows
+            .iter()
+            .filter(|row| kind.is_none_or(|k| row["kind"].as_str() == Some(k)))
+            .cloned()
+            .collect())
     }
 
-    /// `next://<dataset>[/<surface>]` as a page: every answer with its
+    /// `next://<dataset>[/<kind of work>]` as a page: every open row with its
     /// statement, for the caller the gate stamped.
     async fn next_resource(
         &self,
@@ -1368,12 +1500,12 @@ impl GlossqlMcp {
         context: &RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, McpError> {
         let actor = caller(context)?;
-        let (dataset, surface) = match rest.split_once('/') {
+        let (dataset, kind) = match rest.split_once('/') {
             Some((d, s)) => (d, Some(s)),
             None => (rest, None),
         };
         let rows = self
-            .next_rows(&actor, dataset, surface)
+            .next_rows(&actor, dataset, kind)
             .await
             .map_err(|e| McpError::resource_not_found(format!("`{uri}`: {e}"), None))?;
         let body = window::next_page(dataset, &rows);
@@ -1391,7 +1523,9 @@ fn caller(context: &RequestContext<RoleServer>) -> Result<Actor, McpError> {
         .get::<axum::http::request::Parts>()
         .and_then(|parts| parts.extensions.get::<Caller>())
         .map(|caller| caller.0.clone())
-        .ok_or_else(|| McpError::internal_error("the door is not behind the gate: no caller", None))
+        .ok_or_else(|| {
+            McpError::internal_error("the interface is not behind the gate: no caller", None)
+        })
 }
 
 /// The dataset a bound agent interface was opened on — `/{dataset}/mcp`,
@@ -1453,40 +1587,23 @@ mod tests {
         }
     }
 
-    fn form(q: &Question) -> (String, serde_json::Value) {
+    /// The form's schema as it goes on the wire.
+    fn form(q: &Question) -> serde_json::Value {
         match q.params(3, 12).expect("the form builds") {
             ElicitRequestParams::FormElicitationParams {
-                message,
-                requested_schema,
-                ..
-            } => (
-                message,
-                serde_json::to_value(&requested_schema).expect("schema serializes"),
-            ),
+                requested_schema, ..
+            } => serde_json::to_value(&requested_schema).expect("schema serializes"),
             other => panic!("form mode expected, got {other:?}"),
         }
-    }
-
-    /// The message is the one surface the client clips, so it carries
-    /// identity only — never the claim, which has to be read whole —
-    /// and the position, so a bounded round never reads as the end of
-    /// the work.
-    #[test]
-    fn the_message_is_identity_and_position() {
-        let (message, _) = form(&question());
-        assert_eq!(message.lines().count(), 1, "{message}");
-        assert!(message.contains("race_entries"), "{message}");
-        assert!(message.contains("3 of 12 open"), "{message}");
-        assert!(!message.contains("an entry is a row"), "{message}");
     }
 
     /// Every answer is its own field: the renderer draws a checkbox in
     /// the list and hides an enum's options behind a keypress.
     #[test]
     fn every_answer_is_a_visible_field() {
-        let (_, schema) = form(&question());
+        let schema = form(&question());
         let props = &schema["properties"];
-        for name in [STANDS, UNCLEAR] {
+        for name in [CORRECT, UNCLEAR] {
             assert_eq!(props[name]["type"], "boolean", "{name} in {schema}");
         }
         assert_eq!(props[CORRECTION]["type"], "string", "{schema}");
@@ -1496,21 +1613,6 @@ mod tests {
                 .is_none_or(serde_json::Value::is_null),
             "nothing is required, or the confirm button never opens: {schema}"
         );
-    }
-
-    /// A title shares its line with the value and is truncated; a
-    /// description renders whole. So the claim and its basis ride the
-    /// description of the box that confirms them, and the title is a
-    /// short fixed label.
-    #[test]
-    fn the_claim_rides_the_description_of_stands() {
-        let q = question();
-        let (_, schema) = form(&q);
-        let stands = &schema["properties"][STANDS];
-        assert_eq!(stands["title"], "Correct as stated");
-        let said = stands["description"].as_str().expect("a description");
-        assert!(said.contains(&q.assumption), "{schema}");
-        assert!(said.contains(&q.basis), "{schema}");
     }
 
     /// The wire order is the sorted key order, so the names carry the
@@ -1524,7 +1626,7 @@ mod tests {
             sibling_note: Some("status_id = 1".into()),
             ..question()
         };
-        let (_, schema) = form(&offered);
+        let schema = form(&offered);
         let order: Vec<&str> = schema["properties"]
             .as_object()
             .expect("an object")
@@ -1533,16 +1635,16 @@ mod tests {
             .collect();
         assert_eq!(
             order,
-            vec![STANDS, RATHER, SAME_AS, UNCLEAR, CORRECTION],
+            vec![CORRECT, RATHER, SAME_AS, UNCLEAR, CORRECTION],
             "the claim first, the free text last"
         );
     }
 
     /// A box for a reading the catalog does not hold would be a box
-    /// that cannot be answered, so neither appears unless it stands.
+    /// that cannot be answered, so neither appears unless it applies.
     #[test]
-    fn the_rival_and_the_prior_ruling_appear_only_when_they_stand() {
-        let (_, bare) = form(&question());
+    fn the_alternative_and_the_earlier_decision_appear_only_when_given() {
+        let bare = form(&question());
         assert!(bare["properties"].get(RATHER).is_none(), "{bare}");
         assert!(bare["properties"].get(SAME_AS).is_none(), "{bare}");
 
@@ -1553,7 +1655,7 @@ mod tests {
             sibling_note: Some("status_id = 1 is the finish marker".into()),
             ..question()
         };
-        let (_, schema) = form(&offered);
+        let schema = form(&offered);
         assert_eq!(
             schema["properties"][RATHER]["description"],
             offered.alternative.as_deref().unwrap()

@@ -3,12 +3,12 @@
 // `span`), ordinary frame parameters the frames bind as $grain and
 // $span. Changing one is navigation — a boosted link, like the dim
 // picker — so the server re-renders the state and only the frames
-// whose URL changed refetch. Nothing re-aggregates here: the cube
+// whose URL changed refetch. Nothing re-aggregates here: the server's read
 // serves the grain by the metric's verb on the server, and the frame
 // SQL clips the span.
 //
 // The grains offered start at the metric's resolution, read from the
-// cube's fact row (the `frame` attribute, `metric_summary()`): a finer
+// metric's row (the `frame` attribute, `view_summary()`): a finer
 // grain would serve nothing. Without the row every grain is offered.
 // A URL naming no grain opens at the default — and when the metric's
 // resolution is coarser than that, the control replaces the URL with
@@ -51,7 +51,7 @@
           if (rows.length && GRAINS.includes(rows[0].resolution)) from = rows[0].resolution;
         } catch (_) {
           // The control still renders; the chart bound to the same
-          // cube states what failed.
+          // read states what failed.
         }
       }
       if (!this.isConnected) return;

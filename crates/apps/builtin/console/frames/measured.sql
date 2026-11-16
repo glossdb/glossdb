@@ -1,13 +1,14 @@
 -- What the functions measured: one row per loaded measurement aspect
 -- with what it found, in words from its own body, how many subjects it
--- reached and when. The shipped aspects have their own sentence;
--- another is counted.
+-- reached and when. The kits' measurements have a sentence; another
+-- is counted.
 WITH m AS (
   SELECT g.subject, g.aspect, g.body, g.written_at
   FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.current),
 rels AS (
-  SELECT unnest(json_extract(body, '$.relationships')::JSON[]) AS rel FROM m WHERE aspect = 'relationship_coherence'),
+  SELECT body AS rel FROM m
+  WHERE aspect = 'relationship_coherence' AND json_extract_string(body, '$.relationship') IS NOT NULL),
 coherence AS (
   SELECT 'relationship_coherence' AS aspect,
          CAST(count(*) AS VARCHAR) || CASE WHEN count(*) = 1 THEN ' join' ELSE ' joins' END AS subjects,
@@ -45,10 +46,10 @@ derivations AS (
   FROM cands
   HAVING count(*) > 0),
 collisions AS (
-  SELECT 'grounding_collisions' AS aspect, 'the dataset' AS subjects,
-         json_extract_string(body, '$.groundings') || ' metric definitions, '
+  SELECT 'definition_collisions' AS aspect, 'the dataset' AS subjects,
+         json_extract_string(body, '$.definitions') || ' metric definitions, '
            || CAST(json_array_length(body, '$.collisions') AS VARCHAR) || ' serving one name differently.' AS found
-  FROM m WHERE aspect = 'grounding_collisions'),
+  FROM m WHERE aspect = 'definition_collisions'),
 candidates AS (
   SELECT 'relationship_candidates' AS aspect, 'the dataset' AS subjects,
          CAST(json_array_length(body, '$.candidates') AS VARCHAR) || ' candidate joins found in the data.' AS found
@@ -62,25 +63,25 @@ worded AS (
 others AS (
   SELECT aspect,
          CAST(count(*) AS VARCHAR) || CASE WHEN count(*) = 1 THEN ' subject' ELSE ' subjects' END AS subjects,
-         'Measured; the page has no words for this aspect beyond the count.' AS found
+         '' AS found
   FROM m
   WHERE aspect NOT IN (SELECT aspect FROM worded)
   GROUP BY aspect),
 every AS (SELECT * FROM worded UNION ALL SELECT * FROM others),
-a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+a AS (SELECT name, lower(kind) AS kind FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 backlog AS (
-  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unspoken
+  SELECT g.aspect, count(*) FILTER (WHERE g.state = 'missing') AS unannotated
   FROM GLOSSARY() g JOIN a ON a.name = g.aspect
   WHERE a.kind = 'measurement'
   GROUP BY g.aspect),
-landed AS (SELECT aspect, max(written_at) AS newest FROM m GROUP BY aspect)
+loaded AS (SELECT aspect, max(written_at) AS newest FROM m GROUP BY aspect)
 SELECT e.aspect,
-       e.subjects || CASE WHEN coalesce(o.unspoken, 0) > 0 THEN ', ' || CAST(o.unspoken AS VARCHAR) || ' not yet' ELSE '' END AS subjects,
+       e.subjects || CASE WHEN coalesce(o.unannotated, 0) > 0 THEN ', ' || CAST(o.unannotated AS VARCHAR) || ' not yet' ELSE '' END AS subjects,
        e.found,
        coalesce(strftime(t.newest, '%d %b %Y %H:%M'), '') AS "at"
 FROM every e
 LEFT JOIN backlog o ON o.aspect = e.aspect
-LEFT JOIN landed t ON t.aspect = e.aspect
+LEFT JOIN loaded t ON t.aspect = e.aspect
 ORDER BY CASE e.aspect WHEN 'relationship_coherence' THEN 0 WHEN 'temporal_profile' THEN 1
-                       WHEN 'derivation_candidates' THEN 2 WHEN 'grounding_collisions' THEN 4
+                       WHEN 'derivation_candidates' THEN 2 WHEN 'definition_collisions' THEN 4
                        WHEN 'relationship_candidates' THEN 5 ELSE 8 END, e.aspect

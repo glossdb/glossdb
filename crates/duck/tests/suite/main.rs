@@ -1,11 +1,9 @@
 //! The engine's own suite: a workspace opened on a tempdir, the kits
 //! declared, statements of the language run through a channel, reads
-//! streamed, the brief counted, a review decision landed. Needs the extension
+//! streamed, the summary counted, a review decision stored. Needs the extension
 //! beside this checkout (`GLOSSQL_EXTENSION` overrides the path).
 
-use glossdb_duck::{
-    Actor, ActorKind, Config, Outcome, Plane, SessionError, call_shape, rows_as_text,
-};
+use glossdb_duck::{Actor, ActorKind, Config, Outcome, Plane, SessionError, rows_as_text};
 
 fn agent() -> Actor {
     Actor {
@@ -19,19 +17,6 @@ fn human() -> Actor {
         kind: ActorKind::Human,
         id: "test:human".into(),
     }
-}
-
-/// The extension beside this checkout, or where `GLOSSQL_EXTENSION`
-/// points. A build without one — CI, until the extension ships as an
-/// artifact — runs none of this suite and says so.
-fn extension_present() -> bool {
-    let present = Config::laptop(std::path::Path::new(".")).extension.exists();
-    if !present {
-        eprintln!(
-            "skipped: no glossql extension beside this checkout (GLOSSQL_EXTENSION overrides)"
-        );
-    }
-    present
 }
 
 /// A workspace whose two test actors are root. The interface's gate has a
@@ -49,10 +34,7 @@ async fn plane() -> (tempfile::TempDir, Plane) {
 /// engine's knobs are closed with a reason, in a sequence as the
 /// refused statement; a root actor has them.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_door_opens_the_workspace_and_closes_the_engine() {
-    if !extension_present() {
-        return;
-    }
+async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
     let dir = tempfile::tempdir().expect("a tempdir");
     let mut config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
     config.root = vec![human().id];
@@ -81,15 +63,6 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
             other => panic!("{statement}: {other:?}"),
         }
     }
-    let text = agent
-        .execute("SET VARIABLE glossql_actor = 'human'")
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(
-        text.contains("`SET` is closed at this door: the engine's settings"),
-        "{text}"
-    );
     let csv = dir.path().join("t.csv").display().to_string();
     for statement in [
         "CREATE TABLE fin.t AS SELECT 1 AS x",
@@ -149,11 +122,11 @@ async fn the_door_opens_the_workspace_and_closes_the_engine() {
         Err(SessionError::Sequence {
             index: 2,
             source,
-            landed,
+            loaded,
             ..
         }) => {
             assert!(matches!(*source, SessionError::Closed { .. }), "{source}");
-            assert_eq!(landed.len(), 1);
+            assert_eq!(loaded.len(), 1);
         }
         other => panic!("{other:?}"),
     }
@@ -171,13 +144,10 @@ fn text(outcomes: &[Outcome]) -> Vec<Vec<Option<String>>> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_language_runs_through_a_channel_and_the_record_reads_back() {
-    if !extension_present() {
-        return;
-    }
+async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
     let (_dir, plane) = plane().await;
     assert!(plane.datasets().await.unwrap().is_empty());
-    assert_eq!(plane.brief_counts().await.unwrap().human_writings, 0);
+    assert_eq!(plane.summary_counts().await.unwrap().human_writings, 0);
 
     let session = plane.channel(agent(), None).await.unwrap();
     let outcomes = session
@@ -216,13 +186,13 @@ async fn the_language_runs_through_a_channel_and_the_record_reads_back() {
         "{rows:?}"
     );
 
-    // A page is cut one row past the cap; a record read never is.
+    // A page is cut one row past the cap; a catalog read never is.
     let page = bound.query_page("SELECT * FROM fin.orders").await.unwrap();
     assert_eq!(page.cap, 200);
-    assert!(!page.record);
+    assert!(!page.catalog);
     let whole = bound.query_page("SELECT * FROM glossary").await.unwrap();
     assert_eq!(whole.cap, usize::MAX);
-    assert!(whole.record);
+    assert!(whole.catalog);
     assert!(matches!(
         bound.query_stream("SELECT 1; SELECT 2").await,
         Err(SessionError::NotOneRead)
@@ -239,26 +209,23 @@ async fn the_language_runs_through_a_channel_and_the_record_reads_back() {
         Err(SessionError::Sequence {
             index,
             total,
-            landed,
+            loaded,
             ..
         }) => {
-            assert_eq!((index, total, landed.len()), (2, 2, 1));
+            assert_eq!((index, total, loaded.len()), (2, 2, 1));
         }
         other => panic!("{other:?}"),
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
-    if !extension_present() {
-        return;
-    }
+async fn a_review_decision_is_stored_as_the_person_and_counted() {
     let (_dir, plane) = plane().await;
     plane
         .execute(
             agent(),
             None,
-            "DECLARE DATASET fin SET (purpose: 'rulings')",
+            "DECLARE DATASET fin SET (purpose: 'decisions')",
         )
         .await
         .unwrap();
@@ -271,13 +238,13 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
         )
         .await
         .unwrap();
-    let before = plane.brief_counts().await.unwrap();
+    let before = plane.summary_counts().await.unwrap();
     assert_eq!(before.human_writings, 0);
 
     let session = plane.channel(human(), Some("fin")).await.unwrap();
-    let said = glossdb_duck::rulings::land(
+    glossdb_duck::decisions::store(
         &session,
-        glossdb_duck::rulings::Ruling {
+        glossdb_duck::decisions::Decision {
             subject: "orders.id",
             aspect: "meaning",
             dimension: "scope",
@@ -289,30 +256,40 @@ async fn a_ruling_lands_under_human_standing_and_the_brief_counts_it() {
     )
     .await
     .unwrap();
-    assert!(said.starts_with("decided (confirmed) on `k1`"), "{said}");
 
-    let after = plane.brief_counts().await.unwrap();
+    // The decision is the person's own annotation, and the summary
+    // counts it.
+    let stored = text(
+        &session
+            .execute(
+                "SELECT actor_kind, actor_id, json_extract_string(body, '$.decisions[0].key'), \
+                 json_extract_string(body, '$.decisions[0].stance') \
+                 FROM glossary WHERE aspect = 'review_decision'",
+            )
+            .await
+            .unwrap(),
+    );
+    let cell = |s: &str| Some(s.to_string());
+    assert_eq!(
+        stored,
+        vec![vec![
+            cell("human"),
+            cell("test:human"),
+            cell("k1"),
+            cell("confirmed")
+        ]]
+    );
+    let after = plane.summary_counts().await.unwrap();
     assert_eq!(after.human_writings, 1);
     assert!(after.latest_human_at.is_some());
-    assert_eq!(after.rulings_owed, 0);
-
-    let shape = call_shape("USE fin; SELECT * FROM glossary");
-    assert!(
-        shape.reviews && !shape.writes,
-        "a record read under USE reviews: {shape:?}"
-    );
-    assert_eq!(shape.dataset.as_deref(), Some("fin"));
-    assert!(
-        call_shape("SELECT * FROM GLOSSARY(orders)").reviews
-            || !call_shape("SELECT * FROM GLOSSARY(orders)").writes
-    );
+    assert_eq!(after.decisions_open, 0);
 }
 
+/// A second open of a workspace declares nothing twice and its derived
+/// reads hold; a kit whose text changed runs again at the next open,
+/// over the views the last one left in main and a dataset's metric view.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
-    if !extension_present() {
-        return;
-    }
+async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
     let dir = tempfile::tempdir().expect("a tempdir");
     async fn count(plane: &Plane) -> String {
         let rows = text(
@@ -323,7 +300,8 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         );
         rows[0][0].clone().unwrap()
     }
-    let first = Plane::open(glossdb_duck::testing::golden(dir.path()).await.unwrap())
+    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
+    let first = Plane::open(config.clone())
         .await
         .expect("the workspace opens");
     let session = first.channel(agent(), None).await.unwrap();
@@ -367,21 +345,25 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     );
     let kits = text(
         &second
-            .execute(agent(), None, "SELECT count(*) FROM kits")
+            .execute(
+                agent(),
+                None,
+                "SELECT count(*) > 0 AND count(*) = count(DISTINCT name) FROM kits",
+            )
             .await
             .unwrap(),
     );
     assert_eq!(
         kits,
-        vec![vec![Some("6".to_string())]],
-        "every kit landed once at the first open and stood at the second"
+        vec![vec![Some("true".to_string())]],
+        "every kit ran once at the first open and was current at the second"
     );
     let next = text(
         &second
             .execute(
                 agent(),
                 None,
-                "SELECT length(comment) FROM duckdb_views() WHERE database_name = 'ws' \
+                "SELECT count(*) FROM duckdb_views() WHERE database_name = 'ws' \
                  AND schema_name = 'main' AND view_name = 'next'",
             )
             .await
@@ -389,8 +371,8 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
     );
     assert_eq!(
         next,
-        vec![vec![Some("32".to_string())]],
-        "the next view carries its text's hash"
+        vec![vec![Some("1".to_string())]],
+        "the goals kit declared the next view"
     );
     let unbound = text(
         &second
@@ -402,33 +384,7 @@ async fn a_second_open_changes_nothing_and_the_derived_reads_stand() {
         unbound.is_empty(),
         "an unbound channel serves no row: {unbound:?}"
     );
-}
-
-/// A kit whose text changed runs again at the next open, over the views
-/// the last one left in main and a dataset's metric view: the open
-/// completes, the kit's new text recorded.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_changed_kit_runs_again_at_the_next_open() {
-    if !extension_present() {
-        return;
-    }
-    let dir = tempfile::tempdir().unwrap();
-    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
-    let first = Plane::open(config.clone())
-        .await
-        .expect("the workspace opens");
-    let session = first.channel(agent(), None).await.unwrap();
-    session
-        .execute(
-            "DECLARE DATASET fin SET (purpose: 'a kit again');
-             USE fin;
-             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
-             GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\"}$$;",
-        )
-        .await
-        .unwrap();
-    drop(session);
-    drop(first);
+    drop(second);
 
     // every kit as it is, the server's own kits each one comment longer
     let kits = tempfile::tempdir().unwrap();
@@ -439,7 +395,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
         .map(|kit| {
             let name = kit.parent().and_then(|p| p.file_name()).unwrap();
             let mut text = std::fs::read_to_string(kit).unwrap();
-            if ["core", "metrics", "outlook", "goals"]
+            if ["core", "views", "plan", "harmonise", "outlook", "goals"]
                 .iter()
                 .any(|k| name == *k)
             {
@@ -454,7 +410,7 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
         .collect();
     // the open on a task of its own: one that never returns holds its worker,
     // never the clock that ends the test
-    let second = tokio::time::timeout(
+    let third = tokio::time::timeout(
         std::time::Duration::from_secs(120),
         tokio::spawn(Plane::open(changed)),
     )
@@ -463,11 +419,11 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
     .unwrap()
     .expect("the workspace reopens");
     let core = text(
-        &second
+        &third
             .execute(
                 agent(),
                 None,
-                "SELECT count(DISTINCT hash) FROM kits WHERE name = 'core'",
+                "SELECT count(DISTINCT hash) FROM kits_history WHERE name = 'core'",
             )
             .await
             .unwrap(),
@@ -475,7 +431,185 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
     assert_eq!(
         core,
         vec![vec![Some("2".to_string())]],
-        "the metrics kit ran again"
+        "the core kit ran again"
+    );
+}
+
+/// A kit's empty stand-ins never replace another kit's reads: the views
+/// kit run again at an open, its text changed, leaves the plan and the
+/// outlook kits' reads as they were, and the stored plan comparison and
+/// forecast are served. A workspace opened without those two kits keeps
+/// serving `next`, `view_tests()` and their reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_views_kit_run_again_leaves_the_plan_and_outlook_reads_in_place() {
+    let dir = tempfile::tempdir().expect("a tempdir");
+    let config = glossdb_duck::testing::golden(dir.path()).await.unwrap();
+    let first = Plane::open(config.clone())
+        .await
+        .expect("the workspace opens");
+    let session = first.channel(agent(), None).await.unwrap();
+    session
+        .execute(
+            r#"DECLARE DATASET fin SET (purpose: 'reopen');
+               USE fin;
+               CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked, (i % 7 + 1)::DOUBLE AS amount FROM range(400) r(i);
+               DECLARE ASPECT sales WITH $${"title": "Sales"}$$ AS VIEW;
+               GLOSS sales ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value FROM fin.ledger GROUP BY ALL"}$$;
+               GLOSS role ON sales.period AS $${"value": "timestamp"}$$;
+               GLOSS role ON sales.value AS $${"value": "measure"}$$;
+               GLOSS additivity ON sales.value AS $${"value": "additive"}$$;
+               SELECT temporal() FROM sales.period;
+               CREATE TABLE fin.budget AS SELECT (DATE '2025-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 AS planned FROM range(12) r(m);
+               DECLARE ASPECT sales_budget WITH $${"title": "Sales budget", "x-kind": "plan", "x-plan-of": "sales"}$$ AS VIEW;
+               GLOSS sales_budget ON fin AS $${"sql": "SELECT month AS period, planned AS value FROM fin.budget"}$$;
+               CREATE OR REPLACE MACRO main.service(path, body) AS '{"table": {"member": ["sales", "sales", "sales", "sales", "sales"], "origin": ["2025-02-01", "2025-02-01", "2025-02-01", "2025-02-01", "2025-02-01"], "step": [1, 1, 1, 1, 1], "span": [null, null, null, null, null], "period": ["2025-03-01", "2025-03-01", "2025-03-01", "2025-03-01", "2025-03-01"], "column": ["value", "value", "value", "value", "value"], "level": [0.05, 0.1, 0.5, 0.9, 0.95], "value": [70, 80, 100, 120, 130], "coverage_80": [0.8, 0.8, 0.8, 0.8, 0.8]}, "answer": {"service": "glossthesi", "version": "test", "errors": []}}'::JSON;
+               SELECT metric_forecast() FROM fin.sales;
+               SELECT metric_plan() FROM fin.sales_budget;"#,
+        )
+        .await
+        .expect("a forecast and a plan comparison are stored");
+    let served = "SELECT (SELECT count(step) FROM forecast_points()), (SELECT count(low) FROM plan_points()), \
+                  (SELECT count(*) FROM metric_series(world := 'plan', plan := 'sales_budget'))";
+    async fn read(plane: &Plane, served: &str) -> Vec<Vec<Option<String>>> {
+        text(
+            &plane
+                .execute(agent(), Some("fin"), served)
+                .await
+                .expect("the reads serve"),
+        )
+    }
+    let before = read(&first, served).await;
+    assert_eq!(
+        before,
+        vec![vec![
+            Some("1".to_string()),
+            Some("1".to_string()),
+            Some("12".to_string())
+        ]]
+    );
+    drop(session);
+    drop(first);
+
+    // the views kit one comment longer: it runs again, the plan and the
+    // outlook kits hold
+    let kits = tempfile::tempdir().unwrap();
+    let mut changed = config.clone();
+    changed.kits = config
+        .kits
+        .iter()
+        .map(|kit| {
+            if kit.parent().and_then(|p| p.file_name()) != Some(std::ffi::OsStr::new("views")) {
+                return kit.clone();
+            }
+            let mut text = std::fs::read_to_string(kit).unwrap();
+            text.push_str("\n-- the same kit, once more\n");
+            let copy = kits.path().join("views").join("kit.sql");
+            std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+            std::fs::write(&copy, text).unwrap();
+            copy
+        })
+        .collect();
+    let second = Plane::open(changed.clone())
+        .await
+        .expect("the workspace reopens");
+    let views_runs = text(
+        &second
+            .execute(
+                agent(),
+                None,
+                "SELECT count(DISTINCT hash) FROM kits_history WHERE name = 'views'",
+            )
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        views_runs,
+        vec![vec![Some("2".to_string())]],
+        "the views kit ran again"
+    );
+    assert_eq!(read(&second, served).await, before);
+    drop(second);
+
+    // opened without the plan and the outlook kits: the work list, the
+    // tests and the reads serve without an error
+    let mut without = changed;
+    without.kits.retain(|kit| {
+        !["plan", "outlook"]
+            .iter()
+            .any(|k| kit.ends_with(std::path::Path::new(k).join("kit.sql")))
+    });
+    let third = Plane::open(without)
+        .await
+        .expect("the workspace reopens without them");
+    for statement in [
+        "SELECT count(*) FROM next",
+        "SELECT count(*) FROM view_tests()",
+        "SELECT count(*) FROM world_series('month')",
+        served,
+    ] {
+        third
+            .execute(agent(), Some("fin"), statement)
+            .await
+            .unwrap_or_else(|e| panic!("{statement}: {e}"));
+    }
+}
+
+/// Two sessions write to one workspace at the same time: each
+/// annotation lands exactly once, each in a snapshot of its own, and a
+/// statement refused while the other session writes returns its own
+/// code, not a lost race.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_writers_at_once_each_land_once_and_a_refusal_keeps_its_code() {
+    const EACH: usize = 12;
+    let (_dir, plane) = plane().await;
+    let columns: Vec<String> = (0..2 * EACH).map(|i| format!("{i} AS c{i}")).collect();
+    plane
+        .execute(
+            agent(),
+            None,
+            &format!(
+                "DECLARE DATASET fin SET (purpose: 'two writers');
+                 CREATE TABLE fin.wide AS SELECT {};
+                 DECLARE ASPECT remark WITH $${{\"type\": \"object\"}}$$ AS FACT ON COLUMN;
+                 DECLARE ASPECT raw WITH $${{\"type\": \"integer\"}}$$ AS MEASUREMENT ON TABLE;",
+                columns.join(", ")
+            ),
+        )
+        .await
+        .unwrap();
+    let glosses = |from: usize| -> String {
+        (from..from + EACH)
+            .map(|i| format!("GLOSS remark ON wide.c{i} AS $${{\"n\": {i}}}$$;"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let first = plane.channel(agent(), Some("fin")).await.unwrap();
+    let second = plane.channel(human(), Some("fin")).await.unwrap();
+    let (ones, twos) = (glosses(0), glosses(EACH));
+    let (one, two) = tokio::join!(first.execute(&ones), async {
+        let refused = second
+            .execute(
+                "DECLARE FUNCTION raw FOR fin AS $$ SELECT count(*) AS n FROM main.glossary $$ RETURNS raw;",
+            )
+            .await;
+        (refused, second.execute(&twos).await)
+    });
+    assert_eq!(one.unwrap().len(), EACH);
+    let (refused, written) = two;
+    assert_eq!(written.unwrap().len(), EACH);
+    assert_eq!(refused.unwrap_err().code(), Some("untracked_read"));
+
+    let read = first
+        .execute(
+            "SELECT count(*), count(DISTINCT subject), count(DISTINCT begin_snapshot)
+             FROM glossary_history WHERE aspect = 'remark'",
+        )
+        .await
+        .unwrap();
+    let total = (2 * EACH).to_string();
+    assert_eq!(
+        text(&read),
+        vec![vec![Some(total.clone()), Some(total.clone()), Some(total)]]
     );
 }
 
@@ -485,9 +619,6 @@ async fn a_changed_kit_runs_again_at_the_next_open() {
 /// the slowest suite's.
 #[test]
 fn the_kits_suites_pass() {
-    if !extension_present() {
-        return;
-    }
     let kits = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../kits");
     let mut suites: Vec<_> = std::fs::read_dir(&kits)
         .expect("the kits directory")

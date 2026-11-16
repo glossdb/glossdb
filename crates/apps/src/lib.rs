@@ -27,14 +27,13 @@
 mod app;
 mod assets;
 mod builtin;
+mod decide;
 mod export;
 mod frames;
 pub mod glossed;
 pub mod ipc;
 mod overview;
 mod pages;
-mod remeasure;
-mod rule;
 
 /// The engine the interfaces are built on: the facade over DuckDB and the
 /// glossql extension, under the one name an interface uses.
@@ -65,7 +64,7 @@ use axum::routing::get;
 /// actor per app (`app:<name>`) and can only read — they ride the
 /// one-query streaming path.
 #[derive(Clone)]
-pub struct AppDoor {
+pub struct AppInterface {
     pub plane: Arc<Plane>,
     /// The server's own URI, as the world reaches it — what a page
     /// prints in a snippet a reader copies. The server is told it; a
@@ -77,18 +76,23 @@ pub struct AppDoor {
 /// does not hold. The URL is the binding, so an unknown one is a
 /// missing resource — and the answer names what there is, because a
 /// mistyped dataset should not cost a second request to recover from.
-pub(crate) async fn known(door: &AppDoor) -> Vec<String> {
-    door.plane.datasets().await.unwrap_or_default()
+pub(crate) async fn known(interface: &AppInterface) -> Vec<String> {
+    interface.plane.datasets().await.unwrap_or_default()
 }
 
 /// The 404 for a dataset the workspace does not hold, none where it
 /// holds it. The way in is one existence question; the listing is read
 /// on the miss alone, where the answer names what there is.
-pub(crate) async fn missing(door: &AppDoor, dataset: &str) -> Option<String> {
-    if door.plane.dataset_exists(dataset).await.unwrap_or(false) {
+pub(crate) async fn missing(interface: &AppInterface, dataset: &str) -> Option<String> {
+    if interface
+        .plane
+        .dataset_exists(dataset)
+        .await
+        .unwrap_or(false)
+    {
         return None;
     }
-    Some(no_such_dataset(dataset, &known(door).await))
+    Some(no_such_dataset(dataset, &known(interface).await))
 }
 
 /// The 404 body every dataset-scoped interface answers with: the name that
@@ -105,16 +109,16 @@ pub fn no_such_dataset(dataset: &str, known: &[String]) -> String {
 }
 
 /// The interface takes exactly TWO writes, and both are human acts: this is
-/// a human interface, so the gate stamps human standing on every caller
+/// a human interface, so the gate stamps the human actor kind on every caller
 /// that reaches it (`glossdb_serverd::auth`).
 ///
-/// The page holds no other write, and the reason is standing: a page
+/// The page holds no other write, and the reason is the actor kind: a page
 /// that can change the catalog invites a second way to say everything
 /// the language already says. A review decision is the exception because it is
 /// the one thing only a person can supply, its shape is fixed (a
 /// stance on a claim the workspace already derived), and without it a
 /// human who steps away has no way back into the catalog at all, since
-/// the MCP round can only ask while they are watching and an agent may
+/// the MCP review can only ask while they are watching and an agent may
 /// never speak for them.
 /// The console is already the page of open questions; answering there
 /// is the gesture the page was drawn for.
@@ -132,12 +136,8 @@ pub fn router(plane: Arc<Plane>, origin: &str) -> Router {
         .route("/{app}/p/{page}", get(pages::page))
         .route("/{app}/frames/{frame}", get(frames::frame))
         .route("/{app}/specs/{spec}", get(pages::spec))
-        .route("/{app}/rule", axum::routing::post(rule::rule))
-        .route(
-            "/{app}/remeasure",
-            axum::routing::post(remeasure::remeasure),
-        )
-        .with_state(AppDoor {
+        .route("/{app}/decide", axum::routing::post(decide::decide))
+        .with_state(AppInterface {
             plane,
             origin: origin.into(),
         })
@@ -155,7 +155,7 @@ pub fn assets_router() -> Router {
 pub fn root_router(plane: Arc<Plane>, origin: &str) -> Router {
     Router::new()
         .route("/", get(pages::datasets))
-        .with_state(AppDoor {
+        .with_state(AppInterface {
             plane,
             origin: origin.into(),
         })

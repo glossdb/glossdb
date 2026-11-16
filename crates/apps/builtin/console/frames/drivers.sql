@@ -7,7 +7,7 @@ WITH cells AS (
   SELECT dimension, member, period, value,
          dense_rank() OVER (ORDER BY period DESC) AS recency
   FROM metric_series(grain := $grain)
-  WHERE metric = CAST($metric AS VARCHAR) AND dimension <> ''),
+  WHERE metric = CAST($view AS VARCHAR) AND dimension <> ''),
 moves AS (
   SELECT dimension, member,
          max(CASE WHEN recency = 2 THEN value END) AS from_value,

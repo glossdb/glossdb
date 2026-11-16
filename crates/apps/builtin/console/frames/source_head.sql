@@ -7,4 +7,4 @@ SELECT s.name,
        strftime(s.declared_at, '%Y-%m-%d %H:%M') AS declared
 FROM sources s
 WHERE s.name = CAST($source AS VARCHAR)
-QUALIFY row_number() OVER (PARTITION BY s.name ORDER BY s.seq DESC) = 1
+QUALIFY row_number() OVER (PARTITION BY s.name ORDER BY s.begin_snapshot DESC) = 1

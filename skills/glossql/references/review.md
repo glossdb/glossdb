@@ -1,122 +1,99 @@
-# Review decisions and open questions — read when the status line counts a decision, a question or a conflict
+# Review: assumptions, review decisions, conflicts
 
-Every assumption in your metric definitions with a confidence below 1
-is a question for a person. Their answer is stored as a review
-decision: confirmed or corrected, naming the assumption by its `key`.
-It is the person's own annotation on the asset; your definition stays
-yours.
+Read before you state your first assumption, and when `next` shows a
+`review` row.
 
-- Questions come from your current definition. Raising a confidence
-  with a measurement as its basis closes the question.
-- A person's decline holds until the workspace changes. Your next
-  write opens the question again.
-- A client without question forms shows nothing. Ask the open
-  questions in chat yourself, as multiple choice with your reasons,
-  and run the statement the answer names.
+## Assumptions
 
-The review queue is a view:
+An assumption is a judgment call in a view's definition: which rows
+count, which date, how a value is written. It sits in the
+definition's `assumptions` list:
 
-```sql
-SELECT o.aspect, o.dimension, o.key, o.assumption, o.conf
-FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
-ORDER BY o.conf ASC;
+```json
+{"dimension": "scope", "key": "delivered-only",
+ "assumption": "only deliveries with status delivered count",
+ "alternative": "returned deliveries count too",
+ "basis": "the status values", "confidence": 0.7}
 ```
 
-These are the rows the forms and the console show. The join limits
-them to the bound dataset; without it you read every dataset in the
-workspace. `review_decisions` lists what the person has decided.
+- **`key`** is a short name you choose. Questions and decisions match
+  on the view and the key; the wording is for the person and is not
+  compared. An assumption without a key is not asked. Keep the key
+  when you reword; a new key is a new question. One assumption under two
+  keys is asked twice.
+- **`confidence`** is tied to the evidence. 1.0: a person decided it,
+  or a named measurement or test shows it. About 0.9: independent
+  evidence agrees. About 0.7: one source, or your reading of names
+  and values. 0.5 and below: a default you took to go on. Everything
+  below 1.0 with a key is asked, lowest first.
+- **`dimension`** names the kind of call: `scope`, `definition`,
+  `convention`. An assumption with the dimension `additivity`, `sign`
+  or `grain` is not asked: the data settles those. Measure, and
+  record it at 1.0 with the measurement as the basis.
+- **`alternative`** names the strongest other reading, so the person
+  sees the choice.
 
-## Keys
+Do not ask a person for something the data can tell you: run the
+function (`skill://glossql-modeling/SKILL.md` has the list). What is
+left for a person is judgment: definitions, conventions, business
+meaning, a choice between two readings.
 
-Every assumption carries a `key`: a short slug you choose
-(`business-days-only`, `completed-only`). Decisions and questions
-match on `(aspect, key)` only. The wording is for the person and is
-never compared.
+## The review queue
 
-- **An assumption without a key is never asked.**
-- **One claim under two keys is two questions.** Nothing detects it.
-  Use one key for one decision. Better: declare the shared concept as
-  its own metric and build both metrics on it.
-- **Dropping a key drops its question.** Do it only when the
-  definition no longer rests on the claim.
-- **One key decided two ways on two metrics is yours to reconcile.**
-  The form shows the earlier decision when it asks; `review_decisions`
-  shows both. Decide whether the metrics really differ and record that
-  in their definitions. If you need it settled, ask again.
+```sql
+SELECT o.aspect, o.dimension, o.key, o.assumption, o.basis, o.conf
+FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
+ORDER BY o.conf
+```
 
-## Apply what was decided, in the same session
+`open_questions`, `review_decisions` and `agent_assumptions` cover
+the whole workspace; the join narrows them to the dataset of the
+call. A person answers in the console, or in a form the interface
+sends with a call that only reads the catalog. Where the client shows
+no forms, ask the open questions in chat, with the alternative and
+your reason, and tell the person to record the answer in the console.
+The work goes on while a question waits; `next` counts it under
+`waiting for a person`.
 
-**A decision not yet applied** (the status line counts these). Record
-the metric definition again with the decided assumption under the same
-key, at confidence 1.0 with `basis: "decided-by-person"`, or changed
-as the decision's note says. It counts as applied once your current
-definition carries that key at 1.0. Keep the key; reword freely.
+## Applying a decision
 
-- A decision with the stance `unclear` means the person could not tell
-  what you asked. Rewrite the assumption plainly under a new key (the
-  note says what confused them) and record it again. The old key's
-  question goes away with the key.
-- A note that names another metric ("differs from … by design") is the
-  person's judgment across both. Carry it into the assumption text.
+A person's answer is a review decision: `confirmed`, `corrected` or
+`unclear`, with a note. It is the person's own annotation and
+outranks yours. `next` lists it as a `review` row with the view's
+current definition as the statement.
 
-**Then measure again.** Every definition you wrote changes what the
-measurements were computed on, so their results are out of date;
-`open_items` counts them as `re-measure` rows. The `next:` line gives
-the order: apply the decisions, run `temporal()` once, run the
-expected-ranges step once.
+- **Confirmed**: record the definition again with that assumption at
+  confidence 1.0 and `"basis": "decided-by-person"`.
+- **Corrected**: change the SQL and the assumption as the note says,
+  then record it the same way.
+- **Unclear**: the person could not tell what was asked. Rewrite the
+  assumption in plain words under a new key and record the
+  definition; the old question goes with the old key.
 
-- Read the results on the metrics you touched: `TESTS()` on their
-  checks, and `metric_summary().alternative_divergence` where an
-  assumption names an alternative.
-- A test that turned red after a decision is a conflict for the
-  console. Leave it open so the person decides again with the
-  measurement in front of them. Never change the definition to quiet
-  it. A decision outranks your judgment, not the measurements.
+A decision counts as applied (`folded_in`) when the view's current
+definition carries the key at confidence 1.0. Tests on the view run
+again after the new definition. A test that turns red after a
+decision stays red for the person to see; do not change the
+definition to make it green.
 
-**A person's formula answer newer than the metric's definition.**
-Record the SQL again to match it, or carry the difference as an
-assumption. Until then the view serves the old SQL and the console
-shows the answer as waiting on you.
+Two more rows carry a person's decision, one of kind `review` and
+one of kind `integrate`:
 
-**An approved `recipe_change`** (a person's annotation with `{table,
-sql, reason}`). Run the `DECLARE RECIPE` it approves.
-
-**A person's value over yours.** Read it and rebuild what you hold on
-top of it. Theirs governs.
-
-## Confidence
-
-One scale, tied to the evidence:
-
-- **1.0**: decided by a person, or verified by a named measurement or
-  test. Nothing else.
-- **About 0.9**: independent evidence agrees: a measurement, a
-  conventions annotation and the data's shape. A well-argued
-  convention stops here.
-- **About 0.7**: one source: a single measurement, or your reading of
-  names and values.
-- **0.5 and below**: a default you took in order to proceed.
-
-Nothing branches on confidence. The review orders by it, lowest
-first, and everything below 1.0 can be asked. Too high hides a
-question from the person; too low wastes their time.
-
-When a result is ambiguous, say so at the top of your summary: the
-readings you saw, the one you took, and why. "Two readings hold; I
-took A because B breaks the grain check."
+- **A person's formula is newer than the definition.** A person wrote
+  a `formula` for the view in the business glossary. Change the SQL
+  to match and record the definition, or state the difference as an
+  assumption.
+- **A change to a load query is approved.** A person approved new
+  SQL for a table (`recipe_change`). Declare the load query with it.
 
 ## A value in conflict
 
-`state = 'conflict'` means two authors' values differ on one aspect of
-one asset by more than the test allows. The value is withheld.
-
-1. Read both values: `GLOSSARY(subject, all => true)`.
-2. Go back to the data.
-3. Annotate again only if the evidence changed your mind. Your new
-   annotation replaces your old one, and agreeing values end the
-   conflict.
-
-If the evidence still supports you, leave the conflict. A person ends
-it in their own annotation. Never change an annotation only to end a
-conflict. `DELETE FROM glossary WHERE …` removes a value for good;
-a new annotation keeps the history.
+`state = 'conflict'` in `GLOSSARY()` means two authors' values for
+one property of one asset differ by more than its test allows, or a
+measured rate is above the tolerance. The value is withheld. Read
+every value with `SELECT actor, body, current FROM
+GLOSSARY(deliveries.status, all => true)` and go back to the data.
+Annotate again only if the evidence changed your mind: your new
+annotation replaces your old one, and agreeing values end the
+conflict. Where the evidence still supports your value, leave the
+conflict open; a person ends it with their own annotation.

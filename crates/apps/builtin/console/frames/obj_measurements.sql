@@ -10,5 +10,5 @@ SELECT substr(m.subject, len(d.dataset) + 2) AS subject,
 FROM measurements m JOIN d ON d.dataset = m.dataset
 WHERE m.subject = d.dataset || '.' || CAST($subject AS VARCHAR)
    OR m.subject LIKE d.dataset || '.' || CAST($subject AS VARCHAR) || '.%'
-QUALIFY row_number() OVER (PARTITION BY m.subject, m.function ORDER BY m.seq DESC) = 1
+QUALIFY row_number() OVER (PARTITION BY m.subject, m.function ORDER BY m.begin_snapshot DESC) = 1
 ORDER BY m.subject, m.function

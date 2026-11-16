@@ -15,7 +15,7 @@
 //! dataset arrives in the statements, as `USE`, because the protocol
 //! has no session to hold it. Sources are declared and datasets
 //! brought into being at the workspace interface; an agent working one
-//! dataset connects to that dataset's door.
+//! dataset connects to that dataset's interface.
 //!
 //! No interface keeps a cursor, so a restart cannot lose one and two callers
 //! on two datasets cannot steer each other. `USE` moves the statements
@@ -25,10 +25,10 @@
 //!
 //! Every interface is behind one gate (`auth`): a bearer token, verified
 //! against the issuer's published keys, says who is speaking; the interface
-//! it came through says with which standing. The one way around the
+//! it came through says with which actor kind. The one way around the
 //! gate is explicit ([`Access::Open`], the `GLOSSDB_INSECURE_OPEN`
 //! switch): every caller becomes [`INSECURE_DEV_MODE`], the interface still
-//! saying with which standing.
+//! saying with which actor kind.
 
 // An unwrap outside a test is a panic waiting for the row that has it;
 // tests are exempt (clippy.toml).
@@ -43,7 +43,6 @@
 )]
 
 mod auth;
-mod bootstrap;
 pub mod functions;
 mod login;
 mod mcp;
@@ -59,10 +58,9 @@ pub use glossdb_duck as engine;
 
 pub use crate::engine::Plane;
 pub use auth::{Endpoints, Gate};
-pub use bootstrap::bootstrap;
 pub use glossdb_apps::ipc::ARROW_STREAM;
 pub use login::Login;
-pub use mcp::GlossqlMcp;
+pub use mcp::{GlossqlMcp, REFUSAL_META, SUMMARY_META};
 pub use wire::DEFAULT_ROW_CAP;
 
 use std::sync::Arc;
@@ -77,7 +75,7 @@ use tower_http::trace::TraceLayer;
 
 /// The server's own hand: the actor the shipped system is bootstrapped
 /// under, and the one the interface reads with when a read needs a channel
-/// and no request is behind it. Human standing, because a person
+/// and no request is behind it. The human actor kind, because a person
 /// decided what ships, so the shipped kit outranks what an agent later
 /// glosses on the same key; the id names the mechanism, so a
 /// `GLOSSARY()` reader sees a gloss came with the system rather than
@@ -94,7 +92,7 @@ pub const INSECURE_DEV_MODE: &str = "insecure_dev_mode";
 /// Whose `Host` header the agent interface answers, and the URI the server
 /// is reached at.
 #[derive(Clone)]
-pub struct DoorConfig {
+pub struct InterfaceConfig {
     /// Hostnames the agent interface accepts in the `Host` header; empty
     /// is every host. The transport's default — loopback only — is
     /// the DNS-rebinding guard of a server on a laptop; a deployment
@@ -106,9 +104,9 @@ pub struct DoorConfig {
     pub own_uri: String,
 }
 
-impl Default for DoorConfig {
+impl Default for InterfaceConfig {
     fn default() -> Self {
-        DoorConfig {
+        InterfaceConfig {
             allowed_hosts: StreamableHttpServerConfig::default().allowed_hosts,
             own_uri: "http://127.0.0.1:8080".into(),
         }
@@ -118,7 +116,7 @@ impl Default for DoorConfig {
 /// Who may speak at the interfaces: verified by the gate the login carries,
 /// or — by the explicit `GLOSSDB_INSECURE_OPEN=true` switch — anyone,
 /// every caller stamped [`INSECURE_DEV_MODE`] with the interface's
-/// standing.
+/// actor kind.
 pub enum Access {
     /// Every interface verifies with the gate the login carries.
     Gated(Arc<Login>),
@@ -138,9 +136,9 @@ pub(crate) async fn missing_dataset(plane: &Plane, dataset: &str) -> Option<Stri
     Some(glossdb_apps::no_such_dataset(dataset, &known))
 }
 
-/// The doors. `/` is the workspace — which datasets there are;
+/// The interfaces. `/` is the workspace — which datasets there are;
 /// everything else hangs off one of them.
-pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
+pub fn router(plane: Arc<Plane>, interfaces: InterfaceConfig, access: Access) -> Router {
     let mcp_plane = Arc::clone(&plane);
     let app_plane = Arc::clone(&plane);
     let root_plane = Arc::clone(&plane);
@@ -164,31 +162,36 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     config.json_response = true;
     config.legacy_session_mode = false;
     config.stateless_protocol_metadata_required = false;
-    config.allowed_hosts = doors.allowed_hosts.clone();
-    // The connect-time brief: shared across handler instances, boot-
+    config.allowed_hosts = interfaces.allowed_hosts.clone();
+    // The connect-time summary: shared across handler instances, boot-
     // filled, refreshed after every writing call (see
-    // mcp::refresh_brief). One shared baseline, no per-actor state.
-    let brief = Arc::new(mcp::Brief::default());
+    // mcp::refresh_summary). One shared baseline, no per-actor state.
+    let summary = Arc::new(mcp::Summary::default());
     {
         let plane = Arc::clone(&plane);
-        let brief = Arc::clone(&brief);
-        tokio::spawn(async move { GlossqlMcp::refresh_brief(&plane, &brief).await });
+        let summary = Arc::clone(&summary);
+        tokio::spawn(async move { GlossqlMcp::refresh_summary(&plane, &summary).await });
     }
     let mcp = StreamableHttpService::new(
-        move || Ok(GlossqlMcp::new(Arc::clone(&mcp_plane), Arc::clone(&brief))),
+        move || {
+            Ok(GlossqlMcp::new(
+                Arc::clone(&mcp_plane),
+                Arc::clone(&summary),
+            ))
+        },
         Arc::new(NeverSessionManager::default()),
         config,
     );
-    // The interfaces, standing by kind: the agent interfaces stamp agent, the
+    // The interfaces, by actor kind: the agent interfaces stamp agent, the
     // human interfaces stamp human. Identity is read the same way at every
     // interface; only the kind differs, and it is the interface's to say
     // (SPEC.md §1, the actor rides the transport).
     let human = Router::new()
-        .merge(glossdb_apps::root_router(root_plane, &doors.own_uri))
+        .merge(glossdb_apps::root_router(root_plane, &interfaces.own_uri))
         .route("/{dataset}/query", post(query::query).with_state(plane))
         .nest(
             "/{dataset}/app",
-            glossdb_apps::router(app_plane, &doors.own_uri),
+            glossdb_apps::router(app_plane, &interfaces.own_uri),
         );
     // Two agent interfaces over the one service: the workspace interface opens
     // every call unbound, and the bound interface opens it on the dataset
@@ -200,7 +203,7 @@ pub fn router(plane: Arc<Plane>, doors: DoorConfig, access: Access) -> Router {
     );
     let routes = match access {
         Access::Gated(login) => {
-            // One gate, instantiated per interface with that interface's standing.
+            // One gate, instantiated per interface with that interface's actor kind.
             let gate = Arc::clone(login.gate());
             let human = human.layer(axum::middleware::from_fn_with_state(
                 (Arc::clone(&gate), ActorKind::Human),

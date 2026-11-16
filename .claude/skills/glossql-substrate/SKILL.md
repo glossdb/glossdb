@@ -35,8 +35,8 @@ mode; this file is so nobody has to rediscover it.
   (`GLOSSARY()`, `TESTS()`, the collapse, the tests (`DECLARE TEST`), the
   stale rule), the subjects (a dataset, a table, a column, a relationship,
   a source, a view and its columns), the lineage of views, the cells
-  of a dataset (`dataset_cells`), a view kept per store version, the
-  service call (`glossql_service`), and the kit loader (`glossql_kit`).
+  of a dataset (`dataset_cells`), a view and a kit's read kept per store
+  version (`glossql_kept_view`, `glossql_kept`), the service call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
@@ -61,10 +61,15 @@ mode; this file is so nobody has to rediscover it.
   the grammar on, the actor as session variables the extension reads,
   the dataset in use; the catalog reads bare, since the lake's `main`
   schema is on every search path. No interface keeps a cursor.
-- **A read never writes.** The catalog reads and the kept views are
-  computed once per store version — the lake's snapshot and every
-  relation's highest sequence — and served from the object cache; a
-  write moves the version. An arm of `next` reads the catalog and
+- **A read never writes.** The catalog reads, the kept views and the
+  kept reads are computed once per store version — the lake's snapshot
+  and every relation's highest sequence — and served from the object
+  cache; a write moves the version. A read that several reads compose
+  (`view_summary()`, `view_tests()`) is read through
+  `glossql_kept('<macro>')`, so one write plans it once. An arm of
+  `next` joins what it needs instead of a correlated subquery: DuckDB
+  plans each correlated subquery as a dependent join and walks the whole
+  plan once per such join. An arm of `next` reads the catalog and
   never the data: what a goal judges is a measurement, read back.
 - **A read is a table macro; a measurement is a function with a
   body.** A new read, measurement or next step is a statement in a kit,
@@ -80,7 +85,7 @@ mode; this file is so nobody has to rediscover it.
 - **Measurements carry their provenance.** A measurement is current
   while its inputs — the data's snapshot and the catalog relations the
   function read — are unchanged, and is stale once one moved. A
-  measurement is no input of a pin: a next step that must compare two
+  measurement is no input of a data version: a next step that must compare two
   measurements compares them itself.
 - **A refusal is a value where the kit must hold.** The service
   call's soft form, `glossql.service_soft`, answers a refusal as

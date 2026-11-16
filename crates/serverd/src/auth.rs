@@ -11,7 +11,7 @@
 //! It issues nothing: the login, the consent, the client registration
 //! are the issuer's.
 //!
-//! **Identity is the token's; standing is the interface's.** A token names a
+//! **Identity is the token's; actor kind is the interface's.** A token names a
 //! subject (`sub`) — the person who consented. Whether that person is
 //! speaking as themselves or through an agent is not a claim anyone
 //! signs; it is which interface the request came through. `/mcp` is the
@@ -26,8 +26,8 @@
 //! names none at all, is refused: an audience is what tells a token
 //! minted for this server apart from one minted for any other.
 //!
-//! Standing the server *tests* is a separate matter and is not
-//! governed here: an answer elicited mid-call is stored with human standing
+//! The actor kind the server *tests* is a separate matter and is not
+//! governed here: an answer elicited mid-call is stored as a human actor
 //! under the same subject, because the server saw the act.
 
 use std::sync::{Mutex, RwLock};
@@ -176,6 +176,7 @@ impl Gate {
     }
 
     /// A fixed key set, for tests: whoever holds the private halves mints.
+    #[cfg(any(test, feature = "testing"))]
     pub fn with_keys(
         issuer: &str,
         resource: &str,
@@ -333,13 +334,13 @@ fn algorithm_of(jwk: &Jwk) -> Option<Algorithm> {
     }
 }
 
-/// The gate, one layer above an interface, carrying that interface's standing.
+/// The gate, one layer above an interface, carrying that interface's actor kind.
 ///
 /// Every interface is behind one of these, so identity is read the same way
 /// for all of them and no handler can forget to. The kind is the
 /// interface's: `/mcp` says agent, the others say human. The cookie is a
 /// browser's, so only a human interface reads it: at the agent interface it
-/// would give a person's session an agent's standing.
+/// would give a person's session an agent's actor kind.
 pub async fn gate(
     State((gate, kind)): State<(std::sync::Arc<Gate>, ActorKind)>,
     mut req: Request,

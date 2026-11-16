@@ -22,7 +22,7 @@
           <span class="r-subj">{name}<br><span class="r-meta">{columns} {columns_label}</span></span>
           <span class="r-num">{rows}<br><span class="r-meta">rows</span></span>
           <span class="r-num {ncls}">{nulled}{dash}<br><span class="r-meta">{nulled_label}</span></span>
-          <span class="r-meta">{landed}</span>
+          <span class="r-meta">{loaded}</span>
           <span class="wgroup"><a class="wbtn" hx-boost="false" download href="{csv}">csv</a><a class="wbtn" hx-boost="false" download href="{parquet}">parquet</a></span>
         </div>
       </template>
@@ -31,7 +31,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="Every metric, single value and derived view of this dataset, as its view serves it: a metric&#x27;s rows whole, before they are grouped. A stopped metric definition carries its author&#x27;s reason and serves no file.">Views</span>
-      <code class="chip">metric_surfaces · &lt;name&gt;</code></header>
+      <code class="chip">view_definitions · &lt;name&gt;</code></header>
     <p class="hint">Each view says what it is while it serves, and why not when it does not.</p>
     <gl-rows frame="frames/reads?stopped=0" empty="no view is served here yet: a view is a VIEW aspect with a metric definition, a GLOSS with its sql">
       <template>
@@ -61,7 +61,7 @@
   </section>
 
   <section class="tile">
-    <header><span class="eyebrow">A read of your own</span></header>
+    <header><span class="eyebrow">Your own query</span></header>
     <p class="hint">For anything these files do not answer, use the query endpoint: post a query, receive an Arrow stream. The downloads above use the same endpoint.</p>
 <pre class="statement">curl -s --data 'SELECT * FROM &lt;table&gt; LIMIT 10' \
   -H "Authorization: Bearer $TOKEN" {{ origin }}/{{ dataset }}/query</pre>

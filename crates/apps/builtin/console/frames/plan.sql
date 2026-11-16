@@ -1,14 +1,17 @@
 -- The plan beside one metric: every plan declared on it, period by
 -- period at the plan's own grain — the planned number, the actual
 -- where the period has begun, the variance (actual minus plan) where
--- the period is complete, and the forecast's median with its 80% band
--- where it covers the rest: the step's band at the metric's own grain,
+-- the period is complete, and the forecast's median with its 80% range
+-- where it covers the rest: the step's range at the metric's own grain,
 -- at a coarser grain the actual to date plus the total that runs to
--- the period's end. `plan_points()` is the read; the wording, the
+-- the period's end, with the share of such ranges that held on the
+-- model service's held-out data. `plan_points()` is the read, empty
+-- where the plan kit is not loaded; the wording, the
 -- rounding and the chip's class are this frame's. Below or above: the
--- band does not hold the plan, which is what the next read's plan goal
+-- range does not hold the plan, which is what the next read's plan goal
 -- asks a judgment on. A year row of a plan whose rows cover part of
--- the year says how much, and takes no band.
+-- the year says how much, and takes no range. A period the metric's
+-- series does not cover has no actual and no variance, and says so.
 SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
        fmt_number(value) AS planned,
        coalesce(fmt_number(actual), '—') AS actual,
@@ -21,14 +24,15 @@ SELECT plan, grain, label, strftime(period, '%Y-%m-%d') AS period,
          ELSE fmt_number(expected) || ' (' || fmt_number(low)
               || ' to ' || fmt_number(high) || ')' END AS expected,
        CASE planned
-         WHEN 'inside' THEN 'inside the band'
-         WHEN 'below' THEN 'below the band'
-         WHEN 'above' THEN 'above the band'
+         WHEN 'inside' THEN 'inside the range'
+         WHEN 'below' THEN 'below the range'
+         WHEN 'above' THEN 'above the range'
+         WHEN 'not_covered' THEN 'the actuals do not cover it'
          ELSE planned END || coalesce(', covers ' || covers, '') AS planned,
        CASE planned WHEN 'below' THEN 'warn' WHEN 'above' THEN 'warn' ELSE 'ok' END AS scls,
        coalesce(
-         CAST(CAST(round(held_80 * 100) AS INT) AS VARCHAR) || '% of such bands held (' || held_from || ')',
+         CAST(CAST(round(coverage_80 * 100) AS INT) AS VARCHAR) || '% of such ranges held on held-out data',
          '') AS held
 FROM plan_points()
-WHERE metric = CAST($metric AS VARCHAR)
+WHERE metric = CAST($view AS VARCHAR)
 ORDER BY plan, CASE grain WHEN 'year' THEN 0 ELSE 1 END, period

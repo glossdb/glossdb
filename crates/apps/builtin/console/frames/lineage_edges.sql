@@ -1,15 +1,15 @@
--- The lineage graph's edges: every declared key edge of the bound
--- dataset, spelled without the dataset's prefix, and for every current
--- metric definition the table columns its served fields descend from. `m2o` is
--- `->`, `o2o` is `<->`, `reads` is a metric definition reading the column.
+-- The lineage graph's edges. `m2o` (`->`) and `o2o` (`<->`): a
+-- declared relationship between two tables, from the column that
+-- refers to the column it refers to. `reads`: a table's or a view's
+-- column to the view column that descends from it.
 WITH d AS (SELECT dataset FROM current_dataset)
 SELECT substr(r.left_side, len(d.dataset) + 2) AS src,
        substr(r.right_side, len(d.dataset) + 2) AS dst,
        CASE r.op WHEN '<->' THEN 'o2o' ELSE 'm2o' END AS kind
 FROM relationships r JOIN d ON d.dataset = r.dataset
 UNION ALL
-SELECT source AS src,
-       metric || '.' || field AS dst,
+SELECT DISTINCT source_table || '.' || source_column AS src,
+       view || '.' || target_column AS dst,
        'reads' AS kind
-FROM metric_sources()
-WHERE field IS NOT NULL
+FROM column_mapping()
+WHERE source_column IS NOT NULL

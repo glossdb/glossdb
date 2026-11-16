@@ -12,8 +12,8 @@
   const tables = new Map(); // frame url -> Promise<Arrow.Table>
   const rowSets = new Map(); // frame url -> Promise<Array<Object>>
   const specs = new Map(); // spec url -> Promise<Object>
-  // frame url -> 'record' | 'data', from the server's derived
-  // glossql-frame-class header: `record` frames read the glossary
+  // frame url -> 'catalog' | 'data', from the server's derived
+  // glossql-frame-class header: `catalog` frames read the glossary
   // somewhere in their expansion and can change under a review decision; `data`
   // frames provably cannot. Metadata and data are not one pile.
   const classes = new Map();
@@ -46,8 +46,8 @@
       } catch (_) { /* not json — keep the status line */ }
       throw new Error(message);
     }
-    // Absent header reads as record — evict-on-write is the safe side.
-    classes.set(url, res.headers.get('glossql-frame-class') || 'record');
+    // Absent header reads as catalog — evict-on-write is the safe side.
+    classes.set(url, res.headers.get('glossql-frame-class') || 'catalog');
     return Arrow.tableFromIPC(new Uint8Array(await res.arrayBuffer()));
   }
 
@@ -114,9 +114,9 @@
   // A write evicts what it can change, nothing else. The server
   // announces every write with `HX-Trigger: glossql:written` (the
   // review decision's 204, and the stale-tab 409 whose cause is someone else's
-  // write), and it classifies every frame it serves: `record` frames
+  // write), and it classifies every frame it serves: `catalog` frames
   // read the glossary somewhere in their expansion, `data` frames
-  // provably do not — so the cube's cells, the trend and the slices
+  // provably do not — so the metric's cells, the trend and the slices
   // survive a review decision untouched, in cache and on screen. Capture phase, so the
   // evictions land before any panel's own listener refetches. Specs
   // stay: they are static files.
@@ -124,29 +124,11 @@
     'glossql:written',
     () => {
       for (const url of new Set([...tables.keys(), ...rowSets.keys()])) {
-        if ((classes.get(url) || 'record') === 'record') {
+        if ((classes.get(url) || 'catalog') === 'catalog') {
           tables.delete(url);
           rowSets.delete(url);
           classes.delete(url);
         }
-      }
-    },
-    { capture: true }
-  );
-
-  // A re-measure can change the cube — its axes, so the dims, the
-  // slices, the drivers — which a review decision cannot. The interface names it
-  // (`glossql:remeasured`, sent beside `glossql:written`), and on it
-  // the data frames go too; the tiles' own `glossql:written` listeners
-  // then find fresh promises and redraw. Scope the effect to the cause:
-  // this is the one write that reaches the data class.
-  document.addEventListener(
-    'glossql:remeasured',
-    () => {
-      for (const url of new Set([...tables.keys(), ...rowSets.keys()])) {
-        tables.delete(url);
-        rowSets.delete(url);
-        classes.delete(url);
       }
     },
     { capture: true }

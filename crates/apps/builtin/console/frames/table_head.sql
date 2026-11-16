@@ -1,17 +1,17 @@
 -- One table's head: what one row is, its grain and time axis from the
 -- entity entry (a person's over the agent's), whether it is a fact or a
 -- dimension table, how many rows and columns it holds, when it last
--- loaded and from which source, and the metrics that read it. One row,
+-- loaded and from which source, and the views that read it. One row,
 -- or none for a name no loaded table carries.
 WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
   SELECT g.body, g.actor_kind, g.written_at,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.actor_kind IN ('human', 'agent')),
 latest AS (
   SELECT i.table_name, i.rows, i.imported_at,
-         row_number() OVER (ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN d ON d.dataset = i.dataset
   WHERE i.table_name = CAST($table AS VARCHAR)),
 cols AS (
@@ -19,11 +19,11 @@ cols AS (
   WHERE c.table_catalog = current_database() AND c.table_name = CAST($table AS VARCHAR)),
 a AS (
   SELECT name, schema FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1),
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
-  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.metric), ', ') AS metrics
-  FROM metric_sources() ms LEFT JOIN a ON a.name = ms.metric
-  WHERE ms.table_name = CAST($table AS VARCHAR)),
+  SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
+  FROM column_mapping() ms LEFT JOIN a ON a.name = ms.view
+  WHERE ms.source_table = CAST($table AS VARCHAR)),
 src AS (
   SELECT max(r.source) AS source FROM recipes r JOIN d ON d.dataset = r.dataset
   WHERE r.table_name = CAST($table AS VARCHAR))
@@ -38,8 +38,8 @@ SELECT l.table_name AS name,
        coalesce('the source ' || src.source, '') AS read,
        strftime(l.imported_at, '%d %b %Y %H:%M') AS "at",
        coalesce(src.source, '') AS source,
-       coalesce('read by ' || r.metrics, '') AS read_by,
-       CASE WHEN e.actor_kind = 'human' THEN 'ruled' ELSE '' END AS mark,
+       coalesce('read by ' || r.views, '') AS read_by,
+       CASE WHEN e.actor_kind = 'human' THEN 'decided' ELSE '' END AS mark,
        CASE WHEN e.actor_kind = 'human' THEN 'a person''s word, ' || strftime(e.written_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title
 FROM latest l
 CROSS JOIN cols c

@@ -17,7 +17,8 @@
     clippy::cast_possible_truncation
 )]
 
-pub mod rulings;
+pub mod decisions;
+#[cfg(any(test, feature = "testing"))]
 pub mod sqllogic;
 
 use std::path::{Path, PathBuf};
@@ -84,17 +85,20 @@ pub enum SessionError {
     #[error("no dataset in use — USE one first")]
     NoDataset,
     #[error("not a subject: {detail}")]
-    UnknownName { name: String, detail: String },
-    #[error("not a subject: {detail}")]
-    NotServed { door: String, detail: String },
-    #[error("function runtime: {0}")]
+    UnknownName { detail: String },
+    /// A read or a measurement that needs the model service, and none
+    /// is named for the instance: `interface` is the service's path.
+    #[error("{detail}")]
+    NotServed { interface: String, detail: String },
+    /// The model service was called and refused or did not answer.
+    #[error("{0}")]
     Service(String),
     #[error("not a subject: {detail}")]
-    BadShape { subject: String, detail: String },
+    BadShape { detail: String },
     #[error("not an aspect name: `{0}`")]
     BadAspectName(String),
-    #[error("the standing review_decision annotation has no decisions list")]
-    RulingSlotNotRulings,
+    #[error("the current review_decision annotation has no decisions list")]
+    DecisionValueNotDecisions,
     #[error("a body carrying `$$` cannot ride the dollar-quoted statement")]
     DollarQuotedBody,
     #[error("streaming takes exactly one query — everything else answers through execute")]
@@ -105,11 +109,11 @@ pub enum SessionError {
         total: usize,
         context: String,
         source: Box<SessionError>,
-        landed: Vec<Outcome>,
+        loaded: Vec<Outcome>,
     },
     #[error("{0}")]
     Engine(String),
-    #[error("`{statement}` is closed at this door: {why}. A root actor runs it.")]
+    #[error("`{statement}` is not allowed on this interface: {why}. A root actor runs it.")]
     Closed {
         statement: String,
         why: &'static str,
@@ -117,25 +121,106 @@ pub enum SessionError {
 }
 
 impl SessionError {
-    pub(crate) fn shape(subject: impl Into<String>, detail: impl Into<String>) -> Self {
-        SessionError::BadShape {
-            subject: subject.into(),
-            detail: detail.into(),
-        }
-    }
-
     /// The engine's refusal, classed where its text says what it is: a
-    /// name the catalog does not hold reads as an unknown name.
+    /// name the catalog does not hold reads as an unknown name. The
+    /// reason is carried once, without the wrappers before it
+    /// ([`unwrapped`]); a refusal a kit raised under a code stays the
+    /// statement's own fault, whatever its words.
     fn engine(e: impl std::fmt::Display) -> Self {
         let text = e.to_string();
+        let text = unwrapped(&text);
+        if let Some(refusal) = service_refusal(text) {
+            return refusal;
+        }
         let lower = text.to_lowercase();
-        if lower.contains("does not exist") || lower.contains("not found") {
+        if refusal_code(text).is_none()
+            && (lower.contains("does not exist") || lower.contains("not found"))
+        {
             return SessionError::UnknownName {
-                name: String::new(),
-                detail: text,
+                detail: text.to_string(),
             };
         }
-        SessionError::Engine(text)
+        SessionError::Engine(text.to_string())
+    }
+
+    /// The refusal's code, where it has one: its class, for the
+    /// classes the interfaces answer apart, or the code a kit raised
+    /// it under (`error('not_a_plan: …')`). The code is what a client
+    /// or a suite compares; the reason after it is free text.
+    pub fn code(&self) -> Option<&str> {
+        match self.cause() {
+            SessionError::UnknownName { .. } => Some("unknown_name"),
+            SessionError::NotServed { .. } => Some("service_not_configured"),
+            SessionError::Service(_) => Some("service_failed"),
+            SessionError::Engine(text) => refusal_code(unwrapped(text)),
+            _ => None,
+        }
+    }
+}
+
+/// The engine's text from where the refusal begins. The Arrow stream
+/// names itself before every error it carries, and the engine names
+/// the error class before a refusal the extension or a kit raised; a
+/// reader needs neither. An error of another class keeps its name:
+/// `Binder Error` and `Catalog Error` say what kind of mistake it was.
+fn unwrapped(text: &str) -> &str {
+    let text = text
+        .strip_prefix("C Data interface error: ")
+        .unwrap_or(text);
+    match text.strip_prefix("Invalid Input Error: ") {
+        Some(rest) if rest.starts_with(EXTENSION_PREFIX) || refusal_code(rest).is_some() => rest,
+        _ => text,
+    }
+}
+
+/// What the extension puts before a refusal of its own.
+const EXTENSION_PREFIX: &str = "glossql: ";
+
+/// The code a kit's refusal leads with: a lower-case word in snake
+/// case, then `: ` and the reason. The extension's prefix may stand
+/// before it, where the refusal came out of a function body.
+fn refusal_code(text: &str) -> Option<&str> {
+    let text = text.strip_prefix(EXTENSION_PREFIX).unwrap_or(text);
+    let (code, _) = text.split_once(": ")?;
+    let snake = code.starts_with(|c: char| c.is_ascii_lowercase())
+        && code
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    snake.then_some(code)
+}
+
+/// The extension's refusals of a model service call, classed: no
+/// service named for the instance, or a service that refused or did not
+/// answer. The reason starts at the extension's own words, without the
+/// engine's error-class prefixes before them, and an unnamed service is
+/// named by the server's setting, the one an operator can set.
+fn service_refusal(text: &str) -> Option<SessionError> {
+    const UNNAMED: &str = "no service is named for ";
+    if let Some(at) = text.find(UNNAMED) {
+        let interface: String = text[at + UNNAMED.len()..]
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ':')
+            .collect();
+        let detail = format!(
+            "no model service is configured, and {interface} needs one: start the server with \
+             {SERVICE_URL} set to the service's URL"
+        );
+        return Some(SessionError::NotServed { interface, detail });
+    }
+    ["the service at ", "the service answered "]
+        .iter()
+        .find_map(|marker| text.find(marker))
+        .map(|at| SessionError::Service(text[at..].to_string()))
+}
+
+impl SessionError {
+    /// The refusal itself, under a sequence's account of where it
+    /// happened.
+    pub fn cause(&self) -> &SessionError {
+        match self {
+            SessionError::Sequence { source, .. } => source.cause(),
+            other => other,
+        }
     }
 }
 
@@ -147,13 +232,13 @@ impl From<duckdb_neo::Error> for SessionError {
 
 impl From<arrow::error::ArrowError> for SessionError {
     fn from(e: arrow::error::ArrowError) -> Self {
-        SessionError::Engine(e.to_string())
+        SessionError::engine(e)
     }
 }
 
 /// What ran and what never ran, for a refusal at `index` of `total`.
 fn sequence_context(index: usize, total: usize) -> String {
-    let landed = match index {
+    let ran = match index {
         1 => "nothing ran before it".to_string(),
         2 => "statement 1 ran".to_string(),
         _ => format!("statements 1–{} ran", index - 1),
@@ -165,7 +250,7 @@ fn sequence_context(index: usize, total: usize) -> String {
     } else {
         format!("; statements {}–{} not run", index + 1, total)
     };
-    format!("{landed}{tail}")
+    format!("{ran}{tail}")
 }
 
 // -- the outcome -------------------------------------------------------
@@ -193,7 +278,7 @@ pub struct QueryStream {
     /// `usize::MAX` on a read of the catalog, which must be whole.
     pub cap: usize,
     /// Whether the statement reads the catalog anywhere.
-    pub record: bool,
+    pub catalog: bool,
 }
 
 /// A file the engine writes a read into, for the app interface's downloads:
@@ -222,7 +307,7 @@ impl CopyFormat {
 
 /// A page the interface serves as a resource.
 #[derive(Debug, Clone)]
-pub struct DoorPage {
+pub struct ServedPage {
     pub uri: String,
     pub name: String,
     pub title: String,
@@ -239,18 +324,13 @@ pub struct Registered {
     pub syntax: Option<String>,
 }
 
-/// The server's own table functions by name: on this engine each is a kit's
-/// table macro, so the list is read from the catalog ([`Session::registered_functions`])
-/// and this constant stays empty for the callers that still name it.
-pub const DOORS: &[(&str, &str)] = &[];
-
-/// The request's standing as the gate stamps it: the actor the interface
+/// The request's actor as the gate stamps it: the actor the interface
 /// verified, carried into the handlers.
 #[derive(Debug, Clone)]
 pub struct Caller(pub Actor);
 
 /// The model service, named once for the instance: `GLOSSDB_SERVICE_URL`
-/// its base, the route each call's own; `GLOSSDB_SERVICE_TOKEN` a key
+/// its base, the path each call's own; `GLOSSDB_SERVICE_TOKEN` a key
 /// sent as-is, or `GLOSSDB_SERVICE_AUDIENCE` the audience an ID token is
 /// minted for by the platform this process runs on — the host mints and
 /// refreshes it through `Plane::token_sink`. Unnamed, every service call
@@ -377,32 +457,13 @@ impl TokenSink {
     }
 }
 
-/// What a recipe or a probe can call: the engine's readers over the
-/// source's files, as DuckDB names them.
-pub fn reader_functions() -> Vec<Registered> {
-    ["read_csv", "read_parquet", "read_json"]
-        .iter()
-        .map(|name| Registered {
-            kind: "table",
-            name: (*name).to_string(),
-            syntax: Some(format!("{name}('<path under the source>')")),
-        })
-        .collect()
-}
-
-/// What a detector's query can call over its `slots` relation: the
-/// engine's own functions, nothing more.
-pub fn detector_functions() -> Vec<Registered> {
-    Vec::new()
-}
-
-/// The brief's counts: what people have written in the catalog.
+/// The summary's counts: what people have written in the catalog.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct BriefCounts {
+pub struct SummaryCounts {
     pub human_writings: i64,
     pub latest_human_at: Option<String>,
     pub approvals_pending: i64,
-    pub rulings_owed: i64,
+    pub decisions_open: i64,
 }
 
 /// The shape of a call, read off the statements before they run.
@@ -415,25 +476,25 @@ pub struct CallShape {
 
 /// The shape, from the statements' text: `USE` names the dataset, the
 /// last one standing; a statement that is not a read, and an
-/// extraction, write; a call of reads alone that names a record
+/// extraction, write; a call of reads alone that names a catalog
 /// relation is a review. Syntactic, as the interfaces need it before the
 /// engine runs anything: a statement that is none of these is refused
 /// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
-    let mut reads_the_record = false;
+    let mut reads_the_catalog = false;
     let mut writes = false;
     let mut dataset = None;
     for piece in split_statements(statements) {
         if let Some(name) = use_target(&piece) {
             dataset = Some(name);
         } else if is_read(&piece) && !is_extraction(&piece) {
-            reads_the_record |= reads_record(&piece);
+            reads_the_catalog |= reads_catalog(&piece);
         } else {
             writes = true;
         }
     }
     CallShape {
-        reviews: reads_the_record && !writes,
+        reviews: reads_the_catalog && !writes,
         writes,
         dataset,
     }
@@ -456,18 +517,17 @@ fn use_target(statement: &str) -> Option<String> {
 }
 
 /// The store's relations, as the extension serves them in the
-/// lake's `main` schema, and the reads over the record.
-const RECORD: &[&str] = &[
+/// lake's `main` schema, and the reads over the catalog.
+const CATALOG: &[&str] = &[
     "glossary",
     // the interface's derived reads, which say what the catalog holds
     "open_questions",
     "review_decisions",
     "agent_assumptions",
-    "open_items",
-    "metric_surfaces",
-    "metric_summary",
-    "metric_sources",
-    "metric_tests",
+    "view_definitions",
+    "view_summary",
+    "column_mapping",
+    "view_tests",
     "workspace_status",
     "app_parts",
     "app_releases",
@@ -487,15 +547,17 @@ const RECORD: &[&str] = &[
 /// Whether a read touches the catalog anywhere: the store's relations by
 /// name, bare or under the store's schema, or the two reads over it.
 /// Syntactic, as the frame class needs: the words of the text, with
-/// the quoting and punctuation taken off.
-pub fn reads_record(sql: &str) -> bool {
+/// the quoting and punctuation taken off. A relation's history
+/// (`<name>_history`) is none of these: it is every row a write
+/// replaced, read under the row cap like the data.
+pub fn reads_catalog(sql: &str) -> bool {
     let lower = sql.to_lowercase();
     lower
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
         .filter(|w| !w.is_empty())
         .any(|word| {
             let name = word.rsplit('.').next().unwrap_or(word);
-            name == "glossary" || RECORD.contains(&name)
+            name == "glossary" || CATALOG.contains(&name)
         })
 }
 
@@ -558,7 +620,7 @@ fn admitted(sql: &str) -> Result<(), SessionError> {
         ("PRAGMA", _) if sql.contains('(') => return Ok(()),
         ("SET" | "RESET" | "PRAGMA", _) => (
             first.to_string(),
-            "the engine's settings and the session's variables are the door's, and the actor and the workspace ride them",
+            "the engine's settings and the session's variables are the interface's, and the actor and the workspace ride them",
         ),
         ("ATTACH" | "DETACH", _) => (
             first.to_string(),
@@ -647,11 +709,11 @@ fn share() -> Option<PathBuf> {
 /// The engine's pieces and where they are.
 struct Pieces {
     extension: PathBuf,
-    /// The extension's kits: the language's examples, kpi and quality.
+    /// The extension's kits: the language's examples, lineage, kpi and quality.
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
-    /// This repository's kits, `kits/`: core, metrics, outlook and goals.
+    /// This repository's kits, `kits/`: core, views, plan, harmonise, outlook and goals.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
@@ -717,7 +779,9 @@ impl Config {
                 pieces.kits.join("core/kit.sql"),
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
-                pieces.kits.join("metrics/kit.sql"),
+                pieces.kits.join("views/kit.sql"),
+                pieces.kits.join("plan/kit.sql"),
+                pieces.kits.join("harmonise/kit.sql"),
                 pieces.kits.join("outlook/kit.sql"),
                 pieces.kits.join("goals/kit.sql"),
             ],
@@ -765,7 +829,7 @@ pub struct Plane {
     _environment: Environment,
     instance: Arc<Instance>,
     config: Config,
-    pages: Arc<[DoorPage]>,
+    pages: Arc<[ServedPage]>,
 }
 
 impl std::fmt::Debug for Plane {
@@ -778,116 +842,15 @@ impl std::fmt::Debug for Plane {
 }
 
 /// Run one statement for its effect on a connection.
-/// The `next` read, written at open from every `routes_<kit>()` macro
-/// the kits and the interface declare: each serves its goals' CTEs and arms
-/// as SQL text over the reads this query takes once — `ds`, `axes`,
-/// `open_items`, `reds`, `bodies` — so one `next` reads the record once
-/// per relation, and the lowest step decides each goal. The goals' order:
-/// one per served metric, named by the metric, then review, then the
-/// outlook's preview goals.
-fn next_view(conn: &Connection) -> Result<String, SessionError> {
-    let (_, _, batches) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT function_name FROM duckdb_functions() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'main' AND function_name LIKE 'routes\\_%' ESCAPE '\\' \
-             AND function_type = 'table_macro' ORDER BY function_name"
-        ),
-        &[],
-    )?;
-    let routes: Vec<String> = rows_as_text(&batches)
-        .into_iter()
-        .filter_map(|row| row.into_iter().next().flatten())
-        .collect();
-    let mut ctes = Vec::new();
-    let mut arms = Vec::new();
-    for route in &routes {
-        let (_, _, batches) = arrow_batches(
-            conn,
-            &format!("SELECT ctes, arms FROM {LAKE}.main.{route}()"),
-            &[],
-        )?;
-        for row in rows_as_text(&batches) {
-            if let Some(Some(c)) = row.first()
-                && !c.trim().is_empty()
-            {
-                ctes.push(c.trim().trim_end_matches(',').to_string());
-            }
-            if let Some(Some(a)) = row.get(1)
-                && !a.trim().is_empty()
-            {
-                arms.push(a.trim().to_string());
-            }
-        }
-    }
-    let steps = if arms.is_empty() {
-        "SELECT NULL::VARCHAR AS surface, NULL::INTEGER AS step, NULL::VARCHAR AS state, \
-         NULL::VARCHAR AS act, NULL::VARCHAR AS say, NULL::VARCHAR AS why, \
-         NULL::VARCHAR AS statement, NULL::VARCHAR AS \"then\" WHERE false"
-            .to_string()
-    } else {
-        arms.join("\nUNION ALL\n")
-    };
-    let shared = format!(
-        "ds AS (SELECT dataset FROM {LAKE}.main.current_dataset), \
-         axes AS MATERIALIZED (SELECT * FROM {LAKE}.main.metric_summary()), \
-         open_items AS MATERIALIZED (SELECT * FROM {LAKE}.main.open_items), \
-         reds AS MATERIALIZED (SELECT subject, test FROM glossql_tests(current_schema(), NULL) WHERE band = 'red'), \
-         bodies AS MATERIALIZED (SELECT aspect AS metric, body::VARCHAR AS body FROM ( \
-           SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.seq DESC) AS rn \
-           FROM {LAKE}.main.glossary g, ds WHERE g.dataset = ds.dataset AND g.subject = ds.dataset) WHERE rn = 1)"
-    );
-    let kit_ctes = if ctes.is_empty() {
-        String::new()
-    } else {
-        format!(", {}", ctes.join(", "))
-    };
-    Ok(format!(
-        "CREATE OR REPLACE VIEW {LAKE}.main.next AS WITH {shared}{kit_ctes}, \
-         steps AS ({steps}), \
-         first AS (SELECT *, row_number() OVER (PARTITION BY surface ORDER BY step, say, why) AS rn FROM steps) \
-         SELECT CASE surface WHEN 'review' THEN 2 WHEN 'outlook' THEN 3 ELSE 1 END AS goal, \
-                surface, step, state, act, say, why, statement, \"then\" \
-         FROM first WHERE rn = 1"
-    ))
-}
-
-/// The `next` view, written when its text is new. The hash of the
-/// composed text rides the view as its comment, which a replace
-/// clears; a view whose comment is the hash holds, and the open
-/// skips the bind of the whole text. A kit that changed changes the
-/// text through its routes.
-fn write_next(conn: &Connection) -> Result<(), SessionError> {
-    let view = next_view(conn)?;
-    let (_, _, hashed) = arrow_batches(
-        conn,
-        &format!("SELECT md5('{}')", view.replace('\'', "''")),
-        &[],
-    )?;
-    let hash = one_cell(&hashed).unwrap_or_default();
-    let (_, _, standing) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT comment FROM duckdb_views() WHERE database_name = '{LAKE}' \
-             AND schema_name = 'main' AND view_name = 'next'"
-        ),
-        &[],
-    )?;
-    if one_cell(&standing).as_deref() == Some(hash.as_str()) {
-        return Ok(());
-    }
-    run(conn, &view)?;
-    run(
-        conn,
-        &format!("COMMENT ON VIEW {LAKE}.main.next IS '{hash}'"),
-    )?;
-    Ok(())
-}
-
 fn run(conn: &Connection, sql: &str) -> Result<(), SessionError> {
     conn.query(sql, Parameters::None)
         .map_err(|e| {
-            SessionError::Engine(format!("{e}\n  in: {}", sql.lines().next().unwrap_or("")))
+            let e = e.to_string();
+            SessionError::Engine(format!(
+                "{}\n  in: {}",
+                unwrapped(&e),
+                sql.lines().next().unwrap_or("")
+            ))
         })?
         .drain()?;
     Ok(())
@@ -1117,7 +1080,7 @@ impl Plane {
                 run(
                     &conn,
                     &format!(
-                        "CREATE TABLE IF NOT EXISTS {PAGES_DB}.main.door_pages \
+                        "CREATE TABLE IF NOT EXISTS {PAGES_DB}.main.served_pages \
                          (uri VARCHAR, title VARCHAR, body VARCHAR)"
                     ),
                 )?;
@@ -1125,7 +1088,6 @@ impl Plane {
                     run(&conn, &format!("FROM glossql_kit('{}')", kit.display()))
                         .map_err(|e| SessionError::Engine(format!("kit {}: {e}", kit.display())))?;
                 }
-                write_next(&conn)?;
                 Ok((environment, instance))
             }
         })
@@ -1166,26 +1128,26 @@ impl Plane {
     /// `pages()`, a temp macro of every channel over a table in the
     /// instance's own in-memory database, never the lake, since a page
     /// is the build's and not the catalog's.
-    pub fn with_pages(mut self, pages: Arc<[DoorPage]>) -> Self {
+    pub fn with_pages(mut self, pages: Arc<[ServedPage]>) -> Self {
         if let Err(e) = self.publish_pages(&pages) {
-            tracing::warn!(error = %e, "the door pages are not rows of pages()");
+            tracing::warn!(error = %e, "the served pages are not rows of pages()");
         }
         self.pages = pages;
         self
     }
 
-    fn publish_pages(&self, pages: &[DoorPage]) -> Result<(), SessionError> {
+    fn publish_pages(&self, pages: &[ServedPage]) -> Result<(), SessionError> {
         let conn = self.instance.connect()?;
         run(
             &conn,
             &format!(
-                "CREATE OR REPLACE TABLE {PAGES_DB}.main.door_pages (uri VARCHAR, title VARCHAR, body VARCHAR)"
+                "CREATE OR REPLACE TABLE {PAGES_DB}.main.served_pages (uri VARCHAR, title VARCHAR, body VARCHAR)"
             ),
         )?;
         for page in pages {
             arrow_batches(
                 &conn,
-                &format!("INSERT INTO {PAGES_DB}.main.door_pages VALUES ($uri, $title, $body)"),
+                &format!("INSERT INTO {PAGES_DB}.main.served_pages VALUES ($uri, $title, $body)"),
                 &[
                     ("uri".to_string(), page.uri.clone()),
                     ("title".to_string(), page.title.clone()),
@@ -1196,13 +1158,8 @@ impl Plane {
         Ok(())
     }
 
-    pub fn pages(&self) -> Arc<[DoorPage]> {
+    pub fn pages(&self) -> Arc<[ServedPage]> {
         Arc::clone(&self.pages)
-    }
-
-    pub fn with_row_cap(mut self, cap: usize) -> Self {
-        self.config.row_cap = cap;
-        self
     }
 
     pub fn row_cap(&self) -> usize {
@@ -1244,7 +1201,6 @@ impl Plane {
                 if let Some(dataset) = &dataset {
                     run(&conn, &format!("USE {LAKE}.{}", quote_name(dataset))).map_err(|_| {
                         SessionError::UnknownName {
-                            name: dataset.clone(),
                             detail: format!("no dataset `{dataset}` in the workspace"),
                         }
                     })?;
@@ -1255,7 +1211,7 @@ impl Plane {
                     &conn,
                     &format!(
                         "CREATE OR REPLACE TEMP MACRO pages() AS TABLE \
-                         SELECT uri, title, body FROM {PAGES_DB}.main.door_pages"
+                         SELECT uri, title, body FROM {PAGES_DB}.main.served_pages"
                     ),
                 )?;
                 Ok(conn)
@@ -1299,13 +1255,13 @@ impl Plane {
         Ok(self.datasets().await?.iter().any(|d| d == name))
     }
 
-    /// The brief's counts over the record.
-    pub async fn brief_counts(&self) -> Result<BriefCounts, SessionError> {
+    /// The summary's counts over the catalog.
+    pub async fn summary_counts(&self) -> Result<SummaryCounts, SessionError> {
         let session = self.channel(bootstrap_actor(), None).await?;
         let sql = format!(
             "WITH g AS (SELECT * FROM {LAKE}.main.glossary),
              humans AS (SELECT count(*) AS n, max(written_at)::VARCHAR AS latest FROM g WHERE actor_kind = 'human'),
-             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn FROM g) WHERE rn = 1),
+             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY begin_snapshot DESC) AS rn FROM g) WHERE rn = 1),
              approvals AS (
                SELECT dataset, json_extract_string(body, '$.table') AS tbl, written_at FROM latest
                WHERE actor_kind = 'human' AND aspect = 'recipe_change' AND json_extract_string(body, '$.table') IS NOT NULL),
@@ -1313,34 +1269,34 @@ impl Plane {
                SELECT count(*) AS n FROM approvals a
                WHERE NOT EXISTS (SELECT 1 FROM {LAKE}.main.imports i
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
-             rulings AS (
+             decisions AS (
                SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
                FROM latest r, unnest(coalesce(json_extract(r.body, '$.decisions')::JSON[], [])) t(jr)
                WHERE r.actor_kind = 'human' AND r.aspect = 'review_decision'),
-             owed AS (
-               SELECT count(*) AS n FROM rulings ru
+             unapplied AS (
+               SELECT count(*) AS n FROM decisions ru
                WHERE EXISTS (SELECT 1 FROM latest a, unnest(coalesce(json_extract(a.body, '$.assumptions')::JSON[], [])) t(ja)
                              WHERE a.actor_kind = 'agent' AND a.dataset = ru.dataset AND a.subject = ru.subject AND a.aspect = ru.aspect
                                AND json_extract_string(ja, '$.key') = ru.key
                                AND coalesce(json_extract(ja, '$.confidence')::DOUBLE, 0) < 1.0))
-             SELECT humans.n::BIGINT, humans.latest, pending.n::BIGINT, owed.n::BIGINT FROM humans, pending, owed"
+             SELECT humans.n::BIGINT, humans.latest, pending.n::BIGINT, unapplied.n::BIGINT FROM humans, pending, unapplied"
         );
         let batches = session.batches(&sql, &[]).await?;
         let rows = rows_as_text(&batches);
         let row = rows
             .first()
-            .ok_or_else(|| SessionError::Engine("the brief read no row".into()))?;
+            .ok_or_else(|| SessionError::Engine("the summary read no row".into()))?;
         let int = |i: usize| {
             row.get(i)
                 .and_then(|c| c.as_deref())
                 .and_then(|c| c.parse::<i64>().ok())
                 .unwrap_or(0)
         };
-        Ok(BriefCounts {
+        Ok(SummaryCounts {
             human_writings: int(0),
             latest_human_at: row.get(1).cloned().flatten(),
             approvals_pending: int(2),
-            rulings_owed: int(3),
+            decisions_open: int(3),
         })
     }
 }
@@ -1458,6 +1414,20 @@ impl Session {
         .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
+    /// The lake's snapshot: the version of the data and the catalog
+    /// together, since a load and a write to the catalog each take one.
+    /// A read of the lake alone holds while it does.
+    pub async fn lake_snapshot(&self) -> Option<String> {
+        let batches = self
+            .batches(
+                &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
+                &[],
+            )
+            .await
+            .ok()?;
+        one_cell(&batches)
+    }
+
     /// The statements, in order, each an outcome; a refusal names its
     /// place and carries what loaded before it.
     pub async fn execute(&self, text: &str) -> Result<Vec<Outcome>, SessionError> {
@@ -1473,7 +1443,18 @@ impl Session {
             let total = pieces.len();
             let mut outcomes = Vec::with_capacity(total);
             let mut lines = Vec::new();
+            // A write leaves results out of date. They are brought
+            // current before the next read of the call, so that a read
+            // of `next` or the tests in the same call sees what the
+            // lines after the result count, and once more at the end.
+            // A failed sequence brings none, and the next call's write
+            // does.
+            let mut pending = Pending::default();
             for (i, piece) in pieces.iter().enumerate() {
+                let reads = is_read(piece) && !measurement_call(piece);
+                if reads {
+                    pending.run(&conn);
+                }
                 let ran = if root {
                     execute_one(&conn, piece, cap)
                 } else {
@@ -1482,6 +1463,7 @@ impl Session {
                 match ran {
                     Ok((outcome, line)) => {
                         outcomes.push(outcome);
+                        pending.wrote |= !reads && use_target(piece).is_none();
                         lines.extend(line);
                     }
                     Err(e) if total == 1 => return Err(e),
@@ -1491,24 +1473,12 @@ impl Session {
                             total,
                             context: sequence_context(i + 1, total),
                             source: Box::new(e),
-                            landed: outcomes,
+                            loaded: outcomes,
                         });
                     }
                 }
             }
-            // What the call wrote decides which metrics' tests run now;
-            // a failed sequence runs none, and the next call's write does.
-            // A measurement the call ran may be the evidence a check reads,
-            // so the checks whose result predates it run again too.
-            let measured = pieces.iter().any(|p| measurement_call(p));
-            if (measured
-                || lines
-                    .iter()
-                    .any(|l| l.starts_with("glossed ") || l.starts_with("imported ")))
-                && let Err(e) = built_in_tests(&conn, &lines, measured)
-            {
-                tracing::debug!(error = %e, "built-in tests: not run");
-            }
+            pending.run(&conn);
             Ok(outcomes)
         })
         .await
@@ -1616,10 +1586,10 @@ impl Session {
         }
         let one = pieces[0].clone();
         self.admit(&one)?;
-        let record = reads_record(&one);
+        let catalog = reads_catalog(&one);
         // an extraction is the language's, not a SELECT to page: it runs
         // as written, and stores one row per function
-        let cap = if paged && !record && !is_extraction(&one) {
+        let cap = if paged && !catalog && !is_extraction(&one) {
             self.row_cap
         } else {
             usize::MAX
@@ -1635,54 +1605,8 @@ impl Session {
             schema,
             stream,
             cap,
-            record,
+            catalog,
         })
-    }
-
-    /// The console's re-measure: every function's value of the bound
-    /// dataset that loaded before the last change runs again over its
-    /// subject; every measurement a metric's fact row wants and nobody
-    /// ran, and every tested measurement on the dataset nobody ran
-    /// (the walk), runs for the first time, in the functions' name order,
-    /// which runs the forecast before the plan judgement that reads it.
-    /// Returns how many ran. A
-    /// function that refuses — the walk with no service named — is
-    /// logged and stays required, where the banner and the goal's next act
-    /// carry its refusal by name; the others run.
-    pub async fn remeasure(&self) -> Result<usize, SessionError> {
-        let acts = self
-            .batches(
-                &format!(
-                    "SELECT DISTINCT m.function, m.subject \
-                     FROM glossql_glossary(current_schema(), NULL, true) r \
-                     JOIN {LAKE}.main.measurements m ON m.subject = r.subject AND m.aspect = r.aspect \
-                     WHERE r.actor = 'function' AND NOT r.current \
-                     UNION \
-                     SELECT split_part(w, ' over ', 1), split_part(w, ' over ', 2) \
-                     FROM (SELECT unnest(wanted) AS w FROM {LAKE}.main.metric_summary()) \
-                     UNION \
-                     SELECT o.subject, split_part(o.what, ' over ', 2) \
-                     FROM {LAKE}.main.open_items o \
-                     WHERE o.kind = 'never measured' AND split_part(o.what, ' over ', 2) = current_schema() \
-                     ORDER BY 1, 2"
-                ),
-                &[],
-            )
-            .await?;
-        let mut ran = 0;
-        for row in rows_as_text(&acts) {
-            let (Some(Some(function)), Some(Some(subject))) = (row.first(), row.get(1)) else {
-                continue;
-            };
-            match self
-                .execute(&format!("SELECT {function}() FROM {subject}"))
-                .await
-            {
-                Ok(_) => ran += 1,
-                Err(e) => tracing::warn!(function, subject, "re-measure: {e}"),
-            }
-        }
-        Ok(ran)
     }
 
     /// What SQL on this channel can call beyond the engine's own: the
@@ -1698,14 +1622,14 @@ impl Session {
         let mut out: Vec<Registered> = column_strings(&macros, 0)
             .into_iter()
             .map(|name| Registered {
-                kind: "door",
+                kind: "interface",
                 syntax: Some(format!("{name}(...)")),
                 name,
             })
             .collect();
         let declared = self
             .batches(
-                &format!("SELECT name FROM {LAKE}.main.functions ORDER BY name"),
+                &format!("SELECT DISTINCT name FROM {LAKE}.main.functions ORDER BY name"),
                 &[],
             )
             .await?;
@@ -1732,8 +1656,8 @@ fn execute_one(
     sql: &str,
     cap: usize,
 ) -> Result<(Outcome, Option<String>), SessionError> {
-    let cap = if reads_record(sql) { usize::MAX } else { cap };
-    let (kind, _, batches) = arrow_batches(conn, sql, &[])?;
+    let cap = if reads_catalog(sql) { usize::MAX } else { cap };
+    let (kind, schema, batches) = arrow_batches(conn, sql, &[])?;
     match kind {
         ResultType::ChangedRows => {
             let n = one_cell(&batches)
@@ -1746,7 +1670,7 @@ fn execute_one(
             if is_glossql_head(sql)
                 && let Some(text) = one_cell(&batches)
             {
-                if let Some(row) = grounding_row(conn, &text)? {
+                if let Some(row) = definition_row(conn, &text)? {
                     return Ok((
                         Outcome::Rows {
                             batches: row,
@@ -1757,173 +1681,70 @@ fn execute_one(
                 }
                 return Ok((Outcome::Done(text.clone()), Some(text)));
             }
-            let (batches, truncated) = cut(batches, cap);
+            let (mut batches, truncated) = cut(batches, cap);
+            // a read with no rows keeps its columns: one empty batch
+            // carries the schema to the interfaces
+            if batches.is_empty() {
+                batches.push(RecordBatch::new_empty(schema));
+            }
             Ok((Outcome::Rows { batches, truncated }, None))
         }
     }
 }
 
-/// The built-in tests the server runs itself, once per call, after the
-/// statements ran: for every metric the call defined, glossed (the view
-/// or one of its columns) or whose scanned table it imported, every test
-/// whose aspect is marked `x-subject: metric` runs over the metric, as
-/// CI runs a suite after a commit. A check that fails is logged and
-/// never fails the call; its row stays missing and the test report
-/// says so.
-fn built_in_tests(conn: &Connection, lines: &[String], measured: bool) -> Result<(), SessionError> {
-    let newest = |table: &str| {
-        format!(
-            "(SELECT * FROM {LAKE}.main.{table} QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)"
-        )
-    };
-    let (_, _, batches) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT a.name FROM {} w JOIN {} a ON a.name = w.aspect \
-             WHERE json_extract_string(a.schema, '$.x-subject') = 'metric' ORDER BY a.name",
-            newest("tests"),
-            newest("aspects")
-        ),
-        &[],
-    )?;
-    let checks: Vec<String> = rows_as_text(&batches)
-        .into_iter()
-        .filter_map(|row| row.into_iter().next().flatten())
-        .collect();
-    if checks.is_empty() {
-        return Ok(());
-    }
-    // A metric is a VIEW aspect that serves a series: a plan, a sample,
-    // a single value and a derived relation have no tests of this kind.
-    let is_metric = |name: &str| -> Result<bool, SessionError> {
-        let quoted = name.replace('\'', "''");
-        let (_, _, kind) = arrow_batches(
-            conn,
-            &format!(
-                "SELECT kind = 'VIEW' AND coalesce(json_extract_string(schema, '$.x-kind'), '') \
-                 NOT IN ('plan', 'sample', 'scalar', 'relation') \
-                 FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
-            ),
-            &[],
-        )?;
-        Ok(one_cell(&kind).as_deref() == Some("true"))
-    };
-    let mut metrics: std::collections::BTreeSet<(String, String)> = Default::default();
-    for line in lines {
-        if let Some(rest) = line.strip_prefix("glossed ") {
-            // `glossed <aspect> on <subject> as <actor>`
-            let Some((aspect, subject)) = rest.split_once(" on ") else {
-                continue;
-            };
-            let subject = subject.split(" as ").next().unwrap_or(subject).trim();
-            let segments: Vec<&str> = subject.split('.').collect();
-            let (dataset, candidate) = match segments.as_slice() {
-                [dataset] => (*dataset, aspect.trim()),
-                [dataset, view, ..] => (*dataset, *view),
-                _ => continue,
-            };
-            if is_metric(candidate)? {
-                metrics.insert((dataset.to_string(), candidate.to_string()));
-            } else if segments.len() >= 2 {
-                // an annotation on a table or its column: every metric
-                // that scans the table
-                scanning(
-                    conn,
-                    dataset,
-                    &format!("{dataset}.{candidate}"),
-                    &is_metric,
-                    &mut metrics,
-                )?;
-            }
-        } else if let Some(rest) = line.strip_prefix("imported ") {
-            let table = rest.split(':').next().unwrap_or("").trim();
-            let Some(dataset) = table.split('.').next().filter(|d| !d.is_empty()) else {
-                continue;
-            };
-            scanning(conn, dataset, table, &is_metric, &mut metrics)?;
-        }
-    }
-    for (dataset, metric) in metrics {
-        profile_join_columns(conn, &dataset, &metric);
-        for check in &checks {
-            if let Err(e) = run(conn, &format!("SELECT {check}() FROM {dataset}.{metric}")) {
-                tracing::debug!(error = %e, %dataset, %metric, %check, "built-in test: not run");
-            }
-        }
-    }
-    // The kits' checks whose result predates what they read, on the
-    // bound dataset: a call bound to none has no report to read.
-    if measured
-        && let Ok((_, _, stale)) = arrow_batches(
-            conn,
-            &format!(
-                "SELECT run FROM {LAKE}.main.metric_tests() \
-                 WHERE NOT current AND declared_by LIKE 'kit:%' AND run <> ''"
-            ),
-            &[],
-        )
-    {
-        for row in rows_as_text(&stale) {
-            if let Some(Some(statement)) = row.first()
-                && let Err(e) = run(conn, statement)
-            {
-                tracing::debug!(error = %e, %statement, "built-in test: not run again");
-            }
-        }
-    }
-    Ok(())
+/// Whether a call wrote since its results were last brought current.
+#[derive(Default)]
+struct Pending {
+    wrote: bool,
 }
 
-/// The fan-out test reads whether a join column's values repeat from
-/// its profile: one aggregate per column of a metric's joins, stored
-/// and reused while the table holds.
-fn profile_join_columns(conn: &Connection, dataset: &str, metric: &str) {
-    let Ok((_, _, joined)) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT left_column FROM glossql_views_joins('{d}') WHERE view = '{m}' \
-             UNION SELECT right_column FROM glossql_views_joins('{d}') WHERE view = '{m}'",
-            d = dataset.replace('\'', "''"),
-            m = metric.replace('\'', "''")
-        ),
-        &[],
-    ) else {
-        return;
-    };
-    for row in rows_as_text(&joined) {
-        if let Some(Some(column)) = row.first()
-            && let Err(e) = run(conn, &format!("SELECT column_profile() FROM {column}"))
-        {
-            tracing::debug!(error = %e, %column, "join column: not profiled");
+impl Pending {
+    /// Brings the dataset's results current after a write, and clears
+    /// the mark. A result that cannot be computed is logged and never
+    /// fails the call.
+    fn run(&mut self, conn: &Connection) {
+        if std::mem::take(&mut self.wrote) {
+            bring_current(conn);
         }
     }
 }
 
-/// The metrics of a dataset whose definition scans a table, added to the set.
-fn scanning(
-    conn: &Connection,
-    dataset: &str,
-    table: &str,
-    is_metric: &dyn Fn(&str) -> Result<bool, SessionError>,
-    metrics: &mut std::collections::BTreeSet<(String, String)>,
-) -> Result<(), SessionError> {
-    let (_, _, views) = arrow_batches(
-        conn,
-        &format!(
-            "SELECT DISTINCT view FROM glossql_views_scans('{}') WHERE table_name = '{}'",
-            dataset.replace('\'', "''"),
-            table.replace('\'', "''")
-        ),
-        &[],
-    )?;
-    for row in rows_as_text(&views) {
-        if let Some(Some(view)) = row.first()
-            && is_metric(view)?
-        {
-            metrics.insert((dataset.to_string(), view.clone()));
+/// The rounds one write is followed for: a result computed in one
+/// round is an input of another's in the next.
+const ROUNDS: usize = 4;
+
+/// The results the bound dataset wants that are missing or out of
+/// date, computed until none is left: the kit's `results_due()` says
+/// which (a result whose inputs moved, by the catalog's own versions,
+/// or one never computed) and in which order, an input before what
+/// reads it. As CI runs a suite after a commit. A statement that fails
+/// is logged and not tried again in this call; its result stays due and
+/// the test report says so.
+fn bring_current(conn: &Connection) {
+    let mut failed = std::collections::BTreeSet::new();
+    for _ in 0..ROUNDS {
+        let Ok((_, _, due)) = arrow_batches(
+            conn,
+            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
+            &[],
+        ) else {
+            return;
+        };
+        let statements: Vec<String> = rows_as_text(&due)
+            .into_iter()
+            .filter_map(|row| row.into_iter().next().flatten())
+            .filter(|statement| !failed.contains(statement))
+            .collect();
+        if statements.is_empty() {
+            return;
+        }
+        for statement in statements {
+            if let Err(e) = run(conn, &statement) {
+                tracing::debug!(error = %e, %statement, "a result: not computed");
+                failed.insert(statement);
+            }
         }
     }
-    Ok(())
 }
 
 /// Whether a statement is a measurement call, `SELECT <function>() FROM
@@ -1951,10 +1772,10 @@ fn measurement_call(sql: &str) -> bool {
 }
 
 /// A metric definition's write answers with the metric's fact row: what the
-/// view's columns say and what they owe, at the pin the write moved
+/// view's columns say and what is missing, at the data version the write moved
 /// to, in place of the outcome's one line. Any other gloss keeps its
 /// line; a metric with no row (the kit not loaded) keeps it too.
-fn grounding_row(
+fn definition_row(
     conn: &Connection,
     outcome: &str,
 ) -> Result<Option<Vec<RecordBatch>>, SessionError> {
@@ -1968,7 +1789,7 @@ fn grounding_row(
     let (_, _, kind) = arrow_batches(
         conn,
         &format!(
-            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY seq DESC LIMIT 1"
+            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY begin_snapshot DESC LIMIT 1"
         ),
         &[],
     )?;
@@ -1978,7 +1799,7 @@ fn grounding_row(
     inline_columns(conn, aspect, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
-        &format!("SELECT * FROM {LAKE}.main.metric_summary() WHERE metric = '{quoted}'"),
+        &format!("SELECT * FROM {LAKE}.main.view_summary() WHERE view = '{quoted}'"),
         &[],
     )?;
     let rows: usize = row.iter().map(|b| b.num_rows()).sum();
@@ -2007,7 +1828,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
         conn,
         &format!(
             "SELECT body::VARCHAR FROM {LAKE}.main.glossary WHERE dataset = '{d}' AND subject = '{d}' \
-             AND aspect = '{m}' ORDER BY seq DESC LIMIT 1",
+             AND aspect = '{m}' ORDER BY begin_snapshot DESC LIMIT 1",
             d = dataset.replace('\'', "''"),
             m = metric.replace('\'', "''")
         ),
@@ -2055,7 +1876,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                 });
             if let Some(value) = additivity {
                 let mut said = serde_json::json!({"value": value});
-                for half in ["numerator", "denominator", "grounds"] {
+                for half in ["numerator", "denominator", "basis"] {
                     if let Some(v) = measure.get(half) {
                         said[half] = v.clone();
                     }
@@ -2174,6 +1995,34 @@ fn split_statements(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// A refusal out of a function body is classed by the code its kit
+    /// raised it under and begins at the extension's prefix; an error
+    /// of another class keeps its class's name and has no code.
+    #[test]
+    fn a_kits_refusal_keeps_its_code_and_loses_the_engines_wrappers() {
+        let raised = SessionError::engine(
+            "C Data interface error: Invalid Input Error: glossql: not_a_plan: fin.spend",
+        );
+        assert_eq!(raised.code(), Some("not_a_plan"));
+        assert!(
+            matches!(&raised, SessionError::Engine(reason) if reason.starts_with("glossql: not_a_plan: ")),
+            "{raised}"
+        );
+        let from_a_macro =
+            SessionError::engine("Invalid Input Error: unknown_world: a world not found");
+        assert_eq!(from_a_macro.code(), Some("unknown_world"));
+        let bound = SessionError::engine("C Data interface error: Binder Error: no column: x");
+        assert_eq!(bound.code(), None);
+        assert!(
+            matches!(&bound, SessionError::Engine(reason) if reason.starts_with("Binder Error: ")),
+            "{bound}"
+        );
+        assert_eq!(
+            SessionError::engine("Catalog Error: Table with name nope does not exist!").code(),
+            Some("unknown_name")
+        );
+    }
+
     #[test]
     fn statements_split_outside_quotes_and_dollar_bodies() {
         let pieces = split_statements(
@@ -2184,7 +2033,7 @@ mod tests {
     }
 
     #[test]
-    fn a_record_read_reviews_and_a_gloss_writes() {
+    fn a_glossary_read_reviews_and_a_gloss_writes() {
         assert_eq!(
             call_shape("SELECT * FROM glossary"),
             CallShape {
@@ -2195,14 +2044,12 @@ mod tests {
         );
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
-            call_shape("USE fin; SELECT * FROM open_items")
-                .dataset
-                .as_deref(),
+            call_shape("USE fin; SELECT * FROM next").dataset.as_deref(),
             Some("fin")
         );
         assert!(call_shape("SELECT column_profile() FROM ops").writes);
         let setup = r#"
-        DECLARE DATASET fin SET (purpose: 'brief delivery');
+        DECLARE DATASET fin SET (purpose: 'summary delivery');
         USE fin;
         DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
         GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
@@ -2211,50 +2058,26 @@ mod tests {
         let shape = call_shape(setup);
         assert!(shape.writes && !shape.reviews, "{shape:?}");
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
-        assert!(reads_record("SELECT * FROM GLOSSARY(orders)"));
-        assert!(!reads_record("SELECT * FROM fin.orders"));
+        assert!(reads_catalog("SELECT * FROM GLOSSARY(orders)"));
+        assert!(!reads_catalog("SELECT * FROM fin.orders"));
+        // a history read is paged like the data: what a call serves is the agent's context
+        assert!(!reads_catalog("SELECT * FROM imports_history"));
+        assert!(!reads_catalog("SELECT * FROM ws.main.glossary_history"));
     }
 
-    /// A warehouse in an object store is known by its scheme, and its
-    /// credential is one scoped secret, a key pair or a bearer.
+    /// A warehouse in an object store is known by its scheme.
     #[test]
-    fn the_warehouse_credential_is_one_scoped_secret() {
+    fn a_warehouse_in_an_object_store_is_known_by_its_scheme() {
         assert_eq!(store_kind("gs://lake/warehouse"), Some("gcs"));
         assert_eq!(store_kind("s3://lake/warehouse/"), Some("s3"));
         assert_eq!(store_kind("/var/lib/glossql/warehouse"), None);
         assert_eq!(store_kind("abfss://lake@acct.dfs.core.windows.net/w"), None);
-        let keys = WarehouseCredential::Keys {
-            key_id: "GOOG1E".into(),
-            secret: "s'cret".into(),
-            region: None,
-        };
-        assert_eq!(
-            secret_sql("gcs", &keys, "gs://lake/warehouse"),
-            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, KEY_ID 'GOOG1E', SECRET 's''cret', \
-             SCOPE 'gs://lake/warehouse')"
-        );
-        let keys = WarehouseCredential::Keys {
-            key_id: "AKIA".into(),
-            secret: "x".into(),
-            region: Some("eu-west-1".into()),
-        };
-        assert_eq!(
-            secret_sql("s3", &keys, "s3://lake/warehouse"),
-            "CREATE OR REPLACE SECRET warehouse (TYPE s3, KEY_ID 'AKIA', SECRET 'x', \
-             REGION 'eu-west-1', SCOPE 's3://lake/warehouse')"
-        );
-        assert_eq!(
-            secret_sql(
-                "gcs",
-                &WarehouseCredential::Bearer("t".into()),
-                "gs://lake/w"
-            ),
-            "CREATE OR REPLACE SECRET warehouse (TYPE gcs, BEARER_TOKEN 't', SCOPE 'gs://lake/w')"
-        );
     }
 
-    /// The sink replaces the warehouse's secret on the instance, where
-    /// httpfs is loaded; a directory warehouse has no sink.
+    /// The warehouse's credential is one scoped secret: the sink
+    /// replaces a bearer on the instance, where httpfs is loaded, and a
+    /// key pair with a region and a quote in the secret replaces it
+    /// again; a directory warehouse has no sink.
     #[tokio::test(flavor = "multi_thread")]
     async fn the_warehouse_sink_replaces_the_secret() {
         let dir = tempfile::tempdir().expect("a directory");
@@ -2298,6 +2121,33 @@ mod tests {
                 Some("warehouse".to_string()),
                 Some("gcs".to_string()),
                 Some("['gs://lake/warehouse']".to_string())
+            ]]
+        );
+        let keys = WarehouseCredential::Keys {
+            key_id: "AKIA".into(),
+            secret: "s'cret".into(),
+            region: Some("eu-west-1".into()),
+        };
+        run(
+            &plane.instance.connect().expect("a connection"),
+            &secret_sql("s3", &keys, "s3://lake/warehouse"),
+        )
+        .expect("the key pair replaces the bearer");
+        let rows = rows_as_text(
+            &channel
+                .batches(
+                    "SELECT name, type, scope::VARCHAR FROM duckdb_secrets() ORDER BY name",
+                    &[],
+                )
+                .await
+                .expect("reads"),
+        );
+        assert_eq!(
+            rows,
+            vec![vec![
+                Some("warehouse".to_string()),
+                Some("s3".to_string()),
+                Some("['s3://lake/warehouse']".to_string())
             ]]
         );
     }
@@ -2370,6 +2220,7 @@ mod tests {
 /// directory. A build that loses the race to another process yields to
 /// the one that loaded: the rename is atomic, so a copy sees a whole
 /// workspace or none.
+#[cfg(any(test, feature = "testing"))]
 pub mod testing {
     use super::{Config, Plane, SessionError};
     use std::hash::{Hash, Hasher};

@@ -1,30 +1,30 @@
--- The findings' first rows: every walked metric whose newest point
--- loaded outside the corridor its own history predicted — the point
--- the walk's result scores — as one finding: a sentence from the
--- record's fields, the numbers behind it, the bands test's result
--- as the chip, and the axis that moved most for the link to the metric
--- sliced by it. The corridor picture and the movers under the finding
--- are the metric's own frames, keyed by its name. `band_points()` is
--- the recorded walk, no re-run; a point is outside at displacement
--- 0.95 and over. A green corridor serves no row. The axis that moved
--- most is the series' own cells at month grain, the newest walked
--- month against the one before it.
-WITH verdict AS (
-  SELECT a.test, a.band, a.computed_at, a.current, w.detector, w.threshold,
-         row_number() OVER (ORDER BY CASE a.band WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
+-- The findings' first rows: every backtested metric the model service
+-- judged red — its newest point loaded outside the range its own
+-- history predicted — as one finding: a sentence from the catalog's
+-- fields, the numbers behind it, the range test's result as the chip,
+-- and the axis that moved most for the link to the metric sliced by it.
+-- The range picture and the movers under the finding are the metric's
+-- own frames, keyed by its name. `range_points()` is the stored
+-- backtest, no re-run, and empty where the outlook kit is not loaded;
+-- no other metric serves a row. The axis that moved most is the
+-- series' own cells at month grain, the newest backtested month
+-- against the one before it.
+WITH result AS (
+  SELECT a.test, a.state, a.computed_at, a.current, w.detector, w.threshold,
+         row_number() OVER (ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 ELSE 3 END, a.test) AS rn
   FROM glossql_tests(current_schema(), NULL) a
-  JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1) w
+  JOIN (SELECT name, detector, threshold FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) w
     ON w.name = a.test
-  WHERE w.detector = 'band_breach'
+  WHERE w.detector = 'range_state'
 ),
-walked AS (
-  SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far,
+points AS (
+  SELECT metric AS name, period, actual, p10, p90, pit, displacement AS far, state,
          row_number() OVER (PARTITION BY metric ORDER BY point_seq DESC) AS recency
-  FROM band_points()
+  FROM range_points()
   WHERE applicable AND period IS NOT NULL
 ),
-newest AS (SELECT * FROM walked WHERE recency = 1),
-previous AS (SELECT name, period FROM walked WHERE recency = 2),
+newest AS (SELECT * FROM points WHERE recency = 1),
+previous AS (SELECT name, period FROM points WHERE recency = 2),
 cells AS (
   SELECT s.metric AS name, s.dimension AS axis, s.member, strftime(s.period, '%Y-%m') AS ym, s.value
   FROM metric_series(grain := 'month', unclaimed := 'skip') s
@@ -47,13 +47,13 @@ top AS (
 ),
 titles AS (
   SELECT name, json_extract_string(schema, '$.title') AS title FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1
 ),
-counted AS (SELECT count(*) AS n FROM newest WHERE pit IS NOT NULL),
-outside AS (SELECT * FROM newest WHERE pit IS NOT NULL AND far >= 0.95),
+counted AS (SELECT count(*) AS n FROM newest WHERE state IS NOT NULL),
+outside AS (SELECT * FROM newest WHERE state = 'red'),
 outs AS (SELECT count(*) AS k FROM outside)
 SELECT coalesce(t2.title, o.name) AS title,
-       o.name AS metric,
+       o.name AS view,
        coalesce(t2.title, o.name)
          || CASE WHEN o.pit >= 0.5 THEN ' rose out of its corridor in ' ELSE ' fell out of its corridor in ' END
          || strftime((o.period || '-01')::TIMESTAMP, '%B %Y') || '.' AS headline,
@@ -65,20 +65,20 @@ SELECT coalesce(t2.title, o.name) AS title,
        CASE WHEN c.n - k.k <= 0 THEN ''
             WHEN c.n - k.k = 1 THEN 'The one other checked metric sits inside its expected range.'
             ELSE 'The other ' || CAST(c.n - k.k AS VARCHAR) || ' checked metrics sit inside their expected ranges.' END AS others,
-       coalesce(v.band, 'outside') AS band,
-       CASE WHEN v.band IS NULL OR v.band = 'green' THEN '' ELSE 'warn' END AS bcls,
-       coalesce(v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on metric_bands',
+       coalesce(v.state, 'outside') AS state,
+       CASE WHEN v.state IS NULL OR v.state = 'green' THEN '' ELSE 'warn' END AS scls,
+       coalesce(v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on metric_ranges',
                 'no test scores the expected range') AS meta,
        coalesce('measured ' || strftime(v.computed_at, '%d %b %Y %H:%M'), '') AS at,
        CASE WHEN coalesce(v.current, true) THEN '' ELSE ' · from before the last change' END AS stale,
-       coalesce('?check=' || v.test || '&kind=corridor', '') AS link_check,
-       '/' || d.dataset || '/app/console/p/metrics?metric=' || o.name || coalesce('&dim=' || t.axis, '') AS link_metric,
+       coalesce('?test=' || v.test || '&kind=range', '') AS link_test,
+       '/' || d.dataset || '/app/console/p/views?view=' || o.name || coalesce('&dim=' || t.axis, '') AS link_view,
        coalesce(t.axis, 'nothing') AS axis
 FROM outside o
 CROSS JOIN counted c
 CROSS JOIN outs k
 CROSS JOIN current_dataset d
 LEFT JOIN titles t2 ON t2.name = o.name
-LEFT JOIN verdict v ON v.rn = 1
+LEFT JOIN result v ON v.rn = 1
 LEFT JOIN top t ON t.name = o.name AND t.rn = 1
 ORDER BY o.far DESC, o.name

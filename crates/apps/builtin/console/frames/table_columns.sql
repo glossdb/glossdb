@@ -1,31 +1,31 @@
 -- One table's columns, every value the catalog holds on each: the judged
 -- role with the slice rank beside a dimension (the engine's type where
 -- none is judged), the unit and additivity where required, the meaning or
--- `not yet said` where the meaning is required and nobody spoke, and what
--- was measured on the column. The mark is the column's worst standing
--- across its authored slots. A row opens the column's page.
+-- `not yet said` where the meaning is required and nobody wrote one, and what
+-- was measured on the column. The mark is the column's worst state
+-- across its authored annotations. A row opens the column's page.
 WITH d AS (SELECT dataset FROM current_dataset),
 tbl AS (SELECT d.dataset || '.' || CAST($table AS VARCHAR) AS subject FROM d),
-slots AS (
+annotations AS (
   SELECT g.subject, g.aspect, g.actor_kind, g.body, g.written_at,
          row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.subject LIKE (SELECT subject FROM tbl) || '.%'
     AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
-cur AS (SELECT subject, aspect, actor_kind, written_at, json_extract_string(body, '$.value') AS value FROM slots WHERE rn = 1),
+cur AS (SELECT subject, aspect, actor_kind, written_at, json_extract_string(body, '$.value') AS value FROM annotations WHERE rn = 1),
 states AS (
   SELECT subject,
          max(CASE WHEN state = 'conflict' THEN 2 WHEN state = 'stale' THEN 1 ELSE 0 END) AS worst,
-         count(*) FILTER (WHERE aspect = 'meaning' AND state = 'missing') AS meaning_owed
+         count(*) FILTER (WHERE aspect = 'meaning' AND state = 'missing') AS meaning_missing
   FROM GLOSSARY()
   WHERE subject LIKE (SELECT subject FROM tbl) || '.%'
     AND aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension')
   GROUP BY subject),
-human AS (SELECT subject, max(written_at) AS spoken_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
+human AS (SELECT subject, max(written_at) AS annotated_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
 entity AS (
   SELECT json_extract_string(g.body, '$.time_axis') AS axis,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.actor_kind IN ('human', 'agent')),
 measured AS (
@@ -64,13 +64,13 @@ SELECT c.column_name AS name,
        CASE WHEN r.value IS NULL THEN 'column type, no role set' ELSE '' END AS role_note,
        concat_ws(' · ', u.value, b.value) AS unit,
        CASE WHEN e.axis = c.column_name THEN 'time axis' ELSE coalesce(x.value, '') END AS axis,
-       coalesce(m.value, CASE WHEN coalesce(st.meaning_owed, 0) > 0 THEN 'not yet annotated' ELSE '' END) AS meaning,
+       coalesce(m.value, CASE WHEN coalesce(st.meaning_missing, 0) > 0 THEN 'not yet annotated' ELSE '' END) AS meaning,
        coalesce(s.measured, '') AS measured,
-       CASE WHEN st.worst = 2 THEN 'conflict' WHEN st.worst = 1 THEN 'stale' WHEN h.subject IS NOT NULL THEN 'ruled' ELSE '' END AS mark,
-       CASE WHEN st.worst = 2 THEN 'v-open' WHEN st.worst = 1 THEN 'v-stale' WHEN h.subject IS NOT NULL THEN 'v-ruled' ELSE 'v-none' END AS mcls,
+       CASE WHEN st.worst = 2 THEN 'conflict' WHEN st.worst = 1 THEN 'stale' WHEN h.subject IS NOT NULL THEN 'decided' ELSE '' END AS mark,
+       CASE WHEN st.worst = 2 THEN 'v-open' WHEN st.worst = 1 THEN 'v-stale' WHEN h.subject IS NOT NULL THEN 'v-decided' ELSE 'v-none' END AS mcls,
        CASE WHEN st.worst = 2 THEN 'the annotations differ; the test withholds the value'
             WHEN st.worst = 1 THEN 'an annotation was written before the column last changed'
-            WHEN h.subject IS NOT NULL THEN 'a person annotated this column, ' || strftime(h.spoken_at, '%d %b %Y %H:%M')
+            WHEN h.subject IS NOT NULL THEN 'a person annotated this column, ' || strftime(h.annotated_at, '%d %b %Y %H:%M')
             ELSE '' END AS mark_title,
        '?column=' || c.path AS link
 FROM cols c

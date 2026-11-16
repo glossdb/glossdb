@@ -3,7 +3,7 @@
 // table, and the result to save as csv or as the Arrow stream the
 // interface sent. The pane runs reads alone — SELECT, WITH, DESCRIBE,
 // SHOW, EXPLAIN — and says so for anything else; a write is a
-// statement for the agent door. The interface's own refusal, a scan it
+// statement for the agent interface. The interface's own refusal, a scan it
 // cannot plan, an expression that fails, comes back as its text.
 // Nothing here touches the store: a read of one's own is never a
 // frame, so a review decision's evictions leave it alone. The read rides the
@@ -67,7 +67,7 @@
   class GlQuery extends HTMLElement {
     connectedCallback() {
       const dataset = this.getAttribute('dataset');
-      this._door = '/' + dataset + '/query';
+      this._interface = '/' + dataset + '/query';
       this._cap = Number(this.getAttribute('rows')) || 50;
 
       const area = document.createElement('textarea');
@@ -116,14 +116,14 @@
       }
       if (!READ.test(sql)) {
         out.replaceChildren(
-          glStore.errorBox('this pane runs one read — SELECT, WITH, DESCRIBE, SHOW or EXPLAIN; a statement that writes is the agent door’s')
+          glStore.errorBox('this pane runs one read — SELECT, WITH, DESCRIBE, SHOW or EXPLAIN; a statement that writes is the agent interface’s')
         );
         return;
       }
       this.setAttribute('aria-busy', 'true');
       out.replaceChildren();
       try {
-        const res = await fetch(this._door, {
+        const res = await fetch(this._interface, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: sql,
@@ -139,7 +139,7 @@
         const kind = res.headers.get('content-type') || '';
         if (!kind.includes('arrow')) {
           // Several statements answer in the wire's JSON; one read streams.
-          throw new Error('one read at a time: the door answered a sequence — ' + new TextDecoder().decode(buf).slice(0, 400));
+          throw new Error('one read at a time: the interface answered a sequence — ' + new TextDecoder().decode(buf).slice(0, 400));
         }
         const t = Arrow.tableFromIPC(new Uint8Array(buf));
         const names = t.schema.fields.map((f) => f.name);

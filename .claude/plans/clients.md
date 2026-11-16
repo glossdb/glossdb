@@ -59,7 +59,7 @@ Cloud Run's domain mapping) and whether the trial can open at all.
   deployment exports `gs://<bucket>/sources`; the server reaches the
   object store through httpfs with the warehouse credential; on a
   laptop it reads a directory. The console already takes a person's
-  writes with their cookie (`crates/apps/src/rule.rs`,
+  writes with their cookie (`crates/apps/src/decide.rs`,
   `remeasure.rs`). So the upload page is a console page with a drop
   zone and a PUT that streams into that location. It needs no signed
   URLs and works on every storage backend and on a laptop.

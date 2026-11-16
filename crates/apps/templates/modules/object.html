@@ -1,10 +1,10 @@
 {# The console's way around an object: the breadcrumb above it, its
-   title, and the same five sub-tabs on every object's page. `q` is
-   the object's own query string (`table=orders`, `metric=hires`), so
+   title, and the sub-tabs on every object's page. `q` is
+   the object's own query string (`table=orders`, `view=hires`), so
    a sub-tab is the object's link with `tab=` added. #}
 
 {% macro crumbs(dataset, top="", section="", section_link="", object="", object_link="", child="") %}
-{% if top == "Catalog" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Metrics" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/metrics" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Review" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
+{% if top == "Metadata" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/glossary" %}{% elif top == "Integration" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/views" %}{% elif top == "Quality" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/quality" %}{% elif top == "Governance" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/review" %}{% elif top == "Lineage" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/lineage" %}{% elif top == "Data" %}{% set top_link = "/" ~ dataset ~ "/app/console/p/export" %}{% else %}{% set top_link = "/" ~ dataset ~ "/app/console" %}{% endif %}
 <p class="crumbs">
   <a href="/{{ dataset }}/app/console">{{ dataset }}</a>
   {% if top %}<span class="crumb-sep">›</span>{% if section or object %}<a href="{{ top_link }}">{{ top }}</a>{% else %}{{ top }}{% endif %}{% endif %}
@@ -18,13 +18,15 @@
 <h1 class="obj-h"><code>{{ name }}</code><span class="kind">{{ kind }}</span></h1>
 {% endmacro title %}
 
-{% macro subtabs(q, tab) %}
+{# `used` and `history` name the fourth and fifth tab. `measured` is
+   false for an object nothing is measured or tested on (a source). #}
+{% macro subtabs(q, tab, used="Used by", history="History", measured=true) %}
 <nav class="subtabs" aria-label="sections">
   <a href="?{{ q }}"{% if tab == "description" %} class="current" aria-current="page"{% endif %}>Description</a>
-  <a href="?{{ q }}&tab=measurements"{% if tab == "measurements" %} class="current" aria-current="page"{% endif %}>Measurements</a>
-  <a href="?{{ q }}&tab=tests"{% if tab == "tests" %} class="current" aria-current="page"{% endif %}>Tests</a>
-  <a href="?{{ q }}&tab=used"{% if tab == "used" %} class="current" aria-current="page"{% endif %}>Used by</a>
-  <a href="?{{ q }}&tab=history"{% if tab == "history" %} class="current" aria-current="page"{% endif %}>History</a>
+  {% if measured %}<a href="?{{ q }}&tab=measurements"{% if tab == "measurements" %} class="current" aria-current="page"{% endif %}>Measurements</a>
+  <a href="?{{ q }}&tab=tests"{% if tab == "tests" %} class="current" aria-current="page"{% endif %}>Tests</a>{% endif %}
+  <a href="?{{ q }}&tab=used"{% if tab == "used" %} class="current" aria-current="page"{% endif %}>{{ used }}</a>
+  <a href="?{{ q }}&tab=history"{% if tab == "history" %} class="current" aria-current="page"{% endif %}>{{ history }}</a>
 </nav>
 {% endmacro subtabs %}
 
@@ -40,7 +42,7 @@
           <span class="r-meta">{aspect}</span>
           <span class="r-meta">{test}</span>
           <span class="r-num">{score}</span>
-          <code class="chip {bcls}">{band}</code>
+          <code class="chip {scls}">{state}</code>
         </a>
       </template>
     </gl-rows>

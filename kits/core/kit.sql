@@ -18,10 +18,7 @@ CREATE OR REPLACE VIEW main.current_dataset AS
 -- an answered question drops out once the decision is applied and its
 -- confidence raised.
 CREATE OR REPLACE VIEW main.agent_assumptions AS
-  WITH latest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY seq DESC) AS rn
-      FROM main.glossary g WHERE actor_kind = 'agent') WHERE rn = 1)
+  WITH latest AS (SELECT * FROM main.glossary WHERE actor_kind = 'agent')
   SELECT l.dataset, l.subject, l.aspect, t.i - 1 AS idx,
          json_extract_string(t.a, '$.dimension') AS dimension,
          json_extract_string(t.a, '$.key') AS key,
@@ -36,10 +33,7 @@ CREATE OR REPLACE VIEW main.agent_assumptions AS
 -- `review_decision` body on a subject; `folded_in` once no agent assumption below
 -- full confidence carries the decided key under the decided aspect.
 CREATE OR REPLACE VIEW main.review_decisions AS
-  WITH latest AS (
-    SELECT * FROM (
-      SELECT r.*, row_number() OVER (PARTITION BY dataset, subject ORDER BY seq DESC) AS rn
-      FROM main.glossary r WHERE aspect = 'review_decision' AND actor_kind = 'human') WHERE rn = 1),
+  WITH latest AS (SELECT * FROM main.glossary WHERE aspect = 'review_decision' AND actor_kind = 'human'),
   entries AS (
     SELECT l.dataset, l.subject, t.i - 1 AS idx,
            json_extract_string(t.r, '$.aspect') AS aspect,
@@ -66,25 +60,22 @@ CREATE OR REPLACE VIEW main.review_decisions AS
 -- carries a decision on the same key under another aspect, so the
 -- review can offer it back. No ORDER BY: order where you consume.
 CREATE OR REPLACE VIEW main.open_questions AS
-  WITH groundings AS (
-    SELECT name FROM (
-      SELECT name, kind, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW')
+  WITH view_aspects AS (SELECT name FROM main.aspects WHERE kind = 'VIEW')
   SELECT o.dataset, o.subject, o.aspect, o.idx, o.dimension, o.key, o.assumption, o.basis,
          o.alternative, o.conf,
          max(s.stance || ' on ' || s.aspect) AS sibling,
          max(s.stance) AS sibling_stance,
          max(s.note) AS sibling_note
   FROM main.agent_assumptions o
-  JOIN groundings a ON a.name = o.aspect
+  JOIN view_aspects a ON a.name = o.aspect
   LEFT JOIN main.review_decisions s
     ON s.dataset = o.dataset AND s.subject = o.subject AND s.key = o.key AND s.aspect <> o.aspect
    AND s.stance IN ('confirmed', 'corrected')
   WHERE o.conf < 1.0 AND o.key IS NOT NULL
     AND coalesce(o.dimension, '-') NOT IN ('additivity', 'sign', 'grain')
-    AND NOT EXISTS (SELECT 1 FROM main.review_decisions r
-                    WHERE r.dataset = o.dataset AND r.subject = o.subject
-                      AND r.aspect = o.aspect AND r.key = o.key)
+    AND {'dataset': o.dataset, 'subject': o.subject, 'aspect': o.aspect, 'key': o.key} NOT IN (
+          SELECT {'dataset': r.dataset, 'subject': r.subject, 'aspect': r.aspect, 'key': r.key} FROM main.review_decisions r
+          WHERE r.dataset IS NOT NULL AND r.subject IS NOT NULL AND r.aspect IS NOT NULL AND r.key IS NOT NULL)
   GROUP BY ALL;
 
 -- Apps authored as glosses, one row per file: the aspect says what kind
@@ -95,12 +86,10 @@ CREATE OR REPLACE VIEW main.open_questions AS
 -- agent's. This is the draft; the console serves the app at its release.
 CREATE OR REPLACE VIEW main.app_parts AS
   WITH newest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY seq DESC) AS rn
-      FROM main.glossary g
-      WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
-        AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
-        AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')) WHERE rn = 1),
+    SELECT * FROM main.glossary
+    WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
+      AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
+      AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')),
   winning AS (
     SELECT * FROM newest
     QUALIFY row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
@@ -121,10 +110,7 @@ CREATE OR REPLACE VIEW main.app_parts AS
 -- its body names. The same two collapses as app_parts.
 CREATE OR REPLACE VIEW main.app_releases AS
   WITH newest AS (
-    SELECT * FROM (
-      SELECT g.*, row_number() OVER (PARTITION BY dataset, subject, actor_kind ORDER BY seq DESC) AS rn
-      FROM main.glossary g
-      WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset) WHERE rn = 1),
+    SELECT * FROM main.glossary WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset),
   winning AS (
     SELECT * FROM newest
     QUALIFY row_number() OVER (PARTITION BY dataset, subject ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
@@ -134,93 +120,163 @@ CREATE OR REPLACE VIEW main.app_releases AS
          actor_kind, written_at::VARCHAR AS released_at
   FROM winning;
 
--- Every metric the bound dataset claims, with its state: one row per
--- VIEW aspect with a metric definition here, served or stopped, or
--- whose definitions entry names it — name, title, kind (the aspect's
--- x-kind), unit and meaning from the definitions handbook, grounded
--- (a definition with sql was written), stopped (the collapsed
--- definition's own text, '' where it serves). The numbers are
--- metric_summary() and metric_series(); join on name.
-CREATE OR REPLACE VIEW main.metric_surfaces AS
+-- Every view of the bound dataset, with its state: one row per VIEW
+-- aspect with a definition here, served or stopped, or named by an entry
+-- of the dataset's `definitions` annotation — name, title, kind (the
+-- aspect's x-kind: relation, scalar, plan; measure for a metric), meaning
+-- (the `meaning` annotation on the view), unit (the `unit` annotation on
+-- the value column of a metric or a single value; a table has none), formula (a person's or an agent's formula
+-- in the `definitions` annotation, NULL where there is none), defined
+-- (a definition with sql was written), stopped (the definition's stop
+-- reason, '' where it serves). Where the view carries no meaning or
+-- unit, the `definitions` entry's is served. The numbers are
+-- view_summary() and metric_series(); join on name.
+CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
-  aspects AS (
-    SELECT name, schema FROM (
-      SELECT name, kind, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1 AND kind = 'VIEW'),
-  slots AS (
-    SELECT aspect, body, actor_kind FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
-      FROM main.glossary g, ds
-      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
-        AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
+  aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
+  current_values AS (
+    SELECT g.aspect, g.body, g.actor_kind FROM main.glossary g, ds
+    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
+      AND g.aspect IN (SELECT name FROM aspects)),
   collapsed AS (
-    SELECT aspect, body FROM slots
+    SELECT aspect, body FROM current_values
     QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
-  grounded AS (
+  defined AS (
     SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
   registry AS (
-    SELECT aspect, body FROM (
-      SELECT g.aspect, g.body, g.actor_kind, row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.seq DESC) AS rn
-      FROM main.glossary g, ds
-      WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions') WHERE rn = 1
-    QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
+    SELECT g.aspect, g.body FROM main.glossary g, ds
+    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions'
+    QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
+  -- the annotations in force on the view and on its columns
+  in_force AS (
+    SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false)
+    WHERE aspect IN ('meaning', 'unit') AND value IS NOT NULL AND state IN ('current', 'stale')),
+  meanings AS (
+    SELECT split_part(subject, '.', 2) AS view, value->>'value' AS meaning
+    FROM in_force WHERE aspect = 'meaning' AND len(string_split(subject, '.')) = 2),
+  -- a metric's unit is its value column's: the column named value where several carry one
+  units AS (
+    SELECT split_part(subject, '.', 2) AS view,
+           arg_min(value->>'value', CASE WHEN split_part(subject, '.', 3) = 'value' THEN 0 ELSE 1 END) AS unit
+    FROM in_force WHERE aspect = 'unit' AND len(string_split(subject, '.')) = 3
+    GROUP BY 1)
   SELECT a.name AS name,
          coalesce(json_extract_string(a.schema, '$.title'), a.name) AS title,
-         coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS kind,
-         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.unit'), '') AS unit,
-         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.meaning'), '') AS meaning,
-         coalesce(json_extract_string(d.body, '$.definitions.' || a.name || '.formula'), 'a base concept — grounded as an extract, no formula') AS formula,
-         g.aspect IS NOT NULL AS grounded,
+         coalesce(json_extract_string(a.schema, '$.x-kind'), 'measure') AS kind,
+         coalesce(CASE WHEN json_extract_string(a.schema, '$.x-kind') IS DISTINCT FROM 'relation' THEN u.unit END,
+                  json_extract_string(d.body, '$.definitions.' || a.name || '.unit'), '') AS unit,
+         coalesce(m.meaning, json_extract_string(d.body, '$.definitions.' || a.name || '.meaning'), '') AS meaning,
+         json_extract_string(d.body, '$.definitions.' || a.name || '.formula') AS formula,
+         g.aspect IS NOT NULL AS defined,
          coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
   FROM aspects a
-  LEFT JOIN grounded g ON g.aspect = a.name
+  LEFT JOIN defined g ON g.aspect = a.name
   LEFT JOIN collapsed c ON c.aspect = a.name
   LEFT JOIN registry d ON d.aspect = 'definitions'
+  LEFT JOIN meanings m ON m.view = a.name
+  LEFT JOIN units u ON u.view = a.name
   WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
      OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
 
+-- tested_properties(): the table and column properties that exist to
+-- be tested, by name: a test with a scoring function is declared on
+-- the property, and a check measures it (a function returns the
+-- property, or the property is a measurement). Such a property is set
+-- on the assets someone chose: the expectation is annotated there, or
+-- a result is stored there. It is not required on every asset a view
+-- reads, as a descriptive property (meaning, role, entity) is. A
+-- kit's check on a view (x-subject) and a measurement the server runs
+-- for a kind of view (x-used-by) follow their own rules.
+CREATE OR REPLACE MACRO main.tested_properties() AS TABLE
+  SELECT a.name
+  FROM main.aspects a
+  WHERE a.kind IN ('FACT', 'MEASUREMENT')
+    AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN'))
+    AND json_extract(a.schema, '$.x-subject') IS NULL
+    AND json_extract(a.schema, '$.x-used-by') IS NULL
+    AND a.name IN (SELECT t.aspect FROM main.tests t WHERE t.detector IS NOT NULL)
+    AND (a.kind = 'MEASUREMENT' OR a.name IN (SELECT f.returns FROM main.functions f));
+
 -- What this workspace can be extended through, and its state on
 -- each: `existing` counts what exists, `open` what is unfinished on the
--- surface and the agent can finish, `waiting` what waits for a person,
+-- area and the agent can finish, `waiting` what waits for a person,
 -- `how` the statement that extends it. Every count spans the
 -- workspace: the orienting read, run from a channel bound to nothing.
 CREATE OR REPLACE VIEW main.workspace_status AS
   WITH asked AS (SELECT count(*) AS n, count(DISTINCT aspect) AS metrics FROM main.open_questions),
-  ruled AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
+  decided AS (SELECT count(*) AS n, count(*) FILTER (WHERE NOT folded_in) AS unapplied FROM main.review_decisions),
   apps AS (SELECT count(*) AS n FROM (SELECT DISTINCT dataset, app FROM main.app_parts)),
-  newest_aspects AS (
-    SELECT name, kind, grains, condition, schema FROM (
-      SELECT name, kind, grains, condition, schema, row_number() OVER (PARTITION BY name ORDER BY seq DESC) AS rn
-      FROM main.aspects) WHERE rn = 1),
-  -- A test is open while its property is in use and has no value. A
-  -- table or column property is in use on what the metrics read: each
-  -- loaded table a metric's view descends from when the property takes
-  -- tables, else each such column, where a WHEN holds on that asset;
-  -- each asset without a value is open. Every other property counts
-  -- once, in use when something that exists needs it: a measurement
-  -- marked `x-used-by`, once a property of one of those x-kinds is
-  -- declared; a WHEN on another property's value, once an asset carries
-  -- that value; a WHEN on a column type, once such a column exists; a
-  -- relationship property, once a key is declared; anything else,
-  -- always.
+  newest_aspects AS (SELECT name, kind, grains, condition, schema FROM main.aspects),
+  -- A test is open while its property is in use and has no value.
+  -- A property that exists to be tested (tested_properties()) is in
+  -- use where the test is set: each asset that carries its expectation
+  -- as an annotation is open until a result is stored there. A kit's
+  -- check on a view (x-subject view) is in use on each view that is
+  -- defined (x-subject metric: on each metric; with x-set-by, on those
+  -- where the property it names is annotated on the view or a column),
+  -- and open there until its result is stored. A
+  -- descriptive table or column property is in use on what the views
+  -- read: each loaded table a view descends from when the
+  -- property takes tables, else each such column, where a WHEN holds
+  -- on that asset; each asset without a value is open. Every other
+  -- property counts once, in use when something that exists needs it:
+  -- a measurement marked `x-used-by`, once a property of one of those
+  -- x-kinds is declared; a WHEN on another property's value, once an
+  -- asset carries that value; a WHEN on a column type, once such a
+  -- column exists; a relationship property, once a key is declared;
+  -- anything else, always.
+  to_test AS MATERIALIZED (SELECT name FROM main.tested_properties()),
   tested AS (
     SELECT DISTINCT a.name, a.kind, a.grains, a.condition, a.schema,
            json_extract(a.schema, '$.x-used-by') IS NULL
              AND (list_contains(a.grains, 'TABLE') OR list_contains(a.grains, 'COLUMN')) AS on_assets
     FROM (SELECT DISTINCT aspect FROM main.tests) t
-    JOIN newest_aspects a ON a.name = t.aspect),
-  metric_reads AS (
+    JOIN newest_aspects a ON a.name = t.aspect
+    WHERE a.name NOT IN (SELECT name FROM to_test)
+      AND json_extract(a.schema, '$.x-subject') IS NULL),
+  -- a kit's check on a view, on each view whose newest definition holds
+  -- SQL (a check on a metric, on each metric), until a result of the
+  -- check is stored on the view
+  view_checks AS (
+    SELECT DISTINCT a.name, json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
+           json_extract_string(a.schema, '$.x-set-by') AS set_by
+    FROM (SELECT DISTINCT aspect FROM main.tests) t
+    JOIN newest_aspects a ON a.name = t.aspect
+    WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric')),
+  defined_views AS (
+    SELECT dataset, aspect AS view, coalesce(kind, 'metric') = 'metric' AS metric FROM (
+      SELECT g.dataset, g.aspect, g.body, json_extract_string(a.schema, '$.x-kind') AS kind FROM main.glossary g
+      JOIN newest_aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
+        AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('plan', 'sample')
+      WHERE g.subject = g.dataset
+      QUALIFY row_number() OVER (PARTITION BY g.dataset, g.aspect ORDER BY g.begin_snapshot DESC) = 1)
+    WHERE json_extract_string(body, '$.sql') IS NOT NULL),
+  open_view_checks AS (
+    SELECT v.dataset, v.view, c.name FROM defined_views v JOIN view_checks c ON v.metric OR NOT c.metrics_only
+    WHERE (c.set_by IS NULL OR EXISTS (
+             SELECT 1 FROM main.glossary g
+             WHERE g.dataset = v.dataset AND g.aspect = c.set_by AND split_part(g.subject, '.', 2) = v.view))
+      AND NOT EXISTS (SELECT 1 FROM main.measurements m
+                      WHERE m.dataset = v.dataset AND m.subject = v.dataset || '.' || v.view AND m.aspect = c.name)),
+  -- where a test is set and no check has run: the expectation is
+  -- annotated on the asset and no result is stored there
+  set_open AS (
+    SELECT DISTINCT g.dataset, g.subject, g.aspect FROM main.glossary g
+    WHERE g.aspect IN (SELECT name FROM to_test) AND g.actor_kind IN ('agent', 'human')
+      AND NOT EXISTS (SELECT 1 FROM main.measurements m
+                      WHERE m.dataset = g.dataset AND m.subject = g.subject AND m.aspect = g.aspect)),
+  view_reads AS (
     SELECT DISTINCT split_part(path, '.', 1) AS dataset, split_part(path, '.', 2) AS table_name,
            split_part(path, '.', 3) AS column_name
-    FROM (SELECT unnest(regexp_extract_all(l.derivation, '([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*):', 1)) AS path
+    FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
           FROM glossql_views_lineage(NULL) l
           JOIN newest_aspects m ON m.name = l.view AND m.kind = 'VIEW'
             AND coalesce(json_extract_string(m.schema, '$.x-kind'), '') NOT IN ('sample', 'plan'))),
   assets AS (
     SELECT DISTINCT a.name, a.condition, r.dataset, r.table_name,
            CASE WHEN list_contains(a.grains, 'TABLE') THEN NULL ELSE r.column_name END AS column_name
-    FROM tested a, metric_reads r WHERE a.on_assets),
+    FROM tested a, view_reads r WHERE a.on_assets),
   open_assets AS (
     SELECT s.name FROM assets s
     WHERE (json_extract_string(s.condition, '$.aspect') IS NULL OR EXISTS (
@@ -265,20 +321,21 @@ CREATE OR REPLACE VIEW main.workspace_status AS
            (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports)) AS n_tables,
            (SELECT count(*) FROM (SELECT DISTINCT dataset, table_name FROM main.imports WHERE coalesce(dropped_rows_count, 0) > 0)) AS open_tables,
            (SELECT count(*) FROM main.relationships) AS n_relationships,
-           (SELECT count(*) FROM newest_aspects) AS n_aspects,
-           (SELECT count(*) FROM main.glossary) AS n_claims,
-           0 AS open_claims,
+           (SELECT count(*) FROM newest_aspects) AS n_properties,
+           (SELECT count(*) FROM main.glossary) AS n_annotations,
+           0 AS open_annotations,
            (SELECT count(DISTINCT name) FROM main.functions) AS n_functions,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW'
-              AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_metrics,
+              AND coalesce(json_extract_string(schema, '$.x-kind'), '') NOT IN ('sample', 'plan')) AS n_views,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW'
               AND coalesce(json_extract_string(a.schema, '$.x-kind'), '') NOT IN ('sample', 'plan')
-              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_metrics,
-           (SELECT count(DISTINCT name) FROM main.tests) AS n_validations,
+              AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_views,
+           (SELECT count(DISTINCT name) FROM main.tests) AS n_tests,
            (SELECT count(*) FROM in_use u WHERE u.used
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = u.name)
               AND NOT EXISTS (SELECT 1 FROM main.measurements m WHERE m.aspect = u.name))
-             + (SELECT count(*) FROM open_assets) AS open_validations,
+             + (SELECT count(*) FROM open_assets) + (SELECT count(*) FROM set_open)
+             + (SELECT count(*) FROM open_view_checks) AS open_tests,
            (SELECT n FROM asked) AS waiting,
            (SELECT count(*) FROM newest_aspects WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-kind') = 'scenario') AS n_scenarios,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'FACT' AND json_extract_string(a.schema, '$.x-kind') = 'scenario'
@@ -286,43 +343,54 @@ CREATE OR REPLACE VIEW main.workspace_status AS
            (SELECT count(*) FROM newest_aspects WHERE kind = 'VIEW' AND json_extract_string(schema, '$.x-kind') = 'plan') AS n_plans,
            (SELECT count(*) FROM newest_aspects a WHERE a.kind = 'VIEW' AND json_extract_string(a.schema, '$.x-kind') = 'plan'
               AND NOT EXISTS (SELECT 1 FROM main.glossary g WHERE g.aspect = a.name)) AS open_plans,
-           (SELECT n FROM ruled) AS n_decisions,
-           (SELECT unapplied FROM ruled) AS open_decisions,
+           (SELECT n FROM decided) AS n_decisions,
+           (SELECT unapplied FROM decided) AS open_decisions,
            (SELECT n FROM apps) AS n_apps)
-  SELECT s.surface, s.how,
-         CASE s.surface WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
-           WHEN 'relationships' THEN c.n_relationships WHEN 'aspects' THEN c.n_aspects
-           WHEN 'claims' THEN c.n_claims WHEN 'functions' THEN c.n_functions
-           WHEN 'metrics' THEN c.n_metrics WHEN 'validations' THEN c.n_validations
+  SELECT s.area, s.how,
+         CASE s.area WHEN 'sources' THEN c.n_sources WHEN 'tables' THEN c.n_tables
+           WHEN 'relationships' THEN c.n_relationships WHEN 'properties' THEN c.n_properties
+           WHEN 'annotations' THEN c.n_annotations WHEN 'functions' THEN c.n_functions
+           WHEN 'views' THEN c.n_views WHEN 'tests' THEN c.n_tests
            WHEN 'scenarios' THEN c.n_scenarios WHEN 'plans' THEN c.n_plans
            WHEN 'review' THEN c.n_decisions ELSE c.n_apps END AS existing,
-         CASE s.surface WHEN 'tables' THEN c.open_tables WHEN 'claims' THEN c.open_claims
-           WHEN 'metrics' THEN c.open_metrics WHEN 'validations' THEN c.open_validations
+         CASE s.area WHEN 'tables' THEN c.open_tables WHEN 'annotations' THEN c.open_annotations
+           WHEN 'views' THEN c.open_views WHEN 'tests' THEN c.open_tests
            WHEN 'scenarios' THEN c.open_scenarios WHEN 'plans' THEN c.open_plans
            WHEN 'review' THEN c.open_decisions ELSE 0 END AS open,
-         CASE s.surface WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
+         CASE s.area WHEN 'review' THEN c.waiting ELSE 0 END AS waiting
   FROM counts c
   CROSS JOIN (VALUES
-    ('sources', 'DECLARE SOURCE, then PREVIEW it — rehearse with LIMIT 0 to see every column before authoring a recipe'),
-    ('tables', 'write a load query (recipe) and load it — typing is the load query''s work, this is not ETL'),
-    ('relationships', 'DECLARE RELATIONSHIP between two endpoints — detect_relationships proposes, you judge'),
-    ('aspects', 'DECLARE ASPECT to add vocabulary — AS FACT, MEASUREMENT or VIEW, grained with ON'),
-    ('claims', 'GLOSS an asset with an aspect — the write verb; a person''s annotation outranks the agent''s at every read'),
-    ('functions', 'run one as a measurement, or DECLARE FUNCTION your own — statistics are the functions'' work, never a human question'),
-    ('metrics', 'GLOSS a VIEW aspect with its SQL and its assumptions — its name then serves it as a view, and its columns carry role, additivity and dimension'),
-    ('validations', 'GLOSS the expectation on a FACT aspect, DECLARE FUNCTION the check that RETURNS it, DECLARE TEST with a DETECTOR scoring them — TESTS() serves the test results'),
-    ('scenarios', 'DECLARE ASPECT ... AS FACT with x-kind scenario, GLOSS its levers — the outlook kit serves it'),
-    ('plans', 'DECLARE ASPECT ... AS VIEW with x-kind plan and x-plan-of the metric it plans, GLOSS its SQL over the loaded budget table — the outlook kit serves the plan world'),
-    ('review', 'a person decides on a disclosed assumption; the agent then records the definition again with the decision applied — `waiting` counts the questions waiting for a person, which the agent cannot close'),
-    ('apps', 'GLOSS app, app_page, app_frame, app_spec — one gloss per part, so a surface is written like anything else')
-  ) AS s(surface, how);
+    ('sources', 'DECLARE SOURCE names where the data is; PREVIEW runs SQL at the source and loads nothing, and LIMIT 0 shows every column and type'),
+    ('tables', 'DECLARE RECIPE declares a load query and loads its table; the casts are in its SELECT; IMPORT loads the table again from the source'),
+    ('relationships', 'DECLARE RELATIONSHIP between two columns; detect_relationships() proposes candidates and you check them against the data'),
+    ('properties', 'the properties an asset can carry; DECLARE ASPECT adds one, AS FACT, MEASUREMENT or VIEW, with ON for the kind of asset'),
+    ('annotations', 'GLOSS <property> ON <asset> writes one; a person''s annotation outranks the agent''s'),
+    ('functions', 'measurements over the data: SELECT <function>() FROM <asset> runs one; DECLARE FUNCTION adds your own'),
+    ('views', 'named SQL on a dataset, declared AS VIEW and defined with GLOSS: a table (x-kind relation), a single value (x-kind scalar) or a metric'),
+    ('tests', 'tests of your own: a property AS FACT for the expectation (outcome, tolerance, basis), annotated on the asset it holds for; a function that measures breach_rate and RETURNS the property; DECLARE TEST with DETECTOR rate_tolerance; TESTS() lists the results'),
+    ('scenarios', 'preview: a FACT aspect with x-kind scenario, annotated with its levers'),
+    ('plans', 'preview: a VIEW aspect with x-kind plan and x-plan-of the metric it plans, defined by SQL over the loaded plan table'),
+    ('review', 'a person confirms or corrects an assumption; the agent then records the definition again with the decision applied; `waiting` counts the assumptions that wait for a person'),
+    ('apps', 'data apps: GLOSS app, app_page, app_frame, app_spec, one annotation per part')
+  ) AS s(area, how);
 
--- A load-query change a person approved for a table: the brief counts it
+-- A load-query change a person approved for a table: the summary counts it
 -- as pending until a load of that table is newer than the approval.
 DECLARE ASPECT recipe_change WITH $${
   "type": "object", "required": ["table", "sql", "reason"],
   "properties": {"table": {"type": "string"}, "sql": {"type": "string"},
                  "reason": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+-- What a source sends at each delivery, stated on the table loaded from
+-- it: `full`, the complete state, so a row a file lacks is gone at the
+-- source; `incremental`, only new and changed rows. A person's
+-- annotation confirms or corrects the agent's. load_modes() (the goals
+-- kit) holds each table's newest load against it.
+DECLARE ASPECT delivery WITH $${
+  "description": "What the source sends at each delivery: the complete state (full), or only new and changed rows (incremental).",
+  "type": "object", "required": ["value"],
+  "properties": {"value": {"enum": ["full", "incremental"]}, "basis": {"type": "string"}}
 }$$ AS FACT ON TABLE;
 
 -- Review decisions: each answer a person gives in the review, the
@@ -382,3 +450,15 @@ CREATE OR REPLACE MACRO main.fmt_change(p) AS
   CASE WHEN p IS NULL THEN NULL
        WHEN p::DOUBLE < 0 THEN '-' || main.fmt_number(abs(p::DOUBLE)) || '%'
        ELSE '+' || main.fmt_number(p::DOUBLE) || '%' END;
+
+-- The strings a CSV export writes where it has no value, for the CSV
+-- reader's `nullstr`: the common spellings, a spreadsheet's error
+-- cells, dashes of two or more, and the words for missing. A single
+-- `-`, `.` or `*`, a number such as -999 and a date such as 1900-01-01
+-- are left out: they can be real values, and the column profile shows
+-- them.
+CREATE OR REPLACE MACRO main.null_markers() AS
+  ['', 'NULL', 'null', 'None', 'NaN', 'NA', 'N/A', 'n/a', '\N',
+   '#N/A', '#NULL!', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?',
+   '--', '---',
+   'MISSING', 'UNKNOWN', 'UNDEFINED', 'NOT SET', 'NOT PROVIDED', 'NO DATA', 'NO VALUE'];

@@ -8,13 +8,14 @@ coh AS (
   SELECT json_extract_string(rel, '$.relationship') AS rel,
          json_extract(rel, '$.orphans')::BIGINT AS orphans,
          json_extract(rel, '$.filled')::BIGINT AS filled
-  FROM (SELECT unnest(json_extract(g.body, '$.relationships')::JSON[]) AS rel
+  FROM (SELECT g.body AS rel
         FROM GLOSSARY(all => true) g
-        WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence')),
+        WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence'
+          AND json_extract_string(g.body, '$.relationship') IS NOT NULL)),
 m AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind,
          row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.seq DESC) AS rn
+           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
   FROM glossary g JOIN d ON d.dataset = g.dataset
   WHERE g.aspect = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.actor_kind IN ('human', 'agent')),
 rels AS (
@@ -24,7 +25,7 @@ rels AS (
   FROM relationships r JOIN d ON d.dataset = r.dataset)
 SELECT r.left_path || ' → ' || r.right_path AS rel,
        coalesce(m.meaning, '') AS meaning,
-       CASE WHEN m.actor_kind = 'human' THEN 'ruled' ELSE '' END AS mark,
+       CASE WHEN m.actor_kind = 'human' THEN 'decided' ELSE '' END AS mark,
        CASE WHEN c.rel IS NULL THEN 'not yet measured'
             WHEN c.orphans = 0 THEN 'every row resolves'
             ELSE CAST(c.orphans AS VARCHAR) || ' of ' || CAST(c.filled AS VARCHAR)

@@ -97,7 +97,7 @@
           {
             "field": "held",
             "type": "nominal",
-            "title": "the 80% band"
+            "title": "the 80% range"
           }
         ]
       }

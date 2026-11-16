@@ -6,7 +6,7 @@
 //! result held more, so the agent refines (aggregate, LIMIT, WHERE)
 //! instead of reading a capped result as complete.
 
-use crate::engine::{Outcome, QueryStream};
+use crate::engine::{Outcome, QueryStream, SessionError};
 use arrow::datatypes::SchemaRef;
 use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
@@ -37,7 +37,7 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> Result<Value, String> {
 
 /// Pull batches until the cap is met, then drop the stream — what the
 /// agent won't see, the engine stops computing.
-pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, String> {
+pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, SessionError> {
     let QueryStream {
         schema, mut stream, ..
     } = query;
@@ -45,7 +45,7 @@ pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, String
     let mut shipped = 0usize;
     let mut truncated = false;
     while let Some(batch) = stream.next().await {
-        let batch = batch.map_err(|e| e.to_string())?;
+        let batch = batch?;
         if shipped + batch.num_rows() > cap {
             let take = cap - shipped;
             if take > 0 {
@@ -58,7 +58,7 @@ pub async fn stream_json(query: QueryStream, cap: usize) -> Result<Value, String
         shipped += batch.num_rows();
         kept.push(batch);
     }
-    render(Some(schema), &kept, shipped, truncated)
+    render(Some(schema), &kept, shipped, truncated).map_err(SessionError::Engine)
 }
 
 fn render(
@@ -67,7 +67,7 @@ fn render(
     shipped: usize,
     truncated: bool,
 ) -> Result<Value, String> {
-    let rows = if kept.is_empty() {
+    let rows = if shipped == 0 {
         json!([])
     } else {
         let mut writer = arrow_json::ArrayWriter::new(Vec::new());

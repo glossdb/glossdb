@@ -1,10 +1,10 @@
 -- The loaded tables of the bound dataset: the newest load per table
 -- is the table, with its rows, the rows the recipe dropped, and when.
--- Column counts come from the engine's own schema surface. The file
+-- Column counts come from the engine's own schema. The file
 -- links are the download interface's paths.
 WITH latest AS (
   SELECT i.table_name, i.rows, i.dropped_rows_count, i.imported_at,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset),
 cols AS (
   SELECT c.table_name, count(*) AS columns
@@ -20,7 +20,7 @@ SELECT l.table_name AS name,
        CASE WHEN coalesce(l.dropped_rows_count, 0) > 0 THEN '' ELSE '–' END AS dash,
        CASE WHEN coalesce(l.dropped_rows_count, 0) > 0 THEN 'dropped' ELSE '' END AS nulled_label,
        CASE WHEN coalesce(l.dropped_rows_count, 0) > 0 THEN 'r-gap' ELSE '' END AS ncls,
-       strftime(l.imported_at, '%Y-%m-%d %H:%M') AS landed,
+       strftime(l.imported_at, '%Y-%m-%d %H:%M') AS loaded,
        '/' || d.dataset || '/app/export/' || l.table_name || '.csv' AS csv,
        '/' || d.dataset || '/app/export/' || l.table_name || '.parquet' AS parquet
 FROM latest l

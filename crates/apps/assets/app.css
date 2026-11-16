@@ -11,7 +11,7 @@
    is retired; a chart that needs a second series gets it from the
    chart's own scale, not from the page.
 
-   MONO IS THE VOICE. The page is a record, so it is set in mono
+   MONO IS THE SYSTEM. The page is a record, so it is set in mono
    throughout with tabular figures — subjects, keys, counts, times,
    provenance. Sans appears only where a human or an agent wrote a
    sentence: a claim, a review decision's words, a note to the reader. That one
@@ -19,7 +19,7 @@
    parts of a row are the system speaking and which are language
    somebody authored.
 
-   BANDS, NOT CARDS. Sections are hairline-ruled bands over the page
+   SECTIONS, NOT CARDS. Sections are hairline-ruled strips over the page
    ground rather than floating rounded panels. Rows are the unit; the
    rules between them carry the structure, so nothing has to shout.
 
@@ -213,10 +213,10 @@ h1 {
 
 code { font-family: var(--mono); font-size: 0.95em; }
 
-/* ---- bands -------------------------------------------------------- */
+/* ---- sections ----------------------------------------------------- */
 
-/* A band is a heading, a rule, and rows. `.tiles` keeps the 12-column
-   grid so a page can put two bands side by side; a band on its own
+/* A section is a heading, a rule, and rows. `.tiles` keeps the 12-column
+   grid so a page can put two sections side by side; a section on its own
    spans the width. */
 .tiles {
   display: grid;
@@ -233,7 +233,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 .tile {
   padding: 1.9rem 0 0.4rem;
   min-width: 0;
-  /* Wide row grids scroll inside their band — the page itself never
+  /* Wide row grids scroll inside their section — the page itself never
      scrolls horizontally. */
   overflow-x: auto;
 }
@@ -255,10 +255,10 @@ code { font-family: var(--mono); font-size: 0.95em; }
   color: var(--ink);
 }
 
-/* The count a band is about, when the band has one number. */
+/* The count a section is about, when the section has one number. */
 .count { font-size: var(--step); color: var(--open); }
 
-/* The provenance tag: which read this band comes from. Part of the
+/* The provenance tag: which read this section comes from. Part of the
    instrument, not a footnote — hover holds the derivation. */
 .chip {
   margin-left: auto;
@@ -360,14 +360,14 @@ code { font-family: var(--mono); font-size: 0.95em; }
   vertical-align: 0.1em;
   white-space: nowrap;
 }
-.v-ruled { color: var(--settled); border: 1px solid rgba(109, 189, 141, 0.4); }
+.v-decided { color: var(--settled); border: 1px solid rgba(109, 189, 141, 0.4); }
 .v-open { color: var(--open); border: 1px solid var(--open-dim); }
 .v-stale { color: var(--faint); border: 1px solid var(--rule); }
 .v-none { display: none; }
 .v[title] { cursor: help; }
 
 /* The vocabulary's rail: per aspect, the share of required subjects
-   spoken on — ink on the raised ground, since a count is not a
+   annotated — ink on the raised ground, since a count is not a
    result; settled green only when every required value is filled. */
 .rail-h {
   display: block;
@@ -382,7 +382,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 .rail-h i { display: block; height: 100%; background: var(--muted); }
 .rail-h.full i { background: var(--settled); }
 
-/* A group's line inside a band, our own words: sans, faint. */
+/* A group's line inside a section, our own words: sans, faint. */
 .grp { font-family: var(--sans); font-size: 0.82rem; color: var(--faint); padding: 1rem 0 0.2rem; }
 .rrow.sub { padding: 0.55rem 0; }
 
@@ -479,14 +479,14 @@ a.rrow:hover { background: var(--panel); }
 .g-jud { color: var(--ink); }
 
 /* A review decision, in the human's own words: sans, against the settled hue. */
-.ruling {
+.decision {
   font-family: var(--sans);
   font-size: 0.85rem;
   color: var(--ink);
   border-left: 2px solid var(--settled);
   padding-left: 0.6rem;
 }
-.ruling .who {
+.decision .who {
   display: block;
   font-family: var(--mono);
   font-size: 0.68rem;
@@ -508,8 +508,8 @@ a.rrow:hover { background: var(--panel); }
    judgement being given rather than a control panel. Confirming is one
    button; correcting opens for the words that make a correction worth
    anything. */
-.rule { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
-.rule button {
+.decide { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+.decide button {
   font: inherit;
   font-size: var(--step);
   letter-spacing: 0.06em;
@@ -521,12 +521,12 @@ a.rrow:hover { background: var(--panel); }
   padding: 0.2rem 0.6rem;
   cursor: pointer;
 }
-.rule button:hover { color: var(--ground); background: var(--open); border-color: var(--open); }
+.decide button:hover { color: var(--ground); background: var(--open); border-color: var(--open); }
 /* Two stances share the details block and stack in its narrow column —
    correction above, unclear below (watched live, 2026-08-18: they wrap,
    so a left margin gapped nothing). */
-.rule details button + button { margin-top: 2px; }
-.rule details summary {
+.decide details button + button { margin-top: 2px; }
+.decide details summary {
   cursor: pointer;
   font-size: var(--step);
   letter-spacing: 0.06em;
@@ -534,9 +534,9 @@ a.rrow:hover { background: var(--panel); }
   color: var(--faint);
   list-style: none;
 }
-.rule details summary:hover { color: var(--ink); }
-.rule details[open] summary { color: var(--muted); margin-bottom: 0.4rem; }
-.rule textarea {
+.decide details summary:hover { color: var(--ink); }
+.decide details[open] summary { color: var(--muted); margin-bottom: 0.4rem; }
+.decide textarea {
   font: inherit;
   font-family: var(--sans);
   font-size: 0.85rem;
@@ -549,10 +549,10 @@ a.rrow:hover { background: var(--panel); }
   margin-bottom: 0.4rem;
   resize: vertical;
 }
-.rule textarea:focus { border-color: var(--open); outline: none; }
+.decide textarea:focus { border-color: var(--open); outline: none; }
 
 /* Where a matter holds: the review decision, then what became of it. */
-.verdict {
+.result {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -561,7 +561,7 @@ a.rrow:hover { background: var(--panel); }
 
 /* ---- counts ------------------------------------------------------- */
 
-/* Standing counts sit in a hairline lattice above the bands: cells on
+/* The counts sit in a hairline lattice above the sections: cells on
    a rule, not floating cards. Deliberately not a hero — the console's
    subject is the matters, and these only say how many. */
 .counts {
@@ -669,16 +669,16 @@ details.fold[open] summary { color: var(--muted); }
 /* Full lists scroll instead of truncating — depth over dismissal. */
 .scroll { max-height: 30rem; overflow-y: auto; scrollbar-width: thin; }
 
-/* A header row over a band's rows, where bare numbers need names. */
+/* A header row over a section's rows, where bare numbers need names. */
 .rrow.rhead { padding: 0.5rem 0 0.35rem; border-bottom: 1px solid var(--rule); }
 .rrow.rhead > * { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.04em; }
 
-/* The checks' band bar: one test's results counted by band, each
+/* The tests' state bar: one test's results counted by state, each
    count a share of the bar. Green is settled and red is breached, the
    two result hues; yellow and orange are the amber at two strengths —
    a result asking for a look, which is what amber means here. */
-.bands { display: flex; height: 5px; margin-top: 0.55rem; background: var(--raised); border-radius: 1px; overflow: hidden; }
-.bands i { display: block; height: 100%; flex-basis: 0; }
+.ranges { display: flex; height: 5px; margin-top: 0.55rem; background: var(--raised); border-radius: 1px; overflow: hidden; }
+.ranges i { display: block; height: 100%; flex-basis: 0; }
 .b-green { background: var(--settled); }
 .b-yellow { background: var(--open); opacity: 0.45; }
 .b-orange { background: var(--open); }
@@ -720,8 +720,8 @@ details.fold[open] summary { color: var(--muted); }
    size, the interface's name beside it, one sentence in sans under each.
    The one place the root spends its size — a visitor who has just
    loaded should see where the server answers before anything else. */
-.doors { list-style: none; margin: 0.2rem 0 0; padding: 0; }
-.doors li {
+.interfaces { list-style: none; margin: 0.2rem 0 0; padding: 0; }
+.interfaces li {
   display: grid;
   grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
   gap: 0.2rem 1.5rem;
@@ -729,13 +729,13 @@ details.fold[open] summary { color: var(--muted); }
   border-bottom: 1px solid var(--rule-soft);
   align-items: baseline;
 }
-.doors .path { font-size: 1.05rem; color: var(--ink); font-weight: 600; letter-spacing: 0.01em; }
-.doors .path i { font-style: normal; color: var(--faint); font-weight: 400; }
-.doors .who { font-size: var(--step); color: var(--open); letter-spacing: 0.06em; text-transform: uppercase; }
-.doors .why { grid-column: 2; font-family: var(--sans); font-size: 0.86rem; color: var(--muted); max-width: 62ch; }
+.interfaces .path { font-size: 1.05rem; color: var(--ink); font-weight: 600; letter-spacing: 0.01em; }
+.interfaces .path i { font-style: normal; color: var(--faint); font-weight: 400; }
+.interfaces .who { font-size: var(--step); color: var(--open); letter-spacing: 0.06em; text-transform: uppercase; }
+.interfaces .why { grid-column: 2; font-family: var(--sans); font-size: 0.86rem; color: var(--muted); max-width: 62ch; }
 @media (max-width: 640px) {
-  .doors li { grid-template-columns: 1fr; }
-  .doors .why { grid-column: 1; }
+  .interfaces li { grid-template-columns: 1fr; }
+  .interfaces .why { grid-column: 1; }
 }
 
 /* A row's links — a dataset's console, a table's files — right-aligned
@@ -747,21 +747,22 @@ details.fold[open] summary { color: var(--muted); }
 .filters .chip { margin-left: 0; text-decoration: none; }
 .filters .chip:hover { color: var(--ink); border-color: var(--faint); }
 .filters .chip.on { color: var(--ink); border-color: var(--open); }
+.filters button.chip { background: none; font: inherit; font-size: var(--step); cursor: pointer; }
+.filters button.chip:not(.on) { text-decoration: line-through; }
 
 /* ---- the lineage graph (gl-graph) --------------------------------- */
 
-/* Tables as column boxes placed by dagre, metrics as a stack on the
-   right, the catalog's edges between them: a key edge solid, a
-   metric definition's read dashed. Amber lights the edges a hovered or
-   focused column touches — the one thing on the page asking for the
-   eye. A graph wider than the column scrolls inside its band. */
+/* Boxes with their columns, placed by dagre along the edges: a key
+   solid, a view's read dashed. Amber lights the edges
+   a hovered or focused column touches. A graph wider than the page
+   scrolls inside its section. */
 .graph-wrap { overflow-x: auto; overflow-y: hidden; margin-top: 1rem; }
 .graph-wrap.overflows { box-shadow: inset -28px 0 18px -18px rgba(0, 0, 0, 0.55); }
 .graph-wrap:not(.overflows) + .scroll-hint { display: none; }
 gl-graph { display: block; min-height: 5rem; }
 gl-graph svg { display: block; font-family: var(--mono); }
 .n-box { fill: var(--panel); stroke: var(--rule); }
-.n-box.metric { fill: var(--raised); }
+.n-box.view { fill: var(--raised); }
 .n-head { fill: var(--ink); font-size: 12px; font-weight: 600; }
 a:hover > .n-head { text-decoration: underline; }
 .n-sub { fill: var(--faint); font-size: 10px; }
@@ -803,7 +804,7 @@ a:hover > .n-head { text-decoration: underline; }
 
 /* ---- narrow ------------------------------------------------------- */
 
-/* Rows keep their authored columns and the band scrolls, rather than
+/* Rows keep their authored columns and the section scrolls, rather than
    the columns collapsing into each other — the same rule the wide
    tables follow. */
 @media (max-width: 760px) {
@@ -941,7 +942,6 @@ main.with-tree > .content { min-width: 0; }
 .wbtn.on { color: var(--open); border-color: var(--open-dim); }
 
 gl-window { display: block; margin: 0.4rem 0 0.8rem; }
-.remeasure { display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap; }
 
 /* The Glossary's dictionary: a table's columns folded as lines; and
    the query pane, the Query tab's and a view's page's. */
@@ -958,3 +958,26 @@ gl-query .wgroup { display: flex; gap: 0.5rem; align-items: baseline; margin-bot
 gl-query a.wbtn { text-decoration: none; }
 /* The footer's steps sit on the footer's own line, after the range. */
 gl-query .table-foot .wbtn { margin-left: 0.4rem; }
+
+/* ---- one test's page ---------------------------------------------- */
+.t-asks { font-size: 1rem; line-height: 1.5; color: var(--ink); max-width: 52rem; margin: 0.9rem 0 1rem; }
+dl.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem 2rem; margin: 0; }
+dl.facts dt { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
+dl.facts dd { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+.preview { font-family: var(--mono); font-size: 0.68rem; color: var(--open); border: 1px solid currentColor; border-radius: 2px; padding: 0 0.3rem; margin-left: 0.4rem; letter-spacing: 0.04em; text-transform: lowercase; }
+
+/* ---- the overview's five functions -------------------------------- */
+.steps gl-rows { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); margin-top: 1rem; }
+.step { display: flex; flex-direction: column; gap: 0.35rem; padding: 1rem 1.1rem 1.1rem; border-right: 1px solid var(--rule); text-decoration: none; color: inherit; min-height: 9.5rem; }
+.step:last-child { border-right: 0; }
+.step:hover { background: var(--panel); }
+.step .s-q { color: var(--faint); font-size: 0.8rem; font-style: italic; }
+.step .s-title { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); font-weight: 600; }
+.step .s-have { color: var(--ink); font-size: 0.95rem; line-height: 1.35; margin-top: 0.3rem; }
+.step .s-more { color: var(--faint); font-size: 0.8rem; line-height: 1.4; }
+.step .s-open { margin-top: auto; padding-top: 0.6rem; font-family: var(--mono); font-size: var(--step); color: var(--settled); }
+.step.warn .s-open { color: var(--open); }
+@media (max-width: 900px) {
+  .steps gl-rows { grid-template-columns: 1fr; }
+  .step { border-right: 0; border-bottom: 1px solid var(--rule); min-height: 0; }
+}

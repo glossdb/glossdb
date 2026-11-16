@@ -5,7 +5,7 @@
 -- a plan holds on its metric's page.
 WITH latest AS (
   SELECT i.table_name, i.rows AS n,
-         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.seq DESC) AS rn
+         row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset),
 tables AS (
   SELECT table_name AS name, 'table' AS kind, CAST(n AS BIGINT) AS n, '' AS what FROM latest WHERE rn = 1),
@@ -15,8 +15,8 @@ reads AS (
               WHEN s.kind = 'relation' THEN 'view'
               ELSE s.kind END AS kind,
          CAST(NULL AS BIGINT) AS n, s.meaning AS what
-  FROM metric_surfaces s
-  WHERE s.grounded AND s.stopped = '' AND s.kind <> 'plan'),
+  FROM view_definitions s
+  WHERE s.defined AND s.stopped = '' AND s.kind <> 'plan'),
 all_ AS (SELECT * FROM tables UNION ALL SELECT * FROM reads)
 SELECT name, kind,
        coalesce(CAST(n AS VARCHAR), '') AS rows,

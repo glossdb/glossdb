@@ -9,8 +9,8 @@ roles AS (
   SELECT subject, json_extract_string(value, '$.value') AS role
   FROM GLOSSARY() WHERE aspect = 'role' AND value IS NOT NULL),
 prov AS (
-  SELECT DISTINCT s.field, s.source FROM metric_sources() s
-  WHERE s.metric = $metric AND s.field IS NOT NULL),
+  SELECT DISTINCT s.target_column AS field, s.source_table || '.' || s.source_column AS source FROM column_mapping() s
+  WHERE s.view = $view AND s.source_column IS NOT NULL),
 folded AS (
   SELECT p.field,
          string_agg(p.source, ', ' ORDER BY p.source) AS sources,
@@ -29,11 +29,11 @@ cols AS (
            ELSE lower(c.data_type) END AS typed
   FROM information_schema.columns c
   JOIN d ON d.dataset = c.table_schema
-  WHERE c.table_catalog = current_database() AND c.table_name = $metric)
+  WHERE c.table_catalog = current_database() AND c.table_name = $view)
 SELECT c.column_name AS field,
        coalesce(own.role, nullif(f.roles, ''), c.typed) AS role,
        coalesce(f.sources, 'computed, no one column') AS sources
 FROM cols c
 LEFT JOIN folded f ON f.field = c.column_name
-LEFT JOIN roles own ON own.subject = (SELECT dataset FROM d) || '.' || CAST($metric AS VARCHAR) || '.' || c.column_name
+LEFT JOIN roles own ON own.subject = (SELECT dataset FROM d) || '.' || CAST($view AS VARCHAR) || '.' || c.column_name
 ORDER BY c.ordinal_position

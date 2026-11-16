@@ -1,28 +1,28 @@
-// <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges"
-//           empty="…"> — column lineage over two stored frames. The
-// nodes frame is one row per column: `node` (a table, or a metric by
-// its name), `kind` (`table` | `metric`), `col`, `ord`, `role`.
-// The edges frame is one row per edge: `src`, `dst` (column paths,
-// `table.col` or `metric.field`, a composite endpoint as
-// `table.(a, b)`), `kind` (`m2o` | `o2o` | `reads`).
+// <gl-graph nodes="frames/…" edges="frames/…" empty="…"> draws a graph
+// of boxes with their columns over two stored frames.
 //
-// Optional, for the model page: a node row may carry `sub` (a line
-// under the node's name) and `link` (the node's page); a column row
-// may carry `detail` (shown in place of the bare role, and enough to
-// keep the column unfolded). `node-width` on the element widens the
-// boxes. A frame without them draws as lineage always has.
+// The nodes frame is one row per column: `node`, `kind` (`table` |
+// `view`), `col`, `ord`, and optionally `role`, `detail` (shown at the
+// column's right, and enough to keep the column unfolded), `sub` (a
+// line under the node's name), `tag` (shown at the right of the name:
+// the source a table is loaded from) and `link` (the node's page).
 //
-// dagre places the tables, reading left to right along the keys — a
-// parent holds left of the table that points at it. The metrics are
-// not ranked with them: they are the right-hand column, one stack
-// ordered by where their sources sit, so the graph is as wide as its
-// longest key chain and no wider. The element draws the rest as SVG
-// in the page's own classes; nothing here is a chart.
+// The edges frame is one row per edge: `src`, `dst`, `kind`.
+//   `m2o` | `o2o`: a declared key between two columns (`table.col`, a
+//     composite endpoint as `table.(a, b)`); the parent is placed left
+//     of the table that points at it.
+//   `reads`: a column to the view column that descends from it.
 //
-// A column an edge touches, or one with a judged role, shows; the
-// rest fold under a count and open on click — a disclosure, not
-// state. Hover follows a column through its edges. Click puts it in
-// the URL as `focus`, so the view is a link; the page renders it lit.
+// With the `layers` attribute the graph carries two switches above
+// it: relationships, and views (with what they read). A layer switched
+// off is left out of the layout too. The choice is in the URL as
+// `hide`, so the picture is a link.
+//
+// dagre places the nodes left to right along the edges, the views
+// right of every table. A column an
+// edge touches, or one with a detail, shows; the rest fold under a
+// count and open on click. Hover follows a column through its edges.
+// Click puts it in the URL as `focus`, so the picture is a link.
 (function () {
   'use strict';
 
@@ -48,6 +48,22 @@
     if (!m) return [path];
     return m[2].split(',').map((c) => m[1] + '.' + c.trim());
   }
+
+  // A layer is a kind of node with the edges that end at it, or a kind
+  // of edge alone.
+  const LAYERS = [
+    { key: 'relationships', label: 'Relationships', nodes: [], edges: ['m2o', 'o2o'] },
+    { key: 'views', label: 'Views', nodes: ['view'], edges: ['reads'] },
+  ];
+
+  function hidden() {
+    const said = new URLSearchParams(document.location.search).get('hide') || '';
+    return new Set(said.split(',').filter(Boolean));
+  }
+
+  // The layout's node between the tables and the views. No table or
+  // view has a name with a space.
+  const GAP = 'tables views';
 
   function nodeOf(id) {
     return id.slice(0, id.lastIndexOf('.'));
@@ -112,15 +128,19 @@
       const byNode = new Map();
       for (const r of nodeRows) {
         if (!byNode.has(r.node)) {
-          byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', link: r.link || '', columns: [] });
+          byNode.set(r.node, { name: r.node, kind: r.kind, sub: r.sub || '', tag: r.tag || '', link: r.link || '', columns: [] });
         }
-        byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
+        if (r.col) byNode.get(r.node).columns.push([r.col, r.role || '', r.detail || '']);
       }
-      const NODES = [...byNode.values()];
+      const off = this.hasAttribute('layers') ? hidden() : new Set();
+      const noNodes = new Set(LAYERS.filter((l) => off.has(l.key)).flatMap((l) => l.nodes));
+      const noEdges = new Set(LAYERS.filter((l) => off.has(l.key)).flatMap((l) => l.edges));
+      const NODES = [...byNode.values()].filter((n) => !noNodes.has(n.kind));
 
       const touched = new Set();
       const edges = [];
       for (const r of edgeRows) {
+        if (noEdges.has(r.kind)) continue;
         const from = endpoints(r.src);
         const to = endpoints(r.dst);
         for (let i = 0; i < from.length; i++) {
@@ -147,44 +167,34 @@
       const g = new dagre.graphlib.Graph();
       g.setGraph({ rankdir: 'LR', nodesep: 22, ranksep: 70, marginx: 8, marginy: 8 });
       g.setDefaultEdgeLabel(() => ({}));
-      const tables = NODES.filter((n) => n.kind !== 'metric');
-      const metrics = NODES.filter((n) => n.kind === 'metric');
-      for (const n of tables) g.setNode(n.name, { width: W, height: height(n) });
+      for (const n of NODES) g.setNode(n.name, { width: W, height: height(n) });
       const seen = new Set();
       for (const e of edges) {
-        if (e.kind === 'reads') continue;
-        const child = nodeOf(e.from);
-        const parent = nodeOf(e.to);
-        const key = parent + '>' + child;
-        if (child !== parent && g.hasNode(parent) && g.hasNode(child) && !seen.has(key)) {
-          g.setEdge(parent, child);
-          seen.add(key);
+        // a key points from the child to its parent; the data flows
+        // from the parent, so the parent ranks first
+        const key = e.kind === 'm2o' || e.kind === 'o2o';
+        const first = nodeOf(key ? e.to : e.from);
+        const then = nodeOf(key ? e.from : e.to);
+        const pair = first + '>' + then;
+        if (first !== then && g.hasNode(first) && g.hasNode(then) && !seen.has(pair)) {
+          g.setEdge(first, then);
+          seen.add(pair);
         }
+      }
+      // Every view ranks right of every table: a node of no size
+      // between the two kinds holds them apart.
+      const tables = NODES.filter((n) => n.kind === 'table');
+      const views = NODES.filter((n) => n.kind === 'view');
+      if (tables.length && views.length) {
+        g.setNode(GAP, { width: 0, height: 0 });
+        for (const n of tables) g.setEdge(n.name, GAP);
+        for (const n of views) g.setEdge(GAP, n.name);
       }
       dagre.layout(g);
       const pos = new Map();
-      for (const n of tables) pos.set(n.name, g.node(n.name));
-
-      // The metric column: past the widest rank, stacked in the order
-      // of their sources' mean y so the dashed edges cross least.
-      const tablesWidth = tables.length ? g.graph().width : 0;
-      const colX = tablesWidth + (tables.length ? 70 : 8) + W / 2;
-      const meanY = (m) => {
-        const ys = edges
-          .filter((e) => nodeOf(e.to) === m.name)
-          .map((e) => pos.get(nodeOf(e.from)))
-          .filter(Boolean)
-          .map((p) => p.y);
-        return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
-      };
-      let stackY = 8;
-      for (const m of metrics.slice().sort((a, b) => meanY(a) - meanY(b))) {
-        const h = height(m);
-        pos.set(m.name, { x: colX, y: stackY + h / 2, width: W, height: h });
-        stackY += h + 22;
-      }
-      const totalW = (metrics.length ? colX + W / 2 : tablesWidth) + 8;
-      const totalH = Math.max(tables.length ? g.graph().height : 0, stackY);
+      for (const n of NODES) pos.set(n.name, g.node(n.name));
+      const totalW = g.graph().width + 8;
+      const totalH = g.graph().height + 8;
 
       const svg = el('svg', {
         width: totalW,
@@ -193,9 +203,9 @@
         role: 'img',
         'aria-label': this.getAttribute('label') || 'column lineage',
       });
-      // A graph a little wider than the band scales down to fit —
+      // A graph a little wider than the section scales down to fit —
       // the whole picture beats a scrollbar as long as the type stays
-      // readable; past that floor the band scrolls, as wide rows do.
+      // readable; past that floor the section scrolls, as wide rows do.
       const FIT_FLOOR = 0.78;
       const room = this.clientWidth || this.parentElement?.clientWidth || 0;
       if (room && totalW > room && totalW * FIT_FLOOR <= room) {
@@ -222,6 +232,9 @@
         } else {
           grp.append(name);
         }
+        if (n.tag) {
+          grp.append(el('text', { class: 'n-sub', x: p.width - 10, y: 19, 'text-anchor': 'end' }, n.tag));
+        }
         if (n.sub) {
           // About 6px a character at the subtitle's size: trim to the
           // box, the whole line on hover.
@@ -232,7 +245,9 @@
           grp.append(t);
         }
         const top = head(n);
-        grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: top - 4, y2: top - 4 }));
+        if (s.cols.length || s.hidden) {
+          grp.append(el('line', { class: 'n-rule', x1: 0, x2: p.width, y1: top - 4, y2: top - 4 }));
+        }
         s.cols.forEach(([c, role, detail], i) => {
           const id = n.name + '.' + c;
           const cy = top + i * ROW;
@@ -263,7 +278,7 @@
         const dx = Math.max(30, Math.abs(x1 - x0) / 2) * (ltr ? 1 : -1);
         const d = `M${x0},${a.y} C${x0 + dx},${a.y} ${x1 - dx},${b.y} ${x1},${b.y}`;
         layerE.append(el('path', { class: 'e ' + e.kind, d, 'data-from': e.from, 'data-to': e.to }));
-        if (e.kind !== 'reads') {
+        if (e.kind === 'm2o' || e.kind === 'o2o') {
           const tip = e.kind === 'o2o' ? '↔' : '→';
           layerE.append(
             el('text', {
@@ -280,7 +295,8 @@
       const line = document.createElement('p');
       line.className = 'focus-line';
       this.replaceChildren(svg, line);
-      // Past the fit floor the band scrolls: say so, since the metrics
+      if (this.hasAttribute('layers')) this.prepend(this.switches(off));
+      // Past the fit floor the section scrolls: say so, since the views
       // are the right-hand end and would otherwise sit out of sight.
       const wrap = this.closest('.graph-wrap');
       if (wrap) wrap.classList.toggle('overflows', wrap.scrollWidth > wrap.clientWidth + 1);
@@ -340,6 +356,33 @@
       if (focus) lit(focus);
     }
   }
+
+  // The layer switches: one button per layer, pressed while it shows.
+  GlGraph.prototype.switches = function (off) {
+    const bar = document.createElement('div');
+    bar.className = 'filters';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'layers shown');
+    for (const l of LAYERS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip' + (off.has(l.key) ? '' : ' on');
+      b.setAttribute('aria-pressed', off.has(l.key) ? 'false' : 'true');
+      b.textContent = l.label;
+      b.addEventListener('click', () => {
+        const next = hidden();
+        if (next.has(l.key)) next.delete(l.key);
+        else next.add(l.key);
+        const url = new URL(document.location.href);
+        if (next.size) url.searchParams.set('hide', [...next].join(','));
+        else url.searchParams.delete('hide');
+        history.replaceState(null, '', url.toString());
+        this.draw();
+      });
+      bar.append(b);
+    }
+    return bar;
+  };
 
   customElements.define('gl-graph', GlGraph);
 })();

@@ -14,13 +14,13 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde_json::{Map, Value, json};
 use tera::Tera;
 
-use crate::AppDoor;
+use crate::AppInterface;
 use crate::app::AppDef;
 use crate::overview;
 
 /// The policy every page is served under. A page is markup an author
 /// glossed — an agent, as often as not — and the human interface renders
-/// it with the viewer's standing, so what runs in a page is the
+/// it as the viewer's actor, so what runs in a page is the
 /// shell's own assets and nothing the page carries: no inline script,
 /// no handler attribute, no `javascript:` URL, no eval. A vega-lite
 /// spec runs in vega's interpreter (`gl-chart.js`) rather than
@@ -39,7 +39,7 @@ const OBJECT: &str = include_str!("../templates/modules/object.html");
 
 /// The embedded templates, parsed once for the process. A request
 /// takes a copy, since an app's own pages join it per request — they
-/// are glossed data and change with the record.
+/// are glossed data and change with the catalog.
 fn base_tera() -> Tera {
     static BASE: LazyLock<Tera> = LazyLock::new(|| {
         let mut tera = Tera::default();
@@ -76,8 +76,8 @@ fn apps_json(glossed: &[crate::glossed::Part]) -> Value {
 /// The `Err` is the 404 to send, built once on the miss — boxing it
 /// would buy nothing on this path.
 #[allow(clippy::result_large_err)]
-async fn admit(door: &AppDoor, dataset: &str) -> Result<Vec<String>, Response> {
-    let names = crate::known(door).await;
+async fn admit(interface: &AppInterface, dataset: &str) -> Result<Vec<String>, Response> {
+    let names = crate::known(interface).await;
     if names.iter().any(|n| n == dataset) {
         return Ok(names);
     }
@@ -91,18 +91,19 @@ async fn admit(door: &AppDoor, dataset: &str) -> Result<Vec<String>, Response> {
 /// each, the apps, the interfaces, and how an agent connects. Read from
 /// the catalog at each visit — one workspace read for the datasets,
 /// one bound read per dataset for its counts.
-pub async fn datasets(State(door): State<AppDoor>) -> Response {
-    let (mut datasets, error) = match overview::rows(&door, None, overview::DATASETS, &[]).await {
-        Ok(rows) => (rows, String::new()),
-        Err(e) => (Vec::new(), e),
-    };
+pub async fn datasets(State(interface): State<AppInterface>) -> Response {
+    let (mut datasets, error) =
+        match overview::rows(&interface, None, overview::DATASETS, &[]).await {
+            Ok(rows) => (rows, String::new()),
+            Err(e) => (Vec::new(), e),
+        };
     let names: Vec<String> = datasets
         .iter()
         .filter_map(|d| d.get("name").and_then(Value::as_str).map(str::to_string))
         .collect();
     let mut glossed = Vec::new();
     for (row, name) in datasets.iter_mut().zip(&names) {
-        match overview::rows(&door, Some(name), overview::COUNTS, &[]).await {
+        match overview::rows(&interface, Some(name), overview::COUNTS, &[]).await {
             Ok(counts) => {
                 if let (Some(into), Some(Value::Object(from))) =
                     (row.as_object_mut(), counts.first())
@@ -116,13 +117,13 @@ pub async fn datasets(State(door): State<AppDoor>) -> Response {
                 }
             }
         }
-        glossed.extend(crate::glossed::parts(&door, name, false).await.parts);
+        glossed.extend(crate::glossed::parts(&interface, name, false).await.parts);
     }
     overview::grouped(
         &mut datasets,
         &["tables", "rows", "served", "stopped", "open"],
     );
-    overview::minute(&mut datasets, "landed");
+    overview::minute(&mut datasets, "loaded");
     // An app names no dataset, so a directory or built-in app serves
     // every one; a glossed app serves the dataset it was glossed in.
     let apps: Vec<Value> = AppDef::list(&glossed)
@@ -147,48 +148,48 @@ pub async fn datasets(State(door): State<AppDoor>) -> Response {
     ctx.insert("datasets", &datasets);
     ctx.insert("error", &error);
     ctx.insert("apps", &apps);
-    ctx.insert("origin", &*door.origin);
+    ctx.insert("origin", &*interface.origin);
     render("datasets.html", ctx, Ok(base_tera()))
 }
 
 /// The dataset's page is the built-in: `/<dataset>/app` opens the
 /// console, and the URL says so.
-pub async fn home(State(door): State<AppDoor>, Path(dataset): Path<String>) -> Response {
-    if let Some(missing) = crate::missing(&door, &dataset).await {
+pub async fn home(State(interface): State<AppInterface>, Path(dataset): Path<String>) -> Response {
+    if let Some(missing) = crate::missing(&interface, &dataset).await {
         return plain(StatusCode::NOT_FOUND, missing);
     }
     Redirect::to(&format!("/{dataset}/app/{}", crate::builtin::DATASET_PAGE)).into_response()
 }
 
 pub async fn index(
-    State(door): State<AppDoor>,
+    State(interface): State<AppInterface>,
     Path((dataset, app)): Path<(String, String)>,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
-    page_response(&door, &dataset, &app, "index", params).await
+    page_response(&interface, &dataset, &app, "index", params).await
 }
 
 pub async fn page(
-    State(door): State<AppDoor>,
+    State(interface): State<AppInterface>,
     Path((dataset, app, page)): Path<(String, String, String)>,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
-    page_response(&door, &dataset, &app, &page, params).await
+    page_response(&interface, &dataset, &app, &page, params).await
 }
 
 async fn page_response(
-    door: &AppDoor,
+    interface: &AppInterface,
     dataset: &str,
     app: &str,
     page: &str,
     params: Vec<(String, String)>,
 ) -> Response {
-    let datasets = match admit(door, dataset).await {
+    let datasets = match admit(interface, dataset).await {
         Ok(names) => names,
         Err(response) => return response,
     };
     let draft = params.iter().any(|(k, _)| k == "draft");
-    let loaded = crate::glossed::parts(door, dataset, draft).await;
+    let loaded = crate::glossed::parts(interface, dataset, draft).await;
     let glossed = loaded.parts;
     let def = match AppDef::load(app, &glossed) {
         Ok(Some(def)) => def,
@@ -208,22 +209,13 @@ async fn page_response(
         .into_iter()
         .try_for_each(|(name, text)| tera.add_raw_template(&format!("pages/{name}"), &text))
         .map(|()| tera);
-    // The section this page sits in: the manifest's, moved by the page's
-    // `kind` parameter where the manifest says so. A manifest without
-    // sections marks the page itself.
-    let kind = params
-        .iter()
-        .find(|(k, _)| k == "kind")
-        .map(|(_, v)| v.as_str());
+    // The section this page sits in, from the manifest. A manifest
+    // without sections marks the page itself.
     let section = def
         .pages
         .iter()
         .find(|t| t.name == page)
-        .map(|t| {
-            kind.and_then(|k| t.kind_sections.get(k))
-                .unwrap_or(&t.section)
-                .clone()
-        })
+        .map(|t| t.section.clone())
         .unwrap_or_default();
     // The bar's tabs: the pages the manifest puts in the bar. `sep` is
     // the hairline before a tab: the group changed from the tab before
@@ -258,18 +250,20 @@ async fn page_response(
     // at — the bar says so, and the tabs keep the draft on.
     ctx.insert("draft", &draft);
     ctx.insert("released", &loaded.releases.get(app));
-    ctx.insert("origin", &*door.origin);
+    ctx.insert("origin", &*interface.origin);
     render(&format!("pages/{page}.html"), ctx, tera)
 }
 
 /// Sidecar vega-lite specs, served as they were authored.
 pub async fn spec(
-    State(door): State<AppDoor>,
+    State(interface): State<AppInterface>,
     Path((dataset, app, spec)): Path<(String, String, String)>,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
     let draft = params.iter().any(|(k, _)| k == "draft");
-    let glossed = crate::glossed::parts(&door, &dataset, draft).await.parts;
+    let glossed = crate::glossed::parts(&interface, &dataset, draft)
+        .await
+        .parts;
     let def = match AppDef::load(&app, &glossed) {
         Ok(Some(def)) => def,
         Ok(None) => return plain(StatusCode::NOT_FOUND, format!("no app `{app}`")),
@@ -289,10 +283,10 @@ pub async fn spec(
 fn render(name: &str, ctx: tera::Context, tera: Result<Tera, tera::Error>) -> Response {
     let rendered = tera.and_then(|tera| tera.render(name, &ctx));
     match rendered {
-        // Never cached. A page is a live view of a mutable record, and
+        // Never cached. A page is a live view of a mutable catalog, and
         // with no Cache-Control at all the browser applies heuristic
         // freshness — so after a review decision POST redirected back here, the
-        // browser would serve the pre-ruling copy from cache and the
+        // browser would serve the pre-decision copy from cache and the
         // change would only appear on a manual reload.
         // The redirect was correct; the caching was the bug.
         Ok(html) => (

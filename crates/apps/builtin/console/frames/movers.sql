@@ -1,21 +1,21 @@
 -- Where a breached metric's move is: for each axis the metric is
 -- sliced by, the member that moved most between the previous and the
--- newest walked month, with its move and the net of the rest — the
--- series' own cells at month grain, the two months the walk scored. A
+-- newest backtested month, with its move and the net of the rest — the
+-- series' own cells at month grain, the two months the backtest scored. A
 -- member absent in one of the months counts as zero there. The metric
 -- is a page param the finding's frame fills in. Numbers stay numbers;
 -- the row tile groups their digits.
-WITH walked AS (
+WITH points AS (
   SELECT period, row_number() OVER (ORDER BY point_seq DESC) AS recency
-  FROM band_points()
-  WHERE metric = CAST($metric AS VARCHAR) AND applicable AND period IS NOT NULL
+  FROM range_points()
+  WHERE metric = CAST($view AS VARCHAR) AND applicable AND period IS NOT NULL
 ),
-newest AS (SELECT max(period) AS period FROM walked WHERE recency = 1),
-previous AS (SELECT max(period) AS period FROM walked WHERE recency = 2),
+newest AS (SELECT max(period) AS period FROM points WHERE recency = 1),
+previous AS (SELECT max(period) AS period FROM points WHERE recency = 2),
 cells AS (
   SELECT s.dimension AS axis, s.member, strftime(s.period, '%Y-%m') AS ym, s.value
   FROM metric_series(grain := 'month', unclaimed := 'skip') s
-  WHERE s.metric = CAST($metric AS VARCHAR) AND s.world = 'actual' AND s.dimension <> ''
+  WHERE s.metric = CAST($view AS VARCHAR) AND s.world = 'actual' AND s.dimension <> ''
 ),
 moves AS (
   SELECT c.axis, c.member,

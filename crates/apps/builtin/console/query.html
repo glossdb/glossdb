@@ -4,7 +4,7 @@
 
 {% block main %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section="Query") }}
-{# The Query tab: a read of one's own against the query door. The pane
+{# The Query tab: a read of one's own against the query interface. The pane
    posts one SELECT and renders the stream; csv and arrow save what
    came back. The SQL rides the page URL (`?sql=`), so a read is a
    link: the relations beneath are such links, each putting its first
@@ -19,7 +19,7 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="Every loaded table (its newest load is the table) and every served view: a metric&#x27;s rows, a view, a single value. A stopped metric definition serves nothing and is not offered.">What you can query</span>
-      <code class="chip">imports · metric_surfaces</code></header>
+      <code class="chip">imports · view_definitions</code></header>
     <p class="hint">Pick one and its first fifty rows come up in the pane.</p>
     <gl-rows frame="frames/relations" empty="nothing is loaded here yet: a table is loaded by a load query, DECLARE RECIPE over the MCP interface">
       <template>

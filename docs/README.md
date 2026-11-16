@@ -1,83 +1,75 @@
-# Documentation
+# glossdb documentation
 
-glossdb is a harness framework for data agents, written in the
-[glossql](https://github.com/glossdb/glossql) language. Every page here
-is also served to agents over MCP as a `doc://docs/…` resource.
+glossdb is the data harness for people and agents. Agents build a
+company's data intelligence layer in the lake, beside the data.
+glossdb tests what they state against the data at each load, and a
+person reviews and decides. Source data goes in; described and tested
+tables, single values and metrics come out.
 
-## Overview
+The MCP interface serves each page here as `doc://docs/<path>`.
 
-- [Introduction](overview/introduction.md): what glossdb is and why.
-- [How it works](overview/how-it-works.md): the data harness beside the
-  coding harness, part by part.
-- [Terms](overview/terms.md): every word, beside the industry's.
+## Start
 
-## Getting started
+- [Installation](getting-started/installation.md): the binary, the
+  image, a build from source.
+- [Quickstart](getting-started/quickstart.md): two CSV files to a
+  tested table, a single value and a metric.
 
-- [Installation](getting-started/installation.md)
-- [Connect an agent](getting-started/connect.md)
-- [Quickstart](getting-started/quickstart.md): from raw exports to
-  served metrics in one session.
+## The five functions of data intelligence
 
-## Usage
+Each function answers one question about the data. The pages are
+grouped by it.
 
-- [Workspaces and datasets](usage/workspaces.md)
-- [Loading data](usage/loading-data.md)
-- [Describing tables and columns](usage/describing-data.md)
-- [Relationships](usage/relationships.md)
-- [Metrics](usage/metrics.md)
-- [Measurements](usage/measurements.md)
-- [Data tests](usage/data-tests.md)
-- [The review queue](usage/review.md)
-- [The console](usage/console.md)
-- [Data apps](usage/data-apps.md)
-- [Querying and export](usage/querying.md)
+| Function | The question | Page |
+|---|---|---|
+| Integration | Which sources map? | [Connect and load](usage/load.md): sources, load queries, loads. [Define views](usage/views.md): a table, a single value, a metric |
+| Metadata | What does this mean? | [Describe](usage/describe.md): annotations, relationships, the business glossary |
+| Quality | Can we trust this value? | [Test](usage/test.md): the built-in tests, your own tests, states |
+| Governance | Who decides and may use it? | [Review and decide](usage/review.md): the review queue and review decisions |
+| Lineage | Where does this come from? | [Read the views](usage/read.md): column lineage, OpenLineage events, and how the views are read: SQL, Arrow, export, the console, data apps |
 
-## Operations
+Preview: [Forecasts, expected ranges, plans and scenarios](usage/outlook.md).
 
-- [Configuration](operations/configuration.md)
-- [Authentication](operations/authentication.md)
-- [Deployment](operations/deployment.md)
-- [Logging and monitoring](operations/monitoring.md)
+## The four kinds of work
+
+The work on a dataset is of four kinds: integrate (connect a source,
+load tables, define views), describe, test and review (an open
+question goes to a person; the decision is kept). They are kinds of
+work, not stages. A view needs a loaded table, a test needs
+something defined, and a review needs an open question. Lineage
+results from the other four, and a view can be queried once it is
+defined. `next` labels each open row with its kind and a level: what
+must be done (served data is wrong or cannot be served), what should
+(the layer is incomplete for what is served) and what could
+([reads](reference/reads.md)).
+
+## Operate and extend
+
+- [Deployment](operations/deployment.md): the container, the lake,
+  sign-in, logs.
+- [Kits](extending/kits.md): add annotations, measurements and tests
+  for a use case.
 
 ## Reference
 
-- [Statements](reference/statements.md)
-- [Functions](reference/functions.md)
-- [Views and table functions](reference/reads.md)
-- [The KPI kit](reference/kpi-kit.md)
-- [The MCP interface](reference/mcp.md)
-- [HTTP endpoints](reference/http.md)
-- [App authoring](reference/apps.md)
+- [Interfaces](reference/interfaces.md): MCP, the query endpoint, the
+  paths, the statements the server refuses.
+- [Reads](reference/reads.md): each catalog table, view and table
+  function with its columns.
+- [Configuration](reference/configuration.md): flags and variables.
+- [App authoring](reference/apps.md): the parts and tiles of a data
+  app.
 
-The language itself: [SPEC.md](https://github.com/glossdb/glossql/blob/main/SPEC.md)
-and [grammar.ebnf](https://github.com/glossdb/glossql/blob/main/grammar.ebnf).
+The language is specified in `doc://SPEC.md` and `doc://grammar.ebnf`,
+served from the glossql extension the server bundles.
 
-## Extending
+## Status of each feature
 
-- [Kits](extending/kits.md)
-- [Goals and next steps](extending/next-steps.md)
-
-## Methods
-
-How each measurement computes its result, and its limits:
-[relationship discovery](methods/discovery.md),
-[join coherence](methods/coherence.md),
-[derivations](methods/derivations.md),
-[stock or flow](methods/additivity.md),
-[the judge](methods/judge.md).
-
-## Preview
-
-These need a model service and may change.
-
-- [Forecasts](preview/forecasts.md)
-- [Expected ranges](preview/expected-ranges.md)
-- [Plans](preview/plans.md)
-- [Scenarios](preview/scenarios.md)
-
-## Internals
-
-For contributors: [the kernel](internals/kernel.md),
-[the catalog store](internals/catalog.md),
-[storage](internals/storage.md),
-[DuckDB and the extension](internals/duckdb.md).
+| Feature | Status |
+|---|---|
+| Sources, load queries, datasets, annotations, measurements, tests | stable |
+| Views, metric series, `next`, review decisions | stable |
+| MCP interface, query endpoint, console, data apps, export | stable |
+| Semantic model and lineage export | stable |
+| Forecasts, expected ranges, plans, scenarios | preview |
+| Reading a lake in place; dbt and semantic-model import; access per user | planned |

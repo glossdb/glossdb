@@ -11,11 +11,33 @@ Hemingway: short sentences, simple words, direct facts.
 
 ## The story
 
-glossdb is a harness framework for data agents. glossql is the
-language for writing data harnesses. Coding agents work inside a
-harness: types, a compiler, linters, tests, CI, review. Data never had
-one, because its meaning exists only in production. glossdb builds
-that harness inside the database, on the live data and its versions.
+glossdb is the data harness for people and agents. Agents build a
+company's data intelligence layer in the lake, beside the data.
+glossdb tests what they state against the data at each load, and a
+person can review and decide. glossql is the language the layer is
+written in.
+
+Data intelligence is what a company knows about its data: what it
+means, how its sources map, whether it can be trusted, and who
+decides. It is the layer under BI and AI. Answers, data apps and
+forecasts sit on top.
+
+Two properties carry the story:
+
+- The glossary is stored in the lake. A description belongs to the
+  version of the data it describes.
+- Statements about the data are tested against the data.
+
+The five functions of data intelligence: integration, metadata,
+quality, governance, lineage. The four kinds of work: integrate,
+describe, test, review. They are kinds of work, not stages. Harmonising
+systems of record is the first use case we name. glossdb works beside
+dbt, semantic layers, catalogs and lakes, in their formats.
+
+The harness is how an agent's work on the layer is checked. Coding
+agents work inside one: types, a compiler, linters, tests, CI, review.
+glossdb builds the same inside the database, on the live data and its
+versions.
 
 | Coding harness | Data harness | glossql |
 |---|---|---|
@@ -24,7 +46,7 @@ that harness inside the database, on the live data and its versions.
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
 | unit test | a measurement, a test | function, `TEST` |
-| test coverage | coverage of required annotations | `open_items`, `missing` |
+| test coverage | coverage of required annotations | `missing` in `next` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
 | code review | the review queue | `open_questions` |
@@ -45,14 +67,14 @@ type it. Never a project word the reader cannot look up.
 | console | docket | the `console` path |
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
-| missing, required; coverage | owed | `open_items` |
+| missing, required; coverage | owed | `missing` |
 | metric definition | grounding | |
 | load | landing, land | `IMPORT` |
 | load query | recipe (in prose) | `RECIPE` |
 | the catalog | the record, the store | `glossql_*` tables |
 | value, annotation | slot, voice | |
-| provenance, inputs | pin, reads, legs | `pin`, `reads` columns |
-| confidence | band | `band` column |
+| provenance, inputs | pin, legs | `data_version`, `reads` columns |
+| test state | band | `state` column |
 | time grains | time_grains | |
 | is current, holds | stands | |
 | next steps | routes | `next` |
@@ -89,6 +111,19 @@ keyword as its own explanation: not "a test (`TEST`)".
   notes, no "not built on purpose", no "proof of concept". Status is
   per feature: stable, preview, planned.
 
+## Voice
+
+- Describe glossdb from our own side. No comparison with other
+  vendors or tools.
+- No absolute statements: never, always, once, "in an hour". Say what
+  happens and when.
+- No claim without a measurement behind it.
+- A term the industry uses is adopted and used plainly. Explain the
+  glossary to practitioners as the business glossary and the data
+  catalog in one store.
+- Forecasts, expected ranges, plans and scenarios are labelled
+  preview.
+
 ## What stays
 
 - Precision beats brevity. The docs pages are served to agents as
@@ -106,7 +141,7 @@ keyword as its own explanation: not "a test (`TEST`)".
 - Keep every H1 unless the change is a page move. The MCP interface
   serves each docs page as a resource titled by its H1.
 - `docs/reference/reads.md` keeps its path and the literal
-  `metric_summary()`: an interface test asserts both.
+  `view_summary()`: an interface test asserts both.
 - Workspace `cargo test` green after any docs change.
 
 ## Example

@@ -13,12 +13,12 @@
     {{ tiles::value(frame="frames/front", field="open", label="Open questions",
          chip="open_questions",
          note="Assumptions the agent holds below full confidence — conventions and definitions, never statistics. The same questions the agent's client shows as forms.") }}
-    {{ tiles::value(frame="frames/front", field="ruled", label="Decisions",
+    {{ tiles::value(frame="frames/front", field="decided", label="Decisions",
          chip="review_decisions",
          note="Every review decision in this dataset, in the person's own words.") }}
     {{ tiles::value(frame="frames/front", field="waiting", label="Waiting for an action",
-         chip="open_items",
-         note="What waits for the agent: applying a review decision, measuring again after a change, a load after an approved load-query change, a conflict between annotations, a measurement older than the data.") }}
+         chip="next",
+         note="What the agent must or should do: a review decision to apply, a load after an approved load-query change, a red test, a conflict between annotations, a value to annotate.") }}
   </div>
 
   <section class="tile" id="queue">
@@ -44,7 +44,7 @@
              server answers 204 + HX-Trigger glossql:written, the store
              drops its caches, and every panel refetches in place —
              no navigation, nothing to go back to. #}
-          <form class="rule" hx-post="/{{ dataset }}/app/console/rule" hx-swap="none">
+          <form class="decide" hx-post="/{{ dataset }}/app/console/decide" hx-swap="none">
             <input type="hidden" name="subject" value="{subj_id}">
             <input type="hidden" name="aspect" value="{asp_id}">
             <input type="hidden" name="key" value="{key_id}">
@@ -72,8 +72,8 @@
           </span>
           <span class="r-subj">{subj}<br><span class="r-meta">{asp}</span></span>
           <span class="r-what">{what}</span>
-          <span class="verdict">
-            <span class="ruling"><span class="who">{stance}</span>{note}</span>
+          <span class="result">
+            <span class="decision"><span class="who">{stance}</span>{note}</span>
             <span class="r-meta">{state} · {at}</span>
           </span>
         </a>

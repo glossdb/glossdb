@@ -7,7 +7,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 f AS (SELECT CAST($kind AS VARCHAR) AS k, CAST($object AS VARCHAR) AS o),
-metrics AS (SELECT name FROM metric_surfaces),
+views AS (SELECT name FROM view_definitions),
 loads AS (
   SELECT i.imported_at AS ts, 'load' AS kind, i.table_name AS object, 'the load query' AS who,
          fmt_number(i.rows) || ' rows (' || i.mode || ')'
@@ -62,8 +62,8 @@ SELECT strftime(ts, '%Y-%m-%d %H:%M') AS "at",
        (SELECT b FROM base) || CASE
          WHEN object = '' THEN 'history'
          WHEN kind = 'declaration' AND starts_with(summary, 'property ') THEN 'glossary?aspect=' || object
-         WHEN kind = 'declaration' AND starts_with(summary, 'test ') THEN 'quality?check=' || object
-         WHEN object IN (SELECT name FROM metrics) THEN 'metrics?metric=' || object
+         WHEN kind = 'declaration' AND starts_with(summary, 'test ') THEN 'quality?test=' || object
+         WHEN object IN (SELECT name FROM views) THEN 'views?view=' || object
          WHEN contains(object, ' ') THEN 'lineage'
          WHEN contains(object, '.') THEN 'glossary?column=' || object
          ELSE 'glossary?table=' || object END AS link,

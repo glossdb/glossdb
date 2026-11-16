@@ -3,7 +3,7 @@
 -- not a question for a person; folded under the measured.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition FROM aspects
-  QUALIFY row_number() OVER (PARTITION BY name ORDER BY seq DESC) = 1)
+  QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
 SELECT g.aspect,
        'required on ' || CAST(count(*) AS VARCHAR) || ' '
          || CASE WHEN list_contains(a.grains, 'COLUMN') THEN 'columns'

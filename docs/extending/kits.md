@@ -1,95 +1,136 @@
 # Kits
 
-A kit is a SQL script of glossql declarations: properties (aspects),
-functions, tests, and table macros that read them. It adds vocabulary
-and reads to the language, never grammar. A kit ships with a
-`SKILL.md` that teaches an agent what its words mean, and a test suite.
+A kit packages the properties, measurements and tests for one use
+case, as a SQL script of glossql statements. A kit adds vocabulary and
+reads. It does not add grammar.
 
 ## The kits that ship
 
-From the glossql extension:
+| Kit | From | Adds |
+|---|---|---|
+| `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions`, `workspace_status` |
+| `lineage` | the extension | `lineage(dataset)`, the lineage as one relation; the read functions a function's body reads through: `annotations()`, `results()`, `definition()` |
+| `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`, `definitions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
+| `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
+| `views` | glossdb | `view_summary()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
+| `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |
+| `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
+| `outlook` | glossdb | preview: expected ranges, forecasts and scenario estimates from a model service, as functions an actor may run; the server serves the rest without it |
+| `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
 
-| Kit | Adds |
-|---|---|
-| `kpi` | the semantic layer's vocabulary: `meaning`, `role`, `additivity`, `unit`, `dimension`, `entity`, `conventions`, `definitions`; the column profiles; the `slot_entropy` detector ([the KPI kit](../reference/kpi-kit.md)) |
-| `quality` | how the data holds together: relationship, hierarchy and derivation discovery, relationship coherence, duplicate metrics, stock-or-flow evidence, the `temporal` profile, the `rate_tolerance` detector |
-| `spatial` | a small domain example: a shape and a coordinate system on every geometry column, and a geometry profile. Not loaded by the server |
+The server loads them at each start, in this order. A kit the lake
+already recorded with the same text runs nothing. The extension also
+ships `spatial`, a small example the server does not load.
 
-From glossdb:
-
-| Kit | Adds |
-|---|---|
-| `core` | the server's own properties (review decisions, load-query approval, apps as annotations) and the catalog's views: `open_questions`, `review_decisions`, `current_dataset`, … |
-| `metrics` | the metric series: `metric_series()`, `metric_summary()`, `metric_sources()`; the `time_grains` on a period column |
-| `outlook` | preview: forecasts, expected ranges, plans and scenarios through the model service |
-| `goals` | `open_items`, what waits on an action, and the next steps of the core goals |
-
-The server loads them at every open, in order: `core`, `kpi`,
-`quality`, `metrics`, `outlook`, `goals`. A kit whose text the lake
-already recorded is current and runs nothing, so an unchanged workspace
-opens fast. The views and functions each kit declares:
-[views and table functions](../reference/reads.md),
-[functions](../reference/functions.md).
-
-## Tests
-
-Every kit has a suite in DuckDB's sqllogictest form. The server's sit
-beside each kit as `kits/<kit>/kit.test` and run with `cargo test -p
-glossdb-duck`; the extension's are `test/sql/glossql_kit_<kit>.test`
-in its repository.
-
-## Writing a kit
-
-A kit is statements in order: properties first, then the functions,
-then the tests that name both.
-
-```glossql
-DECLARE ASPECT currency WITH $${"type": "object", "required": ["value"],
-  "properties": {"value": {"type": "string", "pattern": "^[A-Z]{3}$"}}}$$
-  AS FACT ON COLUMN WHEN role = 'measure';
-DECLARE ASPECT min_max WITH $${"type": "object", "required": ["min", "max"]}$$ AS MEASUREMENT ON COLUMN;
-DECLARE FUNCTION min_max FOR GLOBAL AS
-  $$ SELECT min(v) AS min, max(v) AS max FROM subject_column($subject) $$ RETURNS min_max;
-DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR slot_entropy THRESHOLD 0.7;
+```sql
+SELECT name, statements, loaded_at FROM kits;
 ```
 
-- **Schemas.** A property's `WITH` is a JSON Schema. Every `FACT`
-  value and every measurement's output is validated against it.
-  Annotations such as `title` or `x-kind` sit beside the structure.
-- **Conditions.** `WHEN role = 'measure'` makes the property required
-  only where the column's role says so.
-- **Measurements.** A function with `RETURNS` becomes a table macro in
-  the dataset's schema (`glossql` for `GLOBAL`). `$subject` is its
-  parameter; `subject_column($subject)` is the column as a relation
-  named `v`. A measurement is tied to the tables and catalog relations
-  its plan reads, and served again while they are unchanged. A body
-  that reads a file or another database is tied to everything, so a
-  kit's measurements should read tables.
-- **Detectors.** A function without `RETURNS` runs when its test is
-  read, over the values written for the aspect, with `$threshold`
-  bound, and returns `(subject, band, score)`. A detector that fails
-  returns band `error`, never a failed read.
-- **Metric definitions.** Every `VIEW` annotation is checked against
-  the definition contract (`sql` or `stopped`, `assumptions`). A kit
-  whose readers need a body key of their own declares a schema for it
-  as an aspect with `"x-kind": "grounding"`.
-- **Next steps.** A kit can add goals to `next`:
-  [next steps](next-steps.md).
+## Write a kit
 
-Write the `SKILL.md` too: what each word means, in what order an agent
-works, what a reader expects. The engine checks the statements; the
-skill is the half it cannot check.
+Statements in order: properties, then functions, then the tests that
+name both.
 
-## Loading a kit
+```glossql
+DECLARE ASPECT currency WITH $${
+  "type": "object", "required": ["value"],
+  "properties": {"value": {"type": "string", "pattern": "^[A-Z]{3}$"}}
+}$$ AS FACT ON COLUMN WHEN unit = 'money';
 
-A kit is statements, so a kit of your own is sent like any statements:
-through the MCP interface, or with `FROM glossql_kit('<path>')` where
-the server can read the file. `glossql_kit` runs the script one
-statement at a time and returns one row per statement; a failing
-statement stops the load, and the ones before it stay. The load is
-recorded in `kits` with its path and statement count. Loading again is
-a no-op for unchanged properties; a changed property that already has
-annotations is refused.
+DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 
-A kit that installs a DuckDB extension, as `spatial` does, needs an
-actor named in `GLOSSDB_ROOT` ([configuration](../operations/configuration.md)).
+DECLARE ASPECT unit_check WITH $${
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "breach_rate": {"type": ["number", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION unit_check FOR GLOBAL AS $$
+  WITH v AS (SELECT view, value_column FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
+  u AS (SELECT count(*) AS n FROM main.glossary g, v
+        WHERE g.subject = $subject || '.' || v.value_column AND g.aspect = 'unit')
+  SELECT true AS applicable,
+         CASE WHEN u.n > 0 THEN 0.0 ELSE 1.0 END AS breach_rate,
+         CASE WHEN u.n = 0 THEN 'the value of ' || split_part($subject, '.', 2) || ' has no unit' END AS finding,
+         CASE WHEN u.n = 0 THEN 'annotate unit on the value column' END AS fix
+  FROM u
+$$ RETURNS unit_check;
+
+DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+```
+
+- **A property** (`DECLARE ASPECT`) has a JSON Schema and a kind:
+  `AS FACT` for a value someone states, `AS MEASUREMENT` for a
+  function's result, `AS VIEW` for a view name. `ON` names the assets
+  it applies to: `DATASET`, `TABLE`, `COLUMN`, `RELATIONSHIP`,
+  `SOURCE`.
+- **A condition** makes a property required only where it applies:
+  `WHEN role = 'measure'` by another property's value, `WHEN TYPE =
+  'GEOMETRY'` by the column's type.
+- **An expectation** is a `FACT` property that a function returns
+  and a test scores, without `x-subject`. It is set where someone
+  annotates it, and is not required on the other assets:
+  `tested_properties()` lists these, and `next` and
+  `workspace_status` count each on the assets that carry it.
+- **A measurement** is a function with `RETURNS`. Its body is one SQL
+  query. `$subject` is the asset it runs over, and
+  `subject_column($subject)` is that column as a relation with one
+  column `v`. The result is validated against the property's schema
+  and stored. It is served again while the tables and catalog tables
+  it read are unchanged.
+- **A detector** is a function without `RETURNS`. It reads the test's
+  `annotations` and returns `subject`, `state`, `score`. `$threshold`
+  is the test's.
+- **A test on each view.** `"x-subject": "view"` on the property
+  marks a test the server expects on each view (a table view, a single
+  value, a metric) and runs itself: after the view is defined, after
+  something its check reads is annotated, and after a load of a table
+  it scans. `"x-subject": "metric"` marks one it expects on each
+  metric alone, as here: a check on the measure. Its function runs
+  over `<dataset>.<view>`. Before it, the server computes the results
+  its body reads (`results(...)`) at the place it names.
+  `"x-subject": "table"` marks one it expects on each loaded table,
+  run over `<dataset>.<table>` after a load (`grain_check`).
+  `"x-subject": "dataset"` marks a check on the dataset as a whole that
+  an actor runs: the server expects it nowhere and `next` asks for no
+  annotation of it, and a person accepts a result with a `tolerance`
+  on the dataset, as for the views' checks.
+- **Rows in `next`.** A kit adds rows to `next` through its tests and
+  its stored results, and through nothing else. A test that is not
+  green is a row: `must` where it is red, `should` otherwise, but a
+  `yellow` test whose check ran, is current and returns no `fix`: it
+  has nothing to check, and running it again changes nothing. A check
+  that returns `finding` and `fix` has them served as the row's `open`
+  and `statement`. A result about the dataset or a view that no test
+  on the view runs is one an actor runs: the server does not compute
+  it, and once it is out of date it is a `should` row with the
+  statement that computes it again. A function nobody ran is no row. A kit adds no
+  other code for this, and `next` names no kit.
+
+## Load a kit
+
+```glossql
+FROM glossql_kit('/opt/kits/billing/kit.sql');
+```
+
+`glossql_kit` runs the script one statement at a time and returns one
+row per statement with its outcome. A failing statement stops the
+load; the ones before it stay. The load is recorded in `kits`, and its
+tests show as `kit:<name>` in `view_tests()`. An agent without access
+to the server's files sends the same statements through the tool.
+
+Loading again does nothing for unchanged declarations. A changed
+property that already has annotations is refused.
+
+## Test a kit
+
+The server's kits each have a suite beside them, `kits/<kit>/kit.test`,
+in DuckDB's sqllogictest form. `cargo test -p glossdb-duck` runs them.
+
+## Teach the kit
+
+An agent needs to know what the kit's words mean and in what order to
+work. That text is a skill under `skills/`, served to agents over
+MCP: the skill's `SKILL.md`, or a page under its `references/`. Its
+fenced examples are parsed and bound by the suite.

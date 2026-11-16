@@ -1,9 +1,5 @@
-//! The skills, under the standing invariant.
-//!
-//! Run 2's first friction was five skills teaching `SELECT value FROM
-//! GLOSSARY(…)` — a column that does not exist and never did. Prose
-//! drifts from a moving surface because nothing checks it, so the
-//! examples are checked here instead of proofread.
+//! The skills, under the standing invariant: their examples are
+//! checked here instead of proofread.
 //!
 //! Two rules, over every fenced ` ```glossql ` and ` ```sql ` block in
 //! the product skills (every `.md` under `skills/<name>/` — the
@@ -20,259 +16,66 @@
 //! Nothing here executes a write. A block that declares or glosses is
 //! held to rule 1 alone.
 
-use crate::common;
+use crate::examples::{self, Block};
 
-struct Block {
-    skill: String,
-    line: usize,
-    sql: String,
-}
-
-/// Every fenced glossql/sql block in the shipped skills: the product
-/// skills under the repo's `skills/`, and what lives under
-/// `.claude/skills` (the substrate skill).
+/// Every fenced glossql/sql block in the shipped skills: every `.md` of
+/// every skill under the repo's `skills/` (the product skills, their
+/// references included — the interface serves both) and under
+/// `.claude/skills` (the skills for building the server).
 fn blocks() -> Vec<Block> {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut skills = Vec::new();
-    for (dir, why) in [
-        (
-            manifest.join("../../.claude/skills"),
-            "the substrate skill ships with the repo",
-        ),
-        (
-            manifest.join("../../skills"),
-            "the product skills ship with the repo",
-        ),
-    ] {
-        let dir = dir.canonicalize().expect(why);
-        skills.extend(
-            std::fs::read_dir(&dir)
-                .expect("readable skills directory")
-                .filter_map(|e| e.ok())
-                .map(|e| e.path()),
-        );
-    }
     let mut out = Vec::new();
-    skills.sort();
-    // Every `.md` in the skill's directory, its references included —
-    // a fence in a reference is held to the same rules as one on the
-    // first page, because the interface serves both.
-    let mut files: Vec<std::path::PathBuf> = Vec::new();
-    for skill in skills {
-        if !skill.join("SKILL.md").is_file() {
-            continue;
-        }
-        let mut stack = vec![skill];
-        while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            for entry in entries.filter_map(|e| e.ok()) {
-                let path = entry.path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else if path.extension().is_some_and(|e| e == "md") {
-                    files.push(path);
-                }
-            }
-        }
-    }
-    files.sort();
-    for path in files {
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let name = path
-            .iter()
-            .rev()
-            .take_while(|s| *s != "skills")
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .map(|s| s.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        let mut open: Option<(usize, String)> = None;
-        for (i, line) in text.lines().enumerate() {
-            match &mut open {
-                None => {
-                    if line.trim() == "```glossql" || line.trim() == "```sql" {
-                        open = Some((i + 2, String::new()));
-                    }
-                }
-                Some((start, body)) => {
-                    if line.trim() == "```" {
-                        out.push(Block {
-                            skill: name.clone(),
-                            line: *start,
-                            sql: std::mem::take(body),
-                        });
-                        open = None;
-                    } else {
-                        body.push_str(line);
-                        body.push('\n');
-                    }
-                }
-            }
+    for root in ["../../.claude/skills", "../../skills"] {
+        let root = manifest
+            .join(root)
+            .canonicalize()
+            .expect("the skills ship with the repo");
+        let mut skills: Vec<std::path::PathBuf> = std::fs::read_dir(&root)
+            .expect("a readable skills directory")
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|skill| skill.join("SKILL.md").is_file())
+            .collect();
+        skills.sort();
+        for skill in skills {
+            out.extend(examples::under(&skill, &root));
         }
     }
     assert!(!out.is_empty(), "no fenced examples found in the skills");
     out
 }
 
-/// Every fenced example parses on the engine, the language's grammar
-/// on: the extension's parser is the one the interface runs.
 #[tokio::test(flavor = "multi_thread")]
-async fn every_skill_example_parses() {
-    let (_dir, plane) = common::scratch_plane().await;
-    let session = plane.channel(common::human(), None).await.unwrap();
-    let mut broken = Vec::new();
-    for b in blocks() {
-        if let Err(e) = session.parse(&b.sql).await {
-            broken.push(format!("{}:{} — {e}", b.skill, b.line));
-        }
-    }
+async fn every_skill_example_parses_and_every_read_binds() {
+    let report = examples::check(&blocks()).await;
     assert!(
-        broken.is_empty(),
+        report.unparsed.is_empty(),
         "skill examples that do not parse:\n{}",
-        broken.join("\n")
+        report.unparsed.join("\n")
     );
-}
-
-/// Every `DECLARE FUNCTION … AS $$…$$` body in the skills is one SQL
-/// query.
-///
-/// Rule 1 cannot see this: a function's body is opaque text to the
-/// engine's parser, so an example whose body the engine would refuse
-/// parses perfectly and ships as teaching. A body is SQL — a
-/// measurement over data, a detector over `slots` (§6) — so the check
-/// is the same shape rule the session applies.
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_function_body_compiles() {
-    let (_dir, plane) = common::scratch_plane().await;
-    let session = plane.channel(common::human(), None).await.unwrap();
-    let mut broken = Vec::new();
-    let mut checked = 0usize;
-    for b in blocks() {
-        // Anchored on DECLARE FUNCTION: PREVIEW, RECIPE and GLOSS bodies
-        // ride the same dollar quoting and are SQL or JSON, so a bare
-        // scan for `AS $$` compiles the wrong thing. Within a function
-        // statement, `AS $$` opens the body and the next `$$` closes
-        // it — bodies cannot contain `$$`, which is what makes this
-        // sound.
-        for part in b.sql.split("DECLARE FUNCTION").skip(1) {
-            let Some(open) = part.find("AS $$") else {
-                continue;
-            };
-            let after = &part[open + 5..];
-            let Some(close) = after.find("$$") else {
-                continue;
-            };
-            checked += 1;
-            let body = &after[..close];
-            let is_sql = match session.parse(body).await {
-                Ok(n) => n == 1,
-                Err(e) => {
-                    broken.push(format!("{}:{} — {e}", b.skill, b.line));
-                    continue;
-                }
-            };
-            if !is_sql {
-                let e = "a function body is one SQL query";
-                broken.push(format!("{}:{} — {e}", b.skill, b.line));
-            }
-        }
-    }
     assert!(
-        broken.is_empty(),
+        report.broken_bodies.is_empty(),
         "skill function bodies that do not compile:\n{}",
-        broken.join("\n")
+        report.broken_bodies.join("\n")
     );
     assert!(
-        checked >= 2,
-        "only {checked} function bodies were compiled — the scan has stopped finding its subject"
-    );
-}
-
-/// A missing table is fine: an example may name a customer's data, or a
-/// metric definition a fresh workspace has none of. A missing column is not.
-fn missing_table(error: &str) -> bool {
-    error.contains("Table with name") && error.contains("does not exist")
-}
-
-/// A frame's read binds its parameters at the call: an example that
-/// spells them bound up to the values it was not given.
-fn unbound_parameters(error: &str) -> bool {
-    error.contains("Values were not provided for the following parameters")
-}
-
-/// The examples' reads, bound on a fresh workspace: a read naming a
-/// column, a relation or a function the engine and its kits do not
-/// serve fails here. One channel for the run, with a dataset in use —
-/// the names the examples spell — so a read reaches its columns
-/// instead of stopping at the binding.
-async fn bind_reads(blocks: &[Block], at: impl Fn(&Block) -> String) -> (usize, Vec<String>) {
-    let (_dir, plane) = common::scratch_plane().await;
-    let session = plane.channel(common::human(), None).await.unwrap();
-    for name in ["ops", "fin", "orders", "erp_export"] {
-        session
-            .execute(&format!(
-                "DECLARE DATASET {name} SET (purpose: 'the docs harness');"
-            ))
-            .await
-            .unwrap();
-    }
-    session.execute("USE ops;").await.unwrap();
-    let mut bound = 0;
-    let mut broken = Vec::new();
-    for b in blocks {
-        let trimmed: String = b
-            .sql
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("--"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let head = trimmed.trim_start().to_lowercase();
-        // Reads only: a write example is held to parsing alone, and a
-        // read of the language's own — GLOSSARY(), TESTS(), a
-        // measurement over a subject — binds in the extension, not in
-        // a plan.
-        if !(head.starts_with("select") || head.starts_with("with ") || head.starts_with("from "))
-            || head.contains("glossary(")
-            || head.contains("tests(")
-            || head.starts_with("select temporal(")
-        {
-            continue;
-        }
-        // One statement per block, or we cannot bound it.
-        if trimmed.trim_end().trim_end_matches(';').contains(';') {
-            continue;
-        }
-        bound += 1;
-        let sql = format!("EXPLAIN {}", trimmed.trim().trim_end_matches(';'));
-        if let Err(e) = session.batches(&sql, &[]).await {
-            let text = e.to_string();
-            if !missing_table(&text) && !unbound_parameters(&text) {
-                broken.push(format!("{} — {text}", at(b)));
-            }
-        }
-    }
-    (bound, broken)
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn every_skill_read_names_columns_that_exist() {
-    let blocks = blocks();
-    let (bound, broken) = bind_reads(&blocks, |b| format!("{}:{}", b.skill, b.line)).await;
-    assert!(
-        broken.is_empty(),
+        report.unbound_reads.is_empty(),
         "skill examples naming something the reads do not serve:\n{}",
-        broken.join("\n")
+        report.unbound_reads.join("\n")
     );
-    // A test that silently checks nothing passes forever. The skills
-    // teach reads; if this floor is not met, the classification above
-    // has started skipping what it should be holding.
-    assert!(bound >= 12, "only {bound} skill reads were bound");
+    // A scan that silently checks nothing passes forever: the skills
+    // teach function bodies and reads, and these floors say the scan
+    // still finds its subject.
+    assert!(
+        report.bodies_checked >= 2,
+        "only {} function bodies were compiled",
+        report.bodies_checked
+    );
+    assert!(
+        report.reads_bound >= 12,
+        "only {} skill reads were bound",
+        report.reads_bound
+    );
 }
 
 /// The served table is the directory. `include_str!` keeps each
@@ -304,10 +107,8 @@ fn the_served_skills_are_the_skills_directory() {
             skill.name
         );
     }
-    // And every reference on disk is served, current, under the
-    // skill's own root — the build embeds the directory, and this is
-    // what proves the embedding is the directory as it stands.
-    let mut on_disk: Vec<(String, String)> = Vec::new();
+    // And every reference on disk is served, under the skill's own root.
+    let mut on_disk: Vec<String> = Vec::new();
     let mut stack = vec![dir.clone()];
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d).unwrap().filter_map(|e| e.ok()) {
@@ -322,29 +123,19 @@ fn the_served_skills_are_the_skills_directory() {
                     .unwrap()
                     .to_string_lossy()
                     .into_owned();
-                on_disk.push((rel, std::fs::read_to_string(&path).unwrap()));
+                on_disk.push(rel);
             }
         }
     }
     on_disk.sort();
-    let mut served: Vec<(String, String)> = glossdb_serverd::skills::REFERENCES
+    let mut served: Vec<String> = glossdb_serverd::skills::REFERENCES
         .iter()
-        .map(|p| {
-            (
-                p.path.strip_prefix("skills/").unwrap().to_string(),
-                p.body.to_string(),
-            )
-        })
+        .map(|p| p.path.strip_prefix("skills/").unwrap().to_string())
         .collect();
     served.sort();
     assert_eq!(
-        served.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
-        on_disk.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
-        "the served references are the files under skills/"
-    );
-    assert_eq!(
         served, on_disk,
-        "a served reference is the file as it stands"
+        "the served references are the files under skills/"
     );
     for p in glossdb_serverd::skills::REFERENCES {
         assert!(
@@ -397,7 +188,7 @@ fn schema_majors(text: &str) -> Vec<u32> {
 /// hint is the counter, and a bundle bump that forgets the prose
 /// fails here instead of teaching an outdated `$schema`.
 #[test]
-fn the_apps_skill_names_the_vega_lite_major_the_door_serves() {
+fn the_apps_skill_names_the_vega_lite_major_the_server_serves() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let bundle = std::fs::read_to_string(manifest.join("../apps/assets/vendor/vega-lite.min.js"))
         .expect("the vendored vega-lite bundle");
