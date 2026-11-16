@@ -625,9 +625,10 @@ WHERE m.view IN (SELECT view FROM views);
 -- view_tests() expects on every view, run or not, `x-subject: metric` one
 -- it expects on every metric; `x-set-by: <property>` beside either one
 -- it expects only where the view or one of its columns carries an
--- annotation of that property; the server runs each itself after a call
--- that defined the view, annotated what the check reads or loaded a
--- table it scans. Each body reads the catalog through the read functions
+-- annotation of that property (a property no test reads, so marked, is a
+-- result the server computes there: results_due() in the goals kit); the
+-- server runs each itself after a call that defined the view, annotated
+-- what the check reads or loaded a table it scans. Each body reads the catalog through the read functions
 -- of the lineage kit alone (annotations(), results(), definition()).
 --
 -- view_reads_of(ds, m): the tables and columns view m of dataset ds

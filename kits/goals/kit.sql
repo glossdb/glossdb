@@ -19,23 +19,49 @@
 -- reads); the profile of each column a view scans, which load_changes()
 -- compares to say what a load changed under the view (the cause `next`
 -- names); and the measurement a metric's row names as not run (the grain
--- of its period column). The server computes these after each write.
--- Any other result about the dataset or a view (a kit's function an
+-- of its period column); and a result no test reads whose property marks
+-- it `x-subject: view` and `x-set-by: <property>`, on each view that
+-- carries an annotation of that property (server_results()), with the
+-- results its body reads before it. The server computes these after each
+-- write. Any other result about the dataset or a view (a kit's function an
 -- actor runs) is the actor's to compute: once it is out of date, `next`
 -- lists it with its statement.
+--
+-- server_results(): those results of a property no test reads, (function,
+-- aspect, subject), the server's to compute
 --===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.server_results() AS TABLE
+WITH fns AS (
+  SELECT name, returns FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
+marked AS (
+  SELECT f.name AS function, f.returns AS aspect, json_extract_string(a.schema, '$.x-set-by') AS set_by
+  FROM fns f JOIN main.aspects a ON a.name = f.returns
+  WHERE json_extract_string(a.schema, '$.x-subject') = 'view' AND json_extract_string(a.schema, '$.x-set-by') IS NOT NULL
+    AND f.returns NOT IN (SELECT aspect FROM main.tests))
+SELECT DISTINCT m.function, m.aspect, current_schema() || '.' || split_part(g.subject, '.', 2) AS subject
+FROM marked m JOIN main.glossary g ON g.aspect = m.set_by
+WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
+  AND split_part(g.subject, '.', 2) IN (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW');
+
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
 WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
 fns AS MATERIALIZED (
   SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- the check that measures a test's property, as view_tests() names it
 checks AS (SELECT returns AS aspect, min(name) AS name FROM fns WHERE returns IS NOT NULL GROUP BY returns),
--- the results each check reads, by the place its body names
+served AS MATERIALIZED (FROM main.server_results()),
+-- the results each check reads, by the place its body names, and those each result the server
+-- computes with no test reads
 wants AS (
   SELECT DISTINCT t.subject, r.what AS function, r."where"
   FROM tests t JOIN checks c ON c.aspect = t.aspect JOIN fns f ON f.name = c.name,
        unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
-  WHERE t.run <> '' AND r.kind = 'read' AND r.read = 'results'),
+  WHERE t.run <> '' AND r.kind = 'read' AND r.read = 'results'
+  UNION
+  SELECT DISTINCT v.subject, r.what, r."where"
+  FROM served v JOIN fns f ON f.name = v.function,
+       unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
+  WHERE r.kind = 'read' AND r.read = 'results'),
 anchored AS (SELECT p."where" FROM unnest(main.place_list()) u(p) WHERE p.anchored),
 places AS MATERIALIZED (FROM main.places(current_schema()) WHERE "where" IN (SELECT "where" FROM wants)),
 wanted AS (
@@ -64,7 +90,11 @@ UNION ALL
 SELECT DISTINCT 2, t.aspect, t.subject, t.run
 FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
 WHERE t.run <> '' AND NOT coalesce(s.current AND s.failed, false)
-  AND (t.state = 'not_run' OR NOT t.current OR NOT coalesce(s.current, true));
+  AND (t.state = 'not_run' OR NOT t.current OR NOT coalesce(s.current, true))
+UNION ALL
+SELECT DISTINCT 2, v.function, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
+FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
+WHERE NOT coalesce(s.current, false);
 
 --===------------------------------------------------------------------===--
 -- load_changes(): per table of the bound dataset loaded more than once,
@@ -498,6 +528,7 @@ CREATE OR REPLACE VIEW main.next AS
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
           WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
+            AND NOT EXISTS (SELECT 1 FROM main.server_results() r WHERE r.function = u.function AND r.subject = u.subject)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_test

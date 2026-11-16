@@ -344,8 +344,15 @@ must	test	true
 
 # === The reconciliation: per system, the rows a branch reads from the table that drives it, what its
 # conditions and joins leave out, the rows it serves and the sums of its measures. Set on a view with a
-# contract; run here by hand. The Polish join over the identities follows a declared relationship, whose check
-# names the code with no identity
+# contract, the server computes it after each write (results_due()); here it is run by hand. The Polish join over
+# the identities follows a declared relationship, whose check names the code with no identity
+
+# the server computes it on the view with a contract, and on no other view
+query TT
+SELECT function, subject FROM results_due() WHERE function = 'reconciliation';
+----
+reconciliation	supply.onhand
+
 statement ok
 DECLARE RELATIONSHIP supply.stock_mono.indeks -> supply.model_identities.local_code;
 
@@ -480,11 +487,17 @@ SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'cod
 code_test	red	0.25
 contract_test	red	0.1
 
-# the loads moved what the reconciliation read: next asks for it again, a should with the statement
+# the loads moved what the reconciliation read: the server computes it again after the write, and next does not
+# ask the agent for it
 query TT
-SELECT level, statement FROM next WHERE asset = 'supply.onhand' AND open LIKE 'reconciliation:%';
+SELECT function, subject FROM results_due() WHERE function = 'reconciliation';
 ----
-should	SELECT reconciliation() FROM supply.onhand;
+reconciliation	supply.onhand
+
+query I
+SELECT count(*) FROM next WHERE asset = 'supply.onhand' AND open LIKE 'reconciliation%';
+----
+0
 
 # the second deliveries reconciled: Denmark's second row arrives, Poland's pieces are left out by the status,
 # X9 again by the join, the new warehouse arrives (the contract judges it)
@@ -587,6 +600,12 @@ false	true
 
 query I
 SELECT count(*) FROM next WHERE asset = 'supply.sites' AND open LIKE 'reconciliation%';
+----
+0
+
+# stored as not applicable, it is not computed again until what it read moves
+query I
+SELECT count(*) FROM results_due() WHERE function = 'reconciliation' AND subject = 'supply.sites';
 ----
 0
 

@@ -228,6 +228,65 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
 
+/// The server reconciles a target table view with a contract after
+/// each load, with no statement by the agent: the rows its branch
+/// reads and serves. A view without a contract gets no reconciliation.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_reconciles_a_contracted_view_after_each_load() {
+    let (app, _, dir) = fin().await;
+    let file = dir.path().join("stock.csv");
+    std::fs::write(&file, "item,qty,status\nA,1,D\nB,2,K\n").unwrap();
+    say(
+        &app,
+        FIN,
+        &format!(
+            "DECLARE SOURCE erp SET (type: csv, location: '{}'); \
+             DECLARE RECIPE stock ON fin FROM erp AS $$SELECT item, CAST(qty AS DOUBLE) AS qty, status \
+             FROM read_csv('stock.csv', all_varchar = true)$$;",
+            dir.path().display()
+        ),
+    )
+    .await;
+    say(
+        &app,
+        FIN,
+        r#"DECLARE ASPECT free_stock WITH $${"title": "Free stock", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS free_stock ON fin AS $${"sql": "SELECT s.item, s.qty FROM fin.stock s WHERE s.status = 'D'"}$$;
+           DECLARE ASPECT all_stock WITH $${"title": "All stock", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS all_stock ON fin AS $${"sql": "SELECT s.item, s.qty FROM fin.stock s"}$$;
+           GLOSS contract ON fin.free_stock.item AS $${"type": "VARCHAR", "required": true}$$;"#,
+    )
+    .await;
+    let reconciled = async || {
+        rows(
+            &app,
+            FIN,
+            "SELECT subject, (value->'rows'->0->>'read')::INT AS read, \
+             (value->'rows'->0->>'reached')::INT AS reached \
+             FROM measurements WHERE function = 'reconciliation' ORDER BY subject",
+        )
+        .await
+    };
+    let first = reconciled().await;
+    assert_eq!(first.len(), 1, "{first:?}");
+    assert_eq!(text(&first[0], "subject"), "fin.free_stock");
+    assert_eq!(
+        (&first[0]["read"], &first[0]["reached"]),
+        (&json!(2), &json!(1))
+    );
+
+    std::fs::write(&file, "item,qty,status\nA,1,D\nB,2,K\nC,3,D\n").unwrap();
+    say(&app, FIN, "IMPORT stock;").await;
+    let after = reconciled().await;
+    assert_eq!(after.len(), 1, "{after:?}");
+    assert_eq!(
+        (&after[0]["read"], &after[0]["reached"]),
+        (&json!(3), &json!(2))
+    );
+    let due = rows(&app, FIN, "SELECT run FROM results_due()").await;
+    assert!(due.is_empty(), "{due:?}");
+}
+
 /// The rows of `next` under "describe" for the bookings table.
 async fn bookings_rows(app: &Router) -> Vec<Value> {
     rows(

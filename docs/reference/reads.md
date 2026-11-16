@@ -259,8 +259,9 @@ with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
 
 **The reconciliation.** `reconciliation()` over a target view answers:
 did every row of each system arrive, and if not, which rows and why.
-An actor runs it; once a load or a definition moves what it read,
-`next` asks for it again (`should`). No test judges it. Its value:
+The server computes it after each write on a view with a contract,
+like the two tests, and again once a load or a definition moves what it
+read. No test judges it. Its value:
 
 | Field | What |
 |---|---|
@@ -285,7 +286,9 @@ FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE funct
 
 `orphan_test` names the keys that find no parent on each relationship
 the view joins over, the three with the most rows, from the
-relationship's `relationship_coherence`.
+relationship's `relationship_coherence`. The keys are values from the
+data, each cut to its first 100 characters; a key of two columns is a
+JSON list.
 
 ## The outlook and plan kits (preview)
 

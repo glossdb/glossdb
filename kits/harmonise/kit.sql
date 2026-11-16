@@ -356,7 +356,8 @@ DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 --   repeated    rows a join adds: more partners than rows
 --   reached     rows the branch serves
 --   vanished    read - filtered - unmatched + repeated - reached, on a
---               branch whose steps are told; NULL on one that is not
+--               branch whose steps are told; NULL on one that is not, and
+--               on a branch that reads no table (a constant row)
 --   told        false where the branch has a step the read does not
 --               follow (a GROUP BY, a DISTINCT, a LIMIT, a join of
 --               another kind): its rows read are the driving table's,
@@ -366,15 +367,17 @@ DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 --               alone, the sum over every row read, to hold against the
 --               system's own report
 -- applicable is false where a branch is not told, with the step as the
--- reason; the told branches' rows are served all the same. A function an
--- actor runs, as source_systems, with no test: on a told branch the
--- re-read and the branch's own rows agree by construction, so a test on
--- vanished rows could not fail. What a person reads is the account.
+-- reason; the told branches' rows are served all the same. No test judges
+-- it: on a told branch the re-read and the branch's own rows agree by
+-- construction (the extension's suite holds that), so a test on vanished
+-- rows could not fail. What a person reads is the account. The server
+-- computes it after a write on each view with a contract (x-set-by), as
+-- results_due() does for a result no test reads.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT reconciliation WITH $${
   "description": "Preview. Per source system and period, the rows a target view reads, the rows its conditions and joins leave out and why, the rows it serves, and the sums of its measures.",
-  "type": "object",
+  "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "period_column": {"type": ["string", "null"]},
                  "rows": {"type": ["array", "null"], "items": {"type": "object"}}}
@@ -408,7 +411,7 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
   measures AS (SELECT c.col, c.pos FROM roles r JOIN cols c USING (col) WHERE r.role = 'measure'),
   rows_ AS NOT MATERIALIZED (SELECT * FROM branch_rows($subject)),
   branches AS (
-    SELECT branch, what AS table_name, text AS untold, columns AS alone,
+    SELECT branch, dataset || '.' || table_name AS table_path, table_name, text AS untold, columns AS alone,
            coalesce(list_contains(columns, (SELECT col FROM period)), false) AS dated
     FROM rows_ WHERE kind = 'branch'),
   steps AS (SELECT branch, step, what AS kind, text, columns FROM rows_ WHERE kind = 'step'),
@@ -472,19 +475,19 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
     FROM steps s JOIN coherence c ON s.kind = 'join' AND list_has_all(s.columns, c.endpoints)
     GROUP BY ALL),
   out AS (
-    SELECT y.system, c.branch, split_part(b.table_name, '.', 2) AS table_name, c.period, c.read,
+    SELECT y.system, c.branch, b.table_name, c.period, c.read,
            coalesce((SELECT list({'condition': s.text, 'rows': x.n} ORDER BY s.step) FROM dropped x JOIN steps s USING (branch, step)
                      WHERE x.branch = c.branch AND x.period IS NOT DISTINCT FROM c.period AND s.kind = 'condition'), []) AS filtered,
            coalesce((SELECT list({'join': s.text, 'rows': x.n, 'relationship': f.relationship,
                                   'keys': from_json(f.keys, '[{"key": "VARCHAR", "rows": "BIGINT"}]'), 'distinct_keys': f.distinct_keys} ORDER BY s.step)
                      FROM dropped x JOIN steps s USING (branch, step) LEFT JOIN followed f USING (branch, step)
                      WHERE x.branch = c.branch AND x.period IS NOT DISTINCT FROM c.period AND s.kind = 'join'), []) AS unmatched,
-           c.partners - c.read AS repeated, c.reached, CASE WHEN b.untold IS NULL THEN c.kept - c.reached END AS vanished,
+           c.partners - c.read AS repeated, c.reached, CASE WHEN b.untold IS NULL AND b.table_name IS NOT NULL THEN c.kept - c.reached END AS vanished,
            b.untold IS NULL AS told, b.untold AS not_told,
            (SELECT list({'column': x.col, 'target': coalesce(t.total, 0.0), 'source': r.total} ORDER BY x.pos)
             FROM measures x LEFT JOIN served_sums t ON t.branch = c.branch AND t.period IS NOT DISTINCT FROM c.period AND t.col = x.col
             LEFT JOIN read_sums r ON r.branch = c.branch AND r.period IS NOT DISTINCT FROM c.period AND r.col = x.col) AS measures
-    FROM counted c JOIN branches b USING (branch) LEFT JOIN systems y ON y.table_name = b.table_name),
+    FROM counted c JOIN branches b USING (branch) LEFT JOIN systems y ON y.table_name = b.table_path),
   state AS (
     SELECT EXISTS (SELECT 1 FROM out) AS rows_read,
            (SELECT string_agg(DISTINCT 'branch ' || branch || ' (' || coalesce(system, table_name, 'no table') || '): ' || not_told, '; ')
