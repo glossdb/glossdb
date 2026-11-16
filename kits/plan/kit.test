@@ -237,8 +237,13 @@ SELECT count(*) FROM glossql_outdated() WHERE function = 'metric_plan' AND subje
 statement ok
 FROM glossql_kit('{KITS}/outlook/kit.sql');
 
+# the service stood in for: an answer with a code and no point, and the answers the suite reads, each under a name of its
+# own so a failed run can stand in for them and step back
 statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS (CASE
+CREATE OR REPLACE MACRO main.service_short(path, body) AS '{"table":{"member":[],"origin":[],"step":[],"period":[],"span":[],"column":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"sales","column":"value","origin":null,"code":"history_short","needed":36,"given":13,"error":"words"}]}}'::JSON;
+
+statement ok
+CREATE OR REPLACE MACRO main.service_stub(path, body) AS (CASE
   WHEN path = '/whatif' AND (SELECT coalesce(bool_or(p1 IS DISTINCT FROM s1 OR p2 IS DISTINCT FROM s2), false) FROM (
          SELECT max(v1) FILTER (WHERE st = 'plan') AS p1, max(v1) FILTER (WHERE st = 'scenario') AS s1,
                 max(v2) FILTER (WHERE st = 'plan') AS p2, max(v2) FILTER (WHERE st = 'scenario') AS s2
@@ -252,6 +257,9 @@ CREATE OR REPLACE MACRO main.service(path, body) AS (CASE
   WHEN json_extract_string(body, '$.table.member[0]') = 'sales' THEN '{"table":{"member":["sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales","sales"],"origin":["2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01","2025-02-01"],"step":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4,5,5,5,5,5,6,6,6,6,6,7,7,7,7,7,8,8,8,8,8,9,9,9,9,9,10,10,10,10,10,11,11,11,11,11,12,12,12,12,12,1,1,1,1,1,10,10,10,10,10],"period":["2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-04-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-05-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-08-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-09-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-10-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-11-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-01-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2026-02-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-03-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01","2025-12-01"],"span":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,1,1,1,10,10,10,10,10],"column":["value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95,0.05,0.1,0.5,0.9,0.95],"value":[70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,70,80,100,120,130,900,1000,1100,1400,1500],"actual":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"pit":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"displacement":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"withheld":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"coverage_80":[0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.8,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.75,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79,0.79],"coverage_80_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_90":[0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89,0.89],"coverage_90_se":[0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03,0.03],"coverage_points":[1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,1000,500,500,500,500,500,500,500,500,500,500],"coverage_datasets":[10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]},"answer":{"service":"glossthesi","version":"test","errors":[],"assumptions":[{"field":"coverage","value":null,"basis":"measured: held-out datasets"}]}}'
   WHEN json_extract_string(body, '$.table.member[0]') = 'priced.price' THEN '{"table":{"member":["priced.price","priced.price","priced.price"],"origin":["2025-02-05","2025-02-05","2025-02-05"],"step":[1,2,3],"period":["2025-02-06","2025-02-07","2025-02-08"],"span":[null,null,null],"column":["value","value","value"],"level":[0.5,0.5,0.5],"value":[10.5,10.6,10.7],"actual":[null,null,null],"pit":[null,null,null],"displacement":[null,null,null],"withheld":[null,null,null],"coverage_80":[null,null,null],"coverage_80_se":[null,null,null],"coverage_90":[null,null,null],"coverage_90_se":[null,null,null],"coverage_points":[null,null,null],"coverage_datasets":[null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[]}}'
   ELSE replace('{"table":{"member":[],"origin":[],"step":[],"period":[],"span":[],"column":[],"level":[],"value":[]},"answer":{"service":"glossthesi","version":"test","errors":[{"member":"MEMBER","column":"value","origin":null,"code":"history_short","needed":6,"given":3,"error":"words"}]}}', 'MEMBER', json_extract_string(body, '$.table.member[0]')) END)::JSON;
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS main.service_stub(path, body);
 
 statement ok
 SELECT metric_forecast() FROM fin.sales;
@@ -328,3 +336,76 @@ query T
 SELECT current FROM TESTS() WHERE test = 'plan_test';
 ----
 true
+
+# --- a forecast that failed is a result too: the plan has no range to hold against, and its test is yellow with the
+# forecast's code and the statements that run the forecast and the comparison again, where a period waits for a range
+
+query TT
+SELECT subject, state FROM TESTS() WHERE test = 'plan_test';
+----
+fin.sales_budget	red
+
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS error('the service at http://127.0.0.1:1/forecast did not answer: Could not connect to server')::JSON;
+
+statement error
+SELECT metric_forecast() FROM fin.sales;
+----
+service_failed
+
+statement ok
+SELECT metric_plan() FROM fin.sales_budget;
+
+query TTT
+SELECT subject, state, current FROM TESTS() WHERE test = 'plan_test';
+----
+fin.sales_budget	yellow	true
+
+query TTTT
+SELECT evidence->>'forecast_code', (evidence->>'forecast_error') IS NOT NULL,
+       contains(evidence->>'fix', 'SELECT metric_forecast() FROM fin.sales;'), contains(evidence->>'fix', 'SELECT metric_plan() FROM fin.sales_budget;')
+FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
+----
+service_failed	true	true	true
+
+# an answer with a code and no point fails the same way, under the service's code
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS main.service_short(path, body);
+
+statement ok
+SELECT metric_forecast() FROM fin.sales;
+
+statement ok
+SELECT metric_plan() FROM fin.sales_budget;
+
+query TT
+SELECT state, evidence->>'forecast_code' FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
+----
+yellow	history_short
+
+# a plan whose periods are all complete or not covered waits for no range: a failed forecast leaves its test green
+statement ok
+SELECT metric_forecast() FROM fin.hires;
+
+statement ok
+SELECT metric_plan() FROM fin.hires_plan;
+
+query TT
+SELECT state, (evidence->>'forecast_code') IS NULL FROM view_tests() WHERE test = 'plan_test' AND view = 'hires_plan';
+----
+green	true
+
+# the service back, the statements of the fix run, and the plan is held against the range again
+statement ok
+CREATE OR REPLACE MACRO main.service(path, body) AS main.service_stub(path, body);
+
+statement ok
+SELECT metric_forecast() FROM fin.sales;
+
+statement ok
+SELECT metric_plan() FROM fin.sales_budget;
+
+query TTT
+SELECT state, current, (evidence->>'forecast_code') IS NULL FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
+----
+red	true	true

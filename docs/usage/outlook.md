@@ -36,7 +36,8 @@ The columns of each read:
 `range_test` and `plan_test` are rows of `TESTS(<dataset>)` and
 `TESTS(<dataset>.<plan>)`, and rows of `view_tests()`: the range test
 on the dataset, with no view, the plan's test on the plan. The stored
-result carries the `finding` and the `fix` of a red one.
+result carries the `finding` and the `fix` of a red one, and of a
+yellow `plan_test`.
 
 The examples are from one run against a model service: New York
 subway service per month. The metric `trains_run` is the trains that
@@ -64,7 +65,8 @@ for them before one is stored.
 
 Once a result is stored, `next` lists it as any stored result. A red
 test on it (`range_test`, `plan_test`) is a `must` row with the
-result's own finding and fix. A result that is out of date is a
+result's own finding and fix. A yellow `plan_test` is a `should` row
+with its finding and fix. A result that is out of date is a
 `should` row with the statement that computes it again. A result is
 out of date by the rule every stored result follows: what it read
 changed. What each one reads:
@@ -228,6 +230,15 @@ is refused. `plan_test` is red where a period lies outside the range.
 For a year outside it, `next` has a `must` row that names the gap;
 state it as an assumption with the key `plan-<year>` in the plan's
 definition.
+
+A failed forecast is a result too. Where the newest forecast stored
+on the metric failed (the service did not answer, or it answered a
+code such as `history_short` and no point) and a period of the plan
+is `open` or `ahead`, the plan has no range to hold against.
+`plan_test` is then yellow, not green. The comparison carries the
+forecast's `forecast_code` and `forecast_error`, and its fix runs the
+forecast and the comparison again. Where no forecast was stored, the
+periods stay `open` or `ahead` and the test is green.
 
 ## Scenarios
 

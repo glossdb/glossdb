@@ -37,6 +37,10 @@ Once a result is stored, `next` lists it as any stored result:
 
 - `range_test` or `plan_test` red: a `must` row with the result's own
   finding and fix.
+- `plan_test` yellow: the newest forecast of the plan's metric failed,
+  and a period waits for a range. A `should` row: its finding names the
+  forecast's `forecast_code`, its fix runs the forecast and the
+  comparison again.
 - The result out of date (what it read changed): a `should` row with
   the statement that computes it again. The expected ranges read
   every metric of the dataset; a forecast or a scenario estimate its
@@ -145,7 +149,8 @@ year before it, or one it enters part-way, reads `not_covered`: do
 not report a variance for it. `metric_plan()` on a view that is not a
 plan is refused. The 2025 timetable was 911,197 against a range of
 859,630 to 879,368 for the year: `above`. The test `plan_test` is red
-where a period lies outside the range. For a year outside it, `next`
+where a period lies outside the range, and yellow where the newest
+forecast of the metric failed and a period waits for a range. For a year outside it, `next`
 gives the statement: add an assumption with the key `plan-<year>` to
 the plan's definition.
 

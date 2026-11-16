@@ -261,11 +261,19 @@ CREATE OR REPLACE MACRO main.plan_points() AS TABLE FROM main.plan_points_of('th
 -- forecast they were held against where one is stored. Refused on a view
 -- that is not a plan, or a plan that is not served, by name. Out of date
 -- once what it read is: the plan, its metric, and the forecast stored on
--- the metric. finding and fix: where a year of the plan lies below or
--- above the forecast's range, what the gap is and the assumption that
--- records it, NULL elsewhere. plan_gap, the test's detector: red where a
--- ranged period lies outside the range, the score the share of ranged
--- periods that do.
+-- the metric. forecast_code and forecast_error: where the forecast
+-- stored on the metric is a failed run (its error, or an answer with a
+-- code and no point) and a period of the plan is open or ahead, its code
+-- and its error; NULL where it holds a range, none is stored, or no
+-- period waits for a range. finding and fix: where a year of the plan
+-- lies below or above the forecast's range, what the gap is and the
+-- assumption that records it; where the forecast failed, the failure and
+-- the statements that run the forecast and the comparison again; NULL
+-- elsewhere. forecast_failure_code(error): the code of a failed run's
+-- error, as the interfaces class it; forecast_failure_text(error): the
+-- error without the engine's prefixes. plan_gap, the test's detector:
+-- yellow where the forecast failed, else red where a ranged period lies
+-- outside the range, the score the share of ranged periods that do.
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT metric_plan WITH $${
@@ -276,11 +284,21 @@ DECLARE ASPECT metric_plan WITH $${
     "metric": {"type": ["string", "null"]},
     "grain": {"type": ["string", "null"]},
     "forecast_origin": {"type": ["string", "null"]},
+    "forecast_code": {"type": ["string", "null"]},
+    "forecast_error": {"type": ["string", "null"]},
     "points": {"type": "array", "items": {"type": "object"}},
     "finding": {"type": ["string", "null"]},
     "fix": {"type": ["string", "null"]}
   }
 }$$ AS MEASUREMENT ON TABLE;
+
+CREATE OR REPLACE MACRO main.forecast_failure_text(e) AS
+  regexp_replace(e, '^(?:glossql: )?(?:[A-Za-z ]+ Error: )?(?:glossql: )?', '');
+
+CREATE OR REPLACE MACRO main.forecast_failure_code(e) AS
+  CASE WHEN contains(e, 'no service is named for ') THEN 'service_not_configured'
+       WHEN contains(e, 'the service at ') OR contains(e, 'the service answered ') THEN 'service_failed'
+       ELSE nullif(regexp_extract(main.forecast_failure_text(e), '^([a-z][a-z0-9_]*): ', 1), '') END;
 
 DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
   WITH named AS (SELECT kind, applicable, reason FROM main.plan_axes_of('itself', 'its metric') WHERE view = split_part($subject, '.', 2)),
@@ -290,32 +308,48 @@ DECLARE FUNCTION metric_plan FOR GLOBAL AS $$
                 WHEN EXISTS (SELECT 1 FROM named WHERE NOT applicable)
                 THEN error('plan_not_served: ' || $subject || ' is a plan that is not served: ' || (SELECT reason FROM named)) END AS r),
   pts AS (SELECT * FROM main.plan_points_of('itself', 'its metric') WHERE plan = split_part($subject, '.', 2)),
-  own AS (SELECT metric, grain FROM main.plan_rows_of('itself', 'its metric') WHERE plan = split_part($subject, '.', 2) LIMIT 1)
+  own AS (SELECT metric, grain FROM main.plan_rows_of('itself', 'its metric') WHERE plan = split_part($subject, '.', 2) LIMIT 1),
+  -- the forecast stored on the metric, where it is a failed run
+  failed AS (
+    SELECT f.asset, coalesce(main.forecast_failure_code(f.error), json_extract_string(f.value, '$.code')) AS code,
+           coalesce(main.forecast_failure_text(f.error), json_extract_string(f.value, '$.reason')) AS error
+    FROM results('metric_forecast', 'its metric') f JOIN own o ON f.asset = split_part($subject, '.', 1) || '.' || o.metric
+    WHERE (f.error IS NOT NULL OR (f.value IS NOT NULL AND json_extract_string(f.value, '$.code') IS NOT NULL
+                                  AND NOT coalesce(json_extract(f.value, '$.applicable')::BOOLEAN, false)))
+      AND EXISTS (SELECT 1 FROM pts WHERE planned IN ('open', 'ahead'))
+    LIMIT 1)
   SELECT coalesce((SELECT r FROM refusal)::VARCHAR, split_part($subject, '.', 2)) AS plan,
          (SELECT metric FROM own) AS metric,
          (SELECT grain FROM own) AS grain,
          (SELECT any_value(origin) FROM pts WHERE origin IS NOT NULL) AS forecast_origin,
+         (SELECT code FROM failed) AS forecast_code,
+         (SELECT error FROM failed) AS forecast_error,
          (SELECT coalesce(list({'grain': grain, 'period': strftime(period, '%Y-%m-%d'), 'label': label, 'value': value,
                                 'actual': actual, 'variance': variance, 'low': low, 'expected': expected, 'high': high,
                                 'planned': planned, 'covers': covers, 'coverage_80': coverage_80}
                                ORDER BY CASE grain WHEN 'year' THEN 0 ELSE 1 END, period), [])
           FROM pts) AS points,
-         (SELECT string_agg(plan || ' is ' || CAST(round(value, 2) AS VARCHAR) || ' at ' || label || ', ' || planned
-                              || ' the forecast''s range for ' || metric || ' of ' || CAST(round(low, 2) AS VARCHAR) || ' to ' || CAST(round(high, 2) AS VARCHAR), '; ' ORDER BY period)
-          FROM pts WHERE grain = 'year' AND planned IN ('below', 'above')) AS finding,
+         coalesce((SELECT 'the forecast of ' || f.asset || ' failed' || coalesce(' (' || f.code || ')', '') || ': ' || f.error
+                          || '; the periods not yet complete are held against no range' FROM failed f),
+                  (SELECT string_agg(plan || ' is ' || CAST(round(value, 2) AS VARCHAR) || ' at ' || label || ', ' || planned
+                                       || ' the forecast''s range for ' || metric || ' of ' || CAST(round(low, 2) AS VARCHAR) || ' to ' || CAST(round(high, 2) AS VARCHAR), '; ' ORDER BY period)
+                   FROM pts WHERE grain = 'year' AND planned IN ('below', 'above'))) AS finding,
+         coalesce((SELECT '-- the forecast of ' || f.asset || ' failed; run it again, then compare the plan again:' || chr(10)
+                          || 'SELECT metric_forecast() FROM ' || f.asset || ';' || chr(10)
+                          || 'SELECT metric_plan() FROM ' || $subject || ';' FROM failed f),
          (SELECT '-- add each gap to "assumptions" of the plan as {"dimension": "definition", "key": "plan-<year>", "assumption": "<the gap and what closes it, in the business''s words>", "basis": "<what it rests on>", "confidence": 0.7}. Then record the plan again:'
                    || chr(10) || main.redefine_statement($subject)
-          FROM pts WHERE grain = 'year' AND planned IN ('below', 'above') HAVING count(*) > 0) AS fix
+          FROM pts WHERE grain = 'year' AND planned IN ('below', 'above') HAVING count(*) > 0)) AS fix
 $$ RETURNS metric_plan;
 
 DECLARE FUNCTION plan_gap FOR GLOBAL AS $$
   SELECT subject,
-         CASE WHEN outside > 0 THEN 'red' ELSE 'green' END AS state,
+         CASE WHEN failed THEN 'yellow' WHEN outside > 0 THEN 'red' ELSE 'green' END AS state,
          CASE WHEN ranged > 0 THEN outside / ranged ELSE 0.0 END AS score
-  FROM (SELECT subject,
+  FROM (SELECT subject, failed,
                coalesce(len(list_filter(planned, lambda s: s IN ('below', 'above'))), 0)::DOUBLE AS outside,
                coalesce(len(list_filter(planned, lambda s: s IN ('below', 'above', 'inside'))), 0)::DOUBLE AS ranged
-        FROM (SELECT subject,
+        FROM (SELECT subject, json_extract_string(body, '$.forecast_error') IS NOT NULL AS failed,
                      list_transform(from_json(json_extract(body, '$.points'), '[{"planned": "VARCHAR"}]'), lambda p: p.planned) AS planned
               FROM annotations WHERE actor_kind = 'function'))
 $$;
