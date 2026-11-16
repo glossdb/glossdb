@@ -37,7 +37,7 @@ write replaced or removed, with its `end_snapshot`.
 
 | Read | Returns |
 |---|---|
-| `GLOSSARY(<asset>)` | one row per asset and property: `subject`, `aspect`, `value`, `test_state`, `score`, `state` (`current`, `stale`, `missing`, `conflict`) |
+| `GLOSSARY(<asset>)` | one row per asset and property: `subject`, `aspect`, `value`, `test_state`, `score`, `state` (`current`, `stale`, `possibly`, `missing`, `conflict`) |
 | `GLOSSARY(<asset>, all => true)` | each value side by side: `subject`, `aspect`, `kind`, `test`, `actor`, `body`, `written_at`, `current` |
 | `TESTS(<asset>)` | `subject`, `aspect`, `test`, `state`, `score`, `computed_at`, `current`, `error` |
 

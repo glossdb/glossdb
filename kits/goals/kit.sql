@@ -6,9 +6,10 @@
 --===------------------------------------------------------------------===--
 -- results_due(): the results the bound dataset wants that
 -- are missing or out of date, each with the statement that computes it,
--- in the order to run them: ord, function, subject, run. A result is out
--- of date when a node it read (the catalog's `inputs`) changed after the
--- snapshot it read at, or a result it read is out of date. A check that failed is
+-- in the order to run them: ord, function, subject, run. A result is due
+-- when a node it read (the catalog's `inputs`) changed after the snapshot
+-- it read at; one that read a result out of date waits until that result
+-- is computed again, and is due only if its value differs. A check that failed is
 -- a result with its error, due again once it is out of date. What is
 -- wanted follows from the tests on each view and on what it reads
 -- (view_tests()), whatever the kind of view: each test's check, and
@@ -74,11 +75,15 @@ wanted AS (
   UNION
   SELECT 'column_profile', 'column_profile', s.table_name || '.' || unnest(s.columns)
   FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests WHERE run <> '')),
--- a stored result is current while its inputs are, a failure too: a check that failed is not
--- run again until something it read moves
+-- a stored result is due while a node it read changed after it read, a failure too: a check that
+-- failed is not run again until something it read moves. One that is possibly out of date waits for
+-- what it read: computed again, the same value leaves it current, another makes it out of date
+changed AS (SELECT DISTINCT function, subject FROM glossql_outdated()
+            WHERE dataset = current_schema() AND reason = 'changed'),
 stored AS (
-  SELECT subject, aspect, bool_and(current) AS current, bool_or(error IS NOT NULL) AS failed
-  FROM glossql_glossary(current_schema(), NULL, true) WHERE actor = 'function' GROUP BY ALL)
+  SELECT m.subject, m.aspect, bool_and(c.function IS NULL) AS current, bool_or(m.error IS NOT NULL) AS failed
+  FROM main.measurements m LEFT JOIN changed c ON c.function = m.function AND c.subject = m.subject
+  WHERE m.dataset = current_schema() GROUP BY ALL)
 SELECT 1 AS ord, w.function, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
 FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.aspect = w.aspect
 WHERE NOT coalesce(s.current, false)
@@ -90,7 +95,7 @@ UNION ALL
 SELECT DISTINCT 2, t.aspect, t.subject, t.run
 FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
 WHERE t.run <> '' AND NOT coalesce(s.current AND s.failed, false)
-  AND (t.state = 'not_run' OR NOT t.current OR NOT coalesce(s.current, true))
+  AND (t.state = 'not_run' OR NOT coalesce(s.current, true))
 UNION ALL
 SELECT DISTINCT 2, v.function, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
 FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
@@ -631,7 +636,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
-          WHERE u.dataset = current_schema() AND (u.subject = current_schema() OR v.view IS NOT NULL)
+          WHERE u.dataset = current_schema() AND u.reason = 'changed' AND (u.subject = current_schema() OR v.view IS NOT NULL)
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
             AND {'function': u.function, 'subject': u.subject} NOT IN (SELECT {'function': function, 'subject': subject} FROM main.server_results())
           GROUP BY u.function, u.subject) o)

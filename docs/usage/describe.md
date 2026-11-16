@@ -100,6 +100,7 @@ measurement's.
 |---|---|
 | `current` | served; the asset is unchanged since the write |
 | `stale` | served and marked: a load redefined, retyped or dropped the column, or an input of the measurement changed |
+| `possibly` | a computed value served and marked: a result it read is out of date and not computed again yet |
 | `missing` | required and not annotated; the row still appears |
 | `conflict` | a person's and an agent's values differ beyond the test's threshold; the value is withheld |
 

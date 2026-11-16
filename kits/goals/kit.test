@@ -888,3 +888,68 @@ query TI
 SELECT (SELECT state FROM view_tests() WHERE test = 'grain_test'), count(*) FROM next WHERE asset = 'harm.laps' AND kind = 'test';
 ----
 green	0
+
+# --- a result an actor computes that read a result out of date is possibly out of date: it stays out of
+# next; the result it read computed again with the same value leaves it current, with another value it
+# enters next
+
+statement ok
+USE grid;
+
+statement ok
+DECLARE ASPECT top_points WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
+
+statement ok
+DECLARE FUNCTION top_points FOR grid AS $$ SELECT max(points) AS n FROM grid.results $$ RETURNS top_points;
+
+statement ok
+DECLARE ASPECT top_seen WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
+
+statement ok
+DECLARE FUNCTION top_seen FOR grid AS $$ SELECT max(value::DOUBLE) AS n FROM results('top_points', 'itself') $$ RETURNS top_seen;
+
+statement ok
+SELECT top_points(), top_seen() FROM grid;
+
+statement ok
+INSERT INTO grid.results VALUES (DATE '2024-03-01', 1, 3.0);
+
+query TT
+SELECT function, reason FROM glossql_outdated() WHERE function IN ('top_points', 'top_seen') ORDER BY ALL;
+----
+top_points	changed
+top_seen	possibly
+
+query T
+SELECT statement FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
+----
+SELECT top_points() FROM grid;
+
+query T
+SELECT state FROM GLOSSARY(grid) WHERE aspect = 'top_seen';
+----
+possibly
+
+statement ok
+SELECT top_points() FROM grid;
+
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'top_');
+----
+0
+
+statement ok
+INSERT INTO grid.results VALUES (DATE '2024-03-02', 1, 30.0);
+
+statement ok
+SELECT top_points() FROM grid;
+
+query TTT
+SELECT function, what, reason FROM glossql_outdated() WHERE function IN ('top_points', 'top_seen') ORDER BY ALL;
+----
+top_seen	result top_points	changed
+
+query T
+SELECT statement FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
+----
+SELECT top_seen() FROM grid;
