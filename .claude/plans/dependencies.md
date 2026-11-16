@@ -19,7 +19,11 @@ graph that is kept.
 | Dependency | one edge per input or result a function read when it ran, recorded by the read functions |
 | Check | a result is current when nothing it read changed after the snapshot it was verified at. Asked on demand, walked along its edges |
 | Early cutoff | a result computed again with the same value keeps the snapshot its value changed at, so what read it stays current |
-| The graph | nodes and edges kept in memory per instance, built from the catalog when the lake opens, updated by each write |
+| The graph | the nodes and edges. Whether it is kept in memory or read from the catalog's rows is decided by the spike, by size |
+
+The core knows no add-on. A kit's functions and the things it lets
+one ask for (a scenario, a plan) are tracked by this one mechanism,
+declared by the kit as rows; nothing in the core names a kit.
 
 What must not exist beside it: a second version of anything (a digest
 of what a read returned, a counter, a fingerprint as a key); a lineage
@@ -42,11 +46,17 @@ Each step below ends with both counted again, and smaller.
 
 ## Steps, in order
 
+Before step 1: a standalone spike, outside the extension's code and
+suites. Is the snapshot as the version right on the real cases; does
+a graph in memory pay at 5,000, 50,000 and 500,000 results; does the
+design hold for an add-on the core does not know; where does it not
+hold. The steps below are rewritten from its report.
+
 | # | Element | Risk | What it touches | Deleted in the same step |
 |---|---|---|---|---|
 | 1 | The snapshot is the version. An input row names the node read (asset and what) and no digest. A result is out of date when a node it read has a catalog row begun or ended after the result's snapshot, or a table loaded after it. A result computed again with the same value keeps its changed-at snapshot | High: every stored result and `SPEC.md` §6 | the extension (`inputs`, the runner), `SPEC.md` §6 | `inputs.version`, the digest of a read (`ReadsNowSQL`), its tests |
-| 2 | The graph in memory: nodes with their snapshots, edges both ways, built at open and updated in the step of each write; another writer's snapshots are applied from the catalog's rows since. `lineage()`, the places, `glossql_outdated()` and the `current` mark are served from it | High: transactions, two writers, a Postgres catalog | the extension (store, runner, lineage kit) | the whole check per snapshot, the kept check, the lineage macro's joins, `glossql_kept` where the graph answers |
-| 3 | What one asks for alone is a node: a scenario is an asset as a plan is, with edges to the levers it sets; `metric_scenario` runs on a scenario, `metric_ranges` on a metric | Medium: `SPEC.md` §4 and §6, shown to the project lead first | the lineage, `kits/outlook` | the per-dataset and per-metric result shapes |
+| 2 | The check follows the edges from what a write touched, and the lineage is read, not computed whole. Kept in memory if the spike shows it pays at a size we expect; otherwise over the catalog's rows | High if in memory: transactions, two writers, a Postgres catalog | the extension (store, runner, lineage kit) | the whole check per snapshot, the kept check, the lineage macro's joins, `glossql_kept` where it is no longer needed |
+| 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario with edges to the levers it sets, as a plan is; `metric_scenario` runs on a scenario, `metric_ranges` on a metric. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6, shown to the project lead first | the lineage, `kits/outlook` | the per-dataset and per-metric result shapes |
 | 4 | Pull features are verified when asked: a forecast, ranges, a scenario, a plan is served marked "possibly out of date" while a result it read is out of date, and enters `next` once that result is computed again and differs | Low after step 2 | `kits/goals` (`next`), the extension's `current` mark | the reason `outdated` |
 | 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
@@ -67,7 +77,6 @@ Each step below ends with both counted again, and smaller.
 
 ## For the project lead to decide
 
-- Whether a member of a dimension or a period is a node.
 - Step 3's `SPEC.md` diff, before it is built.
 - Whether the architecture section above goes into `CLAUDE.md`, so
   that every session starts from it.

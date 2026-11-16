@@ -48,11 +48,11 @@ workspace version.
   extension on DuckDB, compiled into every binary) · `apps` (the
   console and data apps) · `serverd` (the binary and its interfaces).
   Packages are `glossdb-*`. Details: the crate headers.
-- `kits/` — the server's kits: core, views, outlook, goals. SQL
-  loaded at open around the extension's kpi and quality kits, each
-  with a `kit.test` suite beside it. A kit whose words depend on the
-  server lives here; `kits/README.md` says what they add: vocabulary
-  and reads, never grammar.
+- `kits/` — the server's kits, SQL loaded at open around the
+  extension's kits, each with a `kit.test` suite beside it. Core:
+  `core`, `views`, `goals`. Add-ons: `plan`, `harmonise`, `outlook`.
+  `kits/README.md` says what each adds: vocabulary and reads, never
+  grammar.
 - **Results and next steps**: `results_due()` in
   `kits/goals/kit.sql` lists the results that are missing or
   outdated; the server computes them after a write
@@ -75,7 +75,40 @@ workspace version.
   pull request; `release.yml` builds the image on a `v*` tag. The
   release order: the glossql-release skill.
 
+## The architecture
+
+- **A core and add-ons.** The core is the language, the catalog, the
+  lineage, views, tests and `next`. A kit is an add-on: it brings its
+  own vocabulary, the things one asks for, its functions and its
+  tests. The core names no add-on and runs without each of them. What
+  an add-on stores is tracked by the core's one dependency mechanism;
+  an add-on gets no mechanism of its own.
+- **`next`** has four kinds of work (integrate, describe, test,
+  review) and three levels (must, should, could). An add-on's rows
+  come in through its tests and its stored results.
+- **Dependencies** are demand-driven incremental computation, as in
+  Adapton and Salsa's red-green algorithm. The revision is the lake's
+  snapshot id, and it is the only version: no digest, counter or
+  fingerprint beside it. `.claude/plans/dependencies.md` holds the
+  model, its reference and what is open; that section survives every
+  rewrite of the plan.
+- **The inside follows the outside.** When what is exposed changes (a
+  name, a kit that becomes an add-on, the grain of what one asks
+  for), the structure behind it changes in the same work. An old
+  structure is not kept behind a new surface.
+- **Both repositories shrink.** A larger change reports the lines of
+  `src/` and of the kits before and after. A change that grows them
+  says why before it is built.
+
 ## How we work
+
+- **An agreed design is written down, with its reference**, in the
+  plan it belongs to. A change that departs from it stops and is put
+  to the project lead. Working without check-ins holds for the rows
+  inside an agreed design, not for the design.
+- **A spike before a structure.** A new structure is tried standalone
+  first, outside the code and the suites it would replace, on real
+  cases and at three sizes. Its report says where it does not hold.
 
 - **Use the product as the agent does.** Before and after a change to
   anything an agent reads (kits, skills, the MCP text, the `next`
@@ -94,7 +127,9 @@ workspace version.
   in a kit. The extension owns the language and the catalog; the
   server owns the interfaces. Extend DuckDB and the extension at
   their own seams (the glossql-substrate skill).
-- **Standing invariant.** Workspace `cargo test` passes: every fenced
+- **Standing invariant, at merge.** Work that replaces a structure
+  may be red on its branch until it is whole, and the tests of what
+  it replaces are deleted first. Workspace `cargo test` passes: every fenced
   example under `docs/`, `skills/` and `.claude/skills/` parses and
   every single read binds, the interface suites hold, the corpus
   behaves as tagged, and the kits' suites pass. A change that breaks
