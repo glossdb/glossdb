@@ -120,13 +120,28 @@ GLOSS contract ON supply.onhand.cases AS $${"type": "DOUBLE", "required": true}$
 ```
 
 After each write the server runs `contract_test` (the rows keep the
-contract) and `code_test` (every code a source column holds is named
-by the CASE that maps it) on the view. A red test is a `must` row of
-`next` with the breaches per column, their rows and example values.
-A column of the view with no contract is a `should` row. Name every
-code in the CASE and leave the rest to NULL: a new code then shows in
-`code_test` instead of falling to the `ELSE`
+contract), `code_test` (every code a source column holds is named
+by the CASE that maps it) and `reconciliation_test` on the view. A red
+test is a `must` row of `next` with the breaches per column, their rows
+and example values. A column of the view with no contract is a
+`should` row. Name every code in the CASE and leave the rest to NULL:
+a new code then shows in `code_test` instead of falling to the `ELSE`.
+
+The reconciliation answers, after each load: did every row of each
+system arrive, and if not, which rows and why. Per system and period
+it counts the rows each branch reads from the table that drives it,
+the rows each condition and each join leaves out, the rows a join
+repeats and the rows that reach the target, with the sums of the
+columns annotated as measures. Declare the relationship each join
+follows, so that the keys with no partner are named, in the
+reconciliation and in the finding of `orphan_test` in `next`. The test
+is red where rows vanish that no step explains
 ([reads](../reference/reads.md#the-harmonise-kit-preview)).
+
+```glossql
+DECLARE RELATIONSHIP supply.stock_mono.indeks -> supply.model_identities.local_code;
+GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
+```
 
 ## Stop instead of serving
 
