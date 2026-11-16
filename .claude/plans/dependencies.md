@@ -59,9 +59,12 @@ each of which is part of step 1:
 - Ended rows are never deleted, and "when did this table's data
   change" is read from our own load rows, not from the lake's change
   log, which snapshot expiry removes without a trace.
-- A write of an unchanged value writes nothing. The kits' macros are
-  written again at every start today (236 of 534 snapshots on the
-  demo workspace); unchanged, they must not be.
+- A write of an unchanged value writes nothing. A kit whose text is
+  unchanged is not run again at open (`kits.hash`); a kit whose text
+  changed runs whole and writes each of its macros again, changed or
+  not (236 of 534 snapshots on the demo workspace, from nine kit
+  changes). A declaration that is the same as the stored one must
+  not be written.
 - Every function is declared, an add-on's too, as a row of one
   generic declaration table; an outside service's version is a row
   the add-on writes when it observes it.
