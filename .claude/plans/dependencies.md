@@ -19,7 +19,7 @@ graph that is kept.
 | Dependency | one edge per input or result a function read when it ran, recorded by the read functions |
 | Check | a result is current when nothing it read changed after the snapshot it was verified at. Asked on demand, walked along its edges |
 | Early cutoff | a result computed again with the same value keeps the snapshot its value changed at, so what read it stays current |
-| The graph | the nodes and edges. Whether it is kept in memory or read from the catalog's rows is decided by the spike, by size |
+| The graph | the edges as rows of the catalog, read by SQL. Not kept in memory: the whole check takes 91 ms at 500,000 results as one query (spike) |
 
 The core knows no add-on. A kit's functions and the things it lets
 one ask for (a scenario, a plan) are tracked by this one mechanism,
@@ -46,16 +46,34 @@ Each step below ends with both counted again, and smaller.
 
 ## Steps, in order
 
-Before step 1: a standalone spike, outside the extension's code and
-suites. Is the snapshot as the version right on the real cases; does
-a graph in memory pay at 5,000, 50,000 and 500,000 results; does the
-design hold for an add-on the core does not know; where does it not
-hold. The steps below are rewritten from its report.
+The spike is in `spikes/` (`snapshot-as-version.md`, 192 lines of
+schema and writes, the cases and the bench with their output). The
+snapshot as the version is right on its cases under these conditions,
+each of which is part of step 1:
+
+- A result stores the snapshot it **read** at, not the one it was
+  committed at; otherwise another writer's load reads as current.
+- A read of a place records every node the walk passed and one node
+  for each set it ended in (the relationships of a table, the
+  declarations of a kind); an added member is then seen by snapshot.
+- Ended rows are never deleted, and "when did this table's data
+  change" is read from our own load rows, not from the lake's change
+  log, which snapshot expiry removes without a trace.
+- A write of an unchanged value writes nothing. The kits' macros are
+  written again at every start today (236 of 534 snapshots on the
+  demo workspace); unchanged, they must not be.
+- Every function is declared, an add-on's too, as a row of one
+  generic declaration table; an outside service's version is a row
+  the add-on writes when it observes it.
+
+What it costs against the digest: a value changed and changed back is
+one computation per result that read it; what reads those stays
+current through early cutoff.
 
 | # | Element | Risk | What it touches | Deleted in the same step |
 |---|---|---|---|---|
 | 1 | The snapshot is the version. An input row names the node read (asset and what) and no digest. A result is out of date when a node it read has a catalog row begun or ended after the result's snapshot, or a table loaded after it. A result computed again with the same value keeps its changed-at snapshot | High: every stored result and `SPEC.md` §6 | the extension (`inputs`, the runner), `SPEC.md` §6 | `inputs.version`, the digest of a read (`ReadsNowSQL`), its tests |
-| 2 | The check follows the edges from what a write touched, and the lineage is read, not computed whole. Kept in memory if the spike shows it pays at a size we expect; otherwise over the catalog's rows | High if in memory: transactions, two writers, a Postgres catalog | the extension (store, runner, lineage kit) | the whole check per snapshot, the kept check, the lineage macro's joins, `glossql_kept` where it is no longer needed |
+| 2 | The lineage and the check are read from the catalog's rows by the two queries of the spike (when each node last changed; the check), not computed whole and kept | Medium | the extension (store, runner, lineage kit) | `ReadsNowSQL`, `CheckSQL`, `CheckRowsSQL`, `InputsNow`, `MacroDigests`, the kept check: about 430 lines |
 | 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario with edges to the levers it sets, as a plan is; `metric_scenario` runs on a scenario, `metric_ranges` on a metric. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6, shown to the project lead first | the lineage, `kits/outlook` | the per-dataset and per-metric result shapes |
 | 4 | Pull features are verified when asked: a forecast, ranges, a scenario, a plan is served marked "possibly out of date" while a result it read is out of date, and enters `next` once that result is computed again and differs | Low after step 2 | `kits/goals` (`next`), the extension's `current` mark | the reason `outdated` |
 | 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
@@ -65,9 +83,9 @@ hold. The steps below are rewritten from its report.
 - One version: no digest, counter or fingerprint is compared anywhere
   to decide whether a result is current.
 - A generated workspace of 200 tables, 2,000 columns, 300 views and
-  5,000 results: the graph's build time at open, its memory, and the
-  time of a write that computes nothing. On Formula 1 that write is
-  0.24 s today.
+  5,000 results, in the server: the time of a write that computes
+  nothing. On Formula 1 that write is 0.24 s today; the spike's check
+  alone is 12 ms at that size.
 - Declaring a scenario, an annotation on one metric, a relationship
   declared after a view's check ran: only what read the changed node
   is out of date, and `glossql_outdated()` names the node.
