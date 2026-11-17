@@ -77,6 +77,10 @@ wanted AS (
   SELECT DISTINCT w.function, f.returns, p.asset FROM wants w JOIN fns f ON f.name = w.function
   JOIN places p ON p."where" = w."where"
    AND p.subject = CASE WHEN w."where" IN (SELECT "where" FROM anchored) THEN current_schema() ELSE w.subject END
+  -- of a place's assets, those the function's property is declared on: a view's sources are its
+  -- tables and their columns, and a column's profile is wanted on the columns
+  WHERE NOT EXISTS (SELECT 1 FROM main.aspects a WHERE a.name = f.returns AND len(a.grains) > 0
+                    AND NOT list_contains(a.grains, main.asset_grain(p.asset)))
   UNION
   SELECT 'column_profile', 'column_profile', s.table_name || '.' || unnest(s.columns)
   FROM main.views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests WHERE run <> '')),
@@ -291,7 +295,8 @@ CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
 -- next: what is open on the bound dataset, read from the states the
 -- catalog holds. One row per asset, state and level: level, ord, kind,
 -- asset, state, who (agent or person), open (the finding), for_view (the
--- views that read the asset), cause (what the newest load changed),
+-- views that read the asset), cause (what the newest load changed, or
+-- the `cause` a test's result names),
 -- statement (what opens the work; <...> marks what only the author can
 -- fill). The rows are ordered by level, then ord, then asset, then the
 -- finding (a test's starts with the test's name).
@@ -534,7 +539,7 @@ CREATE OR REPLACE VIEW main.next AS
   s_test AS (
     SELECT CASE t.state WHEN 'red' THEN 'must' ELSE 'should' END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
-           coalesce(vc.causes, ''),
+           coalesce(t.evidence->>'cause', vc.causes, ''),
            coalesce(t.evidence->>'fix',
                     CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
                          THEN '-- the data breaks the rule. Fix the load query or the view''s definition, then run the check again:' || chr(10)

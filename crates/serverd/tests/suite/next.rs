@@ -104,7 +104,9 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
 /// The server runs a table view's tests after each write, as a
 /// metric's: its join columns are profiled and the relationship it
 /// joins over is checked with no statement by the agent, and a key
-/// without a parent turns the orphan test red under "test" in `next`.
+/// without a parent turns the orphan test red under "test" in `next`;
+/// the funds loaded again with no label empty a column the view serves,
+/// and the completeness test turns red with no statement either.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_server_runs_a_table_views_tests_after_each_write() {
     let (app, _, _dir) = fin().await;
@@ -152,6 +154,7 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
     assert_eq!(
         states,
         [
+            ("completeness_test".to_string(), "green".to_string()),
             ("join_test".to_string(), "green".to_string()),
             ("orphan_test".to_string(), "red".to_string())
         ]
@@ -160,6 +163,25 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
     assert_eq!(open.len(), 1, "{open:?}");
     assert_eq!(text(&open[0], "asset"), "fin.ledger_funds");
     assert_eq!(text(&open[0], "state"), "red");
+
+    say(
+        &app,
+        FIN,
+        "CREATE OR REPLACE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, NULL::VARCHAR AS label;",
+    )
+    .await;
+    let emptied = rows(
+        &app,
+        FIN,
+        "SELECT state, current, evidence->'columns'->0->>'column' AS col, evidence->'columns'->0->>'cause' AS cause \
+         FROM view_tests() WHERE view = 'ledger_funds' AND test = 'completeness_test'",
+    )
+    .await;
+    assert_eq!(emptied.len(), 1, "{emptied:?}");
+    assert_eq!(text(&emptied[0], "state"), "red");
+    assert_eq!(emptied[0]["current"].as_bool(), Some(true));
+    assert_eq!(text(&emptied[0], "col"), "label");
+    assert_eq!(text(&emptied[0], "cause"), "load");
 }
 
 #[tokio::test(flavor = "multi_thread")]

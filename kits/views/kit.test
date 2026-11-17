@@ -386,27 +386,37 @@ SELECT orphan_check() FROM fin.spend;
 statement ok
 SELECT additivity_check() FROM fin.spend;
 
+# the completeness check reads the profiles of the view's columns, which the server computes first; until
+# they are stored it is not applicable
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+SELECT completeness_check() FROM fin.spend;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), completeness_test() FROM fin;
 
 query TTTT
 SELECT test, declared_by, state, run FROM view_tests() WHERE view = 'spend' ORDER BY test;
 ----
+completeness_test	kit:views	yellow	SELECT completeness_check() FROM fin.spend
 join_test	kit:views	green	SELECT join_check() FROM fin.spend
 measure_additivity_test	kit:views	green	SELECT additivity_check() FROM fin.spend
 orphan_test	kit:views	green	SELECT orphan_check() FROM fin.spend
 
-# a single value carries the join and orphan tests, green where it reads no table, and not the additivity
-# test, which needs a measure; a stopped definition has no tests of this kind
+# a single value carries the join, orphan and completeness tests, green where it reads no table, and not the
+# additivity test, which needs a measure; a stopped definition has no tests of this kind
 statement ok
-SELECT join_check(), orphan_check() FROM fin.fte_cap;
+SELECT column_profile() FROM fin.fte_cap.value;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+SELECT join_check(), orphan_check(), completeness_check() FROM fin.fte_cap;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), completeness_test() FROM fin;
 
 query TT
 SELECT test, state FROM view_tests() WHERE view IN ('fte_cap', 'win_rate') ORDER BY view, test;
 ----
+completeness_test	green
 join_test	green
 orphan_test	green
 
@@ -893,3 +903,325 @@ query TT
 SELECT state, evidence->>'pairs' FROM view_tests() WHERE view = 'booked_by_business' AND test = 'join_test';
 ----
 green	NULL
+
+# --- completeness: a column a view serves that a load or a new definition empties. A status code read out of
+# the status text by a regex; a note filled on one row in ten. The check reads the profile of each column of the
+# view and of the tables it reads, and the values each profile held before
+statement ok
+CREATE OR REPLACE TABLE fin.status_lines AS
+  SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, CASE WHEN i % 10 = 0 THEN 'note ' || i END AS note FROM range(100) r(i);
+
+statement ok
+DECLARE ASPECT line_status WITH $${"title": "Line status", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TRT
+SELECT state, score, (evidence->>'applicable')::BOOLEAN FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+green	0.0	true
+
+# a load that empties a column 90% empty before: it rose by a tenth of the rows, within the threshold, and stays quiet
+statement ok
+CREATE OR REPLACE TABLE fin.status_lines AS
+  SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, NULL::VARCHAR AS note FROM range(100) r(i);
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TRT
+SELECT state, score, evidence->>'columns' FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+green	0.0	NULL
+
+# the definition recorded again with the regex's backslashes doubled: the code matches no row. Red, with the
+# column, its share before and now, and the definition as the cause, since status is filled
+statement ok
+GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\\\((\\\\w+)\\\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TRTRRT
+SELECT state, score, c.column, c.before, c.now, c.cause
+FROM view_tests(), unnest(from_json(evidence->'columns', '[{"column": "VARCHAR", "before": "DOUBLE", "now": "DOUBLE", "cause": "VARCHAR"}]')) t(c)
+WHERE view = 'line_status' AND test = 'completeness_test';
+----
+red	1.0	code	0.0	1.0	definition
+
+# the fix hands the definition to correct, and the statement that accepts the rate
+query TT
+SELECT contains(evidence->>'fix', 'GLOSS line_status ON fin AS $${"sql"'),
+       contains(evidence->>'fix', 'GLOSS completeness_check ON fin.line_status AS $${"tolerance": 1.0')
+FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+true	true
+
+# the same rows loaded again: the check is out of date, and computed again it is red as before
+statement ok
+CREATE OR REPLACE TABLE fin.status_lines AS
+  SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, NULL::VARCHAR AS note FROM range(100) r(i);
+
+query T
+SELECT current FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+false
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TTR
+SELECT state, current, score FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+red	true	1.0
+
+# a load of more rows that fills the note: the code's profile moves, still empty, and the code stays held
+# against its share before it emptied
+statement ok
+CREATE OR REPLACE TABLE fin.status_lines AS
+  SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, 'note ' || i AS note FROM range(120) r(i);
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TRTRRT
+SELECT state, score, c.column, c.before, c.now, c.cause
+FROM view_tests(), unnest(from_json(evidence->'columns', '[{"column": "VARCHAR", "before": "DOUBLE", "now": "DOUBLE", "cause": "VARCHAR"}]')) t(c)
+WHERE view = 'line_status' AND test = 'completeness_test';
+----
+red	1.0	code	0.0	1.0	definition
+
+# the definition corrected: the code is filled again
+statement ok
+GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TR
+SELECT state, score FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+green	0.0
+
+# a load that sends the status empty: the code empties with it, and the load is the cause
+statement ok
+CREATE OR REPLACE TABLE fin.status_lines AS
+  SELECT i AS line_id, NULL::VARCHAR AS status, 'note ' || i AS note FROM range(120) r(i);
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TRTRRT
+SELECT state, score, c.column, c.before, c.now, c.cause
+FROM view_tests(), unnest(from_json(evidence->'columns', '[{"column": "VARCHAR", "before": "DOUBLE", "now": "DOUBLE", "cause": "VARCHAR"}]')) t(c)
+WHERE view = 'line_status' AND test = 'completeness_test';
+----
+red	1.0	code	0.0	1.0	load
+
+# a person accepts the rate: green
+statement ok
+GLOSS completeness_check ON fin.line_status AS $${"tolerance": 1.0, "basis": "the source stopped sending the status"}$$;
+
+statement ok
+SELECT lineage() FROM fin.line_status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.status;
+
+statement ok
+SELECT column_profile() FROM fin.status_lines.note;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.line_id;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.code;
+
+statement ok
+SELECT column_profile() FROM fin.line_status.note;
+
+statement ok
+SELECT completeness_check() FROM fin.line_status;
+
+statement ok
+SELECT completeness_test() FROM fin;
+
+query TR
+SELECT state, score FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test';
+----
+green	0.0

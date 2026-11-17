@@ -620,7 +620,8 @@ WHERE m.view IN (SELECT view FROM views);
 -- checked against its definition and the evidence the quality kit
 -- stored, never against the data again. join_check is a join that
 -- repeats rows, orphan_check referential integrity on the declared
--- joins, both on every view (a table, a single value, a metric);
+-- joins, completeness_check a column a load or a new definition emptied,
+-- all three on every view (a table, a single value, a metric);
 -- additivity_check the additivity of a metric's value, which only a
 -- metric has. Each is a measurement over the view,
 -- `SELECT <check>() FROM <dataset>.<view>`, whose breach_rate
@@ -1076,6 +1077,90 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
 $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- completeness_check: a column the view serves that a load or a new
+-- definition emptied. Each column's share of empty values (NULL) comes
+-- from its stored column_profile, which the server computes on each column
+-- of the view, and the state before from the values that profile held
+-- (results()' history): walked oldest first, a share that rose by more than
+-- the tolerance over the last share within it is a column that emptied,
+-- and that last share stays its state before until the column is filled
+-- again or the tolerance is raised. So a column that drifts by less than
+-- the tolerance per load stays quiet, a column mostly empty before cannot
+-- rise past it, and a later load that moves the column's rows again keeps
+-- it red. breach_rate is the largest rise; `columns` names each column
+-- that rose, with its share before and now and the cause: `load` where a
+-- table column it is computed from emptied as well (by the same walk over
+-- that column's profile), else `definition`. A view whose columns hold no
+-- profile yet is not applicable.
+DECLARE ASPECT completeness_check WITH $${
+  "description": "Each column the view serves keeps its values. Fails where a load of a table the view reads, or its definition recorded again, emptied a column on a larger share of the rows than the tolerance.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "columns": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "cause": {"type": ["string", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION completeness_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  tol AS (
+    SELECT coalesce(max(try_cast(value->>'tolerance' AS DOUBLE)), max(threshold), 0.0) AS tolerance
+    FROM annotations('completeness_check', 'itself') WHERE state IN ('current', 'stale', 'missing')),
+  -- each column's shares empty, oldest first, walked to the last share within the tolerance
+  profiled AS (
+    SELECT asset, list_transform(history, lambda v: coalesce(try_cast(v->>'null_ratio' AS DOUBLE), 0.0)) AS shares
+    FROM (SELECT asset, history FROM results('column_profile', 'its columns')
+          UNION ALL SELECT asset, history FROM results('column_profile', 'its sources'))
+    WHERE len(history) > 0),
+  walked AS (
+    SELECT p.asset, p.shares[-1] AS now_,
+           list_reduce(p.shares, lambda b, e: CASE WHEN e - b > t.tolerance THEN b ELSE e END) AS before
+    FROM profiled p, tol t),
+  rose AS (SELECT asset, before, now_, round(now_ - before, 4) AS rise FROM walked, tol WHERE now_ - before > tol.tolerance),
+  cols AS (
+    SELECT c.name AS col, c.position AS pos, $subject || '.' || c.name AS asset,
+           regexp_extract_all(coalesce(c.derivation, ''), '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1) AS sources
+    FROM d, unnest(d.columns) t(c)),
+  emptied AS (
+    SELECT c.col, c.pos, r.before, r.now_, r.rise,
+           CASE WHEN EXISTS (SELECT 1 FROM rose s WHERE list_contains(c.sources, s.asset)) THEN 'load' ELSE 'definition' END AS cause,
+           (SELECT string_agg(split_part(s.asset, '.', 2) || '.' || split_part(s.asset, '.', 3), ', ' ORDER BY s.asset)
+            FROM rose s WHERE list_contains(c.sources, s.asset)) AS emptied_sources
+    FROM cols c JOIN rose r ON r.asset = c.asset),
+  state AS (
+    SELECT EXISTS (SELECT 1 FROM walked w JOIN cols c ON c.asset = w.asset) AS applicable,
+           EXISTS (SELECT 1 FROM emptied) AS red,
+           EXISTS (SELECT 1 FROM emptied WHERE cause = 'definition') AS redefined,
+           (SELECT redefine_statement(view) FROM d) AS redefine,
+           (SELECT max(rise) FROM emptied) AS rate)
+  SELECT s.applicable,
+         CASE WHEN NOT s.applicable THEN 'the columns of ' || split_part($subject, '.', 2) || ' are not profiled yet: run column_profile() over each' END AS reason,
+         CASE WHEN s.applicable THEN coalesce(s.rate, 0.0) END AS breach_rate,
+         (SELECT list({'column': col, 'before': before, 'now': now_, 'cause': cause} ORDER BY rise DESC, pos) FROM emptied) AS columns,
+         CASE WHEN s.red THEN (SELECT string_agg(CASE cause WHEN 'load' THEN 'a load emptied ' || emptied_sources
+                                                       ELSE 'the definition of ' || split_part($subject, '.', 2) || ' empties ' || col END,
+                                                  '; ' ORDER BY rise DESC, pos) FROM emptied) END AS cause,
+         CASE WHEN s.red
+              THEN (SELECT string_agg(col || ' is ' || round(now_ * 100, 1) || '% empty, ' || round(before * 100, 1) || '% before'
+                                      || CASE cause WHEN 'load' THEN ', since a load emptied ' || emptied_sources
+                                                    ELSE ', while what it is computed from is filled: the definition empties it' END,
+                                      '; ' ORDER BY rise DESC, pos) FROM emptied)
+                   || ', so ' || split_part($subject, '.', 2) || ' serves these rows without the value' END AS finding,
+         CASE WHEN s.red THEN concat_ws(chr(10),
+           CASE WHEN s.redefined
+                THEN '-- correct the expression of each column the definition empties and record the definition again:' || chr(10) || s.redefine END,
+           CASE WHEN EXISTS (SELECT 1 FROM emptied WHERE cause = 'load')
+                THEN '-- the newest load carries the columns empty (load_changes() says what it changed): fix the source or the load query and load again (IMPORT)' END,
+           '-- where the columns are right as they are now, accept the rate with the reason:',
+           '-- ' || main.gloss_statement('completeness_check', $subject,
+                    '{"tolerance": ' || ceil(s.rate * 1000) / 1000 || ', "basis": "<why these columns are empty now>"}')) END AS fix
+  FROM state s
+$$ RETURNS completeness_check;
+
+DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.1;
 
 --===------------------------------------------------------------------===--
 -- view_tests(): every test on each view of the bound dataset and on
