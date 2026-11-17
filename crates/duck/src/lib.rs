@@ -1947,7 +1947,8 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
 }
 
 /// Statements split on `;` outside quotes, dollar quotes (`$$` and
-/// tagged, `$tag$`) and comments.
+/// tagged, `$tag$`) and comments. A piece of comments alone is no
+/// statement: a text `next` hands over may close on a commented one.
 fn split_statements(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
@@ -2008,7 +2009,7 @@ fn split_statements(text: &str) -> Vec<String> {
         } else if !in_single && !in_dollar && c == '"' {
             in_double = !in_double;
         } else if !in_single && !in_double && !in_dollar && c == ';' {
-            if !current.trim().is_empty() {
+            if !after_comments(&current).trim().is_empty() {
                 out.push(current.trim().to_string());
             }
             current.clear();
@@ -2018,7 +2019,7 @@ fn split_statements(text: &str) -> Vec<String> {
         current.push(c);
         i += 1;
     }
-    if !current.trim().is_empty() {
+    if !after_comments(&current).trim().is_empty() {
         out.push(current.trim().to_string());
     }
     out
@@ -2063,6 +2064,18 @@ mod tests {
         );
         assert_eq!(pieces.len(), 3);
         assert!(pieces[1].contains("a; b"));
+    }
+
+    /// A comment above a statement stays with it, and comments after
+    /// the last statement are no statement of their own.
+    #[test]
+    fn comments_alone_are_no_statement() {
+        let pieces = split_statements(
+            "-- why\nSELECT 1;\n-- where a person accepts:\n-- GLOSS t ON fin.v AS $${\"tolerance\": 1.0}$$;\n",
+        );
+        assert_eq!(pieces.len(), 1, "{pieces:?}");
+        assert!(pieces[0].starts_with("-- why"));
+        assert!(split_statements("-- nothing to run").is_empty());
     }
 
     #[test]
