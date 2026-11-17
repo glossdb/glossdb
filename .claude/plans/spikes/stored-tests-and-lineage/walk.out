@@ -1,0 +1,4 @@
+column   all edges               23.7 ms (4,)
+column   result edges only       10.2 ms (4,)
+dataset  all edges               20.6 ms (54359,)
+dataset  result edges only       12.3 ms (54359,)
