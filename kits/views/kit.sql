@@ -147,13 +147,10 @@ cols AS (
   WHERE c.table_name IN (SELECT view FROM views)),
 annotated AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS view, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
-  -- one read per property: a result reads the stored results of these five alone
-  FROM (FROM glossql_glossary(current_schema(), 'role', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'additivity', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'dimension', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'time_grains', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'temporal_profile', false))
-  WHERE len(string_split(subject, '.')) >= 3
+  -- the dataset's glossary, read once by every read of one statement that reads it whole
+  FROM glossql_glossary(current_schema(), NULL, false)
+  WHERE aspect IN ('role', 'additivity', 'dimension', 'time_grains', 'temporal_profile')
+    AND len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT view FROM bodies)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT view, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
