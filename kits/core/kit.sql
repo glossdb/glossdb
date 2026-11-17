@@ -270,7 +270,7 @@ CREATE OR REPLACE VIEW main.workspace_status AS
     SELECT DISTINCT split_part(path, '.', 1) AS dataset, split_part(path, '.', 2) AS table_name,
            split_part(path, '.', 3) AS column_name
     FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
-          FROM glossql_views_lineage(NULL) l
+          FROM main.views_lineage(NULL) l
           JOIN newest_aspects m ON m.name = l.view AND m.kind = 'VIEW'
             AND coalesce(json_extract_string(m.schema, '$.x-kind'), '') NOT IN ('sample', 'plan'))),
   assets AS (

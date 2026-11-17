@@ -6,7 +6,8 @@
 --===------------------------------------------------------------------===--
 -- results_due(): the results the bound dataset wants that
 -- are missing or out of date, each with the statement that computes it,
--- in the order to run them: ord, function, subject, run. A result is due
+-- in the order to run them: ord, function, subject, run. A view's lineage
+-- comes first (ord 0): missing, out of date, or on a view that is gone. A result is due
 -- when a node it read (the catalog's `inputs`) changed after the snapshot
 -- it read at; one that read a result out of date waits until that result
 -- is computed again, and is due only if its value differs. A check that failed is
@@ -74,7 +75,7 @@ wanted AS (
    AND p.subject = CASE WHEN w."where" IN (SELECT "where" FROM anchored) THEN current_schema() ELSE w.subject END
   UNION
   SELECT 'column_profile', 'column_profile', s.table_name || '.' || unnest(s.columns)
-  FROM glossql_views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests WHERE run <> '')),
+  FROM main.views_scans(current_schema()) s WHERE s.view IN (SELECT view FROM tests WHERE run <> '')),
 -- a stored result is due while a node it read changed after it read, a failure too: a check that
 -- failed is not run again until something it read moves. One that is possibly out of date waits for
 -- what it read: computed again, the same value leaves it current, another makes it out of date
@@ -83,7 +84,19 @@ changed AS (SELECT DISTINCT function, subject FROM glossql_outdated()
 stored AS (
   SELECT m.subject, m.aspect, bool_and(c.function IS NULL) AS current, bool_or(m.error IS NOT NULL) AS failed
   FROM main.measurements m LEFT JOIN changed c ON c.function = m.function AND c.subject = m.subject
-  WHERE m.dataset = current_schema() GROUP BY ALL)
+  WHERE m.dataset = current_schema() GROUP BY ALL),
+-- a view's lineage first (ord 0), what reads it after: missing on a view of the dataset, out of date, or
+-- stored on a view that is gone, which computing it retires
+views AS (SELECT current_schema() || '.' || view_name AS subject FROM duckdb_views()
+          WHERE database_name = current_database() AND schema_name = current_schema() AND NOT internal
+            AND current_schema() IN (SELECT name FROM main.datasets)),
+lineages AS (
+  SELECT subject FROM views EXCEPT SELECT subject FROM main.measurements WHERE dataset = current_schema() AND function = 'lineage'
+  UNION SELECT subject FROM changed WHERE function = 'lineage'
+  UNION (SELECT subject FROM main.measurements WHERE dataset = current_schema() AND function = 'lineage'
+         EXCEPT SELECT subject FROM views))
+SELECT 0 AS ord, 'lineage' AS function, subject, 'SELECT lineage() FROM ' || subject AS run FROM lineages
+UNION ALL
 SELECT 1 AS ord, w.function, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
 FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.aspect = w.aspect
 WHERE NOT coalesce(s.current, false)
@@ -290,7 +303,7 @@ CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
   scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
-            FROM glossql_views_scans(current_schema())),
+            FROM main.views_scans(current_schema())),
   summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
   -- a load-query change a person approved, with no load of the table since
   approved AS (
@@ -522,7 +535,7 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT j.view, j.join_number, split_part(j.left_column, '.', 2) AS lt, split_part(j.right_column, '.', 2) AS rt,
            list(regexp_replace(j.left_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS lc,
            list(regexp_replace(j.right_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS rc
-    FROM glossql_views_joins(current_schema()) j
+    FROM main.views_joins(current_schema()) j
     WHERE split_part(j.left_column, '.', 1) = current_schema() AND split_part(j.right_column, '.', 1) = current_schema()
       AND split_part(j.left_column, '.', 2) <> split_part(j.right_column, '.', 2)
       AND split_part(j.left_column, '.', 2) IN (SELECT table_name FROM loaded)
@@ -626,7 +639,8 @@ CREATE OR REPLACE VIEW main.next AS
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
       AND m.view NOT IN (SELECT view FROM vo)),
-  -- a stored result out of date that the server does not compute: one
+  -- a stored result out of date that the server does not compute (a
+  -- view's lineage it does, results_due()): one
   -- about the dataset as a whole, a view or an asset of a kind a kit
   -- declares (a scenario), whatever kit declares
   -- its function, but a check a test on the view runs (view_tests()
@@ -639,7 +653,7 @@ CREATE OR REPLACE VIEW main.next AS
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
-          WHERE u.dataset = current_schema() AND u.reason = 'changed'
+          WHERE u.dataset = current_schema() AND u.reason = 'changed' AND u.function <> 'lineage'
             AND (u.subject = current_schema() OR v.view IS NOT NULL
                  OR u.subject IN (SELECT asset FROM glossql_kind_assets(current_schema())))
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)

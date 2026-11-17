@@ -287,6 +287,65 @@ async fn the_server_reconciles_a_contracted_view_after_each_load() {
     assert!(due.is_empty(), "{due:?}");
 }
 
+/// A view's lineage is a stored result the server brings current: a
+/// load whose query adds a column to the table a view reads puts the
+/// view's lineage out of date, and the server computes it again after
+/// the write. It has the same value, so it keeps the snapshot it changed
+/// at, and nothing that read it is out of date.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_load_that_adds_a_column_brings_the_lineage_of_the_view_over_it_current() {
+    let (app, _, dir) = fin().await;
+    std::fs::write(
+        dir.path().join("bookings.csv"),
+        "booked,amount\n2024-01-01,10\n2024-01-02,20\n",
+    )
+    .unwrap();
+    let load = "DECLARE RECIPE bookings ON fin FROM erp AS $$SELECT CAST(booked AS DATE) AS booked, \
+                CAST(amount AS DOUBLE) AS amount FROM read_csv('bookings.csv')$$;";
+    say(
+        &app,
+        FIN,
+        &format!(
+            "DECLARE SOURCE erp SET (type: csv, location: '{}'); {load}",
+            dir.path().display()
+        ),
+    )
+    .await;
+    say(&app, FIN,
+        r#"DECLARE ASPECT booked_rows WITH $${"title": "Booked rows", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS booked_rows ON fin AS $${"sql": "SELECT booked, amount FROM fin.bookings"}$$;"#,
+    )
+    .await;
+    let lineage = async || {
+        rows(
+            &app,
+            FIN,
+            "SELECT begin_snapshot, changed_at FROM measurements \
+             WHERE function = 'lineage' AND subject = 'fin.booked_rows'",
+        )
+        .await
+    };
+    let before = lineage().await;
+    assert_eq!(before.len(), 1, "{before:?}");
+    say(
+        &app,
+        FIN,
+        &load.replace(" AS amount FROM", " AS amount, 'erp' AS origin FROM"),
+    )
+    .await;
+    let after = lineage().await;
+    assert_eq!(after.len(), 1, "{after:?}");
+    assert_ne!(after[0]["begin_snapshot"], before[0]["begin_snapshot"]);
+    assert_eq!(after[0]["changed_at"], before[0]["changed_at"]);
+    let outdated = rows(
+        &app,
+        FIN,
+        "SELECT function, subject, asset, what FROM glossql_outdated() WHERE subject LIKE 'fin.booked_rows%'",
+    )
+    .await;
+    assert!(outdated.is_empty(), "{outdated:?}");
+}
+
 /// The rows of `next` under "describe" for the bookings table.
 async fn bookings_rows(app: &Router) -> Vec<Value> {
     rows(

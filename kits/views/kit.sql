@@ -614,7 +614,7 @@ systems AS (
 SELECT m.view, m."column" AS target_column, m.branch, s.system,
        split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
        m.alias, m.condition, m.lookup, m.derivation AS expression, m.literals, m.complete
-FROM glossql_views_mapping(current_schema()) m
+FROM main.views_mapping(current_schema()) m
 LEFT JOIN systems s ON s.t = m.table_name
 WHERE m.view IN (SELECT view FROM views);
 
@@ -649,14 +649,14 @@ WHERE m.view IN (SELECT view FROM views);
 CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
 FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
-      FROM glossql_views_lineage(ds) l WHERE l.view = m)
+      FROM main.views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
 -- view_scans_of(ds, m): every table view m of dataset ds scans,
--- joins and filters included, from its view's plan.
+-- joins and filters included, from its stored lineage.
 CREATE OR REPLACE MACRO main.view_scans_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
-FROM glossql_views_scans(ds) s
+FROM main.views_scans(ds) s
 WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 
 -- A test brings its own advice: its check returns `finding`, one
@@ -1352,10 +1352,10 @@ view_cols AS (
   SELECT v.view, v."column" AS field,
          (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)})
           FROM unnest(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
-  FROM glossql_views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
+  FROM main.views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
 view_scans AS (
   SELECT view, list(DISTINCT {'namespace': 'glossdb', 'name': table_name}) AS inputs
-  FROM glossql_views_scans(current_schema()) GROUP BY view),
+  FROM main.views_scans(current_schema()) GROUP BY view),
 view_events AS (
   SELECT NULL::TIMESTAMP AS happened,
          to_json({

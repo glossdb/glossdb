@@ -34,9 +34,10 @@ mode; this file is so nobody has to rediscover it.
   in the lake's catalog, served as views in `ws.main`), the catalog reads
   (`GLOSSARY()`, `TESTS()`, the collapse, the tests (`DECLARE TEST`), the
   stale rule), the subjects (a dataset, a table, a column, a relationship,
-  a source, a view and its columns), the lineage of views, the cells
-  of a dataset (`dataset_cells`), a view and a kit's read kept per store
-  version (`glossql_kept_view`, `glossql_kept`), the service call (`glossql_service`), and the kit loader (`glossql_kit`).
+  a source, a view and its columns), the lineage of views (a stored
+  result per view, `SELECT lineage() FROM <view>`), the cells
+  of a dataset (`dataset_cells`), a kit's read kept per store
+  version (`glossql_kept`), the service call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in

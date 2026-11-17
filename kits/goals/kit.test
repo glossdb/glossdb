@@ -949,3 +949,40 @@ query T
 SELECT statement FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
 ----
 SELECT top_seen() FROM grid;
+
+# --- a view's lineage comes first: a column added to the table both metrics read puts their lineage out of
+# date, and results_due() lists it before anything that reads it; computed again with the same value, it keeps
+# the snapshot it changed at, nothing that read it is out of date, and next lists no lineage
+
+statement ok
+ALTER TABLE grid.results ADD COLUMN team VARCHAR;
+
+query IT
+SELECT ord, run FROM results_due() WHERE function = 'lineage' ORDER BY run;
+----
+0	SELECT lineage() FROM grid.entries
+0	SELECT lineage() FROM grid.points
+
+statement ok
+CREATE TABLE memory.main.lineage_before AS SELECT subject, changed_at FROM measurements WHERE function = 'lineage';
+
+statement ok
+SELECT lineage() FROM grid.entries;
+
+statement ok
+SELECT lineage() FROM grid.points;
+
+query I
+SELECT count(*) FROM measurements m JOIN memory.main.lineage_before b USING (subject) WHERE m.function = 'lineage' AND m.changed_at <> b.changed_at;
+----
+0
+
+query I
+SELECT count(*) FROM glossql_outdated() WHERE function = 'lineage' OR asset IN ('grid.entries', 'grid.points') AND what = 'result lineage';
+----
+0
+
+query I
+SELECT count(*) FROM next WHERE contains(statement, 'lineage()');
+----
+0
