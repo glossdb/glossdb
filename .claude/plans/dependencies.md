@@ -73,18 +73,18 @@ Built first without them; their form is settled once the rest runs.
 
 | Workspace | What | Before step 1 | Now |
 |---|---|---|---|
-| Formula 1 (34 results) | a write that computes nothing | 0.24 s | 0.21 s; 0.23 s with the lineage stored; 0.31 s with the tests' results stored and the reads kept by none |
-| Formula 1 | a table view over three tables | 1.9 s | 1.23 s; 1.43 s with the lineage stored; 1.75 s with the tests' results stored (13 results, 2 of them tests') |
-| Formula 1 | the same annotation again | | 0.08 s with the lineage stored; 0.15 s with the tests' results stored |
-| `big` (200 tables, 300 views, 5,000 results) | a write that computes nothing | 0.39 s (step 1) | 0.30 s; 0.31 s with the lineage stored (300 of the 5,000 results are lineages); 0.36 s with the tests' results stored (1,621 of 5,042), no result stored and one snapshot per write |
+| Formula 1 (34 results) | a write that computes nothing | 0.24 s | 0.21 s; 0.23 s with the lineage stored; 0.31 s with the tests' results stored and the reads kept by none; 0.28 s with the summary planned once per statement |
+| Formula 1 | a table view over three tables | 1.9 s | 1.23 s; 1.43 s with the lineage stored; 1.75 s with the tests' results stored (13 results, 2 of them tests'); 1.60 s with a test listed after its check in the same round |
+| Formula 1 | the same annotation again | | 0.08 s with the lineage stored; 0.15 s with the tests' results stored; 0.04 s once a write that takes no snapshot brings nothing current |
+| `big` (200 tables, 300 views, 5,000 results) | a write that computes nothing | 0.39 s (step 1) | 0.30 s; 0.31 s with the lineage stored (300 of the 5,000 results are lineages); 0.36 s with the tests' results stored (1,621 of 5,042), no result stored and one snapshot per write; 0.34 s with the summary planned once per statement (0.31 s on the build before the test half, same run) |
 | `big` | `glossql_outdated()`, nothing kept | 128 ms (step 1) | 16 to 20 ms; 18 ms with the tests' results stored |
-| `big` | `results_due()` after a write | 499 ms (step 1) | 355 ms (step 2a); 289 ms with the lineage stored, `view_tests` and `view_summary` still computed whole; DuckDB shell, the first read after a write: 182 ms with the lineage stored, 138 ms with the tests' results stored; read again at the same snapshot 45 ms kept, 128 ms not |
+| `big` | `results_due()` after a write | 499 ms (step 1) | 355 ms (step 2a); 289 ms with the lineage stored, `view_tests` and `view_summary` still computed whole; DuckDB shell, the first read after a write: 182 ms with the lineage stored, 138 ms with the tests' results stored; read again at the same snapshot 45 ms kept, 128 ms not, 117 ms with the summary planned once per statement |
 | `big` | `GLOSSARY(big)` after a write, through MCP | | 0.02 s kept per snapshot; 0.06 s read from stored rows (DuckDB shell: 3 ms kept, 39 ms) |
-| `big` | `next`, the first read after a write (DuckDB shell) | | 199 ms kept; 170 ms not |
+| `big` | `next` (DuckDB shell), the first read after a write / again | | 199 ms kept; 170 ms not; 176 / 159 ms with the summary planned once (72 ms again, kept) |
 | `big` | a view's console page (`views?view=v010`), its 7 frames, the first after a write / again | | 15.1 s / 4.0 s kept; 15.3 s / 4.0 s not. The metric's trend frame is 13.6 s of it, before and after |
 | `big` | the dataset's console page, its 3 frames | | 0.23 s kept; 0.51 s not |
 | `big` | a load that adds a column to a table four views read | | 3.3 s: four lineages computed again with the same value, none out of date after |
-| `big` | a view definition | 2.23 s (step 1) | 1.66 s; 1.61 s with its lineage stored in the same write (1.35 to 1.41 s on the same run as below); 1.86 s with the tests' results stored |
+| `big` | a view definition | 2.23 s (step 1) | 1.66 s; 1.61 s with its lineage stored in the same write (1.35 to 1.41 s on the same run as below); 1.86 s with the tests' results stored; 1.75 s with a test listed after its check in the same round, one round of `results_due()` fewer (1.40 s on the build before the test half, same run) |
 | `big` | `lineage('big')`, whole / the first read after a view definition | 17 ms / 252 ms (step 2a) | 4 ms / 106 ms, about 80 ms of it the first read of any kind after a write |
 | outlook suite replayed | a computed scenario estimate, per MCP call / its body | 4.0 s / 3.4 s (step 2a) | 3.76 s / 3.35 s |
 | the server's kit suite | `the_kits_suites_pass` | 45 to 48 s (step 2a) | 40 s; 52.5 s with the tests run before each read of their results |
@@ -118,13 +118,16 @@ keeps the architecture section through every rewrite.
 
 ## Next issue (draft)
 
-**A read's marks cost each statement.** What it buys: a read of the
-glossary, a view's tests or `next` at the same snapshot costs what the
-first read after a write costs. What is there: the marks are planned
-and run on the second connection per read (`glossql_store.cpp`,
-`ReadInit`), once per statement; `GLOSSARY(big)` 39 ms against 3 ms
-kept, `view_tests()` 66 ms against 15 ms, measured. Most of it is
-planning the check's union of node kinds (`NodeChangesSQL`), not
-running it. Done when: the check plans the node kinds the results in
-scope read alone, and a read at the same snapshot is measured again on
-`big`; nothing is kept between statements.
+**A read's marks cost each statement.** What it buys: a write that
+computes nothing costs on `big` what it cost before the test half
+(0.31 s against 0.34 s now). What is there: each read is planned and
+run on the second connection once per statement (`glossql_store.cpp`,
+`ReadInit`): `GLOSSARY(big)` 33 ms, of it 6 ms parsing, 6 ms binding
+and 7.5 ms optimising its 25 kB of SQL; `TESTS(big)` 19 ms, 10 of them
+planning. The check's node kinds are not the cost: leaving out the
+kinds no result read (`assets`, `views`, `properties`) saved about 1 ms
+per read, and asking which kinds are read costs 1 ms. `results_due()`
+and the `next:` line each compute the summary, the tests and the check
+again, as two statements of one call; sharing them means reading both
+in one statement, since nothing is kept between statements. Done when:
+the call's reads after a write plan each read once, measured on `big`.
