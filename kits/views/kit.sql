@@ -767,8 +767,9 @@ DECLARE FUNCTION grain_check FOR GLOBAL AS $$
                    || (SELECT array_to_string(list(shown ORDER BY n DESC, shown)[1:3], ', ') FROM repeated WHERE shown IS NOT NULL)
                    || ', so a row counts twice in what reads it' END AS finding,
          CASE WHEN state.extra > 0 THEN concat_ws(chr(10),
-           '-- find why at the source (a line sent twice, a key that needs another column). Keep one row per key in the load query (QUALIFY row_number() OVER (PARTITION BY '
-             || array_to_string(state.cols, ', ') || ' ORDER BY <column>) = 1) and declare it again, or state the grain the rows have:',
+           '-- find why at the source (a line sent twice, a key that needs another column), or keep one row per key in the load query (QUALIFY row_number() OVER (PARTITION BY '
+             || array_to_string(state.cols, ', ') || ' ORDER BY <column>) = 1) and declare it again.',
+           '-- where the rows have another grain, state it:',
            main.gloss_statement('entity', $subject, state.entity::VARCHAR),
            '-- where a person accepts the rows as they are, record the rate with their reason:',
            '-- ' || main.gloss_statement('grain_check', $subject,
@@ -1074,8 +1075,12 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
                                               ELSE '' END, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
                    || ' find no parent: an inner join drops them, an outer join keeps them with empty parent columns' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN '-- add each key to the parent table at its source (a code table, a mapping table) and load that table again (IMPORT), or accept the rate with the reason:' || chr(10)
-                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
+              THEN concat_ws(chr(10),
+                '-- add each key to the parent table at its source (a code table, a mapping table), then load that table again:',
+                (SELECT string_agg(DISTINCT 'IMPORT ' || regexp_extract(relationship, ' <?-> ([^.]+\.[^.]+)\.', 1) || ';', chr(10))
+                 FROM mine WHERE orphan_rate > 0),
+                '-- where a person accepts the rows without a parent, record the rate with their reason:',
+                '-- ' || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}')) END AS fix
   FROM n, plans
 $$ RETURNS orphan_check;
 
@@ -1161,13 +1166,12 @@ DECLARE FUNCTION completeness_check FOR GLOBAL AS $$
                                  ELSE 'the definition of ' || view || ' empties ' || col END END AS cause,
          finding,
          CASE WHEN red THEN concat_ws(chr(10),
-           '-- ' || finding,
            CASE WHEN loaded
-                THEN '-- to fix: send the values again at the source, or read them in the load query (load_changes() says what the load changed). Then load again:'
+                THEN '-- send the values again at the source, or read them in the load query (load_changes() says what the load changed), then load again:'
                      || chr(10) || loads
-                ELSE '-- to fix: correct the expression of ' || col || ' and record the definition again:'
+                ELSE '-- correct the expression of ' || col || ' and record the definition again:'
                      || chr(10) || redefine_statement(ds || '.' || view) END,
-           '-- to accept: where a person confirms ' || col || ' is right as it is now, record the rate with their reason:',
+           '-- where a person confirms ' || col || ' is right as it is now, record the rate with their reason:',
            '-- ' || main.gloss_statement('completeness_check', $subject,
                     '{"tolerance": ' || ceil(rate * 1000) / 1000 || ', "basis": "<why ' || col || ' is empty now>"}')) END AS fix
   FROM said

@@ -66,8 +66,10 @@ SELECT level, kind, asset, state, open, cause, statement FROM next WHERE level <
 ```
 
 `kind` is the row's kind of work. Each row has a statement that opens
-it; `<…>` marks what you fill in. `cause` says what the newest load
-changed. `level` says how much the row matters:
+it; `<…>` marks what you fill in. A comment line (`--`) above a
+statement says why the row is open, or which of two statements it is
+and when to take it; a statement a person must decide is handed
+commented out. `cause` says what the newest load changed. `level` says how much the row matters:
 
 - `must`: served data is wrong or cannot be served. A red test, a view
   that serves nothing, a conflict between two values, a decision a

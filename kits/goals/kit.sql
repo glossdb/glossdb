@@ -481,18 +481,19 @@ CREATE OR REPLACE VIEW main.next AS
   s_load AS (
     SELECT 'must' AS level, 1 AS ord, 'integrate' AS kind, ds.d AS asset, 'missing' AS state, 'agent' AS who,
            'no table is loaded' AS open, '' AS for_view, '' AS cause,
-           '-- name where the data is, list what is there, then load each table with a load query' || chr(10)
-             || 'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
+           'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
              || 'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' || chr(10)
-             || '-- a typed file loads as it is; a CSV takes these reader options and its casts in the SELECT' || chr(10)
+             || '-- a typed file (parquet, json) loads as it is:' || chr(10)
              || 'DECLARE RECIPE <table> ON ' || ds.d || ' FROM <source> AS $$SELECT <columns> FROM read_parquet(''<file>'')$$;' || chr(10)
+             || '-- a CSV is read as text, with these reader options, and cast in the SELECT:' || chr(10)
              || 'DECLARE RECIPE <table> ON ' || ds.d || ' FROM <source> AS $$SELECT <columns and casts> FROM read_csv(''<file>'', all_varchar = true, nullstr = null_markers(), store_rejects = true)$$;' AS statement
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM duckdb_tables() t
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
     SELECT 'must', 2, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
            'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '', '',
-           '-- the approved SQL: SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
+           '-- a person approved a new load query for ' || o.tbl || '; read it, then declare it:' || chr(10)
+             || 'SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
              || 'DECLARE RECIPE ' || o.tbl || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
     FROM approved o, ds),
   s_describe AS (
@@ -540,9 +541,13 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT CASE t.state WHEN 'red' THEN 'must' ELSE 'should' END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
            coalesce(t.evidence->>'cause', vc.causes, ''),
-           coalesce(t.evidence->>'fix',
+           coalesce('-- ' || t.test || ' is ' || t.state || ': '
+                      || replace(coalesce(t.evidence->>'finding', t.evidence->>'reason',
+                                          CASE WHEN t.state IN ('red', 'orange') THEN 'the data breaks the rule, measured ' || round(t.score, 4) END), chr(10), ' ')
+                      || chr(10), '')
+           || coalesce(t.evidence->>'fix',
                     CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
-                         THEN '-- the data breaks the rule. Fix the load query or the view''s definition, then run the check again:' || chr(10)
+                         THEN '-- fix the load query or the view''s definition, then run the check again:' || chr(10)
                               || nullif(t.run, '') || ';'
                               || coalesce(chr(10) || '-- where a person accepts the rate as it is (measured: ' || round(t.score, 4) || '), '
                                    || CASE k.by
@@ -621,13 +626,15 @@ CREATE OR REPLACE VIEW main.next AS
     FROM directed, ds),
   -- a load that does not fit what the source sends (load_modes())
   s_loads AS (
-    SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''), '', l.statement
+    SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''), '',
+           '-- ' || l.open || chr(10) || l.statement
     FROM main.load_modes() l LEFT JOIN reach x ON x.asset = l.table_name WHERE l.state IS NOT NULL),
   s_review AS (
     SELECT 'must', 2, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
              || '; the definition does not carry it yet', r.aspect, '',
-           '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
+           '-- a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(replace(r.note, chr(10), ' '), ''), '') || chr(10)
+             || '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
              || coalesce(rd.statement, main.gloss_statement(r.aspect, ds.d, '<the current definition>'))
     FROM main.review_decisions r CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = r.aspect
     WHERE r.dataset = ds.d AND NOT r.folded_in
@@ -665,10 +672,10 @@ CREATE OR REPLACE VIEW main.next AS
                 WHEN m.value_column IS NULL
                 THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<value column> AS $${"value": "measure"}$$;'
                 WHEN m.floor IS NULL AND len(m.measurements_to_run) > 0
-                THEN 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
+                THEN coalesce('-- ' || m.reason || chr(10), '') || 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
                 WHEN m.floor IS NULL
                 THEN 'GLOSS time_grains ON ' || ds.d || '.' || m.view || '.' || m.period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$;'
-                ELSE coalesce(rd.statement, main.gloss_statement(m.view, ds.d, '<the current definition>')) END
+                ELSE coalesce('-- ' || m.reason || chr(10), '') || coalesce(rd.statement, main.gloss_statement(m.view, ds.d, '<the current definition>')) END
     FROM summary m CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = m.view
     -- a single value and a table are served as they are; only a metric needs a series
     WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
@@ -683,7 +690,7 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT 'should', 5, 'test', o.subject, 'stale', 'agent',
            o.function || ': computed before a read of it changed (' || o.inputs || ')',
            coalesce(o.view, ''), '',
-           'SELECT ' || o.function || '() FROM ' || o.subject || ';'
+           '-- computed before ' || o.inputs || ' changed' || chr(10) || 'SELECT ' || o.function || '() FROM ' || o.subject || ';'
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view

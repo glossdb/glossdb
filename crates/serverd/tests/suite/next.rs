@@ -190,6 +190,41 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
     assert_eq!(text(&emptied[0], "emptied_by"), "load");
 }
 
+/// A definition recorded again that empties a column the view serves
+/// turns that column's completeness test red, and the statement `next`
+/// hands over for it runs as handed: the comments above it and the
+/// commented accept after it are no statement of their own.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_statement_next_hands_over_runs_with_its_comments() {
+    let (app, _, _dir) = fin().await;
+    say(
+        &app,
+        FIN,
+        r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
+           DECLARE ASPECT ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+    )
+    .await;
+    say(
+        &app,
+        FIN,
+        r#"GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, CAST(NULL AS VARCHAR) AS label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+    )
+    .await;
+    let red = rows(
+        &app,
+        FIN,
+        "SELECT asset, level, statement FROM next WHERE kind = 'test' AND starts_with(open, 'completeness_test')",
+    )
+    .await;
+    assert_eq!(red.len(), 1, "{red:?}");
+    assert_eq!(text(&red[0], "asset"), "fin.ledger_funds.label");
+    assert_eq!(text(&red[0], "level"), "must");
+    let handed = text(&red[0], "statement");
+    assert!(handed.starts_with("--"), "{handed}");
+    say(&app, FIN, &handed).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_page_carries_the_test_and_its_statement() {
     let (app, _, _dir) = fin().await;

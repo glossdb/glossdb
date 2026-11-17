@@ -278,7 +278,7 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query TTTTT
-SELECT level, kind, asset, state, statement FROM next WHERE contains(statement, 'metric_') ORDER BY statement;
+SELECT level, kind, asset, state, regexp_replace(statement, '^(--[^\n]*\n)+', '') AS run FROM next WHERE contains(statement, 'metric_') ORDER BY run;
 ----
 should	test	ops.orders	stale	SELECT metric_forecast() FROM ops.orders;
 should	test	ops.orders_target	stale	SELECT metric_plan() FROM ops.orders_target;
@@ -338,7 +338,7 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query T
-SELECT statement FROM next WHERE contains(statement, 'metric_');
+SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'metric_');
 ----
 SELECT metric_scenario() FROM ops.price_cut;
 
@@ -1125,7 +1125,7 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
 
 query T
-SELECT statement FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
+SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
 ----
 SELECT top_points() FROM grid;
 
@@ -1160,7 +1160,7 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
 
 query T
-SELECT statement FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
+SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
 ----
 SELECT top_seen() FROM grid;
 

@@ -98,7 +98,7 @@ expectation.
 | `open` | the finding |
 | `for_view` | the views that read the asset |
 | `cause` | what the newest load changed: row counts, and the columns whose profile moved |
-| `statement` | the statement that opens the work; `<…>` marks what the author fills |
+| `statement` | the statement that opens the work; `<…>` marks what the author fills. A comment line above a statement says why the row is open, or which choice it is and when to take it; one a person decides is commented out |
 
 What each level holds:
 
