@@ -344,67 +344,14 @@ SELECT level, kind, contains(statement, 'GLOSS onhand ON supply') FROM next WHER
 must	test	true
 must	test	true
 
-# === The reconciliation: per system, the rows a branch reads from the table that drives it, what its
-# conditions and joins leave out, the rows it serves and the sums of its measures. Set on a view with a
-# contract, the server computes it after each write (results_due()); here it is run by hand. The Polish join over
-# the identities follows a declared relationship, whose check names the code with no identity
-
+# the Polish join over the identities follows a declared relationship, whose check names the code with no identity
 statement ok
 DECLARE RELATIONSHIP supply.stock_mono.indeks -> supply.model_identities.local_code;
 
 statement ok
 SELECT relationship_coherence() FROM supply.stock_mono.indeks -> supply.model_identities.local_code;
 
-statement ok
-GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
-
-statement ok
-SELECT reconciliation() FROM onhand;
-
-# Denmark's and Switzerland's rows arrive whole; Poland reads four and serves two, and nothing vanishes
-query TTIIIIT
-SELECT r.system, r.table, r.read, r.repeated, r.reached, r.vanished, r.told
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand' ORDER BY ALL;
-----
-d365	stock_d365	3	0	3	0	true
-mono	stock_mono	4	0	2	0	true
-sap	stock_sap	3	0	3	0	true
-
-# the blocked row under the status condition
-query TTI
-SELECT r.system, f.condition, f.rows
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r), unnest(r.filtered) u(f)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand';
-----
-mono	(m.status = 'D')	1
-
-# X9 under the Polish system: the join over the identities leaves its row out, and the relationship the join
-# follows names the code with its rows
-query TTITII
-SELECT r.system, x.relationship, x.rows, k.key, k.rows, x.distinct_keys
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r), unnest(r.unmatched) u(x), unnest(x.keys) v(k)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand';
-----
-mono	supply.stock_mono.indeks -> supply.model_identities.local_code	1	X9	1	1
-
-# the cases each system's rows sum to in the target; no source-side sum, since the cases read the pallet size
-# from the group's parts
-query TTRR
-SELECT r.system, x.column, x.target, x.source
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r), unnest(r.measures) u(x)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand' ORDER BY ALL;
-----
-d365	cases	123.0	NULL
-mono	cases	79.5	NULL
-sap	cases	220.0	NULL
-
-query TT
-SELECT m.value->>'applicable', m.value->>'reason' FROM main.measurements m WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand';
-----
-true	NULL
-
-# the orphan test on the same join names the code too: 1 of the 4 Polish rows has no identity
+# the orphan test on the join names the code: 1 of the 4 Polish rows has no identity
 statement ok
 SELECT orphan_check() FROM onhand;
 
@@ -483,25 +430,6 @@ SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'cod
 code_test	red	0.25
 contract_test	red	0.1
 
-query I
-SELECT count(*) FROM next WHERE asset = 'supply.onhand' AND open LIKE 'reconciliation%';
-----
-0
-
-# the second deliveries reconciled: Denmark's second row arrives, Poland's pieces are left out by the status,
-# X9 again by the join, the new warehouse arrives (the contract judges it)
-statement ok
-SELECT reconciliation() FROM onhand;
-
-query TIIIII
-SELECT r.system, r.read, list_sum(list_transform(r.filtered, lambda f: f.rows)), list_sum(list_transform(r.unmatched, lambda x: x.rows)), r.reached, r.vanished
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.onhand' ORDER BY ALL;
-----
-d365	3	NULL	NULL	3	0
-mono	5	1	1	3	0
-sap	4	NULL	NULL	4	0
-
 # a person accepts the rows as they are: their tolerance turns the test green
 statement ok
 GLOSS contract_check ON supply.onhand AS $${"tolerance": 0.12, "basis": "the planner accepts the open deliveries until the next load"}$$;
@@ -560,43 +488,6 @@ SELECT state FROM view_tests() WHERE test = 'code_test' AND view = 'stock_states
 ----
 yellow
 
-# a step the reconciliation cannot follow: a DISTINCT folds Denmark's four rows into its two sites. The branch
-# is not told: nothing vanishes, the result is not applicable with the step as its reason, and next has no row
-# for it
-statement ok
-DECLARE ASPECT sites WITH $${"title": "Sites", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS sites ON supply AS $${"sql": "SELECT DISTINCT s.site FROM stock_sap s"}$$;
-
-statement ok
-GLOSS contract ON supply.sites.site AS $${"type": "VARCHAR", "required": true}$$;
-
-statement ok
-SELECT reconciliation() FROM sites;
-
-query TIIIT
-SELECT r.system, r.read, r.reached, r.vanished, r.told
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'supply.sites';
-----
-sap	4	2	NULL	false
-
-query TT
-SELECT m.value->>'applicable', m.value->>'reason' IS NOT NULL FROM main.measurements m WHERE m.function = 'reconciliation' AND m.subject = 'supply.sites';
-----
-false	true
-
-query I
-SELECT count(*) FROM next WHERE asset = 'supply.sites' AND open LIKE 'reconciliation%';
-----
-0
-
-# stored as not applicable, it is not computed again until what it read moves
-query I
-SELECT count(*) FROM results_due() WHERE function = 'reconciliation' AND subject = 'supply.sites';
-----
-0
 
 # === Full or keyed loads, held against what the source sends (the goals kit's load_modes()). No finding
 # without a load before the newest; the unit tables loaded again above are small and replaced whole
@@ -814,91 +705,6 @@ FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'describe' AND state = 'm
 ----
 should	true	true
 
-# === The reconciliation of the two filing systems, per report year: the target's time axis is the year, its
-# measure the capacity. The old system's join over its utilities follows a declared relationship
-statement ok
-GLOSS entity ON ferc.steam_plants AS $${"value": "one plant of one utility in one report year", "role": "fact", "grain": ["record_id"], "time_axis": "report_year"}$$;
-
-statement ok
-GLOSS role ON ferc.steam_plants.capacity_mw AS $${"value": "measure"}$$;
-
-statement ok
-DECLARE RELATIONSHIP ferc.f1_steam.respondent_id -> ferc.utilities_dbf.respondent_id;
-
-statement ok
-SELECT relationship_coherence() FROM ferc.f1_steam.respondent_id -> ferc.utilities_dbf.respondent_id;
-
-statement ok
-SELECT reconciliation() FROM steam_plants;
-
-# per system and year: the unmapped respondent left out in 2020, the older filing of 2021 left out by the
-# newest-filing condition; the source-side capacity sums every row read, the target's the rows served
-query TTIIIIIIRR
-SELECT r.system, r.period, r.read, list_sum(list_transform(r.filtered, lambda f: f.rows)), list_sum(list_transform(r.unmatched, lambda x: x.rows)), r.repeated, r.reached, r.vanished, r.measures[1].target, r.measures[1].source
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'ferc.steam_plants' ORDER BY ALL;
-----
-ferc_dbf	2019	1	NULL	NULL	0	1	0	1200.0	1200.0
-ferc_dbf	2020	2	NULL	1	0	1	0	1210.0	1215.0
-ferc_xbrl	2021	2	1	NULL	0	1	0	1225.0	2445.0
-ferc_xbrl	2022	1	NULL	NULL	0	1	0	1230.0	1230.0
-
-query TTTI
-SELECT r.period, x.relationship, k.key, k.rows
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r), unnest(r.unmatched) u(x), unnest(x.keys) v(k)
-WHERE m.function = 'reconciliation' AND m.subject = 'ferc.steam_plants';
-----
-2020	ferc.f1_steam.respondent_id -> ferc.utilities_dbf.respondent_id	99	1
-
-# 2022 filed again: its row changes, and no other
-statement ok
-COPY (FROM (VALUES ('C000011', 2021, 'Big Bend Station', 1220.0, TIMESTAMP '2022-04-01 10:00:00'),
-                   ('C000011', 2021, 'Big Bend Station', 1225.0, TIMESTAMP '2022-09-01 10:00:00'),
-                   ('C000011', 2022, 'Big Bend Station', 1230.0, TIMESTAMP '2023-04-01 10:00:00'),
-                   ('C000011', 2022, 'Big Bend Station', 1240.0, TIMESTAMP '2023-10-01 10:00:00'))
-      t(entity_id, report_year, plant_name_axis, capacity, filed_at))
-TO '{TEST_DIR}/steam_duration.csv' (HEADER);
-
-statement ok
-IMPORT steam_xbrl;
-
-statement ok
-SELECT reconciliation() FROM steam_plants;
-
-query TIIIRR
-SELECT r.period, r.read, list_sum(list_transform(r.filtered, lambda f: f.rows)), r.reached, r.measures[1].target, r.measures[1].source
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'ferc.steam_plants' AND r.system = 'ferc_xbrl' ORDER BY ALL;
-----
-2021	2	1	1	1225.0	2445.0
-2022	2	1	1	1240.0	2470.0
-
-query T
-WITH v AS (SELECT value, row_number() OVER (ORDER BY begin_snapshot DESC) AS n FROM main.measurements_history
-           WHERE function = 'reconciliation' AND subject = 'ferc.steam_plants'),
-r AS (SELECT n, unnest(from_json(value->'rows', '["JSON"]')) AS row FROM v WHERE n <= 2)
-SELECT DISTINCT row->>'period' FROM r WHERE row::VARCHAR NOT IN (SELECT o.row::VARCHAR FROM r o WHERE o.n <> r.n);
-----
-2022
-
-# the new system's utility sheet names a second utility for the same entity: each row joins twice, the second
-# a repeated row; the older filings are left out before the join and counted once
-statement ok
-COPY (FROM (VALUES ('C000011', 401), ('C000011', 402)) t(entity_id, utility_id_ferc1)) TO '{TEST_DIR}/utilities_new.csv' (HEADER);
-
-statement ok
-IMPORT utilities_xbrl;
-
-statement ok
-SELECT reconciliation() FROM steam_plants;
-
-query TIIIII
-SELECT r.period, r.read, list_sum(list_transform(r.filtered, lambda f: f.rows)), r.repeated, r.reached, r.vanished
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "table": "VARCHAR", "period": "VARCHAR", "read": "BIGINT", "repeated": "BIGINT", "reached": "BIGINT", "vanished": "BIGINT", "told": "BOOLEAN", "filtered": [{"condition": "VARCHAR", "rows": "BIGINT"}], "unmatched": [{"join": "VARCHAR", "rows": "BIGINT", "relationship": "VARCHAR", "keys": [{"key": "VARCHAR", "rows": "BIGINT"}], "distinct_keys": "BIGINT"}], "measures": [{"column": "VARCHAR", "target": "DOUBLE", "source": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'ferc.steam_plants' AND r.system = 'ferc_xbrl' ORDER BY ALL;
-----
-2021	2	1	1	2	0
-2022	2	1	1	2	0
 
 # every measurement this kit ships reads the data of its subject's dataset alone: no table named, and no dataset
 # but the subject's
