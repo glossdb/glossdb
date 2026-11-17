@@ -25,8 +25,9 @@
 -- it `x-subject: view` and `x-set-by: <property>`, on each view that
 -- carries an annotation of that property (server_results()), with the
 -- results its body reads before it; then (ord 3) each test's result on
--- each subject that holds a value of its property, where none is stored,
--- the stored one is out of date, or its subject holds no value any more:
+-- each subject that holds a value of its property, or will once a result
+-- due before it in the round is computed, where none is stored, the
+-- stored one is out of date, or its subject holds no value any more:
 -- one statement per test, `SELECT <test>() FROM <dataset>`, computes them
 -- all. The server computes these after each write, a statement once. Any other result about the dataset or a view (a kit's function an
 -- actor runs) is the actor's to compute: once it is out of date, `next`
@@ -100,9 +101,30 @@ holding AS (
   SELECT d.test, m.subject FROM detecting d JOIN main.measurements m ON m.aspect = d.aspect
   WHERE m.dataset = current_schema() AND m.error IS NULL),
 judged_now AS (SELECT function AS test, subject FROM main.measurements WHERE dataset = current_schema() AND aspect = 'test'),
+-- the results due before the tests (ord 1 and 2), each with the property it fills
+due AS (
+  SELECT 1 AS ord, w.function, w.aspect, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
+  FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.aspect = w.aspect
+  WHERE NOT coalesce(s.current, false)
+  UNION
+  SELECT 1, split_part(x.w, ' over ', 1), f.returns, split_part(x.w, ' over ', 2),
+         'SELECT ' || split_part(x.w, ' over ', 1) || '() FROM ' || split_part(x.w, ' over ', 2)
+  FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary()) x
+  LEFT JOIN fns f ON f.name = split_part(x.w, ' over ', 1)
+  UNION
+  SELECT 2, t.aspect, t.aspect, t.subject, t.run
+  FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
+  WHERE t.run <> '' AND NOT coalesce(s.current, false)
+  UNION
+  SELECT 2, v.function, v.aspect, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
+  FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
+  WHERE NOT coalesce(s.current, false)),
+-- a subject whose value is due before the test holds it once that runs: the test runs after it in the
+-- same round, so a value computed for the first time is judged without a round of its own
 judged AS (
   (SELECT test, subject FROM holding EXCEPT SELECT test, subject FROM judged_now)
   UNION SELECT c.function, c.subject FROM changed c JOIN detecting d ON d.test = c.function
+  UNION SELECT d.test, u.subject FROM due u JOIN detecting d ON d.aspect = u.aspect
   UNION (SELECT test, subject FROM judged_now WHERE test IN (SELECT test FROM detecting)
          EXCEPT SELECT test, subject FROM holding)),
 -- a view's lineage first (ord 0), what reads it after: missing on a view of the dataset, out of date, or
@@ -117,21 +139,7 @@ lineages AS (
          EXCEPT SELECT subject FROM views))
 SELECT 0 AS ord, 'lineage' AS function, subject, 'SELECT lineage() FROM ' || subject AS run FROM lineages
 UNION ALL
-SELECT 1 AS ord, w.function, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
-FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.aspect = w.aspect
-WHERE NOT coalesce(s.current, false)
-UNION ALL
-SELECT DISTINCT 1, split_part(w, ' over ', 1), split_part(w, ' over ', 2),
-       'SELECT ' || split_part(w, ' over ', 1) || '() FROM ' || split_part(w, ' over ', 2)
-FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary())
-UNION ALL
-SELECT DISTINCT 2, t.aspect, t.subject, t.run
-FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
-WHERE t.run <> '' AND NOT coalesce(s.current, false)
-UNION ALL
-SELECT DISTINCT 2, v.function, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
-FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
-WHERE NOT coalesce(s.current, false)
+SELECT ord, function, subject, run FROM due
 UNION ALL
 SELECT 3, test, subject, 'SELECT ' || test || '() FROM ' || current_schema() FROM judged;
 
