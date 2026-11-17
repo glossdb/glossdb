@@ -37,7 +37,10 @@ asks for alone.
 | The snapshot is the version: a result stores the snapshot it read at and the snapshot its value changed at; `inputs` is one row per node read; no digest | built (step 1). The nodes: the extension's `docs/specification/tables/inputs.md` |
 | A write of what the catalog holds writes nothing: an annotation, a kit's macro or view, a replace load of the same columns | built |
 | The check asked on demand: `glossql_outdated()` checks every result, a result's current mark checks that result and what it read; nothing kept | built (step 2, first half) |
-| The reads kept per snapshot: `glossql_cached` (the glossary's values, tests, collapsed and raw reads), `glossql_kept` (`view_tests`, `view_summary`, `view_rows`), `glossql_kept_view`, the views' lineage per catalog version | stands against the model: computed whole after each write |
+| A view's lineage is a stored result, `lineage` on the view: stored in the write that defines it, with the nodes its planning read and its `reads` edges (`edges`); out of date like any result and computed first by `results_due()`; the lineage, the places, `place_nodes` and `definition()` read those rows, a place walked over a view records its `result lineage` | built (step 2b, lineage half). Kept per catalog version, and the view's rows kept per snapshot, are gone |
+| One write stores one result, so `begin_snapshot` keys a result, its inputs and its edges | built; a result id waits for a write that stores several (the test half) |
+| The reads kept per snapshot: `glossql_cached` (the glossary's values, tests, collapsed and raw reads), `glossql_kept` (`view_tests`, `view_summary`, `view_rows`) | stands against the model: computed whole after each write |
+| A kit's place: planned per read from the kit's macro over edges read from annotations (116 plans of `its metrics` in one scenario estimate) | stands: storing it means storing the kit's edges |
 | A scenario, the range tolerance: annotations on the dataset; `metric_scenario` holds every scenario of a metric | stands against the model (#246) |
 
 ## Steps, in order
@@ -46,7 +49,7 @@ asks for alone.
 |---|---|---|---|---|
 | 1 | The snapshot is the version | High | the extension, `SPEC.md` §6 | built |
 | 2a | The check on demand, the kept check gone | Medium | the extension's store | built |
-| 2b | A test's result and a view's lineage are stored results with the nodes they read, brought current like any result; the kept reads go | High: `SPEC.md` §5.3 and §7 say a detector runs at read | the extension (store, lineage), `kits/views`, `kits/goals` | open: put to the project lead, then a standalone spike |
+| 2b | A test's result and a view's lineage are stored results with the nodes they read, brought current like any result; the kept reads go | High: `SPEC.md` §5.3 and §7 say a detector runs at read | the extension (store, lineage), `kits/views`, `kits/goals` | lineage half built; the test half waits on the lead's decision on the detector's grain (spike `spikes/stored-tests-and-lineage`) |
 | 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario as a plan is; `metric_scenario` runs on a scenario. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6 | the lineage kit, `kits/outlook` | design page against the code first |
 | 4 | A reader of an out-of-date result is "possibly out of date": served marked, and in `next` once the result it read is computed again and differs | Low | the extension's check, `kits/goals` | next |
 | 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
@@ -68,10 +71,14 @@ Built first without them; their form is settled once the rest runs.
 |---|---|---|---|
 | Formula 1 (34 results) | a write that computes nothing | 0.24 s | 0.21 s |
 | Formula 1 | a table view over three tables | 1.9 s | 1.23 s |
-| `big` (200 tables, 300 views, 5,000 results) | a write that computes nothing | 0.39 s (step 1) | 0.30 s |
+| `big` (200 tables, 300 views, 5,000 results) | a write that computes nothing | 0.39 s (step 1) | 0.30 s; 0.31 s with the lineage stored (300 of the 5,000 results are lineages) |
 | `big` | `glossql_outdated()`, nothing kept | 128 ms (step 1) | 16 to 20 ms |
-| `big` | `results_due()` after a write | 499 ms (step 1) | 355 ms, 224 ms of it `view_tests` and `view_summary` computed whole |
-| `big` | a view definition | 2.23 s (step 1) | 1.66 s |
+| `big` | `results_due()` after a write | 499 ms (step 1) | 355 ms (step 2a); 289 ms with the lineage stored, `view_tests` and `view_summary` still computed whole |
+| `big` | a load that adds a column to a table four views read | | 3.3 s: four lineages computed again with the same value, none out of date after |
+| `big` | a view definition | 2.23 s (step 1) | 1.66 s; 1.61 s with its lineage stored in the same write |
+| `big` | `lineage('big')`, whole / the first read after a view definition | 17 ms / 252 ms (step 2a) | 4 ms / 106 ms, about 80 ms of it the first read of any kind after a write |
+| outlook suite replayed | a computed scenario estimate, per MCP call / its body | 4.0 s / 3.4 s (step 2a) | 3.76 s / 3.35 s |
+| the server's kit suite | `the_kits_suites_pass` | 45 to 48 s (step 2a) | 40 s |
 
 `big` is generated by `gen/gen.py` in the session's scratchpad (about
 20 minutes); it moves into the repository with step 2b's spike.
