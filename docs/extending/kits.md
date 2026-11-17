@@ -14,7 +14,7 @@ reads. It does not add grammar.
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
 | `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
-| `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
+| `goals` | glossdb | `results_due()`, `results_moved_since()`, `load_changes()` and `next` |
 
 The server loads them at each start, in this order. A kit the lake
 already recorded with the same text runs nothing. The extension also
