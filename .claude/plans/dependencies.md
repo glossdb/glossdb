@@ -41,7 +41,8 @@ asks for alone.
 | One write stores one result, so `begin_snapshot` keys a result, its inputs and its edges | built; a result id waits for a write that stores several (the test half) |
 | The reads kept per snapshot: `glossql_cached` (the glossary's values, tests, collapsed and raw reads), `glossql_kept` (`view_tests`, `view_summary`, `view_rows`) | stands against the model: computed whole after each write |
 | A kit's place: planned per read from the kit's macro over edges read from annotations (116 plans of `its metrics` in one scenario estimate) | stands: storing it means storing the kit's edges |
-| A scenario, the range tolerance: annotations on the dataset; `metric_scenario` holds every scenario of a metric | stands against the model (#246) |
+| A scenario is an asset of the outlook kit's own kind and its estimate runs on it; the range tolerance is annotated on the metric; the plan kit declares the plan's edge and place | built (step 3) |
+| A reader of an out-of-date result is `possibly`: served marked, in `next` only once the result it read changed | built (step 4) |
 
 ## Steps, in order
 
@@ -49,9 +50,9 @@ asks for alone.
 |---|---|---|---|---|
 | 1 | The snapshot is the version | High | the extension, `SPEC.md` §6 | built |
 | 2a | The check on demand, the kept check gone | Medium | the extension's store | built |
-| 2b | A test's result and a view's lineage are stored results with the nodes they read, brought current like any result; the kept reads go | High: `SPEC.md` §5.3 and §7 say a detector runs at read | the extension (store, lineage), `kits/views`, `kits/goals` | lineage half built; the test half waits on the lead's decision on the detector's grain (spike `spikes/stored-tests-and-lineage`) |
-| 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario as a plan is; `metric_scenario` runs on a scenario. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6 | the lineage kit, `kits/outlook` | design page against the code first |
-| 4 | A reader of an out-of-date result is "possibly out of date": served marked, and in `next` once the result it read is computed again and differs | Low | the extension's check, `kits/goals` | next |
+| 2b | A test's result and a view's lineage are stored results with the nodes they read, brought current like any result; the kept reads go | High: `SPEC.md` §5.3 and §7 say a detector runs at read | the extension (store, lineage), `kits/views`, `kits/goals` | lineage half built; the test half is next. Agreed: a test is treated like a function; a detector that compares the subjects it runs over is refused at `DECLARE TEST` and declared on the containing asset (spike `spikes/stored-tests-and-lineage`) |
+| 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario as a plan is; `metric_scenario` runs on a scenario. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6 | the lineage kit, `kits/outlook`, `kits/plan` | built |
+| 4 | A reader of an out-of-date result is "possibly out of date": served marked, and in `next` once the result it read is computed again and differs | Low | the extension's check, `kits/goals` | built |
 | 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
 ## Left out of these steps, by the project lead
@@ -106,11 +107,13 @@ keeps the architecture section through every rewrite.
 
 ## Next issue (draft)
 
-**Step 4, possibly out of date.** What it buys: a forecast, ranges, a
-scenario or a plan whose input result is out of date is still served,
-marked, and asks for an actor only when that input was computed again
-and differs. What is there: the reason `outdated` in the check
-(`CheckRowsSQL`, the extension's `glossql_store.cpp`), `results_due()`
-and `next` in `kits/goals/kit.sql`. Done when: `glossql_outdated()`
-names such a result `possibly`; `next` lists it only after the result
-it read changed; both suites pass.
+**Step 2b, the test half.** What it buys: a write computes only the
+tests whose subject or declaration changed, and a read of the glossary
+or a view's summary scans stored rows. What is there: `glossql_cached`
+and `glossql_kept` (the extension's `glossql_store.cpp`), `view_tests`
+and `view_summary` in `kits/views/kit.sql`, the spike
+`spikes/stored-tests-and-lineage`. Done when: a test's result is a
+stored result per subject and test, with the nodes it read;
+`results_due()` lists it like a function's; `glossql_cached` and
+`glossql_kept` are gone; on `big` a write that computes nothing reads
+no dataset-wide result again; both suites pass.
