@@ -1730,7 +1730,7 @@ impl Pending {
 }
 
 /// The lake's newest snapshot, or none where it cannot be read.
-fn current_snapshot(conn: &Connection) -> Option<String> {
+pub(crate) fn current_snapshot(conn: &Connection) -> Option<String> {
     let (_, _, batches) = arrow_batches(
         conn,
         &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
@@ -1751,7 +1751,7 @@ const ROUNDS: usize = 4;
 /// reads it. As CI runs a suite after a commit. A statement that fails
 /// is logged and not tried again in this call; its result stays due and
 /// the test report says so.
-fn bring_current(conn: &Connection) {
+pub(crate) fn bring_current(conn: &Connection) {
     let mut failed = std::collections::BTreeSet::new();
     for _ in 0..ROUNDS {
         let Ok((_, _, due)) = arrow_batches(

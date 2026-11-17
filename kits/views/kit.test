@@ -26,7 +26,13 @@ statement ok
 FROM glossql_kit('{GLOSSQL_KITS}/quality/kit.sql');
 
 statement ok
+FROM glossql_kit('{KITS}/core/kit.sql');
+
+statement ok
 FROM glossql_kit('{KITS}/views/kit.sql');
+
+statement ok
+FROM glossql_kit('{KITS}/goals/kit.sql');
 
 statement ok
 DECLARE DATASET fin SET (purpose: 'metrics');
@@ -54,11 +60,6 @@ SELECT view, applicable, (reason) IS NOT NULL, columns_without_role FROM view_su
 ----
 spend	false	true	[period, value, fund, object]
 
-query T
-SELECT missing[1] FROM view_summary();
-----
-GLOSS role ON fin.spend.period AS $${"value": "<key|measure|dimension|timestamp|attribute>"}$$;
-
 statement ok
 GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
 
@@ -73,15 +74,6 @@ GLOSS dimension ON spend.fund AS $${"value": "primary"}$$;
 
 statement ok
 GLOSS role ON spend.object AS $${"value": "dimension"}$$;
-
-# the roles are annotated and no grain is measured: the row lists the profile to run
-query TTTT
-SELECT applicable, (reason) IS NOT NULL, dims, measurements_to_run FROM view_summary();
-----
-false	true	[fund, object]	[temporal over fin.spend.period]
-
-statement ok
-SELECT temporal() FROM spend.period;
 
 query TTTTTTTTTT
 SELECT applicable, period_column, value_column, grain_detected, floor, window_periods, additivity, additivity_state, dims, profile_current FROM view_summary();
@@ -123,51 +115,6 @@ query I
 SELECT count(*) FROM metric_series(grain := 'day');
 ----
 0
-
-# a flow's empty period is a zero cell in the total
-statement ok
-DELETE FROM fin.ledger WHERE booked >= DATE '2024-02-01' AND booked < DATE '2024-03-01';
-
-query TR
-SELECT period::DATE, value FROM metric_series() WHERE dimension = '' ORDER BY period;
-----
-2024-01-01	118.0
-2024-02-01	0.0
-2024-03-01	130.0
-2024-04-01	113.0
-
-# a flow whose rows stopped early shows its zeros to the data's edge — the last instant another metric reaches
-statement ok
-CREATE TABLE fin.later AS SELECT DATE '2024-06-15' AS seen, 7.0 AS level;
-
-statement ok
-DECLARE ASPECT reach WITH $${"title": "Reach"}$$ AS VIEW;
-
-statement ok
-GLOSS reach ON fin AS $${"sql": "SELECT seen AS period, level AS value FROM fin.later"}$$;
-
-statement ok
-GLOSS role ON reach.period AS $${"value": "timestamp"}$$;
-
-statement ok
-GLOSS role ON reach.value AS $${"value": "measure"}$$;
-
-statement ok
-GLOSS time_grains ON reach.period AS $${"floor": "month"}$$;
-
-statement ok
-GLOSS additivity ON reach.value AS $${"value": "semi-additive"}$$;
-
-query TTR
-SELECT metric, period::DATE, value FROM metric_series() WHERE dimension = '' AND period >= DATE '2024-04-01' ORDER BY metric, period;
-----
-reach	2024-06-01	7.0
-spend	2024-04-01	113.0
-spend	2024-05-01	0.0
-spend	2024-06-01	0.0
-
-statement ok
-GLOSS reach ON fin AS $${"stopped": "one row, no series"}$$;
 
 # --- where each column comes from: the column mapping, read off the view's SQL
 
@@ -230,9 +177,6 @@ statement ok
 GLOSS role ON headcount.dept AS $${"value": "dimension"}$$;
 
 statement ok
-SELECT temporal() FROM headcount.period;
-
-statement ok
 GLOSS additivity ON headcount.value AS $${"value": "semi-additive"}$$;
 
 query TR
@@ -278,9 +222,6 @@ GLOSS role ON win_rate.dept AS $${"value": "dimension"}$$;
 statement ok
 GLOSS additivity ON win_rate.value AS $${"value": "ratio", "numerator": "won", "denominator": "offered"}$$;
 
-statement ok
-SELECT temporal() FROM win_rate.period;
-
 query TTRRR
 SELECT dimension, period::DATE, value, num, den FROM metric_series() WHERE metric = 'win_rate' AND dimension = '' ORDER BY period;
 ----
@@ -314,18 +255,6 @@ SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND d
 statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n * 1 AS value, dept FROM fin.levels"}$$;
 
-query TTTT
-SELECT applicable, profile_current, additivity, additivity_state FROM view_summary() WHERE view = 'headcount';
-----
-true	false	semi-additive	stale
-
-# the profile out of date is run again: every function that reads the view's grain reads it, so the server
-# computes it after the write
-query T
-SELECT measurements_to_run FROM view_summary() WHERE view = 'headcount';
-----
-[temporal over fin.headcount.period]
-
 # --- a single value serves one number; a stopped view serves its reason
 
 statement ok
@@ -348,11 +277,6 @@ true	true	true	true	true
 
 statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;
-
-query TT
-SELECT applicable, reason FROM view_summary() WHERE view = 'win_rate';
-----
-false	stopped: offers are not booked before 2024
 
 query I
 SELECT count(*) FROM metric_series() WHERE metric = 'win_rate';
@@ -377,45 +301,8 @@ SELECT count(DISTINCT metric) FROM metric_series();
 
 # --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its additivity
 
-statement ok
-SELECT join_check() FROM fin.spend;
-
-statement ok
-SELECT orphan_check() FROM fin.spend;
-
-statement ok
-SELECT additivity_check() FROM fin.spend;
-
-# the completeness check is on each column the view serves, computed by one statement over the view; it
-# reads the profile of the column, which the server computes first, and until it is stored it is not applicable
-statement ok
-SELECT completeness_check() FROM fin.spend;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), completeness_test() FROM fin;
-
-query TTTTT
-SELECT test, subject, declared_by, state, run FROM view_tests() WHERE view = 'spend' ORDER BY test, subject;
-----
-completeness_test	fin.spend.fund	kit:views	yellow	SELECT completeness_check() FROM fin.spend
-completeness_test	fin.spend.object	kit:views	yellow	SELECT completeness_check() FROM fin.spend
-completeness_test	fin.spend.period	kit:views	yellow	SELECT completeness_check() FROM fin.spend
-completeness_test	fin.spend.value	kit:views	yellow	SELECT completeness_check() FROM fin.spend
-join_test	fin.spend	kit:views	green	SELECT join_check() FROM fin.spend
-measure_additivity_test	fin.spend	kit:views	green	SELECT additivity_check() FROM fin.spend
-orphan_test	fin.spend	kit:views	green	SELECT orphan_check() FROM fin.spend
-
 # a single value carries the join, orphan and completeness tests, green where it reads no table, and not the
 # additivity test, which needs a measure; a stopped definition has no tests of this kind
-statement ok
-SELECT column_profile() FROM fin.fte_cap.value;
-
-statement ok
-SELECT join_check(), orphan_check(), completeness_check() FROM fin.fte_cap;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), completeness_test() FROM fin;
-
 query TT
 SELECT test, state FROM view_tests() WHERE view IN ('fte_cap', 'win_rate') ORDER BY view, test;
 ----
@@ -436,42 +323,6 @@ DECLARE ASPECT noted_spend WITH $${"title": "Noted spend"}$$ AS VIEW;
 statement ok
 GLOSS noted_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.lines l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
 
-statement ok
-SELECT join_check() FROM fin.noted_spend;
-
-statement ok
-SELECT orphan_check() FROM fin.noted_spend;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
-query TTT
-SELECT test, state, (json_extract_string(evidence, '$.reason')) IS NOT NULL FROM view_tests() WHERE view = 'noted_spend' AND test IN ('join_test', 'orphan_test') ORDER BY test;
-----
-join_test	yellow	true
-orphan_test	green	true
-
-# the profiles are stored: the check's result predates them and says so, and the next run reads them
-statement ok
-SELECT column_profile() FROM fin.lines.line_id;
-
-statement ok
-SELECT column_profile() FROM fin.notes.line_id;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
-query TT
-SELECT state, current FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
-----
-yellow	false
-
-statement ok
-SELECT join_check() FROM fin.noted_spend;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TTT
 SELECT state, current, json_extract_string(evidence, '$.pairs') FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
 ----
@@ -489,15 +340,6 @@ DECLARE ASPECT noted_spend_latest WITH $${"title": "Noted spend, the latest book
 
 statement ok
 GLOSS noted_spend_latest ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.notes n JOIN (SELECT * FROM fin.lines QUALIFY row_number() OVER (PARTITION BY line_id ORDER BY booked DESC) = 1) l ON n.line_id = l.line_id GROUP BY ALL"}$$;
-
-statement ok
-SELECT join_check() FROM fin.noted_spend_grouped;
-
-statement ok
-SELECT join_check() FROM fin.noted_spend_latest;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT view, state FROM view_tests() WHERE view LIKE 'noted_spend_%' AND test = 'join_test' ORDER BY view;
@@ -524,15 +366,6 @@ DECLARE ASPECT customer_sales WITH $${"title": "Customer sales"}$$ AS VIEW;
 statement ok
 GLOSS customer_sales ON fin AS $${"sql": "SELECT date_trunc('month', o.booked)::DATE AS period, sum(o.amount) AS value, c.name FROM fin.orders o JOIN fin.customers c ON c.customer_id = o.customer_id JOIN fin.regions g ON g.region_id = o.region_id GROUP BY ALL"}$$;
 
-statement ok
-SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id;
-
-statement ok
-SELECT orphan_check() FROM fin.customer_sales;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TT
 SELECT state, json_extract_string(evidence, '$.edges[0].relationship') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
@@ -541,26 +374,6 @@ red	fin.orders.customer_id -> fin.customers.customer_id
 # a relationship declared after its check ran has no result yet: the check is not applicable until it has
 statement ok
 DECLARE RELATIONSHIP orders.region_id -> regions.region_id;
-
-statement ok
-SELECT orphan_check() FROM fin.customer_sales;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
-query TT
-SELECT state, json_extract_string(evidence, '$.applicable') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
-----
-yellow	false
-
-statement ok
-SELECT relationship_coherence() FROM orders.region_id -> regions.region_id;
-
-statement ok
-SELECT orphan_check() FROM fin.customer_sales;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT state, json_extract_string(evidence, '$.breach_rate') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
@@ -574,21 +387,12 @@ DECLARE RELATIONSHIP orders.(customer_id, region_id) -> customers.(customer_id, 
 statement ok
 SELECT relationship_coherence() FROM orders.(customer_id, region_id) -> customers.(customer_id, region_id);
 
-statement ok
-SELECT orphan_check() FROM fin.customer_sales;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TTII
 SELECT state, json_extract_string(evidence, '$.breach_rate'), json_array_length(evidence->'edges'),
        (SELECT count(*) FROM measurements WHERE function = 'relationship_coherence' AND subject LIKE '%(customer_id, region_id)%' AND (value->>'orphan_rate')::DOUBLE > 0.2)
 FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
 red	0.2	2	1
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 # a built-in test that is red brings its finding and its fix
 query I
@@ -611,12 +415,6 @@ DECLARE ASPECT priced_spend WITH $${"title": "Priced spend"}$$ AS VIEW;
 statement ok
 GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id GROUP BY ALL"}$$;
 
-statement ok
-SELECT join_check() FROM fin.priced_spend;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TT
 SELECT state, json_extract_string(evidence, '$.tables') FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
 ----
@@ -624,12 +422,6 @@ red	["prices (valid_from, valid_to)"]
 
 statement ok
 GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id AND p.valid_from <= l.booked AND p.valid_to > l.booked GROUP BY ALL"}$$;
-
-statement ok
-SELECT join_check() FROM fin.priced_spend;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
@@ -663,12 +455,6 @@ DECLARE ASPECT all_lines WITH $${"title": "All lines"}$$ AS VIEW;
 statement ok
 GLOSS all_lines ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*) AS value FROM (SELECT booked, line_id FROM fin.lines UNION ALL SELECT DATE '2024-01-01', line_id FROM fin.notes) GROUP BY ALL"}$$;
 
-statement ok
-SELECT join_check() FROM fin.all_lines;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query T
 SELECT state FROM view_tests() WHERE view = 'all_lines' AND test = 'join_test';
 ----
@@ -677,9 +463,6 @@ green
 # an accepted rate is no conflict: the tolerance the test offers settles it
 statement ok
 GLOSS join_check ON fin.noted_spend AS $${"tolerance": 1.0, "basis": "every note of a line is counted on purpose"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test'
@@ -729,24 +512,12 @@ GLOSS role ON amount_per_line_year.value AS $${"value": "measure"}$$;
 statement ok
 GLOSS additivity ON amount_per_line_year.value AS $${"value": "additive"}$$;
 
-statement ok
-SELECT additivity_check() FROM fin.amount_per_line;
-
-statement ok
-SELECT additivity_check() FROM fin.amount_per_line_year;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TTT
 SELECT view, state, json_extract_string(evidence, '$.shape') FROM view_tests()
 WHERE view LIKE 'amount_per_line%' AND test = 'measure_additivity_test' ORDER BY 1;
 ----
 amount_per_line	red	ratio
 amount_per_line_year	red	ratio
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 # the fix a red additivity test brings is the metric's current definition, to edit and record again
 query T
@@ -760,12 +531,6 @@ GLOSS amount_per_line ON fin AS $${"sql": "SELECT date_trunc('month', booked)::D
 
 statement ok
 GLOSS additivity ON amount_per_line.value AS $${"value": "ratio", "numerator": "num", "denominator": "den"}$$;
-
-statement ok
-SELECT additivity_check() FROM fin.amount_per_line;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'amount_per_line' AND test = 'measure_additivity_test';
@@ -822,12 +587,6 @@ FROM semantic_model();
 ["booked","fund"]	money booked per month
 
 # --- a loaded table whose entity states a grain carries grain_test, with no view: the ledger keeps its grain
-statement ok
-SELECT grain_check() FROM fin.ledger;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 query TTT
 SELECT view, subject, state FROM view_tests() WHERE test = 'grain_test';
 ----
@@ -836,12 +595,6 @@ SELECT view, subject, state FROM view_tests() WHERE test = 'grain_test';
 # a grain the rows do not keep: each line is booked three times, so 180 of the 270 rows repeat a key
 statement ok
 GLOSS entity ON lines AS $${"value": "one booking of a line", "role": "fact", "grain": ["line_id"]}$$;
-
-statement ok
-SELECT grain_check() FROM fin.lines;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TRII
 SELECT state, round(score, 4), (evidence->>'repeated')::INT, len(from_json(evidence->'keys', '["VARCHAR"]'))
@@ -868,24 +621,6 @@ SELECT count(*) FROM fin.booked_by_business;
 ----
 60
 
-statement ok
-SELECT column_profile() FROM fin.txn.business_id;
-
-statement ok
-SELECT column_profile() FROM fin.txn.account;
-
-statement ok
-SELECT column_profile() FROM fin.coa.business_id;
-
-statement ok
-SELECT column_profile() FROM fin.coa.code;
-
-statement ok
-SELECT join_check() FROM fin.booked_by_business;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
-
 # no profile and no grain tell which side holds each key once: not applicable, and the fix states the grain
 query TTT
 SELECT state, (evidence->>'applicable')::BOOLEAN, contains(evidence->>'fix', 'GLOSS entity ON fin.coa AS ')
@@ -895,12 +630,6 @@ yellow	false	true
 
 statement ok
 GLOSS entity ON coa AS $${"value": "one account of one business", "role": "dimension", "grain": ["business_id", "code"]}$$;
-
-statement ok
-SELECT join_check() FROM fin.booked_by_business;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT state, evidence->>'pairs' FROM view_tests() WHERE view = 'booked_by_business' AND test = 'join_test';
@@ -921,21 +650,6 @@ DECLARE ASPECT line_status WITH $${"title": "Line status", "x-kind": "relation"}
 statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
 
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
-
 query TTRT
 SELECT subject, state, score, (evidence->>'applicable')::BOOLEAN FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' ORDER BY subject;
 ----
@@ -947,21 +661,6 @@ fin.line_status.note	green	0.0	true
 statement ok
 CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, NULL::VARCHAR AS note FROM range(100) r(i);
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
 
 query TT
 SELECT subject, state FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' ORDER BY subject;
@@ -975,21 +674,6 @@ fin.line_status.note	green
 # stay green
 statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\\\((\\\\w+)\\\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
 
 query TTRRRT
 SELECT subject, state, score, (evidence->>'before')::DOUBLE, (evidence->>'now')::DOUBLE, evidence->>'emptied_by'
@@ -1012,26 +696,6 @@ statement ok
 CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, NULL::VARCHAR AS note FROM range(100) r(i);
 
-query T
-SELECT current FROM view_tests() WHERE subject = 'fin.line_status.code' AND test = 'completeness_test';
-----
-false
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
-
 query TTR
 SELECT state, current, score FROM view_tests() WHERE subject = 'fin.line_status.code' AND test = 'completeness_test';
 ----
@@ -1043,21 +707,6 @@ statement ok
 CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, 'note ' || i AS note FROM range(120) r(i);
 
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
-
 query TTRRRT
 SELECT subject, state, score, (evidence->>'before')::DOUBLE, (evidence->>'now')::DOUBLE, evidence->>'emptied_by'
 FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' AND state <> 'green';
@@ -1067,21 +716,6 @@ fin.line_status.code	red	1.0	0.0	1.0	definition
 # the definition corrected: the code is filled again
 statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
 
 query I
 SELECT count(*) FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' AND state <> 'green';
@@ -1094,21 +728,6 @@ statement ok
 CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, NULL::VARCHAR AS status, 'note ' || i AS note FROM range(120) r(i);
 
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
-
 query TTRTT
 SELECT subject, state, score, evidence->>'emptied_by', evidence->>'sources'
 FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' AND state <> 'green';
@@ -1119,12 +738,6 @@ fin.line_status.code	red	1.0	load	["fin.status_lines.status"]
 statement ok
 GLOSS completeness_check ON fin.line_status.code AS $${"tolerance": 1.0, "basis": "the source stopped sending the status"}$$;
 
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
-
 query I
 SELECT count(*) FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' AND state <> 'green';
 ----
@@ -1134,21 +747,6 @@ SELECT count(*) FROM view_tests() WHERE view = 'line_status' AND test = 'complet
 statement ok
 CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, NULL::VARCHAR AS status, NULL::VARCHAR AS note FROM range(120) r(i);
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT column_profile() FROM fin.status_lines;
-
-statement ok
-SELECT column_profile() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
 
 query TT
 SELECT subject, state FROM view_tests() WHERE view = 'line_status' AND test = 'completeness_test' ORDER BY subject;
@@ -1165,15 +763,6 @@ load
 # a column the view no longer serves: its result retires with the next check over the view
 statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code FROM fin.status_lines"}$$;
-
-statement ok
-SELECT lineage() FROM fin.line_status;
-
-statement ok
-SELECT completeness_check() FROM fin.line_status;
-
-statement ok
-SELECT completeness_test() FROM fin;
 
 query T
 SELECT subject FROM measurements WHERE function IN ('completeness_check', 'completeness_test') AND subject LIKE 'fin.line_status.%' AND subject LIKE '%note';

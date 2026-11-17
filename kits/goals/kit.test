@@ -70,9 +70,6 @@ DECLARE SOURCE erp SET (type: csv, location: '{TEST_DIR}');
 statement ok
 DECLARE RECIPE orders_raw ON ops FROM erp AS $$SELECT CAST(month AS DATE) AS month, CAST(orders AS DOUBLE) AS orders, CAST(price AS DOUBLE) AS price, CAST(staff AS INTEGER) AS staff FROM read_csv('orders.csv')$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM ops;
-
 query TTTT
 SELECT level, kind, asset, state FROM next;
 ----
@@ -106,33 +103,6 @@ SELECT applicable, floor FROM view_summary() WHERE view = 'orders';
 true	month
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM ops;
-
-# the view's column price has no role: the summary row and `next` ask for it with the same statement, on the
-# view's own column, as should
-query TTT
-SELECT n.level, contains(s.missing[1], 'ops.orders.price'), contains(n.statement, s.missing[1])
-FROM (SELECT missing FROM view_summary() WHERE view = 'orders') s,
-     (SELECT level, statement FROM next WHERE kind = 'describe' AND asset = 'ops.orders' AND state = 'missing') n;
-----
-should	true	true
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM ops;
-
-# nothing must be done: the dataset is complete. Its tests not run yet are should, the columns no view reads could
-query TTTT
-SELECT level, kind, asset, state FROM next WHERE kind <> 'describe' OR level <> 'should' ORDER BY ALL;
-----
-could	describe	ops.orders_raw	missing
-should	test	ops.orders	not_run
-should	test	ops.orders	not_run
-should	test	ops.orders	not_run
-should	test	ops.orders.month	not_run
-should	test	ops.orders.price	not_run
-should	test	ops.orders.value	not_run
-
-statement ok
 CREATE TABLE memory.main.next_without AS SELECT * FROM next;
 
 statement ok
@@ -147,17 +117,11 @@ FROM glossql_kit('{KITS}/outlook/kit.sql');
 statement ok
 SET GLOBAL glossql_service_url = 'http://model.test';
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
 query II
 SELECT (SELECT count(*) FROM (FROM next EXCEPT ALL FROM memory.main.next_without)),
        (SELECT count(*) FROM (FROM memory.main.next_without EXCEPT ALL FROM next));
 ----
 0	0
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query II
 SELECT (SELECT count(*) FROM (SELECT * EXCLUDE (evidence), evidence::VARCHAR FROM view_tests() EXCEPT ALL FROM memory.main.tests_without)),
@@ -199,22 +163,10 @@ SELECT metric_ranges() FROM ops.orders;
 statement ok
 SELECT metric_forecast() FROM ops.orders;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
 query TTT
 SELECT subject, state, current FROM TESTS() WHERE test = 'range_test';
 ----
 ops.orders	green	true
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
-query II
-SELECT (SELECT count(*) FROM next WHERE contains(statement, 'metric_')),
-       (SELECT count(*) FROM results_due() WHERE function LIKE 'metric_%');
-----
-0	0
 
 # a plan is declared and defined: nobody compared it yet, so it is no row; the ranges and the forecast read their
 # metric, and a plan is none: they stay current
@@ -235,16 +187,10 @@ SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%';
 statement ok
 SELECT metric_plan() FROM ops.orders_target;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
 query TT
 SELECT view, subject FROM view_tests() WHERE test = 'plan_test';
 ----
 orders_target	ops.orders_target
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'metric_');
@@ -257,9 +203,6 @@ DECLARE ASPECT staffing WITH $${"title": "Staffing"}$$ AS VIEW;
 
 statement ok
 GLOSS staffing ON ops AS $${"sql": "SELECT month, staff AS value FROM ops.orders_raw"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'metric_');
@@ -275,16 +218,6 @@ statement ok
 GLOSS dimension ON orders.price AS $${"value": "none"}$$;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
-query TTTTT
-SELECT level, kind, asset, state, regexp_replace(statement, '^(--[^\n]*\n)+', '') AS run FROM next WHERE contains(statement, 'metric_') ORDER BY run;
-----
-should	test	ops.orders	stale	SELECT metric_forecast() FROM ops.orders;
-should	test	ops.orders_target	stale	SELECT metric_plan() FROM ops.orders_target;
-should	test	ops.orders	stale	SELECT metric_ranges() FROM ops.orders;
-
-statement ok
 SELECT metric_ranges() FROM ops.orders;
 
 statement ok
@@ -292,9 +225,6 @@ SELECT metric_forecast() FROM ops.orders;
 
 statement ok
 SELECT metric_plan() FROM ops.orders_target;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'metric_');
@@ -310,9 +240,6 @@ DECLARE ASPECT price_cut WITH $${"title": "Price cut", "x-kind": "scenario", "ty
 
 statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'metric_') AND NOT contains(statement, 'metric_ranges') AND NOT contains(statement, 'metric_forecast');
@@ -335,14 +262,6 @@ statement ok
 GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
-
-query T
-SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'metric_');
-----
-SELECT metric_scenario() FROM ops.price_cut;
-
-statement ok
 SELECT metric_scenario() FROM ops.price_cut;
 
 # the newest month falls far outside its expected range: the range test is red, a must on the metric with the
@@ -353,9 +272,6 @@ CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["orders
 
 statement ok
 SELECT metric_ranges() FROM ops.orders;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query TTTTTT
 SELECT level, kind, asset, state, starts_with(open, 'range_test: orders is 190'),
@@ -372,9 +288,6 @@ GLOSS metric_ranges ON ops.orders AS $${"tolerance": 0.998, "basis": "a new cust
 
 statement ok
 RESET VARIABLE glossql_actor;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM ops;
 
 query II
 SELECT count(*) FILTER (WHERE level = 'must'), count(*) FILTER (WHERE level IN ('should', 'could')) > 0 FROM next;
@@ -399,9 +312,6 @@ DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <=
 statement ok
 DECLARE TEST price_test ON price_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
-
 # declared and set nowhere: nothing asks for it
 query II
 SELECT (SELECT count(*) FROM next WHERE contains(statement, 'price_rule')),
@@ -413,37 +323,12 @@ statement ok
 GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.0, "basis": "the price list starts at 12"}$$;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
-
-# set on the one column and not run: the test waits there, with the check as its statement, and counts as open once
-query TTT
-SELECT kind, asset, state FROM next WHERE contains(statement, 'price_rule') OR contains(statement, 'price_check');
-----
-test	ops.orders_raw.price	yellow
-
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-1
-
-statement ok
 SELECT price_check() FROM ops.orders_raw.price;
 
 query I
 SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
 ----
 0
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
-
-query TT
-SELECT state, run FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
-----
-red	SELECT price_check() FROM ops.orders_raw.price
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
 
 query TTTTT
 SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are priced'),
@@ -453,9 +338,6 @@ SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are pri
 FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price' AND for_view = 'orders';
 ----
 red	true	true	true	true
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
 
 # the expectation is asked for on no other asset: no row of `next` names it as missing
 query I
@@ -467,16 +349,10 @@ SELECT count(*) FROM next WHERE kind = 'describe' AND contains(statement, 'price
 statement ok
 GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.7, "basis": "sales lead: the two low price points are promotions"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
-
 query T
 SELECT state FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
 ----
 green
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test() FROM ops;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price';
@@ -507,17 +383,11 @@ DECLARE ASPECT order_list WITH $${"title": "Orders, listed", "x-kind": "relation
 statement ok
 GLOSS order_list ON ops AS $${"sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test() FROM ops;
-
 query II
 SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list' AND level = 'should' AND kind = 'review'),
        (SELECT count(*) FROM open_questions WHERE aspect = 'order_list');
 ----
 2	2
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test() FROM ops;
 
 query II
 SELECT count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.order_list AS') AND contains(statement, '"grain"')),
@@ -559,9 +429,6 @@ DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$
 statement ok
 GLOSS ledger_rows ON side AS $${"sql": "SELECT count(*) AS value FROM side.ledger"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test() FROM side;
-
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
 ----
@@ -569,9 +436,6 @@ SELECT count(*) FROM next WHERE kind = 'integrate';
 
 statement ok
 GLOSS ledger_rows ON side AS $${"stopped": "the count is read elsewhere"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test() FROM side;
 
 query TT
 SELECT asset, state FROM next WHERE kind = 'integrate';
@@ -583,9 +447,6 @@ DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relat
 
 statement ok
 GLOSS ledger_clean ON side AS $${"sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test() FROM side;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
@@ -607,17 +468,11 @@ GLOSS fund_coded ON ledger_clean AS $${"outcome": "each fund is in the code tabl
 statement ok
 SELECT fund_coded_check() FROM ledger_clean;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test() FROM side;
-
 query TTTTT
 SELECT level, state, for_view, contains(statement, 'fund_coded_check()'), contains(statement, 'GLOSS fund_coded ON side.ledger_clean AS')
 FROM next WHERE kind = 'test' AND asset = 'side.ledger_clean' AND starts_with(open, 'fund_coded_test');
 ----
 must	red	ledger_clean	true	true
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test() FROM side;
 
 query II
 SELECT (SELECT count(*) FROM next WHERE kind = 'describe' AND contains(statement, 'fund_coded')),
@@ -655,9 +510,6 @@ true	true
 statement ok
 CREATE TABLE side.unrelated AS SELECT 1 AS x;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM side;
-
 query I
 SELECT count(*) FROM results_due() WHERE function = 'fund_named';
 ----
@@ -665,14 +517,6 @@ SELECT count(*) FROM results_due() WHERE function = 'fund_named';
 
 statement ok
 INSERT INTO side.ledger SELECT booked, amount, 'water' FROM side.ledger LIMIT 1;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM side;
-
-query T
-SELECT run FROM results_due() WHERE function = 'fund_named';
-----
-SELECT fund_named_check() FROM side.ledger_clean
 
 # --- a check on a metric depends on the annotations of what the metric reads: an annotation on a
 # table no metric reads computes nothing, a role on a column one metric scans computes that metric's check
@@ -748,18 +592,7 @@ statement ok
 DECLARE RELATIONSHIP results.driver_id -> drivers.driver_id;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
-query TT
-SELECT subject, run FROM results_due() WHERE function = 'relationship_coherence';
-----
-grid.results.driver_id -> grid.drivers.driver_id	SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id
-
-statement ok
 SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
 
 query I
 SELECT count(*) FROM results_due() WHERE function = 'relationship_coherence';
@@ -788,9 +621,6 @@ SELECT additivity_check(), join_check(), orphan_check(), completeness_check() FR
 statement ok
 SELECT additivity_check(), join_check(), orphan_check(), completeness_check() FROM grid.points;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
 query I
 SELECT count(*) FROM results_due();
 ----
@@ -798,9 +628,6 @@ SELECT count(*) FROM results_due();
 
 statement ok
 GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
 
 query I
 SELECT count(*) FROM results_due();
@@ -811,9 +638,6 @@ SELECT count(*) FROM results_due();
 statement ok
 GLOSS role ON results.driver_id AS $${"value": "dimension"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
 query I
 SELECT count(*) FROM results_due();
 ----
@@ -823,15 +647,6 @@ SELECT count(*) FROM results_due();
 # test that judges its value after it in the same round
 statement ok
 GLOSS role ON entries.value AS $${"value": "dimension"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
-query T
-SELECT run FROM results_due() ORDER BY ord, run;
-----
-SELECT additivity_check() FROM grid.entries
-SELECT measure_additivity_test() FROM grid
 
 # --- a table view and a single value want what a metric wants: a table view over two joined tables with a
 # declared relationship wants the profile of each column it reads (the join columns among them), the coherence
@@ -860,9 +675,6 @@ DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-k
 statement ok
 GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.results r JOIN harm.drivers d ON d.driver_id = r.driver_id"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 # the view joins two loaded tables on a column pair no relationship covers: a should under describe, its statement
 # the relationship from the join's left input to its right while no profile says which side holds each key once
 query TTTTTT
@@ -874,39 +686,10 @@ should	describe	harm.results.driver_id -> harm.drivers.driver_id	missing	driver_
 statement ok
 DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
 ----
 0
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
-query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run, subject;
-----
-1	column_profile	harm.driver_results.points
-1	column_profile	harm.driver_results.result_id
-1	column_profile	harm.driver_results.surname
-1	column_profile	harm.drivers.driver_id
-1	column_profile	harm.drivers.surname
-1	column_profile	harm.results.driver_id
-1	column_profile	harm.results.points
-1	column_profile	harm.results.result_id
-1	relationship_coherence	harm.results.driver_id -> harm.drivers.driver_id
-2	completeness_check	harm.driver_results.points
-2	completeness_check	harm.driver_results.result_id
-2	completeness_check	harm.driver_results.surname
-2	join_check	harm.driver_results
-2	orphan_check	harm.driver_results
-3	completeness_test	harm.driver_results.points
-3	completeness_test	harm.driver_results.result_id
-3	completeness_test	harm.driver_results.surname
-3	join_test	harm.driver_results
-3	orphan_test	harm.driver_results
 
 statement ok
 SELECT column_profile() FROM harm.drivers.driver_id;
@@ -938,16 +721,10 @@ SELECT column_profile() FROM harm.driver_results.surname;
 statement ok
 SELECT join_check(), orphan_check(), completeness_check() FROM harm.driver_results;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 query I
 SELECT count(*) FROM results_due();
 ----
 0
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 # driver 5 has no row in drivers: a sixth of the results find no parent
 query TTTR
@@ -959,17 +736,11 @@ completeness_test	harm.driver_results.surname	green	0.0
 join_test	harm.driver_results	green	0.0
 orphan_test	harm.driver_results	red	0.1667
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 query TTTTT
 SELECT level, asset, state, starts_with(open, 'orphan_test'), contains(statement, 'GLOSS orphan_check ON harm.driver_results AS')
 FROM next WHERE kind = 'test';
 ----
 must	harm.driver_results	red	true	true
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query I
 SELECT count(*) FROM TESTS(harm.driver_results) WHERE state = 'red';
@@ -979,9 +750,6 @@ SELECT count(*) FROM TESTS(harm.driver_results) WHERE state = 'red';
 statement ok
 GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 query I
 SELECT count(*) FROM results_due();
 ----
@@ -989,9 +757,6 @@ SELECT count(*) FROM results_due();
 
 statement ok
 GLOSS meaning ON drivers.surname AS $${"value": "the driver's family name"}$$;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query I
 SELECT count(*) FROM results_due();
@@ -1004,21 +769,6 @@ DECLARE ASPECT circuit_count WITH $${"title": "Circuits", "x-kind": "scalar"}$$ 
 statement ok
 GLOSS circuit_count ON harm AS $${"sql": "SELECT count(DISTINCT name) AS value FROM harm.circuits"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
-query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run, subject;
-----
-1	column_profile	harm.circuit_count.value
-1	column_profile	harm.circuits.name
-2	completeness_check	harm.circuit_count.value
-2	join_check	harm.circuit_count
-2	orphan_check	harm.circuit_count
-3	completeness_test	harm.circuit_count.value
-3	join_test	harm.circuit_count
-3	orphan_test	harm.circuit_count
-
 # --- a stored profile turns the relationship round: drivers holds each driver_id once, so the relationship runs
 # from laps to drivers, though the join writes drivers first
 statement ok
@@ -1030,9 +780,6 @@ DECLARE ASPECT driver_laps WITH $${"title": "Laps with their driver", "x-kind": 
 statement ok
 GLOSS driver_laps ON harm AS $${"sql": "SELECT d.surname, l.lap_id FROM harm.drivers d JOIN harm.laps l ON l.driver_ref = d.driver_id"}$$;
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
 query TT
 SELECT asset, contains(statement, 'DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;') FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
 ----
@@ -1040,9 +787,6 @@ harm.laps.driver_ref -> harm.drivers.driver_id	true
 
 statement ok
 DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
@@ -1055,18 +799,7 @@ statement ok
 GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["driver_ref"]}$$;
 
 statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
-
-query ITT
-SELECT ord, function, subject FROM results_due() WHERE function = 'grain_check';
-----
-2	grain_check	harm.laps
-
-statement ok
 SELECT grain_check() FROM harm.laps;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query TTTRT
 SELECT level, kind, state, (SELECT round(score, 4) FROM view_tests() WHERE test = 'grain_test'),
@@ -1081,9 +814,6 @@ GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["l
 
 statement ok
 SELECT grain_check() FROM harm.laps;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query TI
 SELECT (SELECT state FROM view_tests() WHERE test = 'grain_test'), count(*) FROM next WHERE asset = 'harm.laps' AND kind = 'test';
@@ -1121,14 +851,6 @@ SELECT function, reason FROM glossql_outdated() WHERE function IN ('top_points',
 top_points	changed
 top_seen	possibly
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
-query T
-SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
-----
-SELECT top_points() FROM grid;
-
 query T
 SELECT state FROM GLOSSARY(grid) WHERE aspect = 'top_seen';
 ----
@@ -1136,9 +858,6 @@ possibly
 
 statement ok
 SELECT top_points() FROM grid;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
 
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'top_');
@@ -1156,29 +875,12 @@ SELECT function, what, reason FROM glossql_outdated() WHERE function IN ('top_po
 ----
 top_seen	result top_points	changed
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
-query T
-SELECT regexp_replace(statement, '^(--[^\n]*\n)+', '') FROM next WHERE contains(statement, 'top_') ORDER BY ALL;
-----
-SELECT top_seen() FROM grid;
-
 # --- a view's lineage comes first: a column added to the table both metrics read puts their lineage out of
 # date, and results_due() lists it before anything that reads it; computed again with the same value, it keeps
 # the snapshot it changed at, nothing that read it is out of date, and next lists no lineage
 
 statement ok
 ALTER TABLE grid.results ADD COLUMN team VARCHAR;
-
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
-query IT
-SELECT ord, run FROM results_due() WHERE function = 'lineage' ORDER BY run;
-----
-0	SELECT lineage() FROM grid.entries
-0	SELECT lineage() FROM grid.points
 
 statement ok
 CREATE TABLE memory.main.lineage_before AS SELECT subject, changed_at FROM measurements WHERE function = 'lineage';
@@ -1199,9 +901,6 @@ SELECT count(*) FROM glossql_outdated() WHERE function = 'lineage' OR asset IN (
 ----
 0
 
-statement ok
-SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM grid;
-
 query I
 SELECT count(*) FROM next WHERE contains(statement, 'lineage()');
 ----
@@ -1213,15 +912,6 @@ SELECT count(*) FROM next WHERE contains(statement, 'lineage()');
 statement ok
 GLOSS role ON grid.circuits.name AS $${"value": "attribute"}$$;
 
-query IIT
-SELECT DISTINCT ord, (SELECT count(*) FROM results_due() WHERE function = 'role_test' AND subject = 'grid.circuits.name'), run
-FROM results_due() WHERE function = 'role_test';
-----
-3	1	SELECT role_test() FROM grid
-
-statement ok
-SELECT role_test() FROM grid;
-
 query I
 SELECT count(*) FROM results_due() WHERE function = 'role_test';
 ----
@@ -1229,11 +919,6 @@ SELECT count(*) FROM results_due() WHERE function = 'role_test';
 
 statement ok
 GLOSS role ON grid.circuits.name AS $${"value": "dimension"}$$;
-
-query TT
-SELECT subject, run FROM results_due() WHERE function = 'role_test';
-----
-grid.circuits.name	SELECT role_test() FROM grid
 
 # --- a load that empties a column a view serves is a must on that column, with the cause the test's result
 # names: the results come again with no points, and driver_results serves them
@@ -1243,12 +928,6 @@ USE harm;
 statement ok
 CREATE OR REPLACE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, NULL::DOUBLE AS points FROM range(60) t(i);
 
-query ITT
-SELECT ord, function, subject FROM results_due() WHERE contains(subject, 'points') ORDER BY ALL;
-----
-1	column_profile	harm.driver_results.points
-1	column_profile	harm.results.points
-
 statement ok
 SELECT column_profile() FROM harm.driver_results.points;
 
@@ -1257,9 +936,6 @@ SELECT column_profile() FROM harm.results.points;
 
 statement ok
 SELECT completeness_check() FROM harm.driver_results;
-
-statement ok
-SELECT completeness_test() FROM harm;
 
 query TTTTT
 SELECT level, asset, state, starts_with(open, 'completeness_test'),

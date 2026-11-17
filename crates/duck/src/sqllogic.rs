@@ -11,13 +11,18 @@
 //! server's own instance before the lake: a suite attaches its lake
 //! and loads the kits it tests. In the text, `{TEST_DIR}` is a
 //! directory of the suite's own, `{GLOSSQL_KITS}` the extension's kits
-//! and `{KITS}` this repository's.
+//! and `{KITS}` this repository's. A record that takes a snapshot of
+//! the lake is followed, as the server follows a call that wrote, by
+//! the results the bound dataset wants brought current.
 
 use std::path::Path;
 
 use duckdb_neo::connection::Connection;
 
-use crate::{Config, arrow_batches, engine_instance, pieces, rows_as_text, run};
+use crate::{
+    Config, arrow_batches, bring_current, current_snapshot, engine_instance, pieces, rows_as_text,
+    run,
+};
 
 /// The extensions the engine loads at open.
 const LOADED: &[&str] = &["glossql", "json", "parquet", "ducklake"];
@@ -52,7 +57,11 @@ pub fn run_suite(suite: &Path, test_dir: &Path) -> Result<usize, String> {
         engine_instance(&config).map_err(|e| at(e.to_string()))?;
     run(&conn, "SET active_grammar_extensions = ['glossql']").map_err(|e| at(e.to_string()))?;
     for (line, record) in &records {
+        let before = current_snapshot(&conn);
         check(&conn, record).map_err(|why| format!("{}:{line}: {why}", suite.display()))?;
+        if current_snapshot(&conn) != before {
+            bring_current(&conn);
+        }
     }
     Ok(records.len())
 }
