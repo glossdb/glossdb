@@ -332,53 +332,49 @@ $$ RETURNS code_check;
 DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
--- reconciliation: per system and period, did every row the target reads
--- from a system arrive, and if not, which rows and why. Per branch of the
--- view's union (branch_rows(), the extension's read of each branch as its
--- own steps leave the rows), the table that drives it: the one whose rows
--- the branch keeps, the first of its FROM (a RIGHT JOIN's right side),
--- followed into a subquery or a CTE. Its system is its system_of_record,
--- else its load's source. Per branch and period (the view's time column:
--- the entity's time_axis, else its column with role timestamp; a date
--- truncated to its time grain, a month where none is stated), where the
--- branch computes the period from the driving table alone; one row per
--- branch where it does not, or where the view has no time column:
---   read        rows of the driving table
---   filtered    rows a condition of the branch leaves out, per condition
---   unmatched   rows an inner join finds no partner for, per join, with
---               the relationship the join follows and its orphan keys
---               (relationship_coherence: the keys of the whole table,
---               each with its rows, and how many there are); no keys
---               where no declared relationship covers the join
---   repeated    rows a join adds: more partners than rows
---   reached     rows the branch serves
---   vanished    read - filtered - unmatched + repeated - reached, on a
---               branch whose steps are told; NULL on one that is not, and
---               on a branch that reads no table (a constant row)
---   told        false where the branch has a step the read does not
---               follow (a GROUP BY, a DISTINCT, a LIMIT, a join of
---               another kind): its rows read are the driving table's,
---               and not_told names the step
---   measures    per column with role measure, the sum the target serves
---               and, where the branch computes it from the driving table
---               alone, the sum over every row read, to hold against the
---               system's own report
--- applicable is false where a branch is not told, with the step as the
--- reason; the told branches' rows are served all the same. No test judges
--- it: on a told branch the re-read and the branch's own rows agree by
--- construction (the extension's suite holds that), so a test on vanished
--- rows could not fail. What a person reads is the account. The server
--- computes it after a write on each view with a contract (x-set-by), as
--- results_due() does for a result no test reads.
+-- reconciliation: per source system and period, did every row arrive,
+-- and which did not. Each branch of the target's union (1 where it has
+-- none) is reconciled against the table its rows come from: the one
+-- table it reads that is joined to nothing before it (the lineage's
+-- mapping: a read with no lookup). That table's system is its
+-- system_of_record, else its load's source. A served row belongs to a
+-- branch by the column that names each branch's system with a literal
+-- (such as 'sap' AS source_system); a view of one branch needs none.
+-- Per system and period (the view's time column: the entity's
+-- time_axis, else its column with role timestamp; a date truncated to
+-- its time grain, a month where none is stated):
+--   source_rows   rows of the source table
+--   target_rows   rows the view serves from that system
+--   missing_rows  the rows that do not arrive: the shortfall of the
+--                 count, or the rows whose key the view does not serve,
+--                 whichever is more
+--   missing_keys  the keys (the entity's grain on the view) at the
+--                 source the view does not serve, the first ten, and
+--                 how many there are
+--   measures      per column with role measure, the sum at the source
+--                 and the sum the view serves
+-- The source side reads a target column where the branch copies it
+-- from a column of the source table (as it is, or cast): the key, the
+-- period and each measure. Where a branch computes one of them, notes
+-- says so: its missing keys are not listed, its rows are counted over
+-- every period, or the measure has no source sum. breach_rate is the
+-- share of source rows that do not arrive; reconciliation_test is red
+-- above 0, and a person may accept a rate with a tolerance. The server
+-- computes it after a write on each view with a contract (x-set-by).
 --===------------------------------------------------------------------===--
 
 DECLARE ASPECT reconciliation WITH $${
-  "description": "Preview. Per source system and period, the rows a target view reads, the rows its conditions and joins leave out and why, the rows it serves, and the sums of its measures.",
+  "description": "Preview. Per source system and period, the rows and the sum of each measure at the source against what a target view serves, and the keys at the source the view does not serve.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
-                 "period_column": {"type": ["string", "null"]},
-                 "rows": {"type": ["array", "null"], "items": {"type": "object"}}}
-}$$ AS MEASUREMENT ON TABLE;
+                 "breach_rate": {"type": ["number", "null"]},
+                 "period_column": {"type": ["string", "null"]}, "system_column": {"type": ["string", "null"]},
+                 "key": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "rows": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "notes": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
 
 -- reconciliation_period(value, grain): a period as text, a date or a
 -- timestamp truncated to the grain (a month where none is stated)
@@ -389,114 +385,206 @@ CREATE OR REPLACE MACRO main.reconciliation_period(v, grain) AS
                  ELSE strftime(date_trunc(coalesce(grain, 'month'), try_cast(v AS TIMESTAMP)), '%Y-%m-%d') END
        ELSE v END;
 
+-- reconciliation_value(value): a key value as text, a number written
+-- one way whatever its type, so that a key cast on its way still matches
+CREATE OR REPLACE MACRO main.reconciliation_value(v) AS
+  coalesce(CAST(try_cast(v AS HUGEINT) AS VARCHAR), CASE WHEN regexp_full_match(v, '\s*-?[0-9.]+(e-?[0-9]+)?\s*')
+                                                         THEN CAST(try_cast(v AS DOUBLE) AS VARCHAR) END, v);
+
 DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
   WITH d AS (SELECT * FROM definition('itself')),
   cols AS (SELECT c.name AS col, c.position AS pos FROM d, unnest(d.columns) t(c)),
+  -- where each target column comes from, per branch and table read (the lineage's mapping)
+  mapping AS (
+    SELECT u.m."column" AS col, u.m.branch, u.m.derivation, u.m.table_name, u.m.table_column, u.m.lookup, u.m.literals
+    FROM results('lineage', 'itself') l,
+         unnest(from_json(l.value->'mapping', '[{"column": "VARCHAR", "branch": "INTEGER", "derivation": "VARCHAR", "table_name": "VARCHAR",
+                                                "table_column": "VARCHAR", "lookup": "VARCHAR", "literals": ["VARCHAR"]}]')) u(m)
+    WHERE u.m."column" IS NOT NULL),
   roles AS (
     SELECT substr(asset, length($subject) + 2) AS col, value->>'value' AS role FROM annotations('role', 'its columns')
     WHERE value IS NOT NULL AND state IN ('current', 'stale')),
-  axis AS (
-    SELECT value->>'time_axis' AS col FROM annotations('entity', 'itself')
-    WHERE value IS NOT NULL AND state IN ('current', 'stale') AND value->>'time_axis' IS NOT NULL),
+  entity AS (
+    SELECT value FROM annotations('entity', 'itself') WHERE value IS NOT NULL AND state IN ('current', 'stale')),
   grains AS (
     SELECT substr(asset, length($subject) + 2) AS col, value->>'floor' AS floor FROM annotations('time_grains', 'its columns')
     WHERE value IS NOT NULL AND state IN ('current', 'stale')),
   period AS (
     SELECT c.col, c.pos, (SELECT max(g.floor) FROM grains g WHERE g.col = c.col) AS floor FROM cols c
-    WHERE c.col = coalesce((SELECT max(col) FROM axis),
+    WHERE c.col = coalesce((SELECT max(value->>'time_axis') FROM entity),
                            (SELECT arg_min(r.col, x.pos) FROM roles r JOIN cols x USING (col) WHERE r.role = 'timestamp'))),
   measures AS (SELECT c.col, c.pos FROM roles r JOIN cols c USING (col) WHERE r.role = 'measure'),
-  rows_ AS NOT MATERIALIZED (SELECT * FROM branch_rows($subject)),
-  branches AS (
-    SELECT branch, dataset || '.' || table_name AS table_path, table_name, text AS untold, columns AS alone,
-           coalesce(list_contains(columns, (SELECT col FROM period)), false) AS dated
-    FROM rows_ WHERE kind = 'branch'),
-  steps AS (SELECT branch, step, what AS kind, text, columns FROM rows_ WHERE kind = 'step'),
-  -- each row read and each row served, with the view's time column as the branch computes it and the
-  -- amount of each measure; the period counts where the branch computes it from its driving table alone
-  marked AS MATERIALIZED (
-    SELECT r.branch, r.kind = 'read' AS is_read, r.rid, r.step,
-           main.reconciliation_period(r."values"[k.period_pos], k.floor) AS period,
-           list_transform(k.measure_pos, lambda x: try_cast(r."values"[x] AS DOUBLE)) AS amounts
-    FROM rows_ r,
-         (SELECT (SELECT max(pos) FROM period) AS period_pos, (SELECT max(floor) FROM period) AS floor,
-                 coalesce((SELECT list(pos ORDER BY pos) FROM measures), []) AS measure_pos) k
-    WHERE r.kind IN ('read', 'served')),
-  -- per row read: its partners, those that reach the target, and its amounts once. The driving rows are
-  -- numbered 1 to n, so a branch whose partners number n has one partner per row and needs no grouping
-  fanned AS (SELECT branch FROM marked WHERE is_read GROUP BY branch HAVING count(*) > max(rid)),
-  per_row AS MATERIALIZED (
-    SELECT branch, rid, period, 1 AS partners, CASE WHEN step IS NULL THEN 1 ELSE 0 END AS kept, amounts
-    FROM marked WHERE is_read AND branch NOT IN (SELECT branch FROM fanned)
-    UNION ALL
-    SELECT branch, rid, any_value(period), count(*), count(*) FILTER (WHERE step IS NULL), any_value(amounts)
-    FROM marked WHERE is_read AND branch IN (SELECT branch FROM fanned) GROUP BY branch, rid),
-  counted AS (
-    SELECT coalesce(r.branch, s.branch) AS branch, coalesce(r.period, s.period) AS period, coalesce(r.read, 0) AS read,
-           coalesce(r.partners, 0) AS partners, coalesce(r.kept, 0) AS kept, coalesce(s.reached, 0) AS reached
-    FROM (SELECT p.branch, CASE WHEN b.dated THEN p.period END AS period, count(*) AS read, sum(p.partners) AS partners,
-                 sum(p.kept) AS kept
-          FROM per_row p JOIN branches b USING (branch) GROUP BY ALL) r
-    FULL JOIN (SELECT m.branch, CASE WHEN b.dated THEN m.period END AS period, count(*) AS reached
-               FROM marked m JOIN branches b USING (branch) WHERE NOT m.is_read GROUP BY ALL) s
-      ON s.branch = r.branch AND s.period IS NOT DISTINCT FROM r.period),
-  dropped AS (
-    SELECT m.branch, CASE WHEN b.dated THEN m.period END AS period, m.step, count(*) AS n
-    FROM marked m JOIN branches b USING (branch) WHERE m.is_read AND m.step IS NOT NULL GROUP BY ALL),
-  numbered AS (SELECT col, pos, row_number() OVER (ORDER BY pos) AS i FROM measures),
-  served_sums AS (
-    SELECT m.branch, CASE WHEN b.dated THEN m.period END AS period, x.col, sum(m.amounts[x.i]) AS total
-    FROM marked m JOIN branches b USING (branch), numbered x WHERE NOT m.is_read GROUP BY ALL),
-  read_sums AS (
-    SELECT p.branch, CASE WHEN b.dated THEN p.period END AS period, x.col, sum(p.amounts[x.i]) AS total
-    FROM per_row p JOIN branches b USING (branch), numbered x WHERE list_contains(b.alone, x.col) GROUP BY ALL),
-  -- the system of each table the view reads: its system_of_record, else its load's source
+  key AS (
+    SELECT g[i] AS col, i FROM (SELECT from_json(max(value->'grain'), '["VARCHAR"]') AS g FROM entity), unnest(range(1, len(g) + 1)) r(i)),
+  -- the target columns the reconciliation reads: the key's, the period's, each measure's
+  wanted AS (
+    SELECT col, 'key' AS what, i FROM key
+    UNION ALL SELECT col, 'period', 0 FROM period
+    UNION ALL SELECT col, 'measure', pos FROM measures),
+  branches AS (SELECT DISTINCT branch FROM mapping),
+  -- per branch, the table its rows come from: the one table it reads that is joined to nothing before it
+  driving AS (
+    SELECT branch, any_value(table_name) AS table_path, count(DISTINCT table_name) AS tables
+    FROM mapping WHERE table_name IS NOT NULL AND lookup IS NULL GROUP BY branch),
   records AS (
     SELECT asset, value->>'value' AS system FROM annotations('system_of_record', 'its sources')
     WHERE value IS NOT NULL AND state IN ('current', 'stale')),
   systems AS (
-    SELECT r.table_name, coalesce(o.system, r.source) AS system
+    SELECT r.table_name, coalesce(o.system, r.source, split_part(r.table_name, '.', 2)) AS system
     FROM d, unnest(d.reads) t(r) LEFT JOIN records o ON o.asset = r.table_name),
-  -- the relationship a join follows: each of its columns among those the join equates, the one with
-  -- the most columns where several are (a key of several columns over one of its columns)
-  coherence AS (
-    SELECT c.asset AS relationship, any_value(c.value) AS value,
-           list(regexp_extract(e.side, '^([^.]+\.[^.]+)\.', 1) || '.' || trim(k.name)) AS endpoints
-    FROM results('relationship_coherence', 'its relationships') c,
-         unnest(regexp_split_to_array(c.asset, ' <?-> ')) e(side),
-         unnest(string_split(trim(regexp_replace(e.side, '^[^.]+\.[^.]+\.', ''), '()'), ',')) k(name)
-    WHERE c.value IS NOT NULL GROUP BY c.asset),
+  -- a column each branch serves as one literal, a different one per branch: it names the row's system
+  constants AS (
+    SELECT col, branch, CASE WHEN starts_with(any_value(literals[1]), '''') THEN replace(any_value(literals[1])[2:-2], '''''', '''')
+                             ELSE any_value(literals[1]) END AS value
+    FROM mapping GROUP BY col, branch
+    HAVING count(*) = 1 AND bool_and(table_name IS NULL AND len(literals) = 1 AND derivation = literals[1])),
+  system_column AS (
+    SELECT k.col FROM constants k JOIN cols c USING (col) GROUP BY k.col, c.pos
+    HAVING count(DISTINCT k.branch) = (SELECT count(*) FROM branches) AND count(DISTINCT k.value) = count(*)
+    ORDER BY c.pos LIMIT 1),
+  -- the target columns each branch copies from a column of its source table, as it is or cast
+  copies AS (
+    SELECT m.branch, m.col, any_value(m.table_column) AS source_column
+    FROM mapping m JOIN driving v ON v.branch = m.branch AND v.tables = 1
+    GROUP BY m.branch, m.col
+    HAVING count(*) = 1 AND any_value(m.table_name) = any_value(v.table_path)
+       AND regexp_extract(any_value(m.derivation),
+             '^(?:cast\()?([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):[A-Z][A-Z0-9_ ]*(?:\([0-9, ]+\))?(?: as [A-Z][A-Z0-9_ ]*(?:\([0-9, ]+\))?\))?$', 1)
+           = any_value(m.table_name) || '.' || any_value(m.table_column)),
   followed AS (
-    SELECT s.branch, s.step, c.relationship, c.value->'orphan_keys' AS keys, (c.value->>'orphan_distinct')::BIGINT AS distinct_keys
-    FROM steps s JOIN coherence c ON s.kind = 'join' AND list_has_all(s.columns, c.endpoints)
-    QUALIFY row_number() OVER (PARTITION BY s.branch, s.step ORDER BY len(c.endpoints) DESC, c.relationship) = 1),
+    SELECT b.branch, v.table_path, split_part(v.table_path, '.', 2) AS table_name, coalesce(s.system, split_part(v.table_path, '.', 2)) AS system,
+           (SELECT k.value FROM constants k WHERE k.branch = b.branch AND k.col = (SELECT col FROM system_column)) AS served_as,
+           EXISTS (SELECT 1 FROM period p JOIN copies c ON c.col = p.col AND c.branch = b.branch) AS dated,
+           EXISTS (SELECT 1 FROM key) AND NOT EXISTS (SELECT 1 FROM key k WHERE k.col NOT IN (SELECT col FROM copies c WHERE c.branch = b.branch)) AS keyed
+    FROM branches b JOIN driving v ON v.branch = b.branch AND v.tables = 1 LEFT JOIN systems s ON s.table_name = v.table_path),
+  sorted AS (
+    SELECT (SELECT count(*) FROM branches) = 1 OR EXISTS (SELECT 1 FROM system_column) AS sorted),
+  scells AS MATERIALIZED (
+    SELECT "table" AS t, "column" AS col, rn, val FROM dataset_cells(split_part($subject, '.', 1), 'its sources')
+    WHERE "table" IN (SELECT table_name FROM followed)),
+  tcells AS MATERIALIZED (SELECT "column" AS col, rn, val FROM dataset_cells($subject, true)),
+  -- each served row's branch: the one branch, else the branch whose literal it serves
+  served AS (
+    SELECT DISTINCT c.rn, f.branch FROM tcells c, followed f
+    WHERE (SELECT count(*) FROM branches) = 1
+    UNION ALL
+    SELECT c.rn, f.branch FROM tcells c JOIN followed f ON f.served_as = c.val
+    WHERE (SELECT count(*) FROM branches) > 1 AND c.col = (SELECT col FROM system_column)),
+  rowset AS (
+    SELECT 'target' AS side, branch, rn FROM served
+    UNION ALL SELECT DISTINCT 'source', f.branch, c.rn FROM scells c JOIN followed f ON f.table_name = c.t),
+  vals AS (
+    SELECT 'target' AS side, s.branch, s.rn, w.what, w.col, w.i, c.val FROM tcells c JOIN served s USING (rn) JOIN wanted w ON w.col = c.col
+    UNION ALL
+    SELECT 'source', f.branch, c.rn, w.what, w.col, w.i, c.val
+    FROM scells c JOIN followed f ON f.table_name = c.t JOIN copies p ON p.branch = f.branch AND p.source_column = c.col
+    JOIN wanted w ON w.col = p.col),
+  per_row AS MATERIALIZED (
+    SELECT r.side, r.branch, r.rn,
+           CASE WHEN f.dated THEN main.reconciliation_period(max(x.val) FILTER (WHERE x.what = 'period'), (SELECT max(floor) FROM period)) END AS period,
+           CASE WHEN f.keyed THEN list(main.reconciliation_value(x.val) ORDER BY x.i) FILTER (WHERE x.what = 'key') END AS key,
+           CASE WHEN f.keyed THEN array_to_string(list(coalesce(x.val, 'NULL') ORDER BY x.i) FILTER (WHERE x.what = 'key'), ', ') END AS shown
+    FROM rowset r JOIN followed f USING (branch)
+    LEFT JOIN vals x ON x.side = r.side AND x.branch = r.branch AND x.rn = r.rn
+    GROUP BY r.side, r.branch, r.rn, f.dated, f.keyed),
+  missing AS (
+    SELECT s.branch, s.period, s.shown FROM (SELECT * FROM per_row WHERE side = 'source' AND key IS NOT NULL) s
+    ANTI JOIN (SELECT * FROM per_row WHERE side = 'target') t ON t.branch = s.branch AND t.key = s.key),
+  missed AS (
+    SELECT branch, period, count(*) AS rows, count(DISTINCT shown) AS keys, list(DISTINCT shown ORDER BY shown)[1:10] AS shown
+    FROM missing GROUP BY ALL),
+  counted AS (
+    SELECT branch, period, count(*) FILTER (WHERE side = 'source') AS source_rows, count(*) FILTER (WHERE side = 'target') AS target_rows
+    FROM per_row GROUP BY ALL),
+  sums AS (
+    SELECT p.side, p.branch, p.period, x.col, sum(try_cast(x.val AS DOUBLE)) AS total
+    FROM per_row p JOIN vals x ON x.side = p.side AND x.branch = p.branch AND x.rn = p.rn AND x.what = 'measure' GROUP BY ALL),
   out AS (
-    SELECT y.system, c.branch, b.table_name, c.period, c.read,
-           coalesce((SELECT list({'condition': s.text, 'rows': x.n} ORDER BY s.step) FROM dropped x JOIN steps s USING (branch, step)
-                     WHERE x.branch = c.branch AND x.period IS NOT DISTINCT FROM c.period AND s.kind = 'condition'), []) AS filtered,
-           coalesce((SELECT list({'join': s.text, 'rows': x.n, 'relationship': f.relationship,
-                                  'keys': from_json(f.keys, '[{"key": "VARCHAR", "rows": "BIGINT"}]'), 'distinct_keys': f.distinct_keys} ORDER BY s.step)
-                     FROM dropped x JOIN steps s USING (branch, step) LEFT JOIN followed f USING (branch, step)
-                     WHERE x.branch = c.branch AND x.period IS NOT DISTINCT FROM c.period AND s.kind = 'join'), []) AS unmatched,
-           c.partners - c.read AS repeated, c.reached, CASE WHEN b.untold IS NULL AND b.table_name IS NOT NULL THEN c.kept - c.reached END AS vanished,
-           b.untold IS NULL AS told, b.untold AS not_told,
-           (SELECT list({'column': x.col, 'target': coalesce(t.total, 0.0), 'source': r.total} ORDER BY x.pos)
-            FROM measures x LEFT JOIN served_sums t ON t.branch = c.branch AND t.period IS NOT DISTINCT FROM c.period AND t.col = x.col
-            LEFT JOIN read_sums r ON r.branch = c.branch AND r.period IS NOT DISTINCT FROM c.period AND r.col = x.col) AS measures
-    FROM counted c JOIN branches b USING (branch) LEFT JOIN systems y ON y.table_name = b.table_path),
+    SELECT f.system, c.branch, f.table_name, c.period, c.source_rows, c.target_rows,
+           greatest(c.source_rows - c.target_rows, coalesce(m.rows, 0), 0) AS missing_rows,
+           CASE WHEN f.keyed THEN coalesce(m.keys, 0) END AS missing_key_count,
+           CASE WHEN f.keyed THEN coalesce(m.shown, []) END AS missing_keys,
+           (SELECT list({'column': x.col, 'source': s.total, 'target': coalesce(t.total, 0.0)} ORDER BY x.pos)
+            FROM measures x
+            LEFT JOIN sums s ON s.side = 'source' AND s.branch = c.branch AND s.period IS NOT DISTINCT FROM c.period AND s.col = x.col
+            LEFT JOIN sums t ON t.side = 'target' AND t.branch = c.branch AND t.period IS NOT DISTINCT FROM c.period AND t.col = x.col) AS measures
+    FROM counted c JOIN followed f USING (branch)
+    LEFT JOIN missed m ON m.branch = c.branch AND m.period IS NOT DISTINCT FROM c.period),
+  -- what is not reconciled, and why
+  notes AS (
+    SELECT 1 AS o, 'no grain is stated on ' || $subject || ': the missing keys are not listed; state it, '
+                   || main.gloss_statement('entity', $subject, '{"value": "<what one row is>", "grain": ["<key column>"]}') AS note
+    WHERE NOT EXISTS (SELECT 1 FROM key)
+    UNION ALL
+    SELECT 2, 'no column carries role timestamp: the rows are counted over every period; annotate the period column, '
+              || main.gloss_statement('role', $subject || '.<column>', '{"value": "timestamp"}')
+    WHERE NOT EXISTS (SELECT 1 FROM period)
+    UNION ALL
+    SELECT 3, 'branch ' || b.branch || ' reads ' || CASE WHEN v.branch IS NULL THEN 'no table' ELSE v.tables || ' tables' END
+              || ' joined to nothing before it, so it has no one source table: its rows are not reconciled'
+    FROM branches b LEFT JOIN driving v USING (branch) WHERE v.branch IS NULL OR v.tables <> 1
+    UNION ALL
+    SELECT 4, f.system || ': ' || string_agg(k.col, ', ' ORDER BY k.i) || CASE WHEN count(*) = 1 THEN ' is' ELSE ' are' END || ' not copied from a column of ' || f.table_name || ': its missing keys are not listed'
+    FROM followed f, key k WHERE NOT f.keyed AND k.col NOT IN (SELECT col FROM copies c WHERE c.branch = f.branch) GROUP BY f.system, f.table_name
+    UNION ALL
+    SELECT 5, f.system || ': ' || p.col || ' is not copied from a column of ' || f.table_name || ': its rows are counted over every period'
+    FROM followed f, period p WHERE NOT f.dated
+    UNION ALL
+    SELECT 6, f.system || ': ' || x.col || ' is not copied from a column of ' || f.table_name || ': it has no sum at the source'
+    FROM followed f, measures x WHERE x.col NOT IN (SELECT col FROM copies c WHERE c.branch = f.branch)),
   state AS (
-    SELECT EXISTS (SELECT 1 FROM out) AS rows_read,
-           (SELECT string_agg(DISTINCT 'branch ' || branch || ' (' || coalesce(system, table_name, 'no table') || '): ' || not_told, '; ')
-            FROM out WHERE NOT told) AS untold,
-           (SELECT bool_or(c.derivation IS NOT NULL) FROM d, unnest(d.columns) t(c)) IS TRUE AS plans)
-  SELECT state.rows_read AND state.untold IS NULL AS applicable,
+    SELECT (SELECT bool_or(c.derivation IS NOT NULL) FROM d, unnest(d.columns) t(c)) IS TRUE AS plans,
+           EXISTS (SELECT 1 FROM followed) AS rows_read, (SELECT sorted FROM sorted) AS sorted,
+           (SELECT sum(missing_rows) FROM out) AS missing_rows, (SELECT sum(source_rows) FROM out) AS source_rows,
+           (SELECT redefine_statement(view) FROM d) AS redefine),
+  rate AS (
+    SELECT CASE WHEN plans AND rows_read AND sorted THEN least(1.0, coalesce(missing_rows, 0) / greatest(coalesce(source_rows, 0), 1)::DOUBLE) END AS rate
+    FROM state),
+  -- the statement that lists the source rows whose key the view does not serve, per source table
+  listing AS (
+    SELECT string_agg('SELECT * FROM ' || split_part($subject, '.', 1) || '.' || t.table_name || ' WHERE '
+                      || (SELECT CASE WHEN count(*) = 1 THEN any_value(c) ELSE 'concat_ws('', '', ' || string_agg(c, ', ' ORDER BY i) || ')' END
+                          FROM (SELECT k.i, 'CAST(' || CASE WHEN regexp_full_match(c.source_column, '[a-z_][a-z0-9_]*') THEN c.source_column
+                                                            ELSE '"' || replace(c.source_column, '"', '""') || '"' END || ' AS VARCHAR)' AS c
+                                FROM key k JOIN copies c ON c.col = k.col AND c.branch = t.branch))
+                      || ' IN (' ||(SELECT string_agg('''' || replace(s, '''', '''''') || '''', ', ' ORDER BY s) FROM unnest(t.keys) u(s)) || ');',
+                      chr(10) ORDER BY t.system) AS statements
+    FROM (SELECT o.system, o.branch, o.table_name, list(DISTINCT k ORDER BY k)[1:10] AS keys
+          FROM out o, unnest(o.missing_keys) u(k) GROUP BY ALL) t)
+  SELECT state.plans AND state.rows_read AND state.sorted AS applicable,
          CASE WHEN NOT state.plans THEN 'its definition does not plan'
-              WHEN NOT state.rows_read THEN 'the view reads no loaded table'
-              WHEN state.untold IS NOT NULL THEN 'a step the reconciliation does not follow: ' || state.untold END AS reason,
-         (SELECT col FROM period) AS period_column,
-         (SELECT list({'system': system, 'branch': branch, 'table': table_name, 'period': period, 'read': read,
-                       'filtered': filtered, 'unmatched': unmatched, 'repeated': repeated, 'reached': reached,
-                       'vanished': vanished, 'told': told, 'not_told': not_told, 'measures': measures}
-                      ORDER BY system, period, branch) FROM out) AS rows
-  FROM state
+              WHEN NOT state.rows_read THEN 'no branch of the view reads one source table its rows come from'
+              WHEN NOT state.sorted THEN 'no column of the view names the system each row comes from' END AS reason,
+         rate.rate AS breach_rate,
+         (SELECT col FROM period) AS period_column, (SELECT col FROM system_column) AS system_column,
+         (SELECT list(col ORDER BY i) FROM key) AS key,
+         CASE WHEN state.sorted THEN (SELECT list({'system': system, 'branch': branch, 'table': table_name, 'period': period,
+                                                  'source_rows': source_rows, 'target_rows': target_rows, 'missing_rows': missing_rows,
+                                                  'missing_keys': missing_keys, 'missing_key_count': missing_key_count, 'measures': measures}
+                                                 ORDER BY system, period, branch) FROM out) END AS rows,
+         (SELECT list(note ORDER BY o, note) FROM notes) AS notes,
+         CASE WHEN rate.rate > 0
+              THEN split_part($subject, '.', 2) || ' does not serve every source row: '
+                   || (SELECT string_agg(system || ' ' || missing || ' of ' || source || CASE WHEN source = 1 THEN ' row' ELSE ' rows' END
+                                         || coalesce(' (' || periods || ')', '') || coalesce(', keys ' || keys, ''), '; ' ORDER BY system)
+                       FROM (SELECT system, sum(missing_rows) AS missing, sum(source_rows) AS source,
+                                    string_agg(CASE WHEN missing_rows > 0 AND period IS NOT NULL
+                                                    THEN period || ': ' || target_rows || ' of ' || source_rows END, ', ' ORDER BY period) AS periods,
+                                    nullif(array_to_string(list_sort(flatten(list(missing_keys)))[1:10], ', '), '') AS keys
+                             FROM out GROUP BY system HAVING sum(missing_rows) > 0))
+              WHEN NOT state.sorted THEN 'no column of ' || split_part($subject, '.', 2) || ' names the system each row comes from' END AS finding,
+         CASE WHEN rate.rate > 0 THEN concat_ws(chr(10),
+                '-- the source rows whose key the view does not serve, the first ten per table:',
+                (SELECT statements FROM listing),
+                '-- fix the load query or the definition so that every source row arrives (a join that finds no partner, a condition), then record the definition again:',
+                state.redefine,
+                '-- where a person accepts the rows as they are, record the rate with their reason:',
+                '-- ' || main.gloss_statement('reconciliation', $subject,
+                         '{"tolerance": ' || ceil(rate.rate * 1000) / 1000 || ', "basis": "<who accepted the rows and why>"}'))
+              WHEN state.plans AND state.rows_read AND NOT state.sorted THEN concat_ws(chr(10),
+                '-- serve a column that names each row''s system, a literal in each branch (''<system>'' AS source_system), then record the definition again:',
+                state.redefine) END AS fix
+  FROM state, rate
 $$ RETURNS reconciliation;
+
+DECLARE TEST reconciliation_test ON reconciliation BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;

@@ -504,9 +504,7 @@ WHERE m.view IN (SELECT view FROM views);
 -- it expects on every metric, `x-subject: table` one it expects on every
 -- loaded table (grain_check); `x-set-by: <property>` beside any one
 -- it expects only where the view or one of its columns carries an
--- annotation of that property (a property no test reads, so marked, is a
--- result the server computes there: results_due() in the goals kit); the
--- server runs each itself after a call that defined the view, annotated
+-- annotation of that property; the server runs each itself after a call that defined the view, annotated
 -- what the check reads or loaded a table it scans. Each body reads the catalog through the read functions
 -- of the lineage kit alone (annotations(), results(), definition()).
 --

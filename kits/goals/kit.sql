@@ -21,10 +21,7 @@
 -- reads); the profile of each column a view scans, which load_changes()
 -- compares to say what a load changed under the view (the cause `next`
 -- names); and the measurement a metric's row names as not run (the grain
--- of its period column); and a result no test reads whose property marks
--- it `x-subject: view` and `x-set-by: <property>`, on each view that
--- carries an annotation of that property (server_results()), with the
--- results its body reads before it; then (ord 3) each test's result on
+-- of its period column); then (ord 3) each test's result on
 -- each subject that holds a value of its property, or will once a result
 -- due before it in the round is computed, where none is stored, the
 -- stored one is out of date, or its subject holds no value any more:
@@ -32,42 +29,19 @@
 -- all. The server computes these after each write, a statement once. Any other result about the dataset or a view (a kit's function an
 -- actor runs) is the actor's to compute: once it is out of date, `next`
 -- lists it with its statement.
---
--- server_results(): those results of a property no test reads, (function,
--- aspect, subject), the server's to compute
 --===------------------------------------------------------------------===--
-CREATE OR REPLACE MACRO main.server_results() AS TABLE
-WITH fns AS (
-  SELECT name, returns FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
-marked AS (
-  SELECT f.name AS function, f.returns AS aspect, json_extract_string(a.schema, '$.x-set-by') AS set_by
-  FROM fns f JOIN main.aspects a ON a.name = f.returns
-  WHERE json_extract_string(a.schema, '$.x-subject') = 'view' AND json_extract_string(a.schema, '$.x-set-by') IS NOT NULL
-    AND f.returns NOT IN (SELECT aspect FROM main.tests))
-SELECT DISTINCT m.function, m.aspect, current_schema() || '.' || split_part(g.subject, '.', 2) AS subject
-FROM marked m JOIN main.glossary g ON g.aspect = m.set_by
-WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
-  AND split_part(g.subject, '.', 2) IN (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW');
-
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
 WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
 fns AS MATERIALIZED (
   SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- the check that measures a test's property, as view_tests() names it
 checks AS (SELECT returns AS aspect, min(name) AS name FROM fns WHERE returns IS NOT NULL GROUP BY returns),
-served AS MATERIALIZED (FROM main.server_results()),
--- the results each check reads, by the place its body names, and those each result the server
--- computes with no test reads
+-- the results each check reads, by the place its body names
 wants AS (
   SELECT DISTINCT t.subject, r.what AS function, r."where"
   FROM tests t JOIN checks c ON c.aspect = t.aspect JOIN fns f ON f.name = c.name,
        unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
-  WHERE t.run <> '' AND r.kind = 'read' AND r.read = 'results'
-  UNION
-  SELECT DISTINCT v.subject, r.what, r."where"
-  FROM served v JOIN fns f ON f.name = v.function,
-       unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR"}]')) u(r)
-  WHERE r.kind = 'read' AND r.read = 'results'),
+  WHERE t.run <> '' AND r.kind = 'read' AND r.read = 'results'),
 anchored AS (SELECT p."where" FROM (SELECT unnest(main.place_list()) AS p) WHERE p.anchored),
 places AS MATERIALIZED (FROM main.places(current_schema()) WHERE "where" IN (SELECT "where" FROM wants)),
 wanted AS (
@@ -118,11 +92,7 @@ due AS (
   UNION
   SELECT 2, t.aspect, t.aspect, t.subject, t.run
   FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
-  WHERE t.run <> '' AND NOT coalesce(s.current, false)
-  UNION
-  SELECT 2, v.function, v.aspect, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
-  FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
-  WHERE NOT coalesce(s.current, false)),
+  WHERE t.run <> '' AND NOT coalesce(s.current, false)),
 -- a subject whose value is due before the test holds it once that runs: the test runs after it in the
 -- same round, so a value computed for the first time is judged without a round of its own
 judged AS (
@@ -715,7 +685,6 @@ CREATE OR REPLACE VIEW main.next AS
             AND (u.subject = current_schema() OR v.view IS NOT NULL
                  OR u.subject IN (SELECT asset FROM glossql_kind_assets(current_schema())))
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
-            AND {'function': u.function, 'subject': u.subject} NOT IN (SELECT {'function': function, 'subject': subject} FROM main.server_results())
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_joins

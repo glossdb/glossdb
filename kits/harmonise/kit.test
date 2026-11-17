@@ -694,7 +694,7 @@ contract_test	green	0.0
 
 # the yellow code_test has nothing to check: its result is current and brings no fix, so it is no row of next
 query I
-SELECT count(*) FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'test' AND state = 'yellow';
+SELECT count(*) FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'test' AND state = 'yellow' AND open LIKE 'code_test%';
 ----
 0
 

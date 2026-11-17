@@ -62,31 +62,33 @@ Declare one relationship per join a branch makes between two loaded
 tables: `next` lists each join with none, with the statement. The
 server checks each against the data (`relationship_coherence`) and
 names the codes that find no mapping row, with their rows, in the
-view's `orphan_test` and in the reconciliation. A relationship on the
+view's `orphan_test`. A relationship on the
 local code alone holds where the systems' codes do not collide; say
 so in its `meaning`.
 
 ## 4. Define the target, one branch per system
 
 A table view (`x-kind: relation`) with one `SELECT` per system,
-joined by `UNION ALL`. Each branch reads its system's table first,
-joins the mapping tables, and names every code it maps:
+joined by `UNION ALL`. Each branch names its system, reads its
+system's table first, joins the mapping tables, and names every code
+it maps:
 
 ```glossql
 DECLARE ASPECT onhand WITH $${"title": "Stock on hand", "x-kind": "relation"}$$ AS VIEW;
-GLOSS onhand ON supply AS $${"sql": "SELECT i.global_material AS part, s.site, CASE s.uom WHEN 'PAL' THEN s.unrestricted * u.cases_per_pallet WHEN 'CS' THEN s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT i.global_material, d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet WHEN 'Cs' THEN d.physical - d.reserved END FROM stock_d365 d JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT i.global_material, m.warehouse, CASE m.unit WHEN 'pal' THEN m.quantity * u.cases_per_pallet WHEN 'kart' THEN m.quantity END FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D'"}$$;
+GLOSS onhand ON supply AS $${"sql": "SELECT 'sap' AS source_system, i.global_material AS part, s.site, CASE s.uom WHEN 'PAL' THEN s.unrestricted * u.cases_per_pallet WHEN 'CS' THEN s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'd365', i.global_material, d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet WHEN 'Cs' THEN d.physical - d.reserved END FROM stock_d365 d JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'mono', i.global_material, m.warehouse, CASE m.unit WHEN 'pal' THEN m.quantity * u.cases_per_pallet WHEN 'kart' THEN m.quantity END FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D'"}$$;
 ```
 
 - **Name each code, with no `ELSE`.** A code the `CASE` does not name
   is then NULL, and the server lists it. An `ELSE` hides it.
-- **No literal for the system.** The server knows each table's
-  system; the mapping and the reconciliation group by it.
-- **Keep each branch to joins and conditions.** The reconciliation
-  follows inner, left and right joins written with `ON`, and `WHERE`
-  conditions, also inside a subquery or a CTE a branch reads. It does
-  not follow `GROUP BY`, `DISTINCT`, `LIMIT`, `USING` or `NATURAL`
-  joins, a `QUALIFY` after a join, or a query around the union: the
-  result reads "not applicable" with the step.
+- **Name the system as a literal, once per branch.** `'sap' AS
+  source_system`: the reconciliation counts the target's rows per
+  system by it. The mapping knows each table's system without it.
+- **Read the system's table first, and copy what you can.** The
+  reconciliation holds the first table of each branch against the
+  target. It reads the key, the period and each measure at the source
+  where the branch copies the column from that table, as it is or
+  cast. A key looked up in a mapping table, or a period the branch
+  computes, is named in its `notes`: the rows are still counted.
 - **One row per key.** Where a system sends a key twice, keep one in
   a subquery over its table, before the joins, and state the choice
   as an assumption (step 7):
@@ -111,11 +113,12 @@ GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 ```
 
 From the first `contract`, the server runs `contract_test` (key,
-required values, allowed values, types) and `code_test` (every code
-reaches a named branch of the `CASE`) after each write, and computes
-the reconciliation. `next` asks for a contract on each other column.
-A column with role `measure` is summed per system in the
-reconciliation, per period where the `entity` names a `time_axis`.
+required values, allowed values, types), `code_test` (every code
+reaches a named branch of the `CASE`) and `reconciliation_test`
+(every source row arrives) after each write. `next` asks for a
+contract on each other column. A column with role `measure` is summed
+per system in the reconciliation, per period where the `entity` names
+a `time_axis`.
 Where the systems share no key, build it per branch from each
 system's own key columns (`'f1_steam_' || o.report_year || '_' ||
 o.respondent_id`) and make that column the grain.
@@ -155,6 +158,7 @@ A `must` here is served data that is wrong:
 | `code_test`: a column gets codes its expression does not name, per system, with rows (`'Pal' 1 row`) | naming the code in the `CASE` (`WHEN 'Pal' THEN …`) and defining the view again |
 | `orphan_test`: keys that find no parent, with their rows (`X9: 1 row`) | the code in the mapping table at its source, then `IMPORT model_identities;`. Adding the row is the mapping owner's work: ask the person |
 | `contract_test`: the key repeats, a required value is empty, a value is not allowed | the cause, in the load query or the definition. An empty value is often an unnamed code: close `code_test` first |
+| `reconciliation_test`: source rows that do not arrive, per system and period, with their keys (`north 2 of 6 rows, keys N-3, N-6`) | running the statement in the fix that lists those rows at the source, finding why each is left out (a join with no partner, a condition), and fixing the definition. Rows left out on purpose (a blocked status) are the person's to accept with a tolerance |
 | a keyed load missed keys, and the source is stated `full` | the load query declared again without the key |
 
 A `should` is the layer incomplete: a column with no `contract`,
@@ -177,19 +181,16 @@ yellow and is no row of `next`.
 The server computes it after each load. Read it per system:
 
 ```sql
-SELECT r->>'system' AS system, r->>'period' AS period, r->'read' AS read, r->'filtered' AS filtered, r->'unmatched' AS unmatched, r->'reached' AS reached, r->'vanished' AS vanished, r->'measures' AS measures FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
+SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
 ```
 
 Per system (and per period, where the view has a `time_axis`): the
-rows read from the table that drives the branch, the rows each
-condition left out, the rows each join found no partner for with the
-keys, the rows a join repeated, the rows that reached the target, and
-per measure the `target` sum. Where the measure comes from the
-system's table alone, `source` is the sum over every row read, to
-hold against the system's own report; a left-out row or an older
-filing of the same year is the difference. Tell the person, per system: rows in, rows
-out, and each difference with its reason and keys, such as "Poland:
-4 rows read, 1 left out by status K (blocked), 1 with code X9 that
-has no identity, 2 in the target". A `vanished` above 0 is rows no step
-explains: report it as a finding. `applicable: false` names the step
-the reconciliation does not follow.
+rows of the system's table and the rows the target serves from it,
+the keys at the source the target does not serve, and per measure the
+`source` and the `target` sum, to hold against the system's own
+report. A period with source rows and no target rows is a period the
+target is short of. Tell the person, per system: rows in, rows out,
+and each missing key with its reason from the source row, such as
+"Poland: 4 rows at the source, 2 in the target; X9 has no identity,
+P300 is blocked". `notes` names what the result cannot hold against
+the source, and why.
