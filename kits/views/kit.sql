@@ -87,6 +87,11 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- its floor the grain its rows are booked against where the declaration
 -- says so (x-covers); nothing is annotated on a plan's own columns.
 --
+-- view_kinds(): view, kind and stopped alone, from each view's newest
+-- definition, for a read that needs no more of the summary than which
+-- views there are (view_tests(), fact_values(), column_mapping());
+-- view_summary() reads its rows from it.
+--
 -- view_axes(): what a function's body reads of the same, through the read
 -- functions alone (the lineage kit's), on the subject's dataset: one row
 -- per served view — view, kind, plan_of, covers, stopped, applicable,
@@ -130,17 +135,19 @@ CREATE OR REPLACE MACRO main.plan_reason(stopped, plan_of, of_declared, served, 
        WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
   END;
 
+CREATE OR REPLACE MACRO main.view_kinds() AS TABLE
+SELECT g.aspect AS view, json_extract_string(a.schema, '$.x-kind') AS kind, json_extract_string(g.body, '$.stopped') AS stopped
+FROM main.glossary g JOIN main.aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
+WHERE g.dataset = current_schema() AND g.subject = current_schema()
+QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1;
+
 CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
   SELECT DISTINCT c.table_name AS view FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
-bodies AS (
-  SELECT aspect AS view, body FROM (
-    SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) AS rn
-    FROM main.glossary g, ds
-    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
+bodies AS (SELECT view, stopped FROM main.view_kinds()),
 cols AS (
   SELECT c.table_name AS view, c.column_name AS col, c.ordinal_position AS pos
   FROM glossql_columns(current_schema()) c
@@ -204,7 +211,7 @@ rows_ AS (
          json_extract_string(a.schema, '$.x-kind') AS kind,
          json_extract_string(a.schema, '$.x-plan-of') AS plan_of,
          json_extract_string(a.schema, '$.x-covers') AS covers,
-         json_extract_string(b.body, '$.stopped') AS stopped,
+         b.stopped,
          ch.period_column, ch.value_column, ch.period_cols, ch.measure_cols, ch.served,
          bh.additivity, bh.numerator, bh.denominator, coalesce(bh.additivity_state, 'none') AS additivity_state,
          pr.grain_detected, coalesce(pr.profile_current, false) AS profile_current,
@@ -556,7 +563,7 @@ ORDER BY metric, dimension, member, period;
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
-WITH facts AS (SELECT view AS metric, stopped FROM main.view_summary() WHERE kind = 'scalar'),
+WITH facts AS (SELECT view AS metric, stopped FROM main.view_kinds() WHERE kind = 'scalar'),
 cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
@@ -593,7 +600,7 @@ ORDER BY f.metric;
 
 CREATE OR REPLACE MACRO main.column_mapping(for_view := NULL) AS TABLE
 WITH views AS (
-  SELECT m.view FROM main.view_summary() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
+  SELECT m.view FROM main.view_kinds() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
 -- a table's system of record, where an annotation names one, else its load's source
 stated AS (
   SELECT subject AS t, value->>'value' AS system FROM glossql_glossary(current_schema(), 'system_of_record', false)
@@ -1098,7 +1105,7 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
-WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
+WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_kinds()),
 -- every served view, a metric, a table and a single value alike: a plan
 -- is compared with the metric it plans and a sample is a planner's
 -- frame, so neither has the views' tests
