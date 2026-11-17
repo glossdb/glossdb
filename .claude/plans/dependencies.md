@@ -34,100 +34,72 @@ asks for alone.
 
 | Part | State |
 |---|---|
-| The snapshot is the version: a result stores the snapshot it read at and the snapshot its value changed at; `inputs` is one row per node read; no digest | built (step 1). The nodes: the extension's `docs/specification/tables/inputs.md` |
-| A write of what the catalog holds writes nothing: an annotation, a kit's macro or view, a replace load of the same columns | built |
-| The check asked on demand: `glossql_outdated()` checks every result, a result's current mark checks that result and what it read; nothing kept | built (step 2, first half) |
-| A view's lineage is a stored result, `lineage` on the view: stored in the write that defines it, with the nodes its planning read and its `reads` edges (`edges`); out of date like any result and computed first by `results_due()`; the lineage, the places, `place_nodes` and `definition()` read those rows, a place walked over a view records its `result lineage` | built (step 2b, lineage half). Kept per catalog version, and the view's rows kept per snapshot, are gone |
-| A result has an id of its own (`measurements.id`), which its `inputs` and `edges` rows carry: one write may store several results | built (step 2b, test half) |
-| A test's result is a stored result per (subject, test): `SELECT <test>() FROM <subject>` computes, in one write, each subject at or under the subject that holds a value of the test's property where the stored result is missing or not current, with the nodes it read (the subject's `annotation` and `value` of the property, its `definition`, `property`, the detector's `function`), and retires the results on subjects that hold none; `results_due()` lists it at ord 3 and the server runs one statement per test | built (step 2b, test half) |
-| A detector that compares the subjects it runs over is refused at `DECLARE TEST` (`cross_subject`): a window not partitioned by subject, an aggregate over the values not grouped by subject, a join of two reads of the values not matched on subject. No shipped test is cross-subject | built |
-| `GLOSSARY()` and `TESTS()` read stored rows; each read's rows are computed on the second connection when the statement runs, once per statement, the marks planned there; `view_summary()` and `view_tests()` are reads; `glossql_cached` and `glossql_kept` are gone | built (step 2b, test half) |
-| An annotation is stale once its subject's `definition` node changed after it was written: a table column's own rows, a view column's view row, a view's definition; a table's row, its columns' rows ended and a load that derived a column it held otherwise. A load whose columns differ alters the table in place: a column kept under its name and type keeps its rows and its annotations, a column added leaves the table's annotation current; a table of one column retyped is made again, as the lake keeps one column at least; a type changed and changed back stays stale | built; the old rule compared types and loads |
-| A kit's place: planned per read from the kit's macro over edges read from annotations (116 plans of `its metrics` in one scenario estimate) | stands: storing it means storing the kit's edges |
-| A scenario is an asset of the outlook kit's own kind and its estimate runs on it; the range tolerance is annotated on the metric; the plan kit declares the plan's edge and place | built (step 3) |
-| A reader of an out-of-date result is `possibly`: served marked, in `next` only once the result it read changed | built (step 4) |
+| The snapshot is the version: a result stores the snapshot it read at and the snapshot its value changed at; `inputs` is one row per node read (the extension's `docs/specification/tables/inputs.md`); a write of what the catalog holds writes nothing | built |
+| The check on demand (`glossql_outdated()`); a reader of an out-of-date result is `possibly` | built |
+| A function's result, a test's result (per subject and test) and a view's lineage are stored results with an id, their inputs and their edges, brought current by the server after a write. Nothing is kept per snapshot, in the extension or in the server | built |
+| A function declared on columns alone, called on a table or view, computes each column in one write (`completeness_check` per served column) | built |
+| A load whose columns differ alters the table in place; an annotation is stale by the snapshot rule | built |
+| One second connection per statement; a result's inputs and the current check are one query over all due subjects; the empty confirming round after a write is skipped | built |
+| The suites: tests of replaced structures, hand-run test statements, text comparisons and duplicates across layers are deleted; the kit runner brings results current after a write as the server does | cut |
+| Offloaded at the tag `before-cut` (both repositories): the `plan` and `outlook` kits, review by MCP elicitation, `workspace_status`, the `definitions` registry, `branch_rows` | gone from the branch |
 
-## Steps, in order
+## What still has the old shape, largest first
 
 | # | Element | Risk | What it touches | State |
 |---|---|---|---|---|
-| 1 | The snapshot is the version | High | the extension, `SPEC.md` §6 | built |
-| 2a | The check on demand, the kept check gone | Medium | the extension's store | built |
-| 2b | A test's result and a view's lineage are stored results with the nodes they read, brought current like any result; the kept reads go | High: `SPEC.md` §5.3 and §7 said a detector runs at read | the extension (store, lineage), `kits/views`, `kits/goals` | built. A test is treated like a function; a detector that compares the subjects it runs over is refused at `DECLARE TEST` and declared on the containing asset (spike `spikes/stored-tests-and-lineage`) |
-| 3 | What one asks for alone is a node, declared by the kit that brings it: a scenario as a plan is; `metric_scenario` runs on a scenario. The core offers the declaration and names no kit | Medium: `SPEC.md` §4 and §6 | the lineage kit, `kits/outlook`, `kits/plan` | built |
-| 4 | A reader of an out-of-date result is "possibly out of date": served marked, and in `next` once the result it read is computed again and differs | Low | the extension's check, `kits/goals` | built |
-| 5 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
+| 1 | The metric series: a metric's periods and values derived again inside each macro that needs them (`view_axes_of`, `actual_series_of`, `metric_series`, the half of `view_summary` that judges a series). To be one stored result `series` per metric that frames and add-ons read | High | `kits/views`, the console frames | spike first |
+| 2 | The console frames: nine compute the whole dataset's series and filter to one view (the trend frame: 13.6 s on `big`); the person-over-agent collapse repeated in 14 | Medium | `crates/apps` | after 1 |
+| 3 | `dataset_cells`: every cell unpivoted to text, pivoted back by each caller. To be a typed read of the view by name | Medium | the extension, `kits/views`, `kits/harmonise`, the quality kit | open |
+| 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
+| 5 | Review and summary logic in Rust that repeats kit reads; statement splitting and classifying in the server | Medium | `crates/serverd`, `crates/duck` | open |
+| 6 | Three parse-tree walkers beside the bound-plan walk in the extension | Medium | the extension | spike first |
+| 7 | The numeric evidence (stock and flow evidence, the discovery screens): stays. Direction: a kit only the server loads; Rust on Arrow was spiked and does not pay for these (`scratchpad` spike, the Rust replaces only the SQL half) | Low | the quality kit | waits on the project lead |
+| 8 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
-## Left out of these steps, by the project lead
+## Left out, by the project lead
 
-Built first without them; their form is settled once the rest runs.
+- **Removing a function or a macro.** Direction: a removal is soft, and
+  the results computed with it are retired.
+- **Compaction and expiry.** Direction: only what no result references
+  and no audit needs, or an archive, monthly or quarterly.
+- **Kit code outside the lake.** Spiked: the catalog reload after a
+  write drops by about 60%, plan time does not change, and a reader of
+  the lake alone loses `next`. Waits on whether that matters.
 
-- **Removing a function or a macro.** A declaration no kit brings any
-  more is left as it is. Direction: a removal is soft (the row ends,
-  nothing is deleted), and the results computed with it are retired.
-- **Compaction and expiry.** Nothing is compacted or expired. Direction:
-  only what no result references and no audit needs, or an archive:
-  rows that are plainly out of date move out monthly or quarterly.
+## Measured (Formula 1, one MCP call, by the session on its own server)
 
-## Measured
-
-| Workspace | What | Before step 1 | Now |
+| What | Start of the round | Before the cut | Now |
 |---|---|---|---|
-| Formula 1 (34 results) | a write that computes nothing | 0.24 s | 0.21 s; 0.23 s with the lineage stored; 0.31 s with the tests' results stored and the reads kept by none; 0.28 s with the summary planned once per statement |
-| Formula 1 | a table view over three tables | 1.9 s | 1.23 s; 1.43 s with the lineage stored; 1.75 s with the tests' results stored (13 results, 2 of them tests'); 1.60 s with a test listed after its check in the same round |
-| Formula 1 | the same annotation again | | 0.08 s with the lineage stored; 0.15 s with the tests' results stored; 0.04 s once a write that takes no snapshot brings nothing current |
-| `big` (200 tables, 300 views, 5,000 results) | a write that computes nothing | 0.39 s (step 1) | 0.30 s; 0.31 s with the lineage stored (300 of the 5,000 results are lineages); 0.36 s with the tests' results stored (1,621 of 5,042), no result stored and one snapshot per write; 0.34 s with the summary planned once per statement (0.31 s on the build before the test half, same run) |
-| `big` | `glossql_outdated()`, nothing kept | 128 ms (step 1) | 16 to 20 ms; 18 ms with the tests' results stored |
-| `big` | `results_due()` after a write | 499 ms (step 1) | 355 ms (step 2a); 289 ms with the lineage stored, `view_tests` and `view_summary` still computed whole; DuckDB shell, the first read after a write: 182 ms with the lineage stored, 138 ms with the tests' results stored; read again at the same snapshot 45 ms kept, 128 ms not, 117 ms with the summary planned once per statement |
-| `big` | `GLOSSARY(big)` after a write, through MCP | | 0.02 s kept per snapshot; 0.06 s read from stored rows (DuckDB shell: 3 ms kept, 39 ms) |
-| `big` | `next` (DuckDB shell), the first read after a write / again | | 199 ms kept; 170 ms not; 176 / 159 ms with the summary planned once (72 ms again, kept) |
-| `big` | a view's console page (`views?view=v010`), its 7 frames, the first after a write / again | | 15.1 s / 4.0 s kept; 15.3 s / 4.0 s not. The metric's trend frame is 13.6 s of it, before and after |
-| `big` | the dataset's console page, its 3 frames | | 0.23 s kept; 0.51 s not |
-| `big` | a load that adds a column to a table four views read | | 3.3 s: four lineages computed again with the same value, none out of date after |
-| `big` | a view definition | 2.23 s (step 1) | 1.66 s; 1.61 s with its lineage stored in the same write (1.35 to 1.41 s on the same run as below); 1.86 s with the tests' results stored; 1.75 s with a test listed after its check in the same round, one round of `results_due()` fewer (1.40 s on the build before the test half, same run) |
-| `big` | `lineage('big')`, whole / the first read after a view definition | 17 ms / 252 ms (step 2a) | 4 ms / 106 ms, about 80 ms of it the first read of any kind after a write |
-| outlook suite replayed | a computed scenario estimate, per MCP call / its body | 4.0 s / 3.4 s (step 2a) | 3.76 s / 3.35 s |
-| the server's kit suite | `the_kits_suites_pass` | 45 to 48 s (step 2a) | 40 s; 52.5 s with the tests run before each read of their results |
+| a write that computes nothing | 0.24 s | 0.28 s | 0.27 s: one `results_due()` round (87 ms) and `next` (127 ms), mostly planning the kit SQL |
+| a table view over three tables | 1.9 s (10 results) | 2.6 s (28 results) | 1.12 s (28 results); 132 connections and 90 lake transactions, from 513 and 446 |
+| the setup that defines the metrics | | 5.9 s | 2.97 s |
+| the same annotation again | | 0.04 s, `next` kept | 0.17 s, `next` read on each call |
 
-`big` is generated by `gen/gen.py` in the session's scratchpad (about
-20 minutes); it moves into the repository with step 2b's spike.
-
-## Done when, measured on the running server
-
-- One version: no digest, counter or fingerprint decides whether a
-  result is current. Done.
-- An annotation on one metric, a relationship declared after a view's
-  check ran: only what read the changed node is out of date, and
-  `glossql_outdated()` names the node. Done.
-- Declaring a scenario leaves the other scenarios' results current
-  (step 3).
-- On `big`, a write that computes nothing reads no dataset-wide result
-  again (step 2b). Done: after such a write `results_due()` lists
-  nothing, no result is stored and the write takes its own snapshot
-  alone; no detector runs. The reads still mark the stored rows of
-  the dataset, once per statement.
+`big` (200 tables, 300 views, 5,000 results; `gen/gen.py` in the
+session's scratchpad, about 25 minutes) has to be rebuilt on this
+build before it is measured again.
 
 ## How this plan is worked
 
-A step replaces a structure, so its branch may be red until the step
-is whole; the suites hold at merge. The tests of what a step deletes
-are deleted first. `SPEC.md` is edited with the work; `grammar.ebnf`
-needs the project lead's approval first. A change that departs from
-the architecture above stops and is put to the project lead. This file
-keeps the architecture section through every rewrite.
+The tests of what a step changes are deleted first, as a commit of
+their own, so nothing is built towards them. Done-when is the flow
+walked on a running server through MCP: load, describe, define a view,
+read `next`, run the handed statements. New tests come last and few. A
+new structure is spiked standalone first. `SPEC.md` is edited with the
+work; `grammar.ebnf` needs the project lead's approval first. A change
+that departs from the architecture above stops and is put to the
+project lead. This file keeps the architecture section through every
+rewrite.
 
 ## Next issue (draft)
 
-**A read's marks cost each statement.** What it buys: a write that
-computes nothing costs on `big` what it cost before the test half
-(0.31 s against 0.34 s now). What is there: each read is planned and
-run on the second connection once per statement (`glossql_store.cpp`,
-`ReadInit`): `GLOSSARY(big)` 33 ms, of it 6 ms parsing, 6 ms binding
-and 7.5 ms optimising its 25 kB of SQL; `TESTS(big)` 19 ms, 10 of them
-planning. The check's node kinds are not the cost: leaving out the
-kinds no result read (`assets`, `views`, `properties`) saved about 1 ms
-per read, and asking which kinds are read costs 1 ms. `results_due()`
-and the `next:` line each compute the summary, the tests and the check
-again, as two statements of one call; sharing them means reading both
-in one statement, since nothing is kept between statements. Done when:
-the call's reads after a write plan each read once, measured on `big`.
+**The metric series as a stored result.** What it buys: a view's page
+and every read of a metric's series scan stored rows; the macro chain
+that plans the same series several times per statement goes. What is
+there: `view_axes_of`, `actual_series_of`, `metric_series` and
+`view_summary` in `kits/views/kit.sql`; the frames under
+`crates/apps/builtin/console/frames`. Done when, walked on a running
+server: a metric's series is stored when the metric is defined or its
+data loaded, with the nodes it read; the view's page reads it; the
+chain is deleted; the trend frame on `big` answers in well under a
+second.
