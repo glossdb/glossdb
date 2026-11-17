@@ -193,13 +193,12 @@ FROM next WHERE kind = 'describe';
 ----
 1	0
 
-# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view; a view
-# with no formula has none
+# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view
 
-query TTT
-SELECT kind, meaning, formula IS NULL FROM view_definitions WHERE name = 'orders';
+query TT
+SELECT kind, meaning FROM view_definitions WHERE name = 'orders';
 ----
-measure	orders taken per month	true
+measure	orders taken per month
 
 query T
 SELECT kind FROM view_definitions WHERE name = 'order_list';

@@ -24,8 +24,6 @@ written AS (
            WHEN g.aspect = 'review_decision' THEN array_to_string(list_transform(
              from_json(json_extract(g.body, '$.decisions'), '[{"aspect": "VARCHAR", "key": "VARCHAR", "stance": "VARCHAR"}]'),
              lambda x: x.aspect || ' · ' || x.key || ': ' || x.stance), '; ')
-           WHEN g.aspect = 'definitions' THEN 'definitions: '
-             || array_to_string(json_keys(json_extract(g.body, '$.definitions')), ', ')
            ELSE g.aspect || ': ' || coalesce(
              json_extract_string(g.body, '$.value'),
              CASE WHEN json_extract(g.body, '$.sql') IS NOT NULL THEN 'a metric definition' END,

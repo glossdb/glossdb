@@ -1,7 +1,7 @@
 -- One view: the stored definition that serves — the winning
--- value, a human writing over the agent's — with the definitions entry's
--- unit, meaning and formula, the kind, the SQL or the stop, who wrote it
--- and when, and the statement that re-records it.
+-- value, a human writing over the agent's — with its unit and meaning
+-- as view_definitions serves them, the kind, the SQL or the stop, who
+-- wrote it and when, and the statement that re-records it.
 WITH a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
@@ -13,23 +13,18 @@ q AS (
 w AS (
   SELECT * FROM q
   QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
-d AS (
-  SELECT g.body FROM glossary g JOIN current_dataset c ON c.dataset = g.dataset
-  WHERE g.subject = c.dataset AND g.aspect = 'definitions' AND g.actor_kind IN ('human', 'agent')
-  QUALIFY row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) = 1)
+d AS (SELECT name, unit, meaning FROM view_definitions WHERE name = $view)
 SELECT w.aspect,
   coalesce(json_extract_string(a.schema, '$.title'), w.aspect) AS title,
-  coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.unit'), '') AS unit,
-  coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.meaning'),
-           'no meaning written — the definitions registry has no entry for this metric') AS meaning,
+  coalesce(d.unit, '') AS unit,
+  coalesce(nullif(d.meaning, ''), 'no meaning annotated on this view') AS meaning,
   coalesce(json_extract_string(a.schema, '$.x-kind'), '') AS view_kind,
   json_extract_string(w.body, '$.sql') AS sql,
   coalesce(json_extract_string(w.body, '$.stopped'), '') AS stopped,
   concat_ws(' · ',
     coalesce(json_extract_string(a.schema, '$.title'), w.aspect),
     nullif(coalesce(json_extract_string(a.schema, '$.x-kind'), ''), ''),
-    nullif(json_extract_string(d.body, '$.definitions.' || w.aspect || '.unit'), '')) AS meta,
-  coalesce(json_extract_string(d.body, '$.definitions.' || w.aspect || '.formula'), 'no formula written') AS formula,
+    nullif(d.unit, '')) AS meta,
   coalesce(w.actor_id, w.actor_kind) AS actor,
   strftime(w.written_at, '%Y-%m-%d') AS written,
   'GLOSS ' || w.aspect || ' ON ' || (SELECT dataset FROM current_dataset) || ' AS $$' || w.body::VARCHAR || '$$;' AS statement

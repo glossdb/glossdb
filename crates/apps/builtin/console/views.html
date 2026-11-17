@@ -82,13 +82,11 @@
 
   <div{% if kind != "scalar" and kind != "relation" %} class="half"{% endif %}>
   <section class="tile">
-    <header><span class="eyebrow" title="The decided definition: an expression over sibling metrics, with the window w as its only variable. It covers every window, so drilling into this metric recomputes its parts by this formula instead of regrouping its rows.">Definition · {{ view }}</span>
-      <code class="chip">formulas</code></header>
+    <header><span class="eyebrow" title="What the view means, as annotated on it, and what it is.">Definition · {{ view }}</span></header>
     <gl-rows frame="frames/view" empty="no view named {{ view }}">
       <template>
         <div class="rrow" style="grid-template-columns:1fr">
-          <span class="r-subj" style="font-size:1rem">{formula}</span>
-          <span class="r-meta">{meaning}</span>
+          <span class="r-subj" style="font-size:1rem">{meaning}</span>
           <span class="r-meta">{stopped}</span>
           <span class="r-meta">{meta}</span>
         </div>

@@ -10,7 +10,7 @@ reads. It does not add grammar.
 |---|---|---|
 | `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions` |
 | `lineage` | the extension | `lineage(dataset)`, the lineage as one relation; the read functions a function's body reads through: `annotations()`, `results()`, `definition()` |
-| `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`, `definitions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
+| `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
 | `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |

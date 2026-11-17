@@ -36,7 +36,6 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
            WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.basis'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            WHEN 'conventions' THEN array_to_string(json_keys(s.body), ', ')
-           WHEN 'definitions' THEN CAST(len(json_keys(s.body, '$.definitions')) AS VARCHAR) || ' definitions'
            ELSE coalesce(json_extract_string(s.body, '$.value'), substr(s.body::VARCHAR, 1, 200)) END END AS value,
        CASE WHEN st.state = 'missing' THEN ''
             WHEN a.kind = 'measurement' THEN coalesce(f.actor, '')

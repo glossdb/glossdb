@@ -328,7 +328,7 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 |---|---|
 | `next` | what is open on the dataset: `level` (`must`, `should`, `could`), `kind` (the kind of work), the statement that opens it |
 | `view_summary()` | one row per view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
-| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `formula`, `defined`, `stopped` |
+| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
 | `fact_values()` | each single value: `view`, `value`, `reason` |

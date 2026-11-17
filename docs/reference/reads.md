@@ -52,7 +52,7 @@ narrows either to one property.
 | `open_questions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
 | `agent_assumptions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `aspect`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
-| `view_definitions` | dataset | `name`, `title`, `kind`, `unit`, `meaning`, `formula`, `defined`, `stopped` |
+| `view_definitions` | dataset | `name`, `title`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
 | `app_releases` | workspace | `dataset`, `app`, `at`, `note`, `actor_kind`, `released_at` |
@@ -67,8 +67,7 @@ narrows either to one property.
   stopped. `kind` is the declaration's `x-kind`: `relation`, `scalar`,
   `plan`, or `measure` for a metric. `meaning` is the `meaning`
   annotation on the view, `unit` the `unit` of a metric's or a single
-  value's value column. `formula` is the view's formula in the
-  dataset's `definitions` annotation, NULL where there is none.
+  value's value column.
 - `tested_properties()` lists by `name` the properties that exist to
   be tested: an expectation a function measures and a test scores.
   `next` asks for one only on the assets that carry it.
@@ -98,8 +97,8 @@ What each level holds:
 
 - `must`: no table is loaded; no view is defined; a metric serves no
   series; a test is red; two values of one property conflict; a
-  person approved a load query, decided a review question or wrote a
-  formula, and the definition does not carry it yet; a keyed load
+  person approved a load query or decided a review question, and the
+  definition does not carry it yet; a keyed load
   missed keys of a table whose source is stated to send its complete
   state.
 - `should`: a load does not fit what the source likely sends

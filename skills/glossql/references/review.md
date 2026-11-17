@@ -75,13 +75,8 @@ again after the new definition. A test that turns red after a
 decision stays red for the person to see; do not change the
 definition to make it green.
 
-Two more rows carry a person's decision, one of kind `review` and
-one of kind `integrate`:
+One more row carries a person's decision, of kind `integrate`:
 
-- **A person's formula is newer than the definition.** A person wrote
-  a `formula` for the view in the business glossary. Change the SQL
-  to match and record the definition, or state the difference as an
-  assumption.
 - **A change to a load query is approved.** A person approved new
   SQL for a table (`recipe_change`). Declare the load query with it.
 

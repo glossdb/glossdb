@@ -305,7 +305,7 @@ CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
 -- must: served data is wrong or cannot be served. No table is loaded, no
 --   view is defined, a metric serves no series, a test is red, two values
 --   conflict, a person decided something (a load query, a review
---   decision, a formula) that is not carried yet.
+--   decision) that is not carried yet.
 -- should: the layer is incomplete for what is served. An annotation is
 --   missing or outdated on what a view reads or serves, a join a view
 --   makes between two loaded tables has no declared relationship, a test
@@ -347,15 +347,6 @@ CREATE OR REPLACE VIEW main.next AS
     WHERE a.dataset = ds.d AND a.aspect = 'recipe_change' AND a.actor_kind = 'human'
       AND json_extract_string(a.body, '$.table') IS NOT NULL
       AND NOT coalesce(l.imported_at >= a.written_at, false)),
-  -- a person's formula newer than the agent's definition of the view:
-  -- the view serves the recorded SQL until the agent records it again
-  formulas AS (
-    SELECT g.aspect AS view
-    FROM main.glossary g JOIN main.glossary h ON h.dataset = g.dataset AND h.subject = g.subject AND h.begin_snapshot > g.begin_snapshot, ds
-    WHERE g.dataset = ds.d AND g.subject = ds.d AND g.actor_kind = 'agent'
-      AND g.aspect IN (SELECT name FROM main.aspects WHERE kind = 'VIEW')
-      AND h.aspect = 'definitions' AND h.actor_kind = 'human'
-      AND json_extract(h.body, '$.definitions.' || g.aspect || '.formula') IS NOT NULL),
   reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
   -- what the newest load changed under each view, per table it scans
   view_causes AS (
@@ -638,12 +629,7 @@ CREATE OR REPLACE VIEW main.next AS
              || coalesce(rd.statement, main.gloss_statement(r.aspect, ds.d, '<the current definition>'))
     FROM main.review_decisions r CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = r.aspect
     WHERE r.dataset = ds.d AND NOT r.folded_in
-    UNION ALL
-    SELECT 'must', 2, 'review', ds.d || '.' || o.view, 'decided', 'agent',
-           'a person''s formula for ' || o.view || ' is newer than its definition', o.view, '',
-           '-- the formula: SELECT formula FROM view_definitions WHERE name = ''' || o.view || '''; change the SQL to match it, then record the definition again:' || chr(10)
-             || coalesce(rd.statement, main.gloss_statement(o.view, ds.d, '<the current definition>'))
-    FROM formulas o CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = o.view
+
     UNION ALL
     SELECT 'should', 6, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',

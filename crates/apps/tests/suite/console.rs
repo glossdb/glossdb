@@ -600,10 +600,6 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
                  ]}$$;
                GLOSS payables ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
                GLOSS cleaned ON perf AS $${"sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
-               GLOSS definitions ON perf AS $${"definitions": {"dso": {
-                 "meaning": "receivables outstanding expressed in days of revenue",
-                 "unit": "days", "owner": "Finance", "source": "KPI handbook v3",
-                 "formula": "ar[end of w] / revenue[w] * days[w]"}}}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
                GLOSS additivity ON dso.value AS $${"value": "additive"}$$;
@@ -933,14 +929,10 @@ async fn the_export_tab_lists_tables_and_reads() {
     assert_eq!(tables.col("csv"), ["/perf/app/export/ledger.csv"]);
     assert_eq!(tables.col("parquet"), ["/perf/app/export/ledger.parquet"]);
 
-    // The served reads as their relations, with the definition's
-    // meaning beside them, the kind as the chip, and the files.
+    // The served reads as their relations, the kind as the chip, and
+    // the files.
     let reads = frame(get(&app, "/perf/app/console/frames/reads?stopped=0").await).await;
     assert!(reads.col("read").contains(&"payables"));
-    assert_eq!(
-        reads.cell("read", "dso", "what"),
-        "receivables outstanding expressed in days of revenue"
-    );
     assert_eq!(reads.cell("read", "dso", "chip"), "metric");
     assert_eq!(
         reads.cell("read", "dso", "csv"),

@@ -121,15 +121,12 @@ CREATE OR REPLACE VIEW main.app_releases AS
   FROM winning;
 
 -- Every view of the bound dataset, with its state: one row per VIEW
--- aspect with a definition here, served or stopped, or named by an entry
--- of the dataset's `definitions` annotation — name, title, kind (the
--- aspect's x-kind: relation, scalar, plan; measure for a metric), meaning
--- (the `meaning` annotation on the view), unit (the `unit` annotation on
--- the value column of a metric or a single value; a table has none), formula (a person's or an agent's formula
--- in the `definitions` annotation, NULL where there is none), defined
--- (a definition with sql was written), stopped (the definition's stop
--- reason, '' where it serves). Where the view carries no meaning or
--- unit, the `definitions` entry's is served. The numbers are
+-- aspect with a definition here, served or stopped — name, title, kind
+-- (the aspect's x-kind: relation, scalar, plan; measure for a metric),
+-- meaning (the `meaning` annotation on the view), unit (the `unit`
+-- annotation on the value column of a metric or a single value; a table
+-- has none), defined (a definition with sql was written), stopped (the
+-- definition's stop reason, '' where it serves). The numbers are
 -- view_summary() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
@@ -144,10 +141,6 @@ CREATE OR REPLACE VIEW main.view_definitions AS
   defined AS (
     SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
-  registry AS (
-    SELECT g.aspect, g.body FROM main.glossary g, ds
-    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect = 'definitions'
-    QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
   -- the annotations in force on the view and on its columns
   in_force AS (
     SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false)
@@ -164,20 +157,16 @@ CREATE OR REPLACE VIEW main.view_definitions AS
   SELECT a.name AS name,
          coalesce(json_extract_string(a.schema, '$.title'), a.name) AS title,
          coalesce(json_extract_string(a.schema, '$.x-kind'), 'measure') AS kind,
-         coalesce(CASE WHEN json_extract_string(a.schema, '$.x-kind') IS DISTINCT FROM 'relation' THEN u.unit END,
-                  json_extract_string(d.body, '$.definitions.' || a.name || '.unit'), '') AS unit,
-         coalesce(m.meaning, json_extract_string(d.body, '$.definitions.' || a.name || '.meaning'), '') AS meaning,
-         json_extract_string(d.body, '$.definitions.' || a.name || '.formula') AS formula,
+         coalesce(CASE WHEN json_extract_string(a.schema, '$.x-kind') IS DISTINCT FROM 'relation' THEN u.unit END, '') AS unit,
+         coalesce(m.meaning, '') AS meaning,
          g.aspect IS NOT NULL AS defined,
          coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
   FROM aspects a
   LEFT JOIN defined g ON g.aspect = a.name
   LEFT JOIN collapsed c ON c.aspect = a.name
-  LEFT JOIN registry d ON d.aspect = 'definitions'
   LEFT JOIN meanings m ON m.view = a.name
   LEFT JOIN units u ON u.view = a.name
-  WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL
-     OR json_extract(d.body, '$.definitions.' || a.name) IS NOT NULL;
+  WHERE g.aspect IS NOT NULL OR c.aspect IS NOT NULL;
 
 -- tested_properties(): the table and column properties that exist to
 -- be tested, by name: a test with a scoring function is declared on

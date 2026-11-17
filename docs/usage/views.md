@@ -162,20 +162,10 @@ GLOSS revenue_per_room ON stays AS $${
 
 A view's meaning is its `meaning` annotation, `GLOSS meaning ON
 <dataset>.<view>`, and a metric's unit is its measure's.
-`view_definitions` serves both. What else the business glossary keeps
-per view, such as an owner, a source or a derived metric's formula,
-goes into `definitions` on the dataset, keyed by the view's name. It
-is one annotation: read it, add your entry, write it back. Where a
-view carries no `meaning` or unit, `view_definitions` serves the
-entry's.
+`view_definitions` serves both.
 
 ```glossql
-GLOSS definitions ON stays AS $${"definitions": {
-  "booked_nights": {"meaning": "nights of confirmed bookings, counted at check-in",
-                    "unit": "nights", "owner": "Revenue management"},
-  "occupancy": {"meaning": "sold room nights over available room nights", "unit": "share",
-                "formula": "sold[w] / available[w]"}
-}}$$;
+GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available room nights"}$$;
 ```
 
 ## Read what you defined
