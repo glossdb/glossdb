@@ -8,7 +8,7 @@ reads. It does not add grammar.
 
 | Kit | From | Adds |
 |---|---|---|
-| `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions`, `workspace_status` |
+| `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions` |
 | `lineage` | the extension | `lineage(dataset)`, the lineage as one relation; the read functions a function's body reads through: `annotations()`, `results()`, `definition()` |
 | `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`, `definitions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
@@ -71,8 +71,8 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
 - **An expectation** is a `FACT` property that a function returns
   and a test scores, without `x-subject`. It is set where someone
   annotates it, and is not required on the other assets:
-  `tested_properties()` lists these, and `next` and
-  `workspace_status` count each on the assets that carry it.
+  `tested_properties()` lists these, and `next` counts each on the
+  assets that carry it.
 - **A measurement** is a function with `RETURNS`. Its body is one SQL
   query. `$subject` is the asset it runs over, and
   `subject_column($subject)` is that column as a relation with one

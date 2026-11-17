@@ -336,7 +336,6 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 | `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
 | `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
 | `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |
-| `workspace_status` | what the workspace holds |
 | `datasets`, `sources`, `recipes`, `imports`, `relationships`, `aspects`, `functions`, `tests`, `glossary`, `measurements` | the catalog tables |
 | `pages()` | every page this server serves: `uri`, `title`, `body` |
 

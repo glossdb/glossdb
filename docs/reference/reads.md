@@ -49,7 +49,6 @@ narrows either to one property.
 | View | Scope | Columns |
 |---|---|---|
 | `current_dataset` | | `dataset`; no row on a call bound to none |
-| `workspace_status` | workspace | `area`, `how` (the statement that extends it), `existing`, `open`, `waiting` |
 | `open_questions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
 | `agent_assumptions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `aspect`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
@@ -70,14 +69,9 @@ narrows either to one property.
   annotation on the view, `unit` the `unit` of a metric's or a single
   value's value column. `formula` is the view's formula in the
   dataset's `definitions` annotation, NULL where there is none.
-- `workspace_status`: `area` is `sources`, `tables`, `relationships`,
-  `properties`, `annotations`, `functions`, `views`, `tests`,
-  `scenarios`, `plans`, `review` or `apps`. For `tests`, `open`
-  counts a test of your own on each asset that carries its
-  expectation and has no result yet, and a descriptive property with
-  a test (`meaning`, `role`, `entity`) on each asset a metric reads
-  that has no value. `tested_properties()` lists the properties of
-  the first kind by `name`.
+- `tested_properties()` lists by `name` the properties that exist to
+  be tested: an expectation a function measures and a test scores.
+  `next` asks for one only on the assets that carry it.
 
 ### next
 

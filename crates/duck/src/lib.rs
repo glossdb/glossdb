@@ -519,7 +519,6 @@ const CATALOG: &[&str] = &[
     "view_summary",
     "column_mapping",
     "view_tests",
-    "workspace_status",
     "app_parts",
     "app_releases",
     "next",

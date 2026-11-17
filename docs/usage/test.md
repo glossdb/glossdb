@@ -147,8 +147,8 @@ SELECT reading_filled_check() FROM readings;
    (`BY`) and the detector.
 4. **The annotation** sets the test on that asset: a table, or a
    column for a property declared `ON COLUMN`. The test is on the
-   assets that carry the expectation and on no other; `next` and
-   `workspace_status` count it there.
+   assets that carry the expectation and on no other; `next` counts
+   it there.
 5. **The detector** `rate_tolerance` compares the two: green at or
    under the tolerance, red above it, yellow while no check result
    exists. It reads a person's tolerance first, then an agent's, then

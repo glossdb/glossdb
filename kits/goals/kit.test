@@ -115,11 +115,7 @@ WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
 # --- a test of one's own on a column a view reads. The property holds the expectation, annotated on the one
 # column: `next` does not ask for it on the other assets the views read. Its row in `next` carries the check's
 # finding, the check to run again and the annotation that records a rate a person accepts, with the
-# expectation's own words kept; view_tests() names the check as `run`. The count of open tests in
-# workspace_status is compared with the count before the test was declared
-
-statement ok
-CREATE TABLE memory.main.open_before AS SELECT open FROM workspace_status WHERE area = 'tests';
+# expectation's own words kept; view_tests() names the check as `run`
 
 statement ok
 DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
@@ -130,23 +126,11 @@ DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <=
 statement ok
 DECLARE TEST price_test ON price_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
 
-# declared and set nowhere: nothing asks for it
-query II
-SELECT (SELECT count(*) FROM next WHERE contains(statement, 'price_rule')),
-       (SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests');
-----
-0	0
-
 statement ok
 GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.0, "basis": "the price list starts at 12"}$$;
 
 statement ok
 SELECT price_check() FROM ops.orders_raw.price;
-
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-0
 
 query TTTTT
 SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are priced'),
@@ -186,11 +170,6 @@ DECLARE FUNCTION staff_check FOR ops AS $$SELECT count(*) FILTER (WHERE staff < 
 
 statement ok
 DECLARE TEST staff_test ON staff_rule DETECTOR rate_tolerance THRESHOLD 0.0;
-
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-0
 
 # --- each assumption that waits for a person is a should row of `next`, as open_questions counts them; `entity` is
 # asked on a table view, with its grain, and not on a metric

@@ -221,8 +221,7 @@ impl GlossqlMcp {
         // `next`, `GLOSSARY(d)` and `TESTS(d)` all need one — and
         // the modeling skill's load page is where it starts.
         let opening = if datasets == 0 {
-            "No dataset exists yet. `SELECT * FROM workspace_status` shows what the \
-             workspace holds. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
+            "No dataset exists yet. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
              '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
         } else {
             "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT level, kind, \

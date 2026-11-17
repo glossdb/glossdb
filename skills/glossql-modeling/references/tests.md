@@ -113,8 +113,8 @@ SELECT hours_match_check() FROM bookings;
 whole, `define.md` one check for a data contract.
 
 - **The annotation sets the test.** The test is on the assets that
-  carry the expectation and on no other. `next` and
-  `workspace_status` count it there. One property can hold for
+  carry the expectation and on no other. `next` counts it there.
+  One property can hold for
   several assets: annotate each, and run the function on each.
 - **`breach_rate` is the share of rows that break the rule.** 0.0
   passes. A pass rate under that name reads red.
