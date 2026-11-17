@@ -554,18 +554,18 @@ WHERE g.dataset = dataset_name AND g.subject = dataset_name AND g.actor_kind IN 
 
 CREATE OR REPLACE MACRO main.lineage_edges_scenario(dataset_name) AS TABLE
 SELECT DISTINCT dataset_name || '.' || g.aspect AS "from", dataset_name || '.' || (l.lever->>'column') AS "to", 'sets' AS kind
-FROM main.glossary g JOIN main.aspects a ON a.name = g.aspect AND json_extract_string(a.schema, '$.x-kind') = 'scenario',
-     unnest(coalesce(from_json(g.body->'levers', '["JSON"]'), [])) l(lever)
+FROM main.glossary g, unnest(coalesce(from_json(g.body->'levers', '["JSON"]'), [])) l(lever)
 WHERE g.dataset = dataset_name AND g.subject = dataset_name AND g.actor_kind IN ('human', 'agent')
+  AND g.aspect IN (SELECT name FROM main.aspects WHERE json_extract_string(schema, '$.x-kind') = 'scenario')
   AND l.lever->>'column' IS NOT NULL;
 
 CREATE OR REPLACE MACRO main.lineage_places_scenario(dataset_name) AS TABLE
+WITH e AS (SELECT "from", "to", split_part("to", '.', 2) AS metric FROM main.lineage_edges_scenario(dataset_name))
 SELECT NULL::VARCHAR AS subject, u.w AS "where", NULL::VARCHAR AS asset FROM unnest(['its levers', 'its metrics']) u(w)
-UNION ALL SELECT "from", 'its levers', "to" FROM main.lineage_edges_scenario(dataset_name)
-UNION ALL SELECT DISTINCT e."from", 'its metrics', c.asset FROM main.lineage_edges_scenario(dataset_name) e
-JOIN (SELECT "from" AS m, "from" AS asset FROM main.contains_edges(dataset_name)
-      UNION SELECT "from", "to" FROM main.contains_edges(dataset_name)) c
-  ON c.m = split_part(e."to", '.', 1) || '.' || split_part(e."to", '.', 2);
+UNION ALL SELECT "from", 'its levers', "to" FROM e
+UNION ALL SELECT DISTINCT "from", 'its metrics', dataset_name || '.' || metric FROM e
+UNION ALL SELECT DISTINCT e."from", 'its metrics', dataset_name || '.' || c.table_name || '.' || c.column_name
+FROM e JOIN glossql_columns(dataset_name) c ON c.table_name = e.metric;
 
 --===------------------------------------------------------------------===--
 -- The estimate, on a scenario: /whatif answers each metric on its own,

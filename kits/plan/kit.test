@@ -171,16 +171,16 @@ SELECT view, test, subject FROM view_tests() WHERE test = 'plan_test';
 ----
 sales_budget	plan_test	fin.sales_budget
 
-# metric_plan() on a view that is not a plan is refused by name, and stored as a failure: its error and no value
+# metric_plan() on a view that is not a plan is refused by name, and the refusal stores no result
 statement error
 SELECT metric_plan() FROM fin.sales;
 ----
 not_a_plan
 
-query IT
-SELECT count(*), bool_and(value IS NULL AND error LIKE '%not_a_plan%') FROM measurements WHERE function = 'metric_plan' AND subject = 'fin.sales';
+query I
+SELECT count(*) FROM measurements_history WHERE function = 'metric_plan' AND subject = 'fin.sales';
 ----
-1	true
+0
 
 # --- a plan is compared with the actual only where the actuals cover the period: hires begins in October 2024,
 # a plan for the whole of 2024 has no actual for the year or for September, and one for October
