@@ -705,6 +705,121 @@ FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'describe' AND state = 'm
 ----
 should	true	true
 
+# === The reconciliation: per system and period, the rows and the sum of each measure at the source against
+# what the target serves, and the keys at the source it does not serve. Two order systems: the north's join over
+# its customers drops the order of an unknown customer, its status condition a cancelled order; the south's date
+# condition drops its January
+statement ok
+COPY (FROM (VALUES ('N-1', DATE '2026-01-05', 'C1', 100.0, 'D'), ('N-2', DATE '2026-01-20', 'C2', 50.0, 'D'),
+                   ('N-3', DATE '2026-02-03', 'C1', 70.0, 'X'), ('N-4', DATE '2026-02-14', 'C2', 30.0, 'D'),
+                   ('N-5', DATE '2026-03-02', 'C1', 40.0, 'D'), ('N-6', DATE '2026-03-18', 'C9', 25.0, 'D'))
+      t(order_id, order_date, customer_id, amount, status)) TO '{TEST_DIR}/north_orders.csv' (HEADER);
+
+statement ok
+COPY (FROM (VALUES ('C1', 'East'), ('C2', 'West')) t(customer_id, region)) TO '{TEST_DIR}/north_customers.csv' (HEADER);
+
+statement ok
+COPY (FROM (VALUES ('S-1', DATE '2026-01-07', 200.0), ('S-2', DATE '2026-01-25', 80.0), ('S-3', DATE '2026-02-09', 60.0),
+                   ('S-4', DATE '2026-02-21', 90.0), ('S-5', DATE '2026-03-04', 110.0), ('S-6', DATE '2026-03-29', 15.0))
+      t(id, booked, amount_eur)) TO '{TEST_DIR}/south_orders.csv' (HEADER);
+
+statement ok
+DECLARE DATASET sales SET (purpose: 'orders of two systems in one table');
+
+statement ok
+USE sales;
+
+statement ok
+DECLARE SOURCE north SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE SOURCE south SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE RECIPE north_orders ON sales FROM north AS $$SELECT * FROM read_csv('north_orders.csv')$$;
+
+statement ok
+DECLARE RECIPE north_customers ON sales FROM north AS $$SELECT * FROM read_csv('north_customers.csv')$$;
+
+statement ok
+DECLARE RECIPE south_orders ON sales FROM south AS $$SELECT * FROM read_csv('south_orders.csv')$$;
+
+statement ok
+DECLARE ASPECT orders WITH $${"title": "Orders", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS orders ON sales AS $${"sql": "SELECT 'north' AS source_system, o.order_id, o.order_date, c.region, o.amount FROM north_orders o JOIN north_customers c ON c.customer_id = o.customer_id WHERE o.status = 'D' UNION ALL SELECT 'south', s.id, s.booked, 'South', s.amount_eur FROM south_orders s WHERE s.booked >= DATE '2026-02-01'"}$$;
+
+statement ok
+GLOSS entity ON sales.orders AS $${"value": "an order", "role": "fact", "grain": ["order_id"], "time_axis": "order_date"}$$;
+
+statement ok
+GLOSS role ON sales.orders.amount AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS contract ON sales.orders.order_id AS $${"type": "VARCHAR", "required": true}$$;
+
+statement ok
+SELECT reconciliation() FROM orders;
+
+# the north's cancelled order in February and its unknown customer's in March, the south's January short
+query TTIIITRR
+SELECT r.system, r.period, r.source_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' '), r.measures[1].source, r.measures[1].target
+FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "period": "VARCHAR", "source_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"], "measures": [{"column": "VARCHAR", "source": "DOUBLE", "target": "DOUBLE"}]}]')) t(r)
+WHERE m.function = 'reconciliation' AND m.subject = 'sales.orders' ORDER BY ALL;
+----
+north	2026-01-01	2	2	0	(empty)	150.0	150.0
+north	2026-02-01	2	1	1	N-3	100.0	30.0
+north	2026-03-01	2	1	1	N-6	65.0	40.0
+south	2026-01-01	2	0	2	S-1 S-2	280.0	0.0
+south	2026-02-01	2	2	0	(empty)	150.0	150.0
+south	2026-03-01	2	2	0	(empty)	125.0	125.0
+
+# 4 of the 12 source rows do not arrive: the test is red, a must of next
+query TTR
+SELECT n.level, t.state, t.score FROM view_tests() t JOIN next n ON n.asset = 'sales.orders' AND n.open LIKE 'reconciliation_test%'
+WHERE t.test = 'reconciliation_test' AND t.view = 'orders';
+----
+must	red	0.3333333333333333
+
+# a view of two branches with no column that names the system: not applicable, and next asks for the column. The
+# key built by an expression in the south is named in the notes
+statement ok
+DECLARE ASPECT bare WITH $${"title": "Orders, no system", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS bare ON sales AS $${"sql": "SELECT o.order_id, o.amount FROM north_orders o UNION ALL SELECT 'S' || s.id, s.amount_eur FROM south_orders s"}$$;
+
+statement ok
+GLOSS entity ON sales.bare AS $${"value": "an order", "grain": ["order_id"]}$$;
+
+statement ok
+GLOSS contract ON sales.bare.order_id AS $${"type": "VARCHAR"}$$;
+
+statement ok
+SELECT reconciliation() FROM bare;
+
+query TTTT
+SELECT m.value->>'applicable', t.state, n.level, m.value->>'fix' IS NOT NULL
+FROM main.measurements m, view_tests() t, next n
+WHERE m.function = 'reconciliation' AND m.subject = 'sales.bare' AND t.test = 'reconciliation_test' AND t.view = 'bare'
+  AND n.asset = 'sales.bare' AND n.open LIKE 'reconciliation_test%';
+----
+false	yellow	should	true
+
+statement ok
+GLOSS bare ON sales AS $${"sql": "SELECT 'north' AS source_system, o.order_id, o.amount FROM north_orders o UNION ALL SELECT 'south', 'S' || s.id, s.amount_eur FROM south_orders s"}$$;
+
+statement ok
+SELECT reconciliation() FROM bare;
+
+query TIIII
+SELECT r.system, r.source_rows, r.target_rows, r.missing_key_count, json_array_length(m.value->'notes')
+FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "target_rows": "BIGINT", "missing_key_count": "BIGINT"}]')) t(r)
+WHERE m.function = 'reconciliation' AND m.subject = 'sales.bare' ORDER BY ALL;
+----
+north	6	6	0	2
+south	6	6	NULL	2
 
 # every measurement this kit ships reads the data of its subject's dataset alone: no table named, and no dataset
 # but the subject's
@@ -712,7 +827,7 @@ query I
 SELECT count(*)
 FROM main.functions f, unnest(from_json(f.reads, '[{"kind": "VARCHAR", "read": "VARCHAR", "what": "VARCHAR", "where": "VARCHAR", "constant": "BOOLEAN"}]')) u(r)
 WHERE f.name IN ('source_systems', 'contract_check', 'code_check', 'reconciliation')
-  AND ((r.kind = 'data' AND r."where" IS NULL AND r.read NOT IN ('dataset_cells', 'subject_column', 'glossql_relationship_checks', 'branch_rows'))
-       OR (r.kind = 'data' AND r.read IN ('dataset_cells', 'subject_column', 'branch_rows') AND NOT regexp_matches(r.what, '^[<$]')));
+  AND ((r.kind = 'data' AND r."where" IS NULL AND r.read NOT IN ('dataset_cells', 'subject_column', 'glossql_relationship_checks'))
+       OR (r.kind = 'data' AND r.read IN ('dataset_cells', 'subject_column') AND NOT regexp_matches(r.what, '^[<$]')));
 ----
 0

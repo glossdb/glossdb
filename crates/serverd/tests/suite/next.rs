@@ -291,6 +291,69 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     assert_eq!(cells.len(), 4, "{cells:?}");
 }
 
+/// The server holds a target view with a contract against its source
+/// after each load, with no statement by the agent: a source row the
+/// view leaves out turns `reconciliation_test` red, a must of `next`
+/// whose statements run; once a load brings the row, nothing is open.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_reconciles_a_contracted_view_after_each_load() {
+    let (app, _, dir) = fin().await;
+    std::fs::write(
+        dir.path().join("stock.csv"),
+        "item,qty,status\nA,1,D\nB,2,K\n",
+    )
+    .unwrap();
+    say(
+        &app,
+        FIN,
+        &format!(
+            "DECLARE SOURCE erp SET (type: csv, location: '{}'); \
+             DECLARE RECIPE stock ON fin FROM erp AS $$SELECT item, CAST(qty AS DOUBLE) AS qty, status \
+             FROM read_csv('stock.csv', all_varchar = true)$$;",
+            dir.path().display()
+        ),
+    )
+    .await;
+    say(
+        &app,
+        FIN,
+        r#"DECLARE ASPECT free_stock WITH $${"title": "Free stock", "x-kind": "relation"}$$ AS VIEW;
+           GLOSS free_stock ON fin AS $${"sql": "SELECT s.item, s.qty FROM fin.stock s WHERE s.status = 'D'"}$$;
+           GLOSS entity ON fin.free_stock AS $${"value": "the stock of one item", "grain": ["item"]}$$;
+           GLOSS contract ON fin.free_stock.item AS $${"type": "VARCHAR", "required": true}$$;"#,
+    )
+    .await;
+    let open = async || {
+        rows(
+            &app,
+            FIN,
+            "SELECT level, statement FROM next WHERE asset = 'fin.free_stock' AND open LIKE 'reconciliation_test%'",
+        )
+        .await
+    };
+    let red = open().await;
+    assert_eq!(red.len(), 1, "{red:?}");
+    assert_eq!(text(&red[0], "level"), "must");
+    let handed: Vec<String> = text(&red[0], "statement")
+        .lines()
+        .filter(|line| !line.starts_with("--") && !line.contains('<'))
+        .map(str::to_string)
+        .collect();
+    assert!(!handed.is_empty(), "{red:?}");
+    for statement in handed {
+        say(&app, FIN, &statement).await;
+    }
+
+    std::fs::write(
+        dir.path().join("stock.csv"),
+        "item,qty,status\nA,1,D\nB,2,D\n",
+    )
+    .unwrap();
+    say(&app, FIN, "IMPORT stock;").await;
+    let green = open().await;
+    assert!(green.is_empty(), "{green:?}");
+}
+
 /// A view's lineage is a stored result the server brings current: a
 /// load whose query adds a column to the table a view reads puts the
 /// view's lineage out of date, and the server computes it again after
