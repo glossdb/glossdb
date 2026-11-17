@@ -148,6 +148,37 @@ UNION ALL
 SELECT 3, test, subject, 'SELECT ' || test || '() FROM ' || current_schema() FROM judged;
 
 --===------------------------------------------------------------------===--
+-- results_moved_since(since): what a round of results_due() leaves for
+-- the next, after the snapshot `since` it began at: each result of the
+-- bound dataset that read a node the round changed before it changed (a
+-- result computed again with another value or retired, read through its
+-- function's results or its property's values; a function's declaration
+-- taken again), now due or waiting for what it read; and each view whose
+-- lineage the round changed, since what is wanted follows from it.
+-- A result computed after what it read, in the same round, reads it as it
+-- is. The server asks after each round and stops where it is empty.
+--===------------------------------------------------------------------===--
+CREATE OR REPLACE MACRO main.results_moved_since(since) AS TABLE
+WITH moved AS (
+  SELECT dataset, function, aspect, lower(subject) AS asset,
+         coalesce(max(changed_at) FILTER (WHERE end_snapshot IS NULL), max(end_snapshot)) AS changed_at
+  FROM main.measurements_history
+  WHERE dataset = current_schema() AND (begin_snapshot > since OR end_snapshot > since)
+  GROUP BY ALL),
+declared AS (SELECT lower(name) AS asset, begin_snapshot AS changed_at FROM main.functions WHERE begin_snapshot > since)
+SELECT r.function, r.subject FROM moved m
+JOIN main.inputs i ON lower(i.asset) = m.asset AND i.what IN ('result ' || m.function, 'value ' || m.aspect)
+JOIN main.measurements r ON r.id = i.result AND r.dataset = m.dataset AND r.function <> m.function
+WHERE m.changed_at > since AND m.changed_at > r.read_at
+UNION
+SELECT r.function, r.subject FROM declared d
+JOIN main.inputs i ON lower(i.asset) = d.asset AND i.what = 'function'
+JOIN main.measurements r ON r.id = i.result AND r.dataset = current_schema()
+WHERE d.changed_at > r.read_at
+UNION
+SELECT 'lineage', asset FROM moved WHERE function = 'lineage' AND changed_at > since;
+
+--===------------------------------------------------------------------===--
 -- load_changes(): per table of the bound dataset loaded more than once,
 -- what its newest load changed against the load before: the row count,
 -- and each column whose stored profile moved (distinct values, the share

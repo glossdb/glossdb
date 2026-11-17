@@ -1722,12 +1722,15 @@ const ROUNDS: usize = 4;
 /// date, computed until none is left: the kit's `results_due()` says
 /// which (a result a node of whose inputs changed after the snapshot
 /// it read at, or one never computed) and in which order, an input before what
-/// reads it. As CI runs a suite after a commit. A statement that fails
+/// reads it. As CI runs a suite after a commit. A round is followed by
+/// another only where it changed what another result read before it
+/// (the kit's `results_moved_since()`). A statement that fails
 /// is logged and not tried again in this call; its result stays due and
 /// the test report says so.
 pub(crate) fn bring_current(conn: &Connection) {
     let mut failed = std::collections::BTreeSet::new();
-    for _ in 0..ROUNDS {
+    for round in 0..ROUNDS {
+        let since = current_snapshot(conn);
         let Ok((_, _, due)) = arrow_batches(
             conn,
             &format!(
@@ -1749,6 +1752,19 @@ pub(crate) fn bring_current(conn: &Connection) {
             if let Err(e) = run(conn, &statement) {
                 tracing::debug!(error = %e, %statement, "a result: not computed");
                 failed.insert(statement);
+            }
+        }
+        if round + 1 == ROUNDS {
+            return;
+        }
+        if let Some(since) = since {
+            let moved = arrow_batches(
+                conn,
+                &format!("SELECT 1 FROM {LAKE}.main.results_moved_since({since}) LIMIT 1"),
+                &[],
+            );
+            if matches!(moved, Ok((_, _, batches)) if batches.iter().all(|b| b.num_rows() == 0)) {
+                return;
             }
         }
     }
