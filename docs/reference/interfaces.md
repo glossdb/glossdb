@@ -100,15 +100,6 @@ client that reads no resources:
 SELECT uri, title FROM pages();
 ```
 
-### Review forms
-
-While `open_questions` has rows, a call that only reads the catalog
-(`glossary`, `GLOSSARY()`, `TESTS()`, the catalog tables) carries the
-questions as MCP elicitation forms. Loads and data reads do not. The
-answers arrive on the client's retry of the same call and are stored
-as the person's review decisions. Anything that is not an answer
-leaves the question open ([review and decide](../usage/review.md)).
-
 ## The query endpoint
 
 `POST /<dataset>/query` with statements as the body.

@@ -299,9 +299,9 @@ queue:
 SELECT aspect, key, assumption, basis, conf FROM open_questions
 ```
 
-A person confirms or corrects it in the console, or in a form the
-interface sends with your calls. Where the client shows no forms, ask
-in chat. The decision is stored as the person's annotation. It then
+A person confirms or corrects it in the console. Where the person is
+in chat with you, ask there and tell them to record the answer in the
+console. The decision is stored as the person's annotation. It then
 appears in `next` as a `review` row, with the definition to record
 again. Do not ask a person for something the
 data can tell you: measure it. More: `references/review.md`.

@@ -116,9 +116,7 @@ pub fn no_such_dataset(dataset: &str, known: &[String]) -> String {
 /// that can change the catalog invites a second way to say everything
 /// the language already says. A review decision is the exception because it is
 /// the one thing only a person can supply, its shape is fixed (a
-/// stance on a claim the workspace already derived), and without it a
-/// human who steps away has no way back into the catalog at all, since
-/// the MCP review can only ask while they are watching and an agent may
+/// stance on a claim the workspace already derived), and an agent may
 /// never speak for them.
 /// The console is already the page of open questions; answering there
 /// is the gesture the page was drawn for.

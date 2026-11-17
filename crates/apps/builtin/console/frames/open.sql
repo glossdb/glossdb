@@ -1,7 +1,6 @@
 -- The console's open questions: what holds open for a human to judge,
--- straight from `open_questions` — the same rows the interface asks as
--- forms. Display only: the confidence, the link, the order. `pct` fills
--- the confidence rail.
+-- straight from `open_questions`. Display only: the confidence, the
+-- link, the order. `pct` fills the confidence rail.
 SELECT o.conf,
        CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR) AS pct,
        CASE WHEN o.conf >= 1.0 THEN '1.00'

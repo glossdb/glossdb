@@ -48,10 +48,9 @@ ORDER BY o.conf
 
 `open_questions`, `review_decisions` and `agent_assumptions` cover
 the whole workspace; the join narrows them to the dataset of the
-call. A person answers in the console, or in a form the interface
-sends with a call that only reads the catalog. Where the client shows
-no forms, ask the open questions in chat, with the alternative and
-your reason, and tell the person to record the answer in the console.
+call. A person answers in the console. Where the person is in chat
+with you, ask the open questions there, with the alternative and your
+reason, and tell the person to record the answer in the console.
 The work goes on while a question waits; `next` counts it under
 `waiting for a person`.
 

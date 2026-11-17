@@ -9,8 +9,8 @@
 //! says, never what a browser posted.
 //!
 //! Nothing else about the page changes. It still holds no other write,
-//! and the review decision is stored exactly where the MCP review's would — the human's
-//! own value, on the human's own channel, witnessed by this server.
+//! and the review decision is stored as the human's own value, on the
+//! human's own channel, witnessed by this server.
 //!
 //! Who that human is comes from the token the request carries; that
 //! the caller is human comes from the interface, which stamps the kind on

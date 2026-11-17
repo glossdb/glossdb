@@ -25,10 +25,6 @@
 //! the `resource` parameter. A token that names another resource, or
 //! names none at all, is refused: an audience is what tells a token
 //! minted for this server apart from one minted for any other.
-//!
-//! The actor kind the server *tests* is a separate matter and is not
-//! governed here: an answer elicited mid-call is stored as a human actor
-//! under the same subject, because the server saw the act.
 
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};

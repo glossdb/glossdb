@@ -9,10 +9,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ElicitRequest,
-    ElicitRequestParams, ElicitResult, ElicitationAction, ElicitationSchema,
-    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation,
-    InitializeRequestParams, InitializeResult, InputRequest, InputRequests, InputRequiredResult,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
+    GetPromptResponse, GetPromptResult, Implementation, InitializeRequestParams, InitializeResult,
     ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams, Prompt,
     PromptMessage, ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse,
     ReadResourceResult, Resource, ResourceContents, Role, ServerCapabilities, ServerConfig, Tool,
@@ -24,7 +22,7 @@ use rmcp::{ErrorData as McpError, ServerHandler};
 use crate::engine::Caller;
 use crate::engine::{Actor, ActorKind};
 
-use crate::engine::{CallShape, Plane, Session, SessionError};
+use crate::engine::{Plane, Session, SessionError};
 
 use crate::window;
 use crate::wire;
@@ -267,8 +265,8 @@ impl GlossqlMcp {
                 if questions > 0 {
                     open.push(format!(
                         "{} assumption{} wait{} for a person's decision. The person sees each as \
-                         a form on a catalog read or in the console; where the client shows \
-                         no forms, ask them in chat. The work goes on meanwhile",
+                         an open question in the console; where they are not there, ask them \
+                         in chat. The work goes on meanwhile",
                         questions,
                         if questions == 1 { "" } else { "s" },
                         if questions == 1 { "s" } else { "" },
@@ -306,304 +304,6 @@ impl GlossqlMcp {
                 format!("Live now: the summary could not be read ({e})."),
                 opening,
             ),
-        }
-    }
-
-    /// The next open question the workspace derives — judged
-    /// assumptions below full confidence on the winning value, lowest
-    /// confidence first. Judgment only, never statistics: a claim a
-    /// measurement can settle — additivity, unit,
-    /// role — is the agent's work through the shipped functions, and
-    /// the interface never asks the human for it. A workspace with no
-    /// dataset bound (or nothing open) derives nothing, and the review
-    /// stays silent.
-    /// The review: every open claim on ONE metric definition, and how many
-    /// stand open in the whole workspace.
-    ///
-    /// The bound is the metric definition, not a number. An aspect's
-    /// assumptions were authored in one act against one query and are
-    /// read together, so they are what one sitting is. The reason a
-    /// bound is needed at all is mechanical: the client fulfils every
-    /// entry of a review before it retries the call, so the agent's
-    /// read does not return until the human has cleared the whole
-    /// batch. A review is what someone can finish, and a metric definition is
-    /// where the catalog already draws that line.
-    ///
-    /// The total rides back so every dialog can say where it sits in
-    /// it. A bounded review that did not would let someone answer three
-    /// questions, see the queue end, and believe they were done while
-    /// nine claims the numbers rest on stood untouched.
-    async fn derive_review(&self, session: &Session) -> (Vec<(usize, Question)>, usize) {
-        let loose = read_rows(session, LOOSE_SQL).await;
-        if let Err(e) = &loose {
-            tracing::warn!(error = %e, "review: the loose derivation failed");
-        }
-        let open: Vec<Question> = loose
-            .map(|rows| rows.iter().filter_map(loose_from).collect())
-            .unwrap_or_default();
-        let total = open.len();
-        // The read orders by confidence, so the least settled claim
-        // picks which metric definition is asked.
-        let Some(first) = open.first().map(|q| q.aspect.clone()) else {
-            return (Vec::new(), 0);
-        };
-        // The rank is against the whole, never against the review, so
-        // the count means the same thing on every dialog.
-        let review = open
-            .into_iter()
-            .enumerate()
-            .filter(|(_, q)| q.aspect == first)
-            .map(|(i, q)| (i + 1, q))
-            .collect();
-        (review, total)
-    }
-
-    /// The retry is stateless, so re-derivation is the only trust: an
-    /// answer is stored only if its question still derives — walked live
-    /// for the key rather than trusting the echoed shape.
-    async fn question_for_key(&self, session: &Session, key: &str) -> Option<Question> {
-        read_rows(session, LOOSE_SQL)
-            .await
-            .ok()?
-            .iter()
-            .filter_map(loose_from)
-            .find(|q| q.id() == key)
-    }
-
-    /// Store what the human said — or defer, or hand a correction to
-    /// the agent. The monitor note is the whole account.
-    ///
-    /// The boxes are independent, so more than one can be ticked, and
-    /// the order below is what a review decision means when they are. Unclear
-    /// wins: it refuses the question, and a refused question has
-    /// nothing left to confirm. Then the rival, then the prior review decision,
-    /// then the plain confirmation — each a narrower claim than the
-    /// one before. Words the human typed outrank every box, because
-    /// they are the only part of the answer nobody wrote for them.
-    async fn digest_review(&self, key: &str, answer: ElicitResult, session: &Session) -> String {
-        // The person behind the agent: the token's subject, which the
-        // agent's session carries. Their answer is stored under their own
-        // name as a human actor — the server witnessed the act.
-        let who = session.actor().id.clone();
-        // Two outcomes, not three. Accepting with something said is
-        // the save; every other way out of the dialog is a defer, and
-        // a defer is not an opinion. Nothing is recorded, the claim
-        // still derives, and the next review asks it again — answering
-        // is required, and an interface that let someone opt out of being asked
-        // would be an interface that hides what the numbers rest on.
-        //
-        // Refusing the QUESTION is different, and it is an answer: the
-        // unclear box with the words beside it, which is stored and buys a
-        // reformulation.
-        if answer.action != ElicitationAction::Accept {
-            return format!("review: `{key}` deferred — unanswered, it stays open");
-        }
-        let Some(content) = answer.content else {
-            return format!("review: `{key}` deferred — no answer given, it stays open");
-        };
-        let Some(question) = self.question_for_key(session, key).await else {
-            return "review: the question is no longer open — nothing was stored".into();
-        };
-        let Question {
-            dataset,
-            subject,
-            aspect,
-            key,
-            dimension,
-            assumption,
-            alternative,
-            sibling_stance,
-            sibling_note,
-            ..
-        } = question;
-        let entry = DecisionEntry {
-            subject: &subject,
-            aspect: &aspect,
-            dimension: &dimension,
-            key: &key,
-            assumption: &assumption,
-            stance: "confirmed",
-            note: None,
-        };
-        let ticked = |name: &str| content.get(name).and_then(|v| v.as_bool()).unwrap_or(false);
-        let typed = content
-            .get(CORRECTION)
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-
-        // The question itself missed — the human refuses it rather
-        // than the claim. The entry holds this key closed; the agent
-        // owes a reformulation under a new key, which derives its own
-        // question — without this a sloppily worded question can only
-        // be deferred.
-        if ticked(UNCLEAR) {
-            return self
-                .store_decision(
-                    &dataset,
-                    &who,
-                    DecisionEntry {
-                        stance: "unclear",
-                        note: typed,
-                        ..entry
-                    },
-                )
-                .await;
-        }
-        // The rival taken. Its words are the agent's own, read off the
-        // same derivation that drew the question — so the note is
-        // workspace prose, never something a form supplied. Words the
-        // human typed replace it.
-        if ticked(RATHER) {
-            let Some(rival) = alternative else {
-                return "review: there is no alternative reading on that claim to take".into();
-            };
-            let note = typed.clone().unwrap_or(rival);
-            let stored = self
-                .store_decision(
-                    &dataset,
-                    &who,
-                    DecisionEntry {
-                        stance: "corrected",
-                        note: Some(note.clone()),
-                        ..entry
-                    },
-                )
-                .await;
-            return format!("{stored} — the alternative taken: {note}");
-        }
-        // The sibling review decision, replayed onto this aspect: the same
-        // stance and the same words the human wrote next interface, now
-        // current here in its own right. Nothing is inferred — the
-        // human chose it.
-        if ticked(SAME_AS) {
-            let Some(stance) = sibling_stance.as_deref() else {
-                return "review: no earlier decision on that key to repeat".into();
-            };
-            let stored = self
-                .store_decision(
-                    &dataset,
-                    &who,
-                    DecisionEntry {
-                        stance,
-                        note: typed.or(sibling_note),
-                        ..entry
-                    },
-                )
-                .await;
-            return format!("{stored} — repeated from the earlier decision on that key");
-        }
-        if ticked(CORRECT) {
-            return self
-                .store_decision(
-                    &dataset,
-                    &who,
-                    DecisionEntry {
-                        note: typed,
-                        ..entry
-                    },
-                )
-                .await;
-        }
-        // No box, but words: a human who writes what is right instead
-        // of ticking has still decided, and the correction writes its own
-        // record — a message alone would leave the question deriving
-        // forever. The new definition stays the agent's work; the review decision
-        // holds the question closed while they do it.
-        if let Some(correction) = typed {
-            let stored = self
-                .store_decision(
-                    &dataset,
-                    &who,
-                    DecisionEntry {
-                        stance: "corrected",
-                        note: Some(correction.clone()),
-                        ..entry
-                    },
-                )
-                .await;
-            return format!("{stored} — the person's correction: {correction}");
-        }
-        // Saved with nothing ticked and nothing typed. An empty form
-        // says as little as a dismissed one, so it is the same defer.
-        format!("review: `{subject}:{aspect}:{key}` deferred — no answer given, it stays open")
-    }
-
-    /// A person decides an assumption: the review decision is stored as ITS OWN
-    /// record — an entry appended to the human's `review_decision` value on the
-    /// subject — and the decided aspect's values stay agent-authored.
-    /// The entry names the claim by `key` (the agent's declared
-    /// identity, the only thing joined on) and carries the prose the
-    /// human actually read as a snapshot — display, never compared.
-    /// The agent still has to apply the decision (re-record the metric definition citing the
-    /// review decision); until then the summary counts it and the review
-    /// holds the question closed. Copying the winning body into the
-    /// human value is forbidden: the frozen
-    /// copy would outrank every later correction — the human value
-    /// carries only what the human actually said.
-    async fn store_decision(
-        &self,
-        dataset: &str,
-        who: &str,
-        decision: DecisionEntry<'_>,
-    ) -> String {
-        let DecisionEntry {
-            subject,
-            aspect,
-            dimension,
-            key,
-            assumption,
-            stance,
-            note,
-        } = decision;
-        // ONE KEY IS STILL DECIDED PER ASPECT, deliberately. The same key
-        // recurs across aspects (`days-in-period` on dso, dpo and dio),
-        // and fanning one answer across every aspect that discloses the
-        // key is the obvious cure — but it is the wrong one: a human may
-        // confirm `goods-only` on `purchases` and correct it on `dpo`
-        // in the same session, on purpose, and a fan-out would silently
-        // deny them that. The key pairs the claims so the form can SAY what was
-        // already decided next interface; it does not make them one claim.
-        // The cheap answer (`params` below) is how the repeat stops
-        // costing a re-read.
-        //
-        // The composing and the writing are `crate::engine::decisions`,
-        // shared with the app interface — the console answers these same
-        // questions when a person comes back to a page rather than to a
-        // form. This interface's part is to say WHO is speaking: the token's
-        // subject, as a human actor, on their own channel — the
-        // server witnessed the act (SPEC.md §1).
-        let human = match self
-            .plane
-            .channel(
-                Actor {
-                    kind: ActorKind::Human,
-                    id: who.to_string(),
-                },
-                Some(dataset),
-            )
-            .await
-        {
-            Ok(session) => session,
-            Err(e) => return format!("review: refused: {e}"),
-        };
-        match crate::engine::decisions::store(
-            &human,
-            crate::engine::decisions::Decision {
-                subject,
-                aspect,
-                dimension,
-                key,
-                assumption,
-                stance,
-                note,
-            },
-        )
-        .await
-        {
-            Ok(said) => format!("review: {said}"),
-            Err(e) => format!("review: refused: {e}"),
         }
     }
 
@@ -649,9 +349,7 @@ impl GlossqlMcp {
                  work) and `first:` (the first of them); \
                  `SELECT level, kind, asset, state, open, statement FROM next` gives each row's \
                  statement; work on a dataset is complete when no must is open. Start with `SELECT body FROM pages() WHERE uri = \
-                 'skill://glossql/SKILL.md'`. While assumptions wait for a person, a call that \
-                 only reads the catalog may carry the person's question forms; loads and \
-                 data reads do not.",
+                 'skill://glossql/SKILL.md'`.",
                 self.plane.row_cap()
             ),
             schema,
@@ -659,8 +357,8 @@ impl GlossqlMcp {
     }
 }
 
-/// One read, rows as JSON — the review's derivations run through
-/// the session exactly as frames do.
+/// One read, rows as JSON, run through the session exactly as frames
+/// do.
 async fn read_rows(session: &Session, sql: &str) -> Result<Vec<serde_json::Value>, String> {
     let query = session.query_stream(sql).await.map_err(|e| e.to_string())?;
     let out = wire::stream_json(query, usize::MAX)
@@ -699,206 +397,6 @@ async fn open_question_count(plane: &Plane) -> Option<usize> {
         }
     }
     None
-}
-
-/// The review's opaque state tag, echoed by MRTR retries. Untrusted —
-/// load rests on re-derivation, never on the echo.
-const REVIEW_STATE: &str = "review:v1";
-
-/// One entry of the human's `review_decision` value, as the interface composes it.
-/// `key` names the claim (the join column); `assumption` is the prose
-/// the human read, kept for the catalog and never matched; `note` is
-/// display.
-struct DecisionEntry<'a> {
-    subject: &'a str,
-    aspect: &'a str,
-    dimension: &'a str,
-    key: &'a str,
-    assumption: &'a str,
-    stance: &'a str,
-    note: Option<String>,
-}
-
-/// What still holds open for a human to judge, and the review's ONLY
-/// derivation — missing tested claims (additivity, unit, role) are
-/// the agent's measurement backlog, never human questions, and the
-/// shipped functions settle them. The derivation itself is the core's
-/// `open_questions` read (`kits/core/kit.sql`), which carries
-/// the gates and the reasons; the interface only orders and serves it, and
-/// the app's console renders the same read. Least-confident first, and
-/// the ordering rides here because an inner ORDER BY does not survive
-/// a derived relation.
-const LOOSE_SQL: &str = "SELECT * FROM open_questions ORDER BY conf ASC, subject, aspect, idx";
-
-fn loose_from(row: &serde_json::Value) -> Option<Question> {
-    Some(Question {
-        dataset: row["dataset"].as_str()?.into(),
-        subject: row["subject"].as_str()?.into(),
-        aspect: row["aspect"].as_str()?.into(),
-        key: row["key"].as_str()?.into(),
-        dimension: row["dimension"].as_str().unwrap_or("-").into(),
-        assumption: row["assumption"].as_str().unwrap_or("").into(),
-        basis: row["basis"].as_str().unwrap_or("not stated").into(),
-        alternative: row["alternative"].as_str().map(str::to_string),
-        confidence: row["conf"].as_f64().unwrap_or(0.0),
-        sibling: row["sibling"].as_str().map(str::to_string),
-        sibling_stance: row["sibling_stance"].as_str().map(str::to_string),
-        sibling_note: row["sibling_note"].as_str().map(str::to_string),
-    })
-}
-
-/// One open question, derived — never stored. `key` is the agent's
-/// declared identity for the claim; `assumption` is the prose the
-/// human reads — two aspects may word one claim differently, and only
-/// the key pairs them. `alternative` is the rival reading the agent
-/// named beside it, and `sibling` is what the human already decided on
-/// that same key under another aspect; both are carried by the read so
-/// the review can offer them as answers rather than only naming them.
-struct Question {
-    /// The dataset the claim belongs to, carried by the read. A
-    /// workspace holds many datasets and the agent's `USE` is its own
-    /// cursor, not the claim's address: a review decision is stored where the
-    /// question came from, whatever the caller happens to be pointed
-    /// at — and is stored even when the caller is pointed at nothing.
-    dataset: String,
-    subject: String,
-    aspect: String,
-    key: String,
-    dimension: String,
-    assumption: String,
-    basis: String,
-    /// The rival reading, when the agent named one. It is the only
-    /// answer the catalog already holds that says something: a stance
-    /// is a result on a sentence, a rival is a reading to take
-    /// instead.
-    alternative: Option<String>,
-    confidence: f64,
-    sibling: Option<String>,
-    /// The sibling review decision in parts, so the review can offer it back as
-    /// an answer rather than only naming it.
-    sibling_stance: Option<String>,
-    sibling_note: Option<String>,
-}
-
-/// The answers, as the schema names them.
-///
-/// Every one is a field the renderer draws without being opened: a
-/// boolean puts its checkbox in the list, an enum hides its options
-/// behind a keypress. That is the whole reason the stances are not one
-/// enum.
-///
-/// The digits carry the order. `ElicitationSchema` holds its
-/// properties in a `BTreeMap` and its `property_order` is
-/// `#[serde(skip)]`, so the wire order is the sorted key order and the
-/// order they were built in is lost. Sorted alphabetically the form
-/// opens on the free-text box with the claim third; sorted by these
-/// prefixes it opens on the claim, which is what the human came to
-/// read. Nobody sees these names — the titles are what render.
-const CORRECT: &str = "1_correct";
-const RATHER: &str = "2_rather";
-const SAME_AS: &str = "3_same_as";
-const UNCLEAR: &str = "4_unclear";
-const CORRECTION: &str = "5_correction";
-
-impl Question {
-    /// The review's transport id — the MRTR map key and the deferred
-    /// set's member. Built from identity (subject, aspect, the
-    /// assumption's key), so it survives a re-record that reorders the
-    /// assumptions array.
-    fn id(&self) -> String {
-        format!("loose:{}:{}:{}", self.subject, self.aspect, self.key)
-    }
-
-    /// The form: identity in the message, the answers in the fields.
-    ///
-    /// Where each piece of text may live is decided by the renderer,
-    /// measured against 2.1.237. The message is clipped to three lines
-    /// and each line truncated to the terminal width. A field's title
-    /// is truncated too — it shares its line with the value, so a
-    /// claim put there arrives as `an entry is a row in results —
-    /// every car the ex…`. A field's *description* is the only surface
-    /// that renders whole: it wraps under the field with a gutter and
-    /// nothing caps its length.
-    ///
-    /// So the titles are short fixed labels and the substance rides
-    /// the descriptions — the claim and its basis under the box that
-    /// confirms it, the rival under the box that takes it, the prior
-    /// words under the box that repeats them. The human reads a
-    /// reading and picks one, rather than reading a sentence and
-    /// voting on it.
-    ///
-    /// Every box carries `false` rather than nothing, so it draws as
-    /// an empty checkbox instead of the words `not set`.
-    ///
-    /// Nothing is required. A required field holds the confirm button
-    /// closed until it is set, which would make "I have no answer"
-    /// unreachable except by leaving the form.
-    fn params(&self, rank: usize, total: usize) -> Result<ElicitRequestParams, String> {
-        let Question {
-            subject,
-            aspect,
-            dimension,
-            assumption,
-            basis,
-            alternative,
-            confidence,
-            sibling,
-            sibling_note,
-            ..
-        } = self;
-        let mut schema = ElicitationSchema::builder().optional_bool_with(CORRECT, |b| {
-            b.title("Correct as stated")
-                .description(format!("{assumption}\nbasis: {basis}"))
-                .with_default(false)
-        });
-        // The rival, offered as itself. Taking it is a correction
-        // whose words the agent already wrote down.
-        if let Some(rival) = alternative {
-            schema = schema.optional_bool_with(RATHER, |b| {
-                b.title("Rather, this reading")
-                    .description(rival.clone())
-                    .with_default(false)
-            });
-        }
-        // What they already decided on this same claim elsewhere, offered
-        // back as an answer. One decision spelled with one key across
-        // several metric definitions is asked once per metric definition, because a
-        // human may decide the same key differently on two aspects and
-        // has. What the repeat must not cost is a re-reading.
-        if let Some(prior) = sibling {
-            let note = sibling_note.clone().unwrap_or_default();
-            schema = schema.optional_bool_with(SAME_AS, |b| {
-                b.title("Same as before")
-                    .description(format!("{prior}\n{note}"))
-                    .with_default(false)
-            });
-        }
-        schema = schema
-            .optional_bool_with(UNCLEAR, |b| {
-                b.title("The question itself is unclear")
-                    .description(
-                        "Refuses the question, not the claim: it will be reformulated \
-                         and asked again.",
-                    )
-                    .with_default(false)
-            })
-            .optional_string_with(CORRECTION, |s| {
-                s.title("What is right instead")
-                    .description("Your own words. They outrank every box above.")
-            });
-        Ok(ElicitRequestParams::FormElicitationParams {
-            meta: None,
-            // Identity, then where this sits in everything that holds
-            // open. The position is the whole point of a bounded
-            // review: nobody reaches the end of one and believes it was
-            // the end of the work.
-            message: format!(
-                "{subject} · {aspect} — {dimension} · confidence {confidence} \
-                 · {rank} of {total} open"
-            ),
-            requested_schema: schema.build().map_err(|e| e.to_string())?,
-        })
-    }
 }
 
 impl ServerHandler for GlossqlMcp {
@@ -1123,23 +621,13 @@ impl ServerHandler for GlossqlMcp {
         // own refresh is compared against, whatever else is stored
         // meanwhile — the boot's refresh included.
         let before = self.summary.facts.read().ok().and_then(|f| f.clone());
-        let reviewed = match self
-            .question_review(&request, &context, &shape, &session, &id)
-            .await
-        {
-            Review::Ask(forms) => return Ok(*forms),
-            Review::Digested(note) => note,
-        };
         let (rendered, completed) = self
             .run_statements(&session, &actor, bound.as_deref(), statements)
             .await;
-        // A write (or a loaded review decision) moves the counts; a call before
-        // the boot's own refresh has loaded composes them too.
+        // A write moves the counts; a call before the boot's own refresh
+        // has loaded composes them too.
         let summary_moved = self
-            .summary_moved(
-                shape.writes || reviewed.is_some() || before.is_none(),
-                before,
-            )
+            .summary_moved(shape.writes || before.is_none(), before)
             .await;
         // Where the call left the agent and one act per goal from there,
         // on every call (`window`). It rides the result, never the
@@ -1152,127 +640,11 @@ impl ServerHandler for GlossqlMcp {
                 statements,
             )
             .await;
-        Ok(call_result(&id, rendered, reviewed, completed, window, summary_moved).into())
+        Ok(call_result(&id, rendered, completed, window, summary_moved).into())
     }
-}
-
-/// What the question review decided for a call: the batch of forms,
-/// returned in place of a result, or the account of a retry's answers
-/// — none where no review rode the call.
-enum Review {
-    Ask(Box<CallToolResponse>),
-    Digested(Option<String>),
 }
 
 impl GlossqlMcp {
-    /// The question review rides ahead of execution as an MRTR
-    /// `input_required` result (SEP-2322): the ask is the result, and
-    /// the answer arrives on the client's retry of this same call.
-    /// There is no other mechanism — the spec is explicit that a server
-    /// "MUST send server-to-client requests using the MRTR pattern",
-    /// and the older server-initiated request is gone.
-    ///
-    /// Cadence: forms ride only calls that read the catalog — a metadata
-    /// read, no writes — so the summary sweep and the stage read-backs
-    /// carry the review while loads and judging queries run
-    /// uninterrupted. A writing call re-opens what a decline deferred.
-    /// One question per call, only while the workspace derives open
-    /// items; the capability must come from the request's own stamp,
-    /// since the transport's peer_info is synthetic when every request
-    /// holds alone.
-    async fn question_review(
-        &self,
-        request: &CallToolRequestParams,
-        context: &RequestContext<RoleServer>,
-        shape: &CallShape,
-        session: &Session,
-        id: &str,
-    ) -> Review {
-        if let Some(note) = self.digest_retry(request, session, id).await {
-            return Review::Digested(Some(note));
-        }
-        if shape.reviews
-            && context
-                .client_capabilities()
-                .and_then(|caps| caps.elicitation)
-                .is_some()
-            && let Some(forms) = self.ask_review(session, id).await
-        {
-            return Review::Ask(Box::new(forms));
-        }
-        Review::Digested(None)
-    }
-
-    /// A retry's answers, digested: a review is a batch, so a retry
-    /// carries a batch. Each answer is digested against its own
-    /// re-derived question; one that no longer holds is said and
-    /// skipped, never taken as a result on another. None for a call
-    /// that is no retry.
-    async fn digest_retry(
-        &self,
-        request: &CallToolRequestParams,
-        session: &Session,
-        id: &str,
-    ) -> Option<String> {
-        let responses = request.input_responses.as_ref()?;
-        let note = if request.request_state.as_deref() != Some(REVIEW_STATE) {
-            "review: a retry without the echoed state".to_string()
-        } else if !responses.is_empty() {
-            let mut notes = Vec::new();
-            for (key, raw) in responses.iter() {
-                notes.push(match serde_json::from_value::<ElicitResult>(raw.clone()) {
-                    Ok(answer) => Box::pin(self.digest_review(key, answer, session)).await,
-                    Err(e) => format!("review: the answer does not parse: {e}"),
-                });
-            }
-            notes.join("\n")
-        } else {
-            "review: the retry carries no answer".into()
-        };
-        // The account can carry the human's typed words and a rival's
-        // prose, so it is a `debug` event like a call's text; `info`
-        // says only that a review was digested.
-        tracing::info!(subject = %id, "review: digested");
-        tracing::debug!(subject = %id, note = %note, "review");
-        Some(note)
-    }
-
-    /// The review's forms as one result: the whole batch travels in it,
-    /// the call ends normally, the client fulfils every entry before it
-    /// retries, and nothing on the server waits — the review costs the
-    /// agent no time whether or not a person is there. None where no
-    /// form is kept.
-    async fn ask_review(&self, session: &Session, id: &str) -> Option<CallToolResponse> {
-        let (review, total) = self.derive_review(session).await;
-        let mut asks = InputRequests::new();
-        let mut ids = Vec::new();
-        for (rank, q) in &review {
-            match q.params(*rank, total) {
-                Ok(params) => {
-                    ids.push(q.id());
-                    asks.insert(
-                        q.id(),
-                        InputRequest::Elicitation(ElicitRequest::new(params)),
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(subject = %id, error = %e, "review: form refused")
-                }
-            }
-        }
-        if asks.is_empty() {
-            return None;
-        }
-        tracing::info!(
-            subject = %id,
-            asking = ids.len(),
-            open = total,
-            ids = %ids.join(", "),
-            "review"
-        );
-        Some(InputRequiredResult::new(Some(asks), Some(REVIEW_STATE.into())).into())
-    }
-
     /// The statements, run: a single query streams from the engine;
     /// everything else runs through execute. Either way the session
     /// pages a data read — its plan carries the cap, so what the agent
@@ -1330,8 +702,8 @@ impl GlossqlMcp {
     /// baseline, so the mover hears it: a second agent watching the
     /// same workspace does not, and that is the known cost of not
     /// keeping per-actor state the run has never asked for. Scoped to
-    /// the cause: only a write (or a loaded review decision) can move the
-    /// counts, so a pure read never pays the recomposition.
+    /// the cause: only a write can move the counts, so a pure read never
+    /// pays the recomposition.
     async fn summary_moved(
         &self,
         moved: bool,
@@ -1351,16 +723,14 @@ impl GlossqlMcp {
     }
 }
 
-/// The call's result: the rows, the review's account, the window and
-/// the summary where it moved, as a closing `summary:` block and as
-/// counts under `_meta`. A failed statement is the agent's
-/// business, not the transport's: an error result, never a protocol
-/// error — and the summary still travels: an input_responses review decision may
-/// have loaded even when the statement then refused.
+/// The call's result: the rows, the window and the summary where it
+/// moved, as a closing `summary:` block and as counts under `_meta`. A
+/// failed statement is the agent's business, not the transport's: an
+/// error result, never a protocol error — and the summary still
+/// travels: the statements before it may have written.
 fn call_result(
     id: &str,
     rendered: Result<serde_json::Value, Refusal>,
-    reviewed: Option<String>,
     completed: Option<serde_json::Value>,
     window: String,
     summary_moved: Option<SummaryMoved>,
@@ -1381,9 +751,6 @@ fn call_result(
     let mut result = match rendered {
         Ok(body) => {
             let mut blocks = vec![ContentBlock::text(body.to_string())];
-            if let Some(note) = reviewed {
-                blocks.push(ContentBlock::text(note));
-            }
             blocks.push(ContentBlock::text(window));
             if let Some(summary) = summary_moved {
                 blocks.push(ContentBlock::text(summary));
@@ -1564,107 +931,4 @@ pub async fn bind(
     }
     request.extensions_mut().insert(Bound(dataset));
     next.run(request).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn question() -> Question {
-        Question {
-            dataset: "f1".into(),
-            subject: "f1".into(),
-            aspect: "race_entries".into(),
-            key: "entry-means-a-results-row".into(),
-            dimension: "scope".into(),
-            assumption: "an entry is a row in results, including cars that never started".into(),
-            basis: "results carries no did-not-start marker beyond status_id".into(),
-            alternative: None,
-            confidence: 0.7,
-            sibling: None,
-            sibling_stance: None,
-            sibling_note: None,
-        }
-    }
-
-    /// The form's schema as it goes on the wire.
-    fn form(q: &Question) -> serde_json::Value {
-        match q.params(3, 12).expect("the form builds") {
-            ElicitRequestParams::FormElicitationParams {
-                requested_schema, ..
-            } => serde_json::to_value(&requested_schema).expect("schema serializes"),
-            other => panic!("form mode expected, got {other:?}"),
-        }
-    }
-
-    /// Every answer is its own field: the renderer draws a checkbox in
-    /// the list and hides an enum's options behind a keypress.
-    #[test]
-    fn every_answer_is_a_visible_field() {
-        let schema = form(&question());
-        let props = &schema["properties"];
-        for name in [CORRECT, UNCLEAR] {
-            assert_eq!(props[name]["type"], "boolean", "{name} in {schema}");
-        }
-        assert_eq!(props[CORRECTION]["type"], "string", "{schema}");
-        assert!(
-            schema
-                .get("required")
-                .is_none_or(serde_json::Value::is_null),
-            "nothing is required, or the confirm button never opens: {schema}"
-        );
-    }
-
-    /// The wire order is the sorted key order, so the names carry the
-    /// order: the form must open on the claim, not on the text box.
-    #[test]
-    fn the_form_opens_on_the_claim() {
-        let offered = Question {
-            alternative: Some("starters only".into()),
-            sibling: Some("corrected on finish_rate".into()),
-            sibling_stance: Some("corrected".into()),
-            sibling_note: Some("status_id = 1".into()),
-            ..question()
-        };
-        let schema = form(&offered);
-        let order: Vec<&str> = schema["properties"]
-            .as_object()
-            .expect("an object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(
-            order,
-            vec![CORRECT, RATHER, SAME_AS, UNCLEAR, CORRECTION],
-            "the claim first, the free text last"
-        );
-    }
-
-    /// A box for a reading the catalog does not hold would be a box
-    /// that cannot be answered, so neither appears unless it applies.
-    #[test]
-    fn the_alternative_and_the_earlier_decision_appear_only_when_given() {
-        let bare = form(&question());
-        assert!(bare["properties"].get(RATHER).is_none(), "{bare}");
-        assert!(bare["properties"].get(SAME_AS).is_none(), "{bare}");
-
-        let offered = Question {
-            alternative: Some("starters only, excluding rows whose grid slot is 0".into()),
-            sibling: Some("corrected on finish_rate".into()),
-            sibling_stance: Some("corrected".into()),
-            sibling_note: Some("status_id = 1 is the finish marker".into()),
-            ..question()
-        };
-        let schema = form(&offered);
-        assert_eq!(
-            schema["properties"][RATHER]["description"],
-            offered.alternative.as_deref().unwrap()
-        );
-        assert!(
-            schema["properties"][SAME_AS]["description"]
-                .as_str()
-                .is_some_and(|d| d.contains("corrected on finish_rate")),
-            "{schema}"
-        );
-    }
 }

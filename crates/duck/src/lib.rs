@@ -469,35 +469,26 @@ pub struct SummaryCounts {
 /// The shape of a call, read off the statements before they run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallShape {
-    pub reviews: bool,
     pub writes: bool,
     pub dataset: Option<String>,
 }
 
 /// The shape, from the statements' text: `USE` names the dataset, the
 /// last one standing; a statement that is not a read, and an
-/// extraction, write; a call of reads alone that names a catalog
-/// relation is a review. Syntactic, as the interfaces need it before the
+/// extraction, write. Syntactic, as the interfaces need it before the
 /// engine runs anything: a statement that is none of these is refused
 /// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
-    let mut reads_the_catalog = false;
     let mut writes = false;
     let mut dataset = None;
     for piece in split_statements(statements) {
         if let Some(name) = use_target(&piece) {
             dataset = Some(name);
-        } else if is_read(&piece) && !is_extraction(&piece) {
-            reads_the_catalog |= reads_catalog(&piece);
-        } else {
+        } else if !is_read(&piece) || is_extraction(&piece) {
             writes = true;
         }
     }
-    CallShape {
-        reviews: reads_the_catalog && !writes,
-        writes,
-        dataset,
-    }
+    CallShape { writes, dataset }
 }
 
 /// `USE <dataset>`: the name, an unquoted one folded to lowercase as
@@ -2079,15 +2070,8 @@ mod tests {
     }
 
     #[test]
-    fn a_glossary_read_reviews_and_a_gloss_writes() {
-        assert_eq!(
-            call_shape("SELECT * FROM glossary"),
-            CallShape {
-                reviews: true,
-                writes: false,
-                dataset: None
-            }
-        );
+    fn a_glossary_read_does_not_write_and_a_gloss_does() {
+        assert!(!call_shape("SELECT * FROM glossary").writes);
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
             call_shape("USE fin; SELECT * FROM next").dataset.as_deref(),
@@ -2102,7 +2086,7 @@ mod tests {
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
         let shape = call_shape(setup);
-        assert!(shape.writes && !shape.reviews, "{shape:?}");
+        assert!(shape.writes, "{shape:?}");
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
         assert!(reads_catalog("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_catalog("SELECT * FROM fin.orders"));

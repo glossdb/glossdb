@@ -36,18 +36,9 @@ asked.
 questions. Choose **Correct as stated**, or correct it in your own
 words.
 
-**In the agent's client.** While questions are open, a tool call that
-only reads the catalog carries one form per question, where the
-client supports MCP elicitation. A form offers:
-
-- Correct as stated;
-- Rather, this reading: the alternative the agent named;
-- Same as before: your decision on the same key for another view;
-- The question itself is unclear: it is asked again in other words;
-- What is right instead: your own words, which outrank the boxes.
-
-Where the client shows no forms, the agent relays the question in
-chat.
+**In the agent's chat.** The agent relays the question, with the
+alternative it named and its reason. The person records the answer in
+the console.
 
 **With a statement**, over the query endpoint, which writes as a
 person:
