@@ -1404,20 +1404,6 @@ impl Session {
         .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
-    /// The lake's snapshot: the version of the data and the catalog
-    /// together, since a load and a write to the catalog each take one.
-    /// A read of the lake alone holds while it does.
-    pub async fn lake_snapshot(&self) -> Option<String> {
-        let batches = self
-            .batches(
-                &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
-                &[],
-            )
-            .await
-            .ok()?;
-        one_cell(&batches)
-    }
-
     /// The statements, in order, each an outcome; a refusal names its
     /// place and carries what loaded before it.
     pub async fn execute(&self, text: &str) -> Result<Vec<Outcome>, SessionError> {

@@ -5,8 +5,7 @@
 //! everything live (declared functions, the glossary, the tables) is
 //! read through the language itself, where it is always current.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
@@ -143,15 +142,7 @@ pub struct Summary {
     line: std::sync::RwLock<String>,
     opening: std::sync::RwLock<String>,
     facts: std::sync::RwLock<Option<SummaryFacts>>,
-    /// The `next` rows of each dataset, with the lake's snapshot they
-    /// were read at. `next` reads the catalog and the lake's shape and
-    /// no data, so its rows hold while the snapshot does; a load or a
-    /// write to the catalog takes the next one.
-    next: Mutex<HashMap<String, KeptNext>>,
 }
-
-/// A dataset's `next` rows as kept: the snapshot they were read at.
-type KeptNext = (String, Arc<Vec<serde_json::Value>>);
 
 impl Summary {
     pub fn line(&self) -> String {
@@ -829,31 +820,10 @@ impl GlossqlMcp {
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        // the snapshot is read before the rows: rows read across a
-        // write are kept under the snapshot before it, which no later
-        // call asks for
-        let snapshot = session.lake_snapshot().await;
-        let kept = snapshot.as_ref().and_then(|at| {
-            let kept = self.summary.next.lock().ok()?;
-            let (read_at, rows) = kept.get(dataset)?;
-            (read_at == at).then(|| Arc::clone(rows))
-        });
-        let rows = match kept {
-            Some(rows) => rows,
-            None => {
-                let rows = Arc::new(read_rows(&session, "SELECT * FROM next").await?);
-                if let Some(at) = snapshot
-                    && let Ok(mut kept) = self.summary.next.lock()
-                {
-                    kept.insert(dataset.to_string(), (at, Arc::clone(&rows)));
-                }
-                rows
-            }
-        };
+        let rows = read_rows(&session, "SELECT * FROM next").await?;
         Ok(rows
-            .iter()
+            .into_iter()
             .filter(|row| kind.is_none_or(|k| row["kind"].as_str() == Some(k)))
-            .cloned()
             .collect())
     }
 
