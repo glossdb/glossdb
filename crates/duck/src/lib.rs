@@ -1455,6 +1455,9 @@ impl Session {
                 if reads {
                     pending.run(&conn);
                 }
+                if !reads {
+                    pending.before_write(&conn);
+                }
                 let ran = if root {
                     execute_one(&conn, piece, cap)
                 } else {
@@ -1692,21 +1695,49 @@ fn execute_one(
     }
 }
 
-/// Whether a call wrote since its results were last brought current.
+/// Whether a call wrote since its results were last brought current,
+/// and the lake's snapshot then: a write of what the catalog holds
+/// writes nothing and takes no snapshot, so nothing can be due.
 #[derive(Default)]
 struct Pending {
     wrote: bool,
+    since: Option<String>,
 }
 
 impl Pending {
-    /// Brings the dataset's results current after a write, and clears
-    /// the mark. A result that cannot be computed is logged and never
-    /// fails the call.
-    fn run(&mut self, conn: &Connection) {
-        if std::mem::take(&mut self.wrote) {
-            bring_current(conn);
+    /// Takes the snapshot a write starts from, once per call and after
+    /// each time the results were brought current.
+    fn before_write(&mut self, conn: &Connection) {
+        if self.since.is_none() {
+            self.since = current_snapshot(conn);
         }
     }
+
+    /// Brings the dataset's results current after a write that took a
+    /// snapshot, and clears the mark. A result that cannot be computed
+    /// is logged and never fails the call.
+    fn run(&mut self, conn: &Connection) {
+        if !std::mem::take(&mut self.wrote) {
+            return;
+        }
+        let now = current_snapshot(conn);
+        if now.is_some() && now == self.since {
+            return;
+        }
+        bring_current(conn);
+        self.since = None;
+    }
+}
+
+/// The lake's newest snapshot, or none where it cannot be read.
+fn current_snapshot(conn: &Connection) -> Option<String> {
+    let (_, _, batches) = arrow_batches(
+        conn,
+        &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
+        &[],
+    )
+    .ok()?;
+    one_cell(&batches)
 }
 
 /// The rounds one write is followed for: a result computed in one
