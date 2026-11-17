@@ -1,7 +1,8 @@
 # Test
 
 A test is a statement about the data that is checked against the
-data. It has a state, and the state is read again after each load.
+data. It has a state, stored per asset, and the server computes it
+again after each write that changes what it read.
 
 | State | Meaning |
 |---|---|
@@ -56,6 +57,16 @@ any asset:
 ```glossql
 SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';
 ```
+
+A test's result is stored per asset and test, with what it read: the
+asset's values of the property, the asset's definition, and the
+declarations of the test and its detector. After each write the
+server runs `SELECT <test>() FROM <dataset>` for each test whose
+results are missing or out of date; the statement computes those
+assets alone. `current` is false while a stored result is out of
+date. A detector that compares assets with each other is refused
+(`cross_subject`): declare such a test on the table or the dataset
+that holds the assets.
 
 ## A test brings its finding and fix
 

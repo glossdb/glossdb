@@ -17,7 +17,11 @@ SELECT view, test, subject, state, score, current, run FROM view_tests()
 tables and columns it reads, worst first. A table view and a single
 value have rows too: the built-in join and orphan tests, the tests on
 what they read and the tests you declared on them. `not_run` means no result exists yet; `current` is
-false when the data changed after the result was stored. `run` is the
+false when something the stored result read changed after it was
+stored. A test's result is stored per asset; the server computes the
+ones out of date after each write. A detector that compares assets
+with each other is refused (`cross_subject`): declare that test on
+the table or the dataset that holds them. `run` is the
 statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
