@@ -178,10 +178,16 @@ WHERE r.metric = 'hires' AND s.m.metric = 'hires';
 ----
 hires	false	origins_short	true	4
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
+
 query TTTR
 SELECT subject, test, state, score FROM TESTS() WHERE test = 'range_test';
 ----
 fin.spend	range_test	red	1.0
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
 
 # the test is a row of view_tests() on the metric (this suite declared it again, so it runs as a team's test): the
 # result carries the finding (the month the service judged red) and the fix, which runs the backtest again or
@@ -206,6 +212,9 @@ SELECT count(*) FROM measurements_history WHERE function = 'metric_ranges' AND s
 statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-04', 3.0, 'water');
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
+
 query T
 SELECT current FROM TESTS() WHERE test = 'range_test';
 ----
@@ -216,6 +225,9 @@ SELECT temporal() FROM spend.period;
 
 statement ok
 SELECT metric_ranges() FROM fin.spend;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
 
 query T
 SELECT current FROM TESTS() WHERE test = 'range_test';
@@ -247,6 +259,9 @@ SELECT (value->>'threshold')::DOUBLE FROM measurements WHERE function = 'metric_
 statement ok
 GLOSS metric_ranges ON fin.spend AS $${"tolerance": 0.5, "basis": "a guess"}$$;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
+
 query T
 SELECT state FROM TESTS() WHERE test = 'range_test';
 ----
@@ -260,6 +275,9 @@ GLOSS metric_ranges ON fin.spend AS $${"tolerance": 1.0, "basis": "the January p
 
 statement ok
 RESET VARIABLE glossql_actor;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM fin;
 
 query TT
 SELECT subject, state FROM view_tests() WHERE test = 'range_test';
@@ -685,10 +703,16 @@ false	NULL
 statement ok
 SELECT metric_ranges() FROM thin.visits;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM thin;
+
 query I
 SELECT count(*) FROM TESTS() WHERE test = 'range_test';
 ----
 0
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), range_test() FROM thin;
 
 query I
 SELECT count(*) FROM view_tests() WHERE test = 'range_test';

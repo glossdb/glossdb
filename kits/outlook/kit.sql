@@ -900,6 +900,6 @@ WITH refusal AS (
                 'unknown_scenario: metric_series(scenario := ''' || s || '''): no scenario of that name is declared — a scenario is a FACT aspect declared with x-kind scenario') END AS r)
 SELECT sp.metric, 'scenario' AS world, '' AS dimension, '' AS member, sp.period, sp.value,
        NULL::DOUBLE AS num, NULL::DOUBLE AS den, coalesce(a.additivity, 'none') AS additivity
-FROM main.scenario_points(s) sp LEFT JOIN main.view_rows() a ON a.view = sp.metric
+FROM main.scenario_points(s) sp LEFT JOIN main.view_summary() a ON a.view = sp.metric
 WHERE w = 'scenario' AND sp.applicable AND sp.value IS NOT NULL AND (g IS NULL OR g = sp.grain)
 UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refusal WHERE r IS NOT NULL;

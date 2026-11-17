@@ -1725,7 +1725,9 @@ fn bring_current(conn: &Connection) {
     for _ in 0..ROUNDS {
         let Ok((_, _, due)) = arrow_batches(
             conn,
-            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
+            &format!(
+                "SELECT run FROM {LAKE}.main.results_due() GROUP BY run ORDER BY min(ord), run"
+            ),
             &[],
         ) else {
             return;

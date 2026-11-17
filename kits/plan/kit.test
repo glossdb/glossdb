@@ -161,10 +161,16 @@ FROM measurements WHERE function = 'metric_plan';
 ----
 sales_budget	sales	month	13
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test() FROM fin;
+
 query TTR
 SELECT subject, state, score FROM TESTS() WHERE test = 'plan_test';
 ----
 fin.sales_budget	green	0.0
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test() FROM fin;
 
 query TTT
 SELECT view, test, subject FROM view_tests() WHERE test = 'plan_test';
@@ -287,11 +293,17 @@ fin.sales	result metric_forecast
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
+
 query TT
 SELECT starts_with(evidence->>'finding', 'sales_budget is 2120.0 at 2025, above'), contains(evidence->>'fix', 'GLOSS sales_budget ON fin AS $${"sql"')
 FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
 ----
 true	true
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
 
 query TTR
 SELECT subject, state, round(score, 2) FROM TESTS() WHERE test = 'plan_test';
@@ -318,6 +330,9 @@ SELECT count(*) FROM glossql_outdated() WHERE function = 'metric_plan' AND subje
 statement ok
 INSERT INTO fin.ledger VALUES (DATE '2025-02-05', 2.0);
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
+
 query T
 SELECT current FROM TESTS() WHERE test = 'plan_test';
 ----
@@ -332,6 +347,9 @@ SELECT metric_forecast() FROM fin.sales;
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
+
 query T
 SELECT current FROM TESTS() WHERE test = 'plan_test';
 ----
@@ -339,6 +357,9 @@ true
 
 # --- a forecast that failed is a result too: the plan has no range to hold against, and its test is yellow with the
 # forecast's code and the statements that run the forecast and the comparison again, where a period waits for a range
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
 
 query TT
 SELECT subject, state FROM TESTS() WHERE test = 'plan_test';
@@ -356,10 +377,16 @@ service_failed
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
+
 query TTT
 SELECT subject, state, current FROM TESTS() WHERE test = 'plan_test';
 ----
 fin.sales_budget	yellow	true
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
 
 query TTTT
 SELECT evidence->>'forecast_code', (evidence->>'forecast_error') IS NOT NULL,
@@ -378,6 +405,9 @@ SELECT metric_forecast() FROM fin.sales;
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
+
 query TT
 SELECT state, evidence->>'forecast_code' FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';
 ----
@@ -389,6 +419,9 @@ SELECT metric_forecast() FROM fin.hires;
 
 statement ok
 SELECT metric_plan() FROM fin.hires_plan;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
 
 query TT
 SELECT state, (evidence->>'forecast_code') IS NULL FROM view_tests() WHERE test = 'plan_test' AND view = 'hires_plan';
@@ -404,6 +437,9 @@ SELECT metric_forecast() FROM fin.sales;
 
 statement ok
 SELECT metric_plan() FROM fin.sales_budget;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test() FROM fin;
 
 query TTT
 SELECT state, current, (evidence->>'forecast_code') IS NULL FROM view_tests() WHERE test = 'plan_test' AND view = 'sales_budget';

@@ -386,6 +386,9 @@ SELECT orphan_check() FROM fin.spend;
 statement ok
 SELECT additivity_check() FROM fin.spend;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TTTT
 SELECT test, declared_by, state, run FROM view_tests() WHERE view = 'spend' ORDER BY test;
 ----
@@ -397,6 +400,9 @@ orphan_test	kit:views	green	SELECT orphan_check() FROM fin.spend
 # test, which needs a measure; a stopped definition has no tests of this kind
 statement ok
 SELECT join_check(), orphan_check() FROM fin.fte_cap;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT test, state FROM view_tests() WHERE view IN ('fte_cap', 'win_rate') ORDER BY view, test;
@@ -423,6 +429,9 @@ SELECT join_check() FROM fin.noted_spend;
 statement ok
 SELECT orphan_check() FROM fin.noted_spend;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TTT
 SELECT test, state, (json_extract_string(evidence, '$.reason')) IS NOT NULL FROM view_tests() WHERE view = 'noted_spend' AND test IN ('join_test', 'orphan_test') ORDER BY test;
 ----
@@ -436,6 +445,9 @@ SELECT column_profile() FROM fin.lines.line_id;
 statement ok
 SELECT column_profile() FROM fin.notes.line_id;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TT
 SELECT state, current FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
 ----
@@ -443,6 +455,9 @@ yellow	false
 
 statement ok
 SELECT join_check() FROM fin.noted_spend;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TTT
 SELECT state, current, json_extract_string(evidence, '$.pairs') FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test';
@@ -467,6 +482,9 @@ SELECT join_check() FROM fin.noted_spend_grouped;
 
 statement ok
 SELECT join_check() FROM fin.noted_spend_latest;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT view, state FROM view_tests() WHERE view LIKE 'noted_spend_%' AND test = 'join_test' ORDER BY view;
@@ -499,6 +517,9 @@ SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id
 statement ok
 SELECT orphan_check() FROM fin.customer_sales;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TT
 SELECT state, json_extract_string(evidence, '$.edges[0].relationship') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
@@ -511,6 +532,9 @@ DECLARE RELATIONSHIP orders.region_id -> regions.region_id;
 statement ok
 SELECT orphan_check() FROM fin.customer_sales;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TT
 SELECT state, json_extract_string(evidence, '$.applicable') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
@@ -521,6 +545,9 @@ SELECT relationship_coherence() FROM orders.region_id -> regions.region_id;
 
 statement ok
 SELECT orphan_check() FROM fin.customer_sales;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT state, json_extract_string(evidence, '$.breach_rate') FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
@@ -537,12 +564,18 @@ SELECT relationship_coherence() FROM orders.(customer_id, region_id) -> customer
 statement ok
 SELECT orphan_check() FROM fin.customer_sales;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TTII
 SELECT state, json_extract_string(evidence, '$.breach_rate'), json_array_length(evidence->'edges'),
        (SELECT count(*) FROM measurements WHERE function = 'relationship_coherence' AND subject LIKE '%(customer_id, region_id)%' AND (value->>'orphan_rate')::DOUBLE > 0.2)
 FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
 red	0.2	2	1
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 # a built-in test that is red brings its finding and its fix
 query I
@@ -568,6 +601,9 @@ GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DA
 statement ok
 SELECT join_check() FROM fin.priced_spend;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TT
 SELECT state, json_extract_string(evidence, '$.tables') FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
 ----
@@ -578,6 +614,9 @@ GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DA
 
 statement ok
 SELECT join_check() FROM fin.priced_spend;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'priced_spend' AND test = 'join_test';
@@ -614,6 +653,9 @@ GLOSS all_lines ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS
 statement ok
 SELECT join_check() FROM fin.all_lines;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query T
 SELECT state FROM view_tests() WHERE view = 'all_lines' AND test = 'join_test';
 ----
@@ -622,6 +664,9 @@ green
 # an accepted rate is no conflict: the tolerance the test offers settles it
 statement ok
 GLOSS join_check ON fin.noted_spend AS $${"tolerance": 1.0, "basis": "every note of a line is counted on purpose"}$$;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test'
@@ -677,12 +722,18 @@ SELECT additivity_check() FROM fin.amount_per_line;
 statement ok
 SELECT additivity_check() FROM fin.amount_per_line_year;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TTT
 SELECT view, state, json_extract_string(evidence, '$.shape') FROM view_tests()
 WHERE view LIKE 'amount_per_line%' AND test = 'measure_additivity_test' ORDER BY 1;
 ----
 amount_per_line	red	ratio
 amount_per_line_year	red	ratio
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 # the fix a red additivity test brings is the metric's current definition, to edit and record again
 query T
@@ -699,6 +750,9 @@ GLOSS additivity ON amount_per_line.value AS $${"value": "ratio", "numerator": "
 
 statement ok
 SELECT additivity_check() FROM fin.amount_per_line;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query T
 SELECT state FROM view_tests() WHERE view = 'amount_per_line' AND test = 'measure_additivity_test';
@@ -758,6 +812,9 @@ FROM semantic_model();
 statement ok
 SELECT grain_check() FROM fin.ledger;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 query TTT
 SELECT view, subject, state FROM view_tests() WHERE test = 'grain_test';
 ----
@@ -769,6 +826,9 @@ GLOSS entity ON lines AS $${"value": "one booking of a line", "role": "fact", "g
 
 statement ok
 SELECT grain_check() FROM fin.lines;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TRII
 SELECT state, round(score, 4), (evidence->>'repeated')::INT, len(from_json(evidence->'keys', '["VARCHAR"]'))
@@ -810,6 +870,9 @@ SELECT column_profile() FROM fin.coa.code;
 statement ok
 SELECT join_check() FROM fin.booked_by_business;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
+
 # no profile and no grain tell which side holds each key once: not applicable, and the fix states the grain
 query TTT
 SELECT state, (evidence->>'applicable')::BOOLEAN, contains(evidence->>'fix', 'GLOSS entity ON fin.coa AS ')
@@ -822,6 +885,9 @@ GLOSS entity ON coa AS $${"value": "one account of one business", "role": "dimen
 
 statement ok
 SELECT join_check() FROM fin.booked_by_business;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test() FROM fin;
 
 query TT
 SELECT state, evidence->>'pairs' FROM view_tests() WHERE view = 'booked_by_business' AND test = 'join_test';

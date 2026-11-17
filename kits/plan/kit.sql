@@ -109,7 +109,7 @@ GROUP BY r.plan, r.metric, coalesce(at_grain, r.grain), date_trunc(coalesce(at_g
 
 CREATE OR REPLACE MACRO main.world_plan(w, p, g) AS TABLE
 WITH named AS (
-  SELECT a.view AS plan, a.applicable, a.reason FROM main.view_rows() a WHERE a.kind = 'plan' AND a.view = p),
+  SELECT a.view AS plan, a.applicable, a.reason FROM main.view_summary() a WHERE a.kind = 'plan' AND a.view = p),
 refusal AS (
   SELECT CASE WHEN w = 'plan' AND p IS NULL THEN error('plan_not_named: metric_series(world := ''plan'') names the plan it serves, plan := ''<name>'' — a plan is a VIEW aspect declared with x-kind plan and x-plan-of <metric>')
               WHEN w = 'plan' AND NOT EXISTS (SELECT 1 FROM named) THEN error(

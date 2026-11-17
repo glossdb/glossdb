@@ -275,6 +275,9 @@ SELECT (value->>'without_conventions')::INT FROM main.measurements WHERE functio
 # required and its allowed values a contract on the column. The server runs contract_check and code_check on a
 # view after a write once a column of it carries a contract; here they are run by hand.
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 # no contract stated: the view carries neither check
 query I
 SELECT count(*) FROM view_tests() WHERE test IN ('contract_test', 'code_test');
@@ -290,12 +293,18 @@ GLOSS contract ON supply.onhand.part AS $${"type": "BIGINT", "required": true}$$
 statement ok
 GLOSS contract ON supply.onhand.site AS $${"type": "VARCHAR", "required": true, "values": ["CH10", "DK01", "DK02", "PL01"]}$$;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 # the checks are set on the view that carries a contract, and on no other
 query TTT
 SELECT view, test, state FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
 ----
 onhand	code_test	not_run
 onhand	contract_test	not_run
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 # the column with no contract is asked for one, the two with one are not
 query TTT
@@ -306,6 +315,9 @@ should	true	false
 
 statement ok
 GLOSS contract ON supply.onhand.cases AS $${"type": "DOUBLE", "required": true}$$;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query I
 SELECT count(*) FROM next WHERE asset = 'supply.onhand' AND kind = 'describe' AND contains(statement, 'GLOSS contract ON');
@@ -338,11 +350,17 @@ cases	d365	stock_d365.unit_id	Pl	Cs:2
 cases	mono	stock_mono.unit	pal	kart:2
 cases	sap	stock_sap.uom	PAL	CS:2
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 query TTR
 SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
 ----
 code_test	red	0.6666666666666666
 contract_test	red	0.125
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 # both red tests are musts of next, each with its fix
 query TTB
@@ -355,6 +373,9 @@ must	test	true
 # conditions and joins leave out, the rows it serves and the sums of its measures. Set on a view with a
 # contract, the server computes it after each write (results_due()); here it is run by hand. The Polish join over
 # the identities follows a declared relationship, whose check names the code with no identity
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 # the server computes it on the view with a contract, and on no other view
 query TT
@@ -428,6 +449,9 @@ WHERE m.function = 'orphan_check' AND m.subject = 'supply.onhand';
 ----
 supply.stock_mono.indeks -> supply.model_identities.local_code	0.25	X9	1
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 query TT
 SELECT level, state FROM next WHERE asset = 'supply.onhand' AND kind = 'test' AND open LIKE 'orphan_test%';
 ----
@@ -439,6 +463,9 @@ GLOSS onhand ON supply AS $${"sql": "WITH pl AS (SELECT i.global_material AS par
 
 statement ok
 SELECT code_check() FROM onhand;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query TR
 SELECT state, score FROM view_tests() WHERE test = 'code_test';
@@ -488,6 +515,9 @@ d365	stock_d365.unit_id	Cs Pl	NULL
 mono	stock_mono.unit	kart pal	Pal:1
 sap	stock_sap.uom	CS PAL	NULL
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 # the pieces are on a row the view's condition (status D) leaves out: not listed, and the pallet's share is of
 # the four rows the view reads
 query TTR
@@ -496,12 +526,18 @@ SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'cod
 code_test	red	0.25
 contract_test	red	0.1
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 # the loads moved what the reconciliation read: the server computes it again after the write, and next does not
 # ask the agent for it
 query TT
 SELECT function, subject FROM results_due() WHERE function = 'reconciliation';
 ----
 reconciliation	supply.onhand
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query I
 SELECT count(*) FROM next WHERE asset = 'supply.onhand' AND open LIKE 'reconciliation%';
@@ -526,6 +562,9 @@ sap	4	NULL	NULL	4	0
 statement ok
 GLOSS contract_check ON supply.onhand AS $${"tolerance": 0.12, "basis": "the planner accepts the open deliveries until the next load"}$$;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 query T
 SELECT state FROM view_tests() WHERE test = 'contract_test';
 ----
@@ -548,6 +587,9 @@ query TT
 SELECT value->>'applicable', value->>'breach_rate' FROM main.measurements WHERE function = 'code_check' AND subject = 'supply.pallets';
 ----
 false	NULL
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query T
 SELECT state FROM view_tests() WHERE test = 'code_test' AND view = 'pallets';
@@ -574,6 +616,9 @@ FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"source": "VARCH
 WHERE m.function = 'code_check' AND m.subject = 'supply.stock_states';
 ----
 stock_mono.status	D K	false	false
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query T
 SELECT state FROM view_tests() WHERE test = 'code_test' AND view = 'stock_states';
@@ -607,10 +652,16 @@ SELECT m.value->>'applicable', m.value->>'reason' IS NOT NULL FROM main.measurem
 ----
 false	true
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
+
 query I
 SELECT count(*) FROM next WHERE asset = 'supply.sites' AND open LIKE 'reconciliation%';
 ----
 0
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 # stored as not applicable, it is not computed again until what it read moves
 query I
@@ -640,6 +691,9 @@ supply.model_identities	merge	20	20	19	19	1	keys missing	should
 # stated as the complete state, the kept row is wrong: a must
 statement ok
 GLOSS delivery ON supply.model_identities AS $${"value": "full", "basis": "the group sends its whole identity sheet each week"}$$;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query TTTT
 SELECT level, kind, state, contains(statement, 'DECLARE RECIPE model_identities ON supply FROM model AS $$') FROM next WHERE asset = 'supply.model_identities' AND kind = 'integrate';
@@ -674,6 +728,9 @@ supply.orders_sap	replace	100000	100000	true	true	unchanged
 # with the table's grain stated, the row names it as the key to merge by
 statement ok
 GLOSS entity ON supply.orders_sap AS $${"value": "one order line", "role": "fact", "grain": ["order_id"]}$$;
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM supply;
 
 query TTT
 SELECT level, state, contains(statement, 'DECLARE RECIPE orders_sap ON supply FROM sap SET (key: order_id) AS $$') FROM next WHERE asset = 'supply.orders_sap' AND kind = 'integrate';
@@ -815,17 +872,26 @@ SELECT contract_check() FROM steam_plants;
 statement ok
 SELECT code_check() FROM steam_plants;
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM ferc;
+
 query TTR
 SELECT test, state, score FROM view_tests() WHERE test IN ('contract_test', 'code_test') ORDER BY ALL;
 ----
 code_test	yellow	0.0
 contract_test	green	0.0
 
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM ferc;
+
 # the yellow code_test has nothing to check: its result is current and brings no fix, so it is no row of next
 query I
 SELECT count(*) FROM next WHERE asset = 'ferc.steam_plants' AND kind = 'test' AND state = 'yellow';
 ----
 0
+
+statement ok
+SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), contract_test(), code_test() FROM ferc;
 
 # the two columns with no contract are asked for one
 query TTT

@@ -87,8 +87,6 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- its floor the grain its rows are booked against where the declaration
 -- says so (x-covers); nothing is annotated on a plan's own columns.
 --
--- view_rows(): the same rows, unordered.
---
 -- view_axes(): what a function's body reads of the same, through the read
 -- functions alone (the lineage kit's), on the subject's dataset: one row
 -- per served view — view, kind, plan_of, covers, stopped, applicable,
@@ -102,7 +100,7 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 --===------------------------------------------------------------------===--
 
 -- series_reason(…) and plan_reason(…): why a view serves no series, NULL
--- where it does; view_rows() and view_axes() judge alike.
+-- where it does; view_summary() and view_axes() judge alike.
 CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS
   CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
        WHEN NOT served THEN 'the definition serves no view'
@@ -132,7 +130,7 @@ CREATE OR REPLACE MACRO main.plan_reason(stopped, plan_of, of_declared, served, 
        WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
   END;
 
-CREATE OR REPLACE MACRO main.view_rows() AS TABLE
+CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
@@ -335,11 +333,6 @@ CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the da
 -- metric's own forecast the metric and its columns ('itself', 'its
 -- columns').
 
--- view_summary() serves view_rows() as kept per store version
--- (glossql_kept): the reads that compose it, view_tests(), `next` and
--- results_due() among them, scan the rows of one computation per write.
-CREATE OR REPLACE MACRO main.view_summary() AS TABLE
-FROM glossql_kept('view_rows') ORDER BY view;
 
 --===------------------------------------------------------------------===--
 -- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells

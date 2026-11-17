@@ -35,9 +35,10 @@ mode; this file is so nobody has to rediscover it.
   (`GLOSSARY()`, `TESTS()`, the collapse, the tests (`DECLARE TEST`), the
   stale rule), the subjects (a dataset, a table, a column, a relationship,
   a source, a view and its columns), the lineage of views (a stored
-  result per view, `SELECT lineage() FROM <view>`), the cells
-  of a dataset (`dataset_cells`), a kit's read kept per store
-  version (`glossql_kept`), the service call (`glossql_service`), and the kit loader (`glossql_kit`).
+  result per view, `SELECT lineage() FROM <view>`), a test's result
+  (a stored result per subject and test, `SELECT <test>() FROM
+  <subject>`), the cells of a dataset (`dataset_cells`), the service
+  call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
@@ -62,12 +63,11 @@ mode; this file is so nobody has to rediscover it.
   the grammar on, the actor as session variables the extension reads,
   the dataset in use; the catalog reads bare, since the lake's `main`
   schema is on every search path. No interface keeps a cursor.
-- **A read never writes.** The catalog reads, the kept views and the
-  kept reads are computed once per store version — the lake's snapshot
-  and every relation's highest sequence — and served from the object
-  cache; a write moves the version. A read that several reads compose
-  (`view_summary()`, `view_tests()`) is read through
-  `glossql_kept('<macro>')`, so one write plans it once. An arm of
+- **A read never writes, and nothing keeps a read.** The catalog reads
+  (`GLOSSARY()`, `TESTS()`) read stored rows and mark them once per
+  statement; a result is computed by its statement, which the server
+  runs after a write (`results_due()`). A view's rows are data: a read
+  reads the view. An arm of
   `next` joins what it needs instead of a correlated subquery: DuckDB
   plans each correlated subquery as a dependent join and walks the whole
   plan once per such join. An arm of `next` reads the catalog and
@@ -105,7 +105,7 @@ mode; this file is so nobody has to rediscover it.
 1. Can the kit say it in SQL? Then it is a macro, a function body or
    a next step, with its `.test` beside it in the extension's repository.
 2. Does the extension already have the seam — a subject kind, a read,
-   a kept relation, the service call? Then use it; a missing seam is
+   a stored result, the service call? Then use it; a missing seam is
    a change in `../gloss`, with its test, before anything here.
 3. Is it the interface's — next steps composed, a page served, a
    form, the actor? Then it is the server's, in Rust, thin, over the facade.

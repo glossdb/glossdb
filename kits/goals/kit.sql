@@ -24,8 +24,11 @@
 -- of its period column); and a result no test reads whose property marks
 -- it `x-subject: view` and `x-set-by: <property>`, on each view that
 -- carries an annotation of that property (server_results()), with the
--- results its body reads before it. The server computes these after each
--- write. Any other result about the dataset or a view (a kit's function an
+-- results its body reads before it; then (ord 3) each test's result on
+-- each subject that holds a value of its property, where none is stored,
+-- the stored one is out of date, or its subject holds no value any more:
+-- one statement per test, `SELECT <test>() FROM <dataset>`, computes them
+-- all. The server computes these after each write, a statement once. Any other result about the dataset or a view (a kit's function an
 -- actor runs) is the actor's to compute: once it is out of date, `next`
 -- lists it with its statement.
 --
@@ -46,7 +49,7 @@ WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
   AND split_part(g.subject, '.', 2) IN (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW');
 
 CREATE OR REPLACE MACRO main.results_due() AS TABLE
-WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM glossql_kept('view_tests')),
+WITH tests AS MATERIALIZED (SELECT view, subject, aspect, state, current, run FROM main.view_tests()),
 fns AS MATERIALIZED (
   SELECT name, returns, reads FROM main.functions QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 -- the check that measures a test's property, as view_tests() names it
@@ -85,6 +88,23 @@ stored AS (
   SELECT m.subject, m.aspect, bool_and(c.function IS NULL) AS current, bool_or(m.error IS NOT NULL) AS failed
   FROM main.measurements m LEFT JOIN changed c ON c.function = m.function AND c.subject = m.subject
   WHERE m.dataset = current_schema() GROUP BY ALL),
+-- a test's result (ord 3), after what it judges: on each subject that holds a value of the tested
+-- property where none is stored or the stored one is out of date, and stored on a subject that holds
+-- none, which computing the test retires. One statement computes a test over the dataset
+detecting AS (SELECT t.name AS test, t.aspect, list_contains(a.grains, 'SOURCE') AS source_grain FROM main.tests t
+              JOIN main.aspects a ON a.name = t.aspect WHERE t.detector IS NOT NULL),
+holding AS (
+  SELECT d.test, g.subject FROM detecting d JOIN main.glossary g ON g.aspect = d.aspect
+  WHERE g.dataset = current_schema() OR (d.source_grain AND g.subject IN (SELECT name FROM main.sources))
+  UNION
+  SELECT d.test, m.subject FROM detecting d JOIN main.measurements m ON m.aspect = d.aspect
+  WHERE m.dataset = current_schema() AND m.error IS NULL),
+judged_now AS (SELECT function AS test, subject FROM main.measurements WHERE dataset = current_schema() AND aspect = 'test'),
+judged AS (
+  (SELECT test, subject FROM holding EXCEPT SELECT test, subject FROM judged_now)
+  UNION SELECT c.function, c.subject FROM changed c JOIN detecting d ON d.test = c.function
+  UNION (SELECT test, subject FROM judged_now WHERE test IN (SELECT test FROM detecting)
+         EXCEPT SELECT test, subject FROM holding)),
 -- a view's lineage first (ord 0), what reads it after: missing on a view of the dataset, out of date, or
 -- stored on a view that is gone, which computing it retires
 views AS (SELECT current_schema() || '.' || view_name AS subject FROM duckdb_views()
@@ -107,12 +127,13 @@ FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary())
 UNION ALL
 SELECT DISTINCT 2, t.aspect, t.subject, t.run
 FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.aspect = t.aspect
-WHERE t.run <> '' AND NOT coalesce(s.current AND s.failed, false)
-  AND (t.state = 'not_run' OR NOT coalesce(s.current, true))
+WHERE t.run <> '' AND NOT coalesce(s.current, false)
 UNION ALL
 SELECT DISTINCT 2, v.function, v.subject, 'SELECT ' || v.function || '() FROM ' || v.subject
 FROM served v LEFT JOIN stored s ON s.subject = v.subject AND s.aspect = v.aspect
-WHERE NOT coalesce(s.current, false);
+WHERE NOT coalesce(s.current, false)
+UNION ALL
+SELECT 3, test, subject, 'SELECT ' || test || '() FROM ' || current_schema() FROM judged;
 
 --===------------------------------------------------------------------===--
 -- load_changes(): per table of the bound dataset loaded more than once,
@@ -332,7 +353,7 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT g.aspect AS view, main.gloss_statement(g.aspect, ds.d, g.body::VARCHAR) AS statement
     FROM main.glossary g, ds WHERE g.dataset = ds.d AND g.subject = ds.d
     QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1),
-  vt AS MATERIALIZED (SELECT * FROM glossql_kept('view_tests')),
+  vt AS MATERIALIZED (SELECT * FROM main.view_tests()),
   -- the tests that are open: not green, but a yellow test whose check ran, is current and returns no
   -- fix (not applicable: nothing to check), whose statement would compute it yellow again
   vo AS (
