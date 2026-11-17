@@ -50,7 +50,9 @@ workspace version.
   Packages are `glossdb-*`. Details: the crate headers.
 - `kits/` — the server's kits, SQL loaded at open around the
   extension's kits, each with a `kit.test` suite beside it. Core:
-  `core`, `views`, `goals`. Add-ons: `plan`, `harmonise`, `outlook`.
+  `core`, `views`, `goals`. Add-on: `harmonise`. The `plan` and
+  `outlook` kits are offloaded at the tag `before-cut` and come back
+  on the stored structure.
   `kits/README.md` says what each adds: vocabulary and reads, never
   grammar.
 - **Results and next steps**: `results_due()` in
@@ -66,8 +68,6 @@ workspace version.
   prose, release.
 - `docs/` — what the system is and what is planned, for agents and
   people, written for an enterprise evaluator, always current.
-- `corpus/` — the two transcriptions behind the server's kits (19 and
-  27); the serverd suite parses them.
 - `vendor/` — DuckDB's SQL guide for the locked release, served as
   `doc://vendor/duckdb/sql/…`; `vendor/duckdb/refresh.sh` at every
   pin move.
