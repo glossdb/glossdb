@@ -296,13 +296,15 @@ relationship's `relationship_coherence`. The keys are values from the
 data, each cut to its first 100 characters; a key of two columns is a
 JSON list.
 
-`completeness_test` lists in `columns` each column the view serves
-whose share of empty values rose past the tolerance: `column`,
-`before`, `now` and `cause` (`load` or `definition`). Its `cause`
-names the table column a load emptied, or the column the definition
-empties, and `next` serves it as the row's cause. The share before is
-read from the values the column's `column_profile` held, oldest first:
-the last share within the tolerance.
+`completeness_test` has one result per column a view serves. Where
+the column's share of empty values rose past the tolerance, its
+evidence holds `before`, `now`, `emptied_by` (`load` or `definition`)
+and, for a load, `sources`: the table columns that emptied too. Its
+`cause` names them, or says the definition empties the column, and
+`next` serves it as the row's cause. The share before is read from the
+values the column's `column_profile` held, oldest first: the last
+share within the tolerance. `SELECT completeness_check() FROM
+<dataset>.<view>` computes the check on each column of the view.
 
 ## The outlook and plan kits (preview)
 

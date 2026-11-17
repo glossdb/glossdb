@@ -106,7 +106,8 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
 /// joins over is checked with no statement by the agent, and a key
 /// without a parent turns the orphan test red under "test" in `next`;
 /// the funds loaded again with no label empty a column the view serves,
-/// and the completeness test turns red with no statement either.
+/// and the completeness test on that column turns red with no statement
+/// either, the other columns green.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_server_runs_a_table_views_tests_after_each_write() {
     let (app, _, _dir) = fin().await;
@@ -144,19 +145,24 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
     let tests = rows(
         &app,
         FIN,
-        "SELECT test, state FROM view_tests() WHERE view = 'ledger_funds' ORDER BY test",
+        "SELECT test, subject, state FROM view_tests() WHERE view = 'ledger_funds' ORDER BY test, subject",
     )
     .await;
-    let states: Vec<(String, String)> = tests
+    let states: Vec<(String, String, String)> = tests
         .iter()
-        .map(|r| (text(r, "test"), text(r, "state")))
+        .map(|r| (text(r, "test"), text(r, "subject"), text(r, "state")))
         .collect();
+    let row = |test: &str, subject: &str, state: &str| {
+        (test.to_string(), subject.to_string(), state.to_string())
+    };
     assert_eq!(
         states,
         [
-            ("completeness_test".to_string(), "green".to_string()),
-            ("join_test".to_string(), "green".to_string()),
-            ("orphan_test".to_string(), "red".to_string())
+            row("completeness_test", "fin.ledger_funds.amount", "green"),
+            row("completeness_test", "fin.ledger_funds.booked", "green"),
+            row("completeness_test", "fin.ledger_funds.label", "green"),
+            row("join_test", "fin.ledger_funds", "green"),
+            row("orphan_test", "fin.ledger_funds", "red"),
         ]
     );
     let open = open_tests(&app).await;
@@ -173,15 +179,15 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
     let emptied = rows(
         &app,
         FIN,
-        "SELECT state, current, evidence->'columns'->0->>'column' AS col, evidence->'columns'->0->>'cause' AS cause \
-         FROM view_tests() WHERE view = 'ledger_funds' AND test = 'completeness_test'",
+        "SELECT subject, state, current, evidence->>'emptied_by' AS emptied_by \
+         FROM view_tests() WHERE view = 'ledger_funds' AND test = 'completeness_test' AND state <> 'green'",
     )
     .await;
     assert_eq!(emptied.len(), 1, "{emptied:?}");
+    assert_eq!(text(&emptied[0], "subject"), "fin.ledger_funds.label");
     assert_eq!(text(&emptied[0], "state"), "red");
     assert_eq!(emptied[0]["current"].as_bool(), Some(true));
-    assert_eq!(text(&emptied[0], "col"), "label");
-    assert_eq!(text(&emptied[0], "cause"), "load");
+    assert_eq!(text(&emptied[0], "emptied_by"), "load");
 }
 
 #[tokio::test(flavor = "multi_thread")]

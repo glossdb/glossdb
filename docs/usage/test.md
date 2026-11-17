@@ -16,7 +16,7 @@ again after each write that changes what it read.
 ## The built-in tests
 
 Each view gets the join and orphan tests, on the tables its definition
-scans, and the completeness test, on the columns it serves; each metric
+scans, and the completeness test on each column it serves; each metric
 also gets the additivity test; each loaded table
 whose `entity` states a `grain` gets the grain test:
 
@@ -24,7 +24,7 @@ whose `entity` states a `grain` gets the grain test:
 |---|---|---|
 | `join_test` | join fan-out, and effective-dated tables (annotated `validity` with `valid_from`, `valid_to`) | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without bounding both validity dates, so a row counts once per version. A join on several columns is judged on its key as a whole: a side holds each key once where one of its columns is unique or its columns hold the grain its table states; where neither side does, the test is `yellow` and its fix states the grain |
 | `orphan_test` | referential integrity on the declared relationships between the scanned tables | rows find no parent; the score is the highest orphan rate |
-| `completeness_test` | each column the view serves, against its share of empty values (NULL) before a load or a new definition emptied it | a column's share of empty values rose by more than the threshold, 0.1, over its last share within it. The score is the largest rise. The finding names each column with its share before and now, and the cause: a load, where a table column it is computed from emptied too, else the definition. The test stays red after later loads until the column is filled again or a person accepts the rate. A column that rises by less per load, or was mostly empty before, stays green |
+| `completeness_test` | a column the view serves, against its share of empty values (NULL) before a load or a new definition emptied it. One result per column: a column can be unusable while the others are fine | the column's share of empty values rose by more than the threshold, 0.1, over its last share within it. The score is the rise. The finding gives the share before and now, and the cause: a load, where a table column it is computed from emptied too, else the definition. The test stays red after later loads until the column is filled again or a person accepts the rate on that column. A column that rises by less per load, or was mostly empty before, stays green |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
 | `grain_test` | the grain the table's `entity` states, at each load | a key repeats in the loaded rows, such as a line sent twice; the score is the share of rows past the first per key |
 

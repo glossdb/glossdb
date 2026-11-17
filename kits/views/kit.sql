@@ -620,8 +620,9 @@ WHERE m.view IN (SELECT view FROM views);
 -- checked against its definition and the evidence the quality kit
 -- stored, never against the data again. join_check is a join that
 -- repeats rows, orphan_check referential integrity on the declared
--- joins, completeness_check a column a load or a new definition emptied,
--- all three on every view (a table, a single value, a metric);
+-- joins, both on every view (a table, a single value, a metric);
+-- completeness_check a column a load or a new definition emptied, on
+-- each column of every view;
 -- additivity_check the additivity of a metric's value, which only a
 -- metric has. Each is a measurement over the view,
 -- `SELECT <check>() FROM <dataset>.<view>`, whose breach_rate
@@ -629,8 +630,10 @@ WHERE m.view IN (SELECT view FROM views);
 -- stored yet says so in `reason` and serves no rate, which reads yellow;
 -- a view over one table cannot fan out and has no join to check. A
 -- person who accepts a result records a tolerance at or above it on the
--- view; their value outranks the agent's. `x-subject: view` marks a test
--- view_tests() expects on every view, run or not, `x-subject: metric` one
+-- subject the result is on; their value outranks the agent's. `x-subject:
+-- view` marks a test view_tests() expects on every view, run or not, and on
+-- each of its columns where the property is declared on columns alone (a
+-- check over the view then computes each column), `x-subject: metric` one
 -- it expects on every metric, `x-subject: table` one it expects on every
 -- loaded table (grain_check); `x-set-by: <property>` beside any one
 -- it expects only where the view or one of its columns carries an
@@ -1078,41 +1081,45 @@ $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
--- completeness_check: a column the view serves that a load or a new
--- definition emptied. Each column's share of empty values (NULL) comes
--- from its stored column_profile, which the server computes on each column
--- of the view, and the state before from the values that profile held
--- (results()' history): walked oldest first, a share that rose by more than
--- the tolerance over the last share within it is a column that emptied,
--- and that last share stays its state before until the column is filled
--- again or the tolerance is raised. So a column that drifts by less than
--- the tolerance per load stays quiet, a column mostly empty before cannot
--- rise past it, and a later load that moves the column's rows again keeps
--- it red. breach_rate is the largest rise; `columns` names each column
--- that rose, with its share before and now and the cause: `load` where a
--- table column it is computed from emptied as well (by the same walk over
--- that column's profile), else `definition`. A view whose columns hold no
--- profile yet is not applicable.
+-- completeness_check: a column a view serves that a load or a new
+-- definition emptied, one result per column: whether a column can be used
+-- depends on what reads it, so each is judged and accepted on its own.
+-- The column's share of empty values (NULL) comes from its stored
+-- column_profile, which the server computes on each column of the view,
+-- and the state before from the values that profile held (results()'
+-- history): walked oldest first, a share that rose by more than the
+-- tolerance over the last share within it is a column that emptied, and
+-- that last share stays its state before until the column is filled again
+-- or the tolerance is raised. So a column that drifts by less than the
+-- tolerance per load stays quiet, a column mostly empty before cannot rise
+-- past it, and a later load that moves its rows again keeps it red.
+-- breach_rate is the rise; emptied_by is `load` where a table column it is
+-- computed from (its sources) emptied as well, by the same walk over that
+-- column's profile, else `definition`. A column with no profile yet is not
+-- applicable. `SELECT completeness_check() FROM <dataset>.<view>` computes
+-- each column of the view, the property being declared on columns alone.
 DECLARE ASPECT completeness_check WITH $${
-  "description": "Each column the view serves keeps its values. Fails where a load of a table the view reads, or its definition recorded again, emptied a column on a larger share of the rows than the tolerance.",
+  "description": "The column a view serves keeps its values. Fails where a load of a table the view reads, or the view's definition recorded again, emptied the column on a larger share of the rows than the tolerance.",
   "type": "object", "x-subject": "view",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
                  "breach_rate": {"type": ["number", "null"]},
-                 "columns": {"type": ["array", "null"], "items": {"type": "object"}},
+                 "before": {"type": ["number", "null"]}, "now": {"type": ["number", "null"]},
+                 "emptied_by": {"type": ["string", "null"]},
+                 "sources": {"type": ["array", "null"], "items": {"type": "string"}},
                  "cause": {"type": ["string", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
                  "tolerance": {"type": "number"}, "basis": {"type": "string"}}
-}$$ AS FACT ON TABLE;
+}$$ AS FACT ON COLUMN;
 
 DECLARE FUNCTION completeness_check FOR GLOBAL AS $$
-  WITH d AS (SELECT * FROM definition('itself')),
-  tol AS (
+  WITH tol AS (
     SELECT coalesce(max(try_cast(value->>'tolerance' AS DOUBLE)), max(threshold), 0.0) AS tolerance
     FROM annotations('completeness_check', 'itself') WHERE state IN ('current', 'stale', 'missing')),
-  -- each column's shares empty, oldest first, walked to the last share within the tolerance
+  -- the shares empty of the column and of the columns it is computed from, oldest first, each walked
+  -- to the last share within the tolerance
   profiled AS (
     SELECT asset, list_transform(history, lambda v: coalesce(try_cast(v->>'null_ratio' AS DOUBLE), 0.0)) AS shares
-    FROM (SELECT asset, history FROM results('column_profile', 'its columns')
+    FROM (SELECT asset, history FROM results('column_profile', 'itself')
           UNION ALL SELECT asset, history FROM results('column_profile', 'its sources'))
     WHERE len(history) > 0),
   walked AS (
@@ -1120,44 +1127,50 @@ DECLARE FUNCTION completeness_check FOR GLOBAL AS $$
            list_reduce(p.shares, lambda b, e: CASE WHEN e - b > t.tolerance THEN b ELSE e END) AS before
     FROM profiled p, tol t),
   rose AS (SELECT asset, before, now_, round(now_ - before, 4) AS rise FROM walked, tol WHERE now_ - before > tol.tolerance),
-  cols AS (
-    SELECT c.name AS col, c.position AS pos, $subject || '.' || c.name AS asset,
-           regexp_extract_all(coalesce(c.derivation, ''), '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1) AS sources
-    FROM d, unnest(d.columns) t(c)),
-  emptied AS (
-    SELECT c.col, c.pos, r.before, r.now_, r.rise,
-           CASE WHEN EXISTS (SELECT 1 FROM rose s WHERE list_contains(c.sources, s.asset)) THEN 'load' ELSE 'definition' END AS cause,
-           (SELECT string_agg(split_part(s.asset, '.', 2) || '.' || split_part(s.asset, '.', 3), ', ' ORDER BY s.asset)
-            FROM rose s WHERE list_contains(c.sources, s.asset)) AS emptied_sources
-    FROM cols c JOIN rose r ON r.asset = c.asset),
+  own AS (SELECT * FROM walked WHERE asset = $subject),
+  emptied AS (SELECT * FROM rose WHERE asset = $subject),
+  by_load AS (SELECT asset FROM rose WHERE asset <> $subject),
+  names AS (
+    SELECT split_part($subject, '.', 1) AS ds, split_part($subject, '.', 2) AS view,
+           array_to_string(string_split($subject, '.')[3:], '.') AS col),
   state AS (
-    SELECT EXISTS (SELECT 1 FROM walked w JOIN cols c ON c.asset = w.asset) AS applicable,
-           EXISTS (SELECT 1 FROM emptied) AS red,
-           EXISTS (SELECT 1 FROM emptied WHERE cause = 'definition') AS redefined,
-           (SELECT redefine_statement(view) FROM d) AS redefine,
-           (SELECT max(rise) FROM emptied) AS rate)
-  SELECT s.applicable,
-         CASE WHEN NOT s.applicable THEN 'the columns of ' || split_part($subject, '.', 2) || ' are not profiled yet: run column_profile() over each' END AS reason,
-         CASE WHEN s.applicable THEN coalesce(s.rate, 0.0) END AS breach_rate,
-         (SELECT list({'column': col, 'before': before, 'now': now_, 'cause': cause} ORDER BY rise DESC, pos) FROM emptied) AS columns,
-         CASE WHEN s.red THEN (SELECT string_agg(CASE cause WHEN 'load' THEN 'a load emptied ' || emptied_sources
-                                                       ELSE 'the definition of ' || split_part($subject, '.', 2) || ' empties ' || col END,
-                                                  '; ' ORDER BY rise DESC, pos) FROM emptied) END AS cause,
-         CASE WHEN s.red
-              THEN (SELECT string_agg(col || ' is ' || round(now_ * 100, 1) || '% empty, ' || round(before * 100, 1) || '% before'
-                                      || CASE cause WHEN 'load' THEN ', since a load emptied ' || emptied_sources
-                                                    ELSE ', while what it is computed from is filled: the definition empties it' END,
-                                      '; ' ORDER BY rise DESC, pos) FROM emptied)
-                   || ', so ' || split_part($subject, '.', 2) || ' serves these rows without the value' END AS finding,
-         CASE WHEN s.red THEN concat_ws(chr(10),
-           CASE WHEN s.redefined
-                THEN '-- correct the expression of each column the definition empties and record the definition again:' || chr(10) || s.redefine END,
-           CASE WHEN EXISTS (SELECT 1 FROM emptied WHERE cause = 'load')
-                THEN '-- the newest load carries the columns empty (load_changes() says what it changed): fix the source or the load query and load again (IMPORT)' END,
-           '-- where the columns are right as they are now, accept the rate with the reason:',
+    SELECT EXISTS (SELECT 1 FROM own) AS applicable, EXISTS (SELECT 1 FROM emptied) AS red,
+           EXISTS (SELECT 1 FROM by_load) AS loaded,
+           (SELECT list(asset ORDER BY asset) FROM by_load) AS sources,
+           (SELECT string_agg(split_part(asset, '.', 2) || '.' || array_to_string(string_split(asset, '.')[3:], '.'), ', ' ORDER BY asset)
+            FROM by_load) AS emptied_sources,
+           (SELECT string_agg(DISTINCT 'IMPORT ' || split_part(asset, '.', 1) || '.' || split_part(asset, '.', 2) || ';', chr(10))
+            FROM by_load) AS loads,
+           (SELECT before FROM emptied) AS before, (SELECT now_ FROM emptied) AS now_, (SELECT rise FROM emptied) AS rate),
+  said AS (
+    SELECT s.*, n.*,
+           CASE WHEN s.red
+                THEN n.col || ' of ' || n.view || ' is ' || round(s.now_ * 100, 1) || '% empty, ' || round(s.before * 100, 1) || '% before'
+                     || CASE WHEN s.loaded THEN ', since a load emptied ' || s.emptied_sources
+                             ELSE ', while what it is computed from is filled: the definition empties it' END
+                     || ', so ' || n.view || ' serves these rows without the value' END AS finding
+    FROM state s, names n)
+  SELECT applicable,
+         CASE WHEN NOT applicable THEN col || ' of ' || view || ' is not profiled yet: run column_profile() over it' END AS reason,
+         CASE WHEN applicable THEN coalesce(rate, 0.0) END AS breach_rate,
+         CASE WHEN red THEN before END AS before,
+         CASE WHEN red THEN now_ END AS now,
+         CASE WHEN red THEN CASE WHEN loaded THEN 'load' ELSE 'definition' END END AS emptied_by,
+         CASE WHEN red AND loaded THEN sources END AS sources,
+         CASE WHEN red THEN CASE WHEN loaded THEN 'a load emptied ' || emptied_sources
+                                 ELSE 'the definition of ' || view || ' empties ' || col END END AS cause,
+         finding,
+         CASE WHEN red THEN concat_ws(chr(10),
+           '-- ' || finding,
+           CASE WHEN loaded
+                THEN '-- to fix: send the values again at the source, or read them in the load query (load_changes() says what the load changed). Then load again:'
+                     || chr(10) || loads
+                ELSE '-- to fix: correct the expression of ' || col || ' and record the definition again:'
+                     || chr(10) || redefine_statement(ds || '.' || view) END,
+           '-- to accept: where a person confirms ' || col || ' is right as it is now, record the rate with their reason:',
            '-- ' || main.gloss_statement('completeness_check', $subject,
-                    '{"tolerance": ' || ceil(s.rate * 1000) / 1000 || ', "basis": "<why these columns are empty now>"}')) END AS fix
-  FROM state s
+                    '{"tolerance": ' || ceil(rate * 1000) / 1000 || ', "basis": "<why ' || col || ' is empty now>"}')) END AS fix
+  FROM said
 $$ RETURNS completeness_check;
 
 DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.1;
@@ -1178,7 +1191,8 @@ DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR 
 -- measures it, as role_test does, and on a result about the dataset or a
 -- view with no tests, which an actor stores and the server does not
 -- compute after a write). The tests marked x-subject view appear on
--- every view, run or not, those marked x-subject metric on every metric,
+-- every view, run or not, on each of its columns where the property is
+-- declared on columns alone, those marked x-subject metric on every metric,
 -- those marked x-subject table on every loaded table with no view (''),
 -- those marked x-set-by too only where the property it names is
 -- annotated on the view or the table or on one of its columns.
@@ -1205,7 +1219,8 @@ authors AS (
 expected AS (
   SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') AS on_,
          json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
-         json_extract_string(a.schema, '$.x-set-by') AS set_by
+         json_extract_string(a.schema, '$.x-set-by') AS set_by,
+         coalesce(a.grains = ['COLUMN'], false) AS on_columns
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
   JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric', 'table')),
@@ -1217,15 +1232,24 @@ set_on AS (
 evidence AS (
   SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements WHERE dataset = current_schema()
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
+view_columns AS MATERIALIZED (
+  SELECT table_name AS view, column_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW'),
+-- what a test a view expects is on: the view, or each of its columns where the property is declared on
+-- columns alone; the check over the view computes them all
+view_subjects AS (
+  SELECT m.view, m.metric, current_schema() || '.' || m.view AS subject, false AS on_columns FROM all_views m
+  UNION ALL
+  SELECT m.view, m.metric, current_schema() || '.' || c.view || '.' || c.column_name, true
+  FROM all_views m JOIN view_columns c ON c.view = m.view),
 own AS (
-  SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,
+  SELECT m.view, e.test, e.aspect, m.subject,
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
-  FROM all_views m JOIN expected e ON e.on_ <> 'table' AND (m.metric OR NOT e.metrics_only)
+  FROM view_subjects m JOIN expected e ON e.on_ <> 'table' AND e.on_columns = m.on_columns AND (m.metric OR NOT e.metrics_only)
    AND (e.set_by IS NULL OR EXISTS (SELECT 1 FROM set_on o WHERE o.aspect = e.set_by AND o.view = m.view))
-  LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
-  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect
+  LEFT JOIN results r ON r.subject = m.subject AND r.test = e.test
+  LEFT JOIN evidence v ON v.subject = m.subject AND v.aspect = e.aspect
   UNION ALL
   -- a kit's check on each loaded table (x-subject table), whatever view reads it: no view
   SELECT '', e.test, e.aspect, current_schema() || '.' || l.table_name,
@@ -1261,8 +1285,8 @@ inputs AS (
 itself AS (
   SELECT m.view, current_schema() || '.' || m.view AS subject FROM all_views m
   UNION
-  SELECT m.view, current_schema() || '.' || c.table_name || '.' || c.column_name
-  FROM all_views m JOIN glossql_columns(current_schema()) c ON c.table_name = m.view),
+  SELECT m.view, current_schema() || '.' || c.view || '.' || c.column_name
+  FROM all_views m JOIN view_columns c ON c.view = m.view),
 declared AS (
   SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
          r.state AS state, r.current, r.score, v.value::JSON AS evidence,

@@ -38,8 +38,8 @@ your own, the annotation that records an accepted rate.
 
 The server runs these after a call that defines a view, annotates
 what a test reads, or loads a table the view reads. `join_test`,
-`orphan_test` and `completeness_test` run on every view: a table view, a single value, a
-metric. `measure_additivity_test` runs on each metric, since only a
+`orphan_test` run on every view: a table view, a single value, a metric, and
+`completeness_test` on each column of every view. `measure_additivity_test` runs on each metric, since only a
 metric has a measure. The server also runs what the tests read first:
 a profile of each column the view joins on and of each column it
 serves, and the check of each relationship between the tables it reads.
@@ -48,7 +48,7 @@ serves, and the check of each relationship between the tables it reads.
 |---|---|---|
 | `join_test` | the view joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
 | `orphan_test` | rows on a declared relationship the view joins over find no parent: an inner join drops them, an outer join keeps them with empty parent columns | fix the load (trim, pad, cast the key), or load the missing parents |
-| `completeness_test` | a load or a new definition emptied a column the view serves: its share of empty values rose by more than 0.1. It stays red until the column is filled again or the rate is accepted | where a table column it is computed from emptied too, fix the source or the load query; else correct the column's expression in the definition. Accept a rate that is right with `tolerance` on `completeness_check` |
+| `completeness_test` | a load or a new definition emptied a column the view serves: its share of empty values rose by more than 0.1. It stays red until the column is filled again or the rate is accepted | where a table column it is computed from emptied too, fix the source or the load query; else correct the column's expression in the definition. Accept a rate that is right with `tolerance` on `completeness_check` on that column: the other columns stay held to 0.1 |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
 | `grain_test` | on a loaded table whose `entity` states a `grain`: a key repeats in the loaded rows | keep one row per key in the load query, or state the grain the rows have |
 

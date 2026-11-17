@@ -128,7 +128,9 @@ could	describe	ops.orders_raw	missing
 should	test	ops.orders	not_run
 should	test	ops.orders	not_run
 should	test	ops.orders	not_run
-should	test	ops.orders	not_run
+should	test	ops.orders.month	not_run
+should	test	ops.orders.price	not_run
+should	test	ops.orders.value	not_run
 
 statement ok
 CREATE TABLE memory.main.next_without AS SELECT * FROM next;
@@ -884,7 +886,7 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
+SELECT ord, function, subject FROM results_due() ORDER BY ord, run, subject;
 ----
 1	column_profile	harm.driver_results.points
 1	column_profile	harm.driver_results.result_id
@@ -895,10 +897,14 @@ SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
 1	column_profile	harm.results.points
 1	column_profile	harm.results.result_id
 1	relationship_coherence	harm.results.driver_id -> harm.drivers.driver_id
-2	completeness_check	harm.driver_results
+2	completeness_check	harm.driver_results.points
+2	completeness_check	harm.driver_results.result_id
+2	completeness_check	harm.driver_results.surname
 2	join_check	harm.driver_results
 2	orphan_check	harm.driver_results
-3	completeness_test	harm.driver_results
+3	completeness_test	harm.driver_results.points
+3	completeness_test	harm.driver_results.result_id
+3	completeness_test	harm.driver_results.surname
 3	join_test	harm.driver_results
 3	orphan_test	harm.driver_results
 
@@ -944,12 +950,14 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 # driver 5 has no row in drivers: a sixth of the results find no parent
-query TTR
-SELECT test, state, round(score, 4) FROM view_tests() WHERE view = 'driver_results' ORDER BY test;
+query TTTR
+SELECT test, subject, state, round(score, 4) FROM view_tests() WHERE view = 'driver_results' ORDER BY test, subject;
 ----
-completeness_test	green	0.0
-join_test	green	0.0
-orphan_test	red	0.1667
+completeness_test	harm.driver_results.points	green	0.0
+completeness_test	harm.driver_results.result_id	green	0.0
+completeness_test	harm.driver_results.surname	green	0.0
+join_test	harm.driver_results	green	0.0
+orphan_test	harm.driver_results	red	0.1667
 
 statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
@@ -1000,14 +1008,14 @@ statement ok
 SELECT role_test(), additivity_test(), unit_test(), grain_test(), join_test(), measure_additivity_test(), orphan_test(), plan_test(), range_test(), price_test(), staff_test(), fund_coded_test(), fund_named_test(), completeness_test() FROM harm;
 
 query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
+SELECT ord, function, subject FROM results_due() ORDER BY ord, run, subject;
 ----
 1	column_profile	harm.circuit_count.value
 1	column_profile	harm.circuits.name
-2	completeness_check	harm.circuit_count
+2	completeness_check	harm.circuit_count.value
 2	join_check	harm.circuit_count
 2	orphan_check	harm.circuit_count
-3	completeness_test	harm.circuit_count
+3	completeness_test	harm.circuit_count.value
 3	join_test	harm.circuit_count
 3	orphan_test	harm.circuit_count
 
@@ -1227,8 +1235,8 @@ SELECT subject, run FROM results_due() WHERE function = 'role_test';
 ----
 grid.circuits.name	SELECT role_test() FROM grid
 
-# --- a load that empties a column a view serves is a must on the view, with the cause the test's result names:
-# the results come again with no points, and driver_results serves them
+# --- a load that empties a column a view serves is a must on that column, with the cause the test's result
+# names: the results come again with no points, and driver_results serves them
 statement ok
 USE harm;
 
@@ -1255,7 +1263,7 @@ SELECT completeness_test() FROM harm;
 
 query TTTTT
 SELECT level, asset, state, starts_with(open, 'completeness_test'),
-       cause = (SELECT evidence->>'cause' FROM view_tests() WHERE view = 'driver_results' AND test = 'completeness_test')
+       cause = (SELECT evidence->>'cause' FROM view_tests() WHERE subject = 'harm.driver_results.points' AND test = 'completeness_test')
 FROM next WHERE kind = 'test' AND starts_with(open, 'completeness_test') AND state = 'red';
 ----
-must	harm.driver_results	red	true	true
+must	harm.driver_results.points	red	true	true
