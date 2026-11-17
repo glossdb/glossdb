@@ -11,7 +11,7 @@ latest AS (
 SELECT a.name,
        coalesce(json_extract_string(a.schema, '$.title'), a.name) AS title,
        CASE coalesce(json_extract_string(a.schema, '$.x-kind'), '')
-         WHEN 'scalar' THEN 'single value' WHEN 'relation' THEN 'view' WHEN 'plan' THEN 'plan' ELSE 'metric' END AS kind,
+         WHEN 'scalar' THEN 'single value' WHEN 'relation' THEN 'view' ELSE 'metric' END AS kind,
        coalesce(fmt_number(l.value), '') AS latest,
        coalesce(defs.unit, '') AS unit,
        coalesce('for ' || strftime(l.period, '%Y-%m-%d'), '') AS period

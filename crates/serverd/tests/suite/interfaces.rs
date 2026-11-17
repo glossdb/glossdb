@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::common::{
-    self, app, app_on, app_on_service, body_json, body_text, expect_ok, get, mcp_on, meta,
-    outcomes, post_query, query, rows, rpc, say, tool, window,
+    self, app, app_on, body_json, body_text, expect_ok, get, mcp_on, meta, outcomes, post_query,
+    query, rpc, say, tool, window,
 };
 
 const INT: &str = "Int32";
@@ -1127,69 +1127,6 @@ async fn an_agent_authors_an_app_over_the_tool() {
     assert!(!html.contains("What stands open"), "superseded: {html}");
 }
 
-/// A model service that does not answer, here a port nobody listens
-/// on, is unavailable as one that refuses: 503 with the code
-/// `service_failed` on the query interface, and the failure is stored
-/// as the newest result, which the backtest's read serves.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_preview_measurement_whose_service_does_not_answer_is_unavailable_and_stored_as_failed() {
-    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}", closed.local_addr().unwrap());
-    drop(closed);
-    let (app, _, _dir) = app_on_service("fin", &url).await;
-    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
-                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
-                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
-    say(&app, "/fin/mcp", setup).await;
-
-    let (status, answered) = query(&app, "SELECT metric_ranges() FROM fin.spend").await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answered}");
-    assert_eq!(answered["code"], json!("service_failed"), "{answered}");
-
-    let failed = rows(
-        &app,
-        "/fin/mcp",
-        "SELECT count(*) AS n FROM range_points() WHERE error IS NOT NULL",
-    )
-    .await;
-    assert_eq!(failed[0]["n"], json!(1), "{failed:?}");
-}
-
-/// A preview measurement calls the model service. Where none is named
-/// the query interface answers 503 and the agent interface a refusal,
-/// both with one reason: it names the setting an operator sets, the
-/// server's, and carries none of the engine's error-class prefixes.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_preview_measurement_without_its_service_is_unavailable_on_both_interfaces() {
-    let (app, _, _dir) = app_on("fin").await;
-    // A metric with nine whole months: the expected ranges have a
-    // request to send, and the call is where the refusal comes from.
-    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
-                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
-                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
-    say(&app, "/fin/mcp", setup).await;
-
-    let measure = "SELECT metric_ranges() FROM fin.spend";
-    let (status, answered) = query(&app, measure).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    let reason = answered["error"].as_str().unwrap().to_string();
-    assert!(
-        reason.contains(glossdb_serverd::engine::SERVICE_URL),
-        "{reason}"
-    );
-    assert!(!reason.contains("Error:"), "{reason}");
-
-    let body = tool(&app, "/fin/mcp", measure).await;
-    assert_eq!(body["result"]["isError"], json!(true), "{body}");
-    assert_eq!(
-        body["result"]["content"][0]["text"],
-        json!(reason),
-        "{body}"
-    );
-}
-
 /// The functions page lists what SQL on the interface can call, each
 /// function once per kind; a page with nothing to list is not served.
 #[tokio::test(flavor = "multi_thread")]
@@ -1206,13 +1143,6 @@ async fn the_functions_page_lists_each_function_once() {
     let distinct: std::collections::BTreeSet<&str> = rows.iter().copied().collect();
     assert!(rows.len() > 1, "{}", pages[0].body);
     assert_eq!(rows.len(), distinct.len(), "a function is listed twice");
-    // a declared function is on it, as an extraction
-    assert!(
-        rows.iter()
-            .any(|row| row.starts_with("| `metric_ranges` | extract |")),
-        "{}",
-        pages[0].body
-    );
 }
 
 /// A call that moves the summary's counts carries them in the result's
@@ -1252,50 +1182,4 @@ async fn a_call_that_moves_the_summary_carries_its_counts() {
         blocks.len() - 1,
         "{read}"
     );
-}
-
-/// A refusal raised inside a function body reaches both interfaces
-/// with its reason once: the code the kit raised it under is a field
-/// of its own, and the reason begins at the refusal, without the
-/// engine's error-class wrappers before it.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_refusal_from_a_function_body_carries_its_code_and_its_reason_once() {
-    let (app, _, _dir) = app_on("fin").await;
-    let setup = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
-                     (i % 7 + 1)::DOUBLE AS amount FROM range(300) r(i);
-                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT booked AS period, amount AS value FROM fin.ledger", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}}$$;"#;
-    say(&app, "/fin/mcp", setup).await;
-
-    // A measurement the extension runs, and a read whose macro refuses.
-    for (statement, code) in [
-        ("SELECT metric_plan() FROM fin.spend", "not_a_plan"),
-        (
-            "SELECT * FROM metric_series(world := 'dream')",
-            "unknown_world",
-        ),
-    ] {
-        let (status, answered) = query(&app, statement).await;
-        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(answered["code"], json!(code), "{answered}");
-        let reason = answered["error"].as_str().unwrap().to_string();
-        let after_prefix = reason.strip_prefix("glossql: ").unwrap_or(&reason);
-        assert!(
-            after_prefix.starts_with(&format!("{code}: ")),
-            "the reason begins at the refusal: {reason}"
-        );
-
-        let body = tool(&app, "/fin/mcp", statement).await;
-        assert_eq!(body["result"]["isError"], json!(true), "{body}");
-        assert_eq!(
-            body["result"]["_meta"][glossdb_serverd::REFUSAL_META]["code"],
-            json!(code),
-            "{body}"
-        );
-        assert_eq!(
-            body["result"]["content"][0]["text"],
-            json!(reason),
-            "{body}"
-        );
-    }
 }

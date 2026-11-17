@@ -139,7 +139,7 @@ async fn opened(config: &Config) -> Result<Plane, Box<dyn std::error::Error + Se
         }
         None => tracing::info!(
             variable = glossdb_serverd::engine::SERVICE_URL,
-            "no model service — the expected ranges, the forecast and the what-if refuse by name"
+            "no model service — a function that calls one refuses by name"
         ),
     }
     Ok(plane)

@@ -1,8 +1,7 @@
 -- The Query tab's relations: every loaded table (the newest load is
 -- the table) and every served read of the dataset, each with its rows
 -- where the catalog counts them, and a read that puts the first fifty
--- rows in the pane. A stopped read serves nothing and is not offered;
--- a plan holds on its metric's page.
+-- rows in the pane. A stopped read serves nothing and is not offered.
 WITH latest AS (
   SELECT i.table_name, i.rows AS n,
          row_number() OVER (PARTITION BY i.table_name ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
@@ -16,7 +15,7 @@ reads AS (
               ELSE s.kind END AS kind,
          CAST(NULL AS BIGINT) AS n, s.meaning AS what
   FROM view_definitions s
-  WHERE s.defined AND s.stopped = '' AND s.kind <> 'plan'),
+  WHERE s.defined AND s.stopped = ''),
 all_ AS (SELECT * FROM tables UNION ALL SELECT * FROM reads)
 SELECT name, kind,
        coalesce(CAST(n AS VARCHAR), '') AS rows,

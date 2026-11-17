@@ -49,13 +49,9 @@ SELECT view, test, subject, state, score, run FROM view_tests();
 columns it reads, worst first. `evidence` holds the check's result,
 `run` the statement that runs it again; it is empty for a test that
 compares annotations, which no function measures. A test on a result
-about the dataset as a whole or about a plan is a row too, with an
-empty `run`: an actor stores that result, and the server does not
-compute it after a write. A person accepts a red `range_test` with a
-`tolerance` on the dataset. The preview tests `range_test` and
-`plan_test` come in this way once their result is stored
-([outlook](outlook.md)). `TESTS()` is the language's own read, for
-any asset:
+about the dataset as a whole is a row too, with an empty `run`: an
+actor stores that result, and the server does not compute it after a
+write. `TESTS()` is the language's own read, for any asset:
 
 ```glossql
 SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';

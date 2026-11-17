@@ -25,8 +25,8 @@ the table or the dataset that holds them. `run` is the
 statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
-test on a result an actor stores (about the dataset, or a plan) is
-not run by the server. `TESTS(asset)` gives the same states for any
+test on a result an actor stores (about the dataset) is not run by
+the server. `TESTS(asset)` gives the same states for any
 asset. A test that is not green is a `test` row of `next`, on a view,
 a table, a column or the dataset alike: `must` where it is red,
 `should` otherwise. `open` is the test's name and its finding,

@@ -185,6 +185,3 @@ series: `applicable`, `reason` and `floor` are empty on their rows.
 `missing` lists the annotations the columns still need,
 `measurements_to_run` the measurements to run. Reading the views:
 [read the views](read.md). Each column: [reads](../reference/reads.md).
-
-Plans, forecasts and scenarios on a metric are preview features:
-[outlook](outlook.md).

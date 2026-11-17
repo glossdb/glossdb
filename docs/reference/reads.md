@@ -110,7 +110,7 @@ What each level holds:
   failed, or yellow with a fix (a yellow test whose current result has
   no fix has nothing to check and is no row);
   an assumption waits for a person; a stored result about the dataset
-  or about a plan is out of date, and the server does not compute it
+  is out of date, and the server does not compute it
   (`results_due()` does not list it).
 - `could`: an annotation is missing or outdated on a table, a column,
   a relationship or the dataset that no view reads.
@@ -158,8 +158,7 @@ One row per view of the dataset in use.
 
 | Column | Holds |
 |---|---|
-| `view`, `kind` | the name; `relation`, `scalar`, `plan`, or NULL for a metric |
-| `plan_of`, `covers` | a plan's metric, and the grain its rows are booked against |
+| `view`, `kind` | the name; `relation`, `scalar`, or NULL for a metric |
 | `stopped` | the stop reason |
 | `applicable`, `reason` | whether a metric's series is served; else what to change. A table and a single value have no series: `applicable` is NULL, and `reason` is filled only where the view is stopped or its definition serves no view |
 | `period_column`, `value_column`, `numerator`, `denominator` | the columns the series reads; `period_column` is NULL for a table and a single value |
@@ -177,18 +176,16 @@ SELECT view, kind, applicable, reason, floor, additivity, dims FROM view_summary
 ### metric_series()
 
 ```
-metric_series(grain := NULL, world := 'actual', plan := NULL, scenario := NULL, unclaimed := 'refuse')
+metric_series(grain := NULL, unclaimed := 'refuse')
 ```
 
-The cells of each served metric: `metric`, `world`, `dimension` (`''`
+The cells of each served metric: `metric`, `world` (`actual`), `dimension` (`''`
 for the total), `member`, `period`, `value`, `num`, `den`,
 `additivity`.
 
 - `grain`: `minute`, `hour`, `day`, `week`, `month`, `quarter`,
   `year`. NULL serves each metric at its floor. A metric coarser than
   the grain asked serves no rows.
-- `world`: `actual`; `forecast`, `plan` (with `plan`) and `scenario`
-  (with `scenario`) are preview.
 - `unclaimed := 'skip'` leaves out a metric whose additivity is not
   stated, where the default refuses and names the annotation.
 - A metric marked `non-additive` is served where it has one row per
@@ -201,7 +198,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 | `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset with its kind and, where its definition serves no number, why: the rows of `view_summary()` without what its columns say |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
 | `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
-| `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset or a plan, worst first |
+| `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (spec 0.3.0.dev0) |
 | `lineage_events()` | `event`: OpenLineage run events (spec 2-0-2), one per load and one per view |
 | `pages()` | `uri`, `title`, `body`: each page the MCP interface serves |
@@ -213,9 +210,8 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 is kept until the test runs again. `run` is the function that returns
 the test's property, over the subject; it is empty where no function
 measures the property, as for a test that compares annotations
-(`role_test`). A test on a result about the dataset as a whole, or
-about a plan, is a row too: `view` is empty for the dataset and the
-plan's name for a plan, `evidence` is the stored result with its
+(`role_test`). A test on a result about the dataset as a whole is a
+row too: `view` is empty, `evidence` is the stored result with its
 `finding` and `fix`, and `run` is empty, since an actor computes that
 result and the server does not.
 
@@ -299,54 +295,3 @@ values the column's `column_profile` held, oldest first: the last
 share within the tolerance. `SELECT completeness_check() FROM
 <dataset>.<view>` computes the check on each column of the view.
 
-## The outlook and plan kits (preview)
-
-Stored results, read back as SQL ([outlook](../usage/outlook.md)).
-They are functions an actor may run: `metric_ranges()` and
-`metric_forecast()` over a metric, `metric_scenario()` over a scenario
-(the outlook kit, with a model service), `metric_plan()` over a plan
-(the plan kit, without one). The server runs none of them after a
-write, and `next` asks for none. Once one is stored, `next` lists it
-as any stored result: a red test on it as `must`, the result out of
-date as `should`. A server opened without either kit serves the same
-`next` for a dataset with no stored result of theirs, and these reads
-serve no rows.
-
-| Read | Columns |
-|---|---|
-| `range_points()` | `metric`, `applicable`, `reason`, `code`, `backtested`, `held_80`, `held_90`, `score`, `state`, `period`, `actual`, `p05`, `p10`, `p50`, `p90`, `p95`, `pit`, `displacement`, `withheld`, `coverage_80`, `coverage_90`, `newest`, `point_seq`, `served_by`, `computed_at`, `error` |
-| `forecast_points()` | `metric`, `applicable`, `reason`, `code`, `error`, `additivity`, `grain`, `origin`, `served_by`, `computed_at`, `current`, `point_seq`, `step`, `span`, `to_go`, `period`, `p05`, `p10`, `p50`, `p90`, `p95`, `coverage_80`, `coverage_80_se`, `coverage_90`, `coverage_90_se`, `coverage_points`, `coverage_datasets` |
-| `scenarios()` | `scenario`, `body`, `annotated`, `applicable`, `reason`, `levers`, `fix` |
-| `scenario_points(<name> or NULL)` | `scenario`, `metric`, `grain`, `origin`, `applicable`, `reason`, `code`, `levers`, `step`, `period`, `low`, `value`, `high`, `baseline`, `effect`, `history_value`, `history_low`, `history_high`, `sign`, `basis`, `explains`, `level_error`, `served_by`, `computed_at`, `error` |
-| `scenario_levers(<name> or NULL)` | `scenario`, `metric`, `applicable`, `reason`, `sign`, `lever`, `planned_from`, `history_shift`, `history_low`, `history_high`, `computed_at` |
-| `plan_points()` | `plan`, `metric`, `grain`, `period`, `label`, `value`, `actual`, `variance`, `low`, `expected`, `high`, `planned`, `covers`, `coverage_80`, `origin` |
-
-- `range_points()`: one row per metric and backtested month.
-  `backtested` is how many months were predicted from the months
-  before them; `newest` marks the month `score` and `state` are for,
-  the model service's result. `code` is the service's code for a
-  metric it could not backtest, such as `origins_short`. A backtest
-  that failed is one row with its `error`.
-- `forecast_points()`: one row per metric and point, from the forecast
-  stored on each metric. A row with `span` is a total over that many
-  periods, running to the end of `to_go` (`month`, `quarter`,
-  `year`). `coverage_80` and `coverage_90` are the service's measured
-  share of actual values inside such a range on held-out data, with
-  their standard errors. A run that failed is one row with its
-  `error`.
-- `plan_points()`: `planned` is `complete`, `not_covered`, `inside`,
-  `below`, `above`, `partial`, `open` or `ahead`. `not_covered`: the
-  period has begun and the metric's series does not cover it, so the
-  row has no `actual` and no `variance`. `low`, `expected`, `high`,
-  `coverage_80` and `origin` come from the forecast stored on the
-  metric, and are empty without one.
-- `scenario_points()`: `baseline` is the same estimate with every
-  lever as planned; `effect` is the service's difference of the two.
-  `code` is the service's code for a scenario it could not answer,
-  such as `nothing_changed`. `level_error` is the service's error of
-  the level on the periods it held back. A run that failed is one row
-  per metric with its `error`.
-- `world_series(<grain>)`: `metric`, `series`, `world`, `period`,
-  `value`, `additivity`, `low`, `high`, `held`: each plan and each
-  stored forecast beside a metric's actual series, as the console's
-  chart draws them.

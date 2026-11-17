@@ -46,26 +46,6 @@
     </gl-rows>
   </section>
 
-  {% if tkind == "range" %}
-  <section class="tile">
-    <header><span class="eyebrow" title="For each metric, the newest complete month as stored: the actual, the range its own history predicted, and how far outside it fell. A metric that could not be checked says why.">Each metric's newest complete month <span class="preview">preview</span></span>
-      <code class="chip">range_points()</code></header>
-    <p class="hint">Per metric: the actual against the range its own history predicted, how far out it sits (0 at the median, 0.8 at the range's edge, 1 at the extremes) and on which side. Farthest out first.</p>
-    <gl-rows frame="frames/test_points" empty="the expected ranges are not computed yet. SELECT metric_ranges() FROM <dataset> computes them.">
-      <template>
-        <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,14rem) 6rem 8rem minmax(10rem,1fr) 6rem 5rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{view}</span></span>
-          <span class="r-meta">{period}</span>
-          <span class="r-num">{actual}</span>
-          <span class="r-meta">expected {corridor}<br>{note}</span>
-          <span class="r-num">{displacement}<br><span class="r-meta">{side}</span></span>
-          <code class="chip {scls}">{state}</code>
-        </a>
-      </template>
-    </gl-rows>
-  </section>
-  {% endif %}
-
   <details class="fold"><summary>declarations</summary>
 {{ object::history(frame="frames/test_history", empty="no declaration found", note="Each time this test was declared, newest first. Results are computed when read and have no history of their own.") }}
   </details>
@@ -76,9 +56,7 @@
 {# ---- tests per view, findings, the tests, the measurements --------- #}
 {# A finding is a sentence from the catalog's fields with the numbers
    behind it: a test result that is not green, a load whose casts
-   could not read cells, a defect a function measured. A metric
-   outside its expected range shows its months against the range and
-   the members that moved. #}
+   could not read cells, a defect a function measured. #}
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="Every test on each view and on the tables and columns it reads, worst first: fan-out in a join, referential integrity, additivity, validity dates, and the team's own. A view whose tests all pass is one green row.">Tests per view</span>
@@ -96,38 +74,11 @@
     </gl-rows>
   </section>
   <section class="tile">
-    <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their state; measurements carry none, since a measurement reports and never judges. A month outside its predicted range comes first, with its chart and the members that moved it. When nothing is wrong, the page says so.">Findings</span>
+    <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their state; measurements carry none, since a measurement reports and never judges. When nothing is wrong, the page says so.">Findings</span>
       <code class="chip">TESTS() · imports · measurements</code></header>
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
 
-    {# A metric whose newest complete month is outside its expected
-       range. The picture and the movers are the metric's own
-       frames, keyed by its name through the row's field. #}
-    <gl-rows frame="frames/breaches" empty="">
-      <template>
-        <article class="finding f-red">
-          <div class="f-head"><code class="chip {scls}">{state}</code><h2>{headline}</h2></div>
-          <p class="f-why">The month closed at <code>{actual}</code>. From its own history the metric was expected between <code>{lo}</code> and <code>{hi}</code>; the point sits {side} that, displacement <code>{displacement}</code>. {others}</p>
-          <gl-chart frame="frames/corridor?view={view}" spec="specs/corridor.vl.json" empty=""></gl-chart>
-          <p class="f-meta">the shaded area is the range predicted for each month from the months before it, the 10th to the 90th percentile; the line is the actual</p>
-          <p class="f-sub">Where the change is · the previous month to this one, by each dimension of the metric</p>
-          <gl-rows frame="frames/movers?view={view}" empty="the metric has no dimension, so the change has no parts">
-            <template>
-              <div class="rrow f-move" style="grid-template-columns:8rem 7rem 12rem 7rem minmax(0,1fr)">
-                <span class="r-meta">{axis}</span>
-                <span class="r-subj">{member}</span>
-                <span class="r-meta">{before} → {after}</span>
-                <span class="r-num">{sign}{moved}</span>
-                <span class="r-meta">{rest} {rest_sign}{rest_moved}</span>
-              </div>
-            </template>
-          </gl-rows>
-          <p class="f-meta">{meta} · {at}{stale} · <a href="{link_test}">the test</a> · <a href="{link_view}">{title}, sliced by {axis}</a></p>
-        </article>
-      </template>
-    </gl-rows>
-
-    <gl-rows frame="frames/findings" empty="Beyond the expected ranges, nothing is wrong: every test is green, every cell was read, every relationship resolves, every identity holds.">
+    <gl-rows frame="frames/findings" empty="Nothing is wrong: every test is green, every cell was read, every relationship resolves, every identity holds.">
       <template>
         <article class="finding">
           <div class="f-head"><code class="chip {scls}">{chip}</code><h2>{headline}</h2></div>

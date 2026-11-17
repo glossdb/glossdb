@@ -50,7 +50,7 @@
   {{ tiles::chart(frame="frames/trend?grain=month&span=24", spec="specs/series.vl.json",
        title="Trend · " ~ view, chip="metric_series()",
        empty="no values at this grain — Grain and dimensions, below, says what is served; a grain finer than the metric's own serves nothing",
-       note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing. Where metric_forecast has run, the forecast continues as the dashed line named forecast: the newest run's medians at the metric's own resolution, never clipped by the span. The shaded area is its 80% range; a point's tooltip says how often such a range held and whose count that is: this metric's own history, the dataset's, or the service's held-out data.") }}
+       note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing.") }}
 
   {% endif %}
 
@@ -128,24 +128,6 @@
 {% elif tab == "measurements" %}
   {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
   {% if kind != "scalar" and kind != "relation" %}
-  <section class="tile">
-    <header><span class="eyebrow" title="Each plan on this metric, period by period at the plan&#x27;s own grain: the planned number, the actual where the period has begun, and the variance (actual minus plan) once it is complete. Where a forecast covers the rest, its median and 80% range show beside it, with how often such a range has held. A plan outside the range goes to review. A year only partly covered says how much and has no range.">Plan · {{ view }}</span>
-      <code class="chip">plan_points()</code></header>
-    <gl-rows frame="frames/plan" empty="no plan is declared on this metric — a budget is loaded as a table and annotated as a plan, one per edition">
-      <template>
-        <div class="rrow" style="grid-template-columns:9rem 6rem 7rem 7rem 7rem 13rem 1fr">
-          <span class="r-subj asp">{plan}</span>
-          <span class="r-meta">{label}</span>
-          <span class="r-num">{planned}</span>
-          <span class="r-num">{actual}</span>
-          <span class="r-num">{variance}</span>
-          <span class="r-meta">{expected}</span>
-          <span class="r-meta"><code class="chip {scls}">{planned}</code> {held}</span>
-        </div>
-      </template>
-    </gl-rows>
-  </section>
-
   <section class="tile">
     <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">Largest changes · {{ view }}</span>
       <code class="chip">metric_series()</code></header>

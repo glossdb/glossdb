@@ -36,8 +36,7 @@ views AS (
            || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
   FROM view_definitions s
   CROSS JOIN d
-  LEFT JOIN decisions r ON r.aspect = s.name
-  WHERE s.kind <> 'plan'),
+  LEFT JOIN decisions r ON r.aspect = s.name),
 cols AS (
   SELECT json_extract_string(m.body, '$.term') AS term,
          substr(m.subject, len(d.dataset) + 2) AS name, 'column' AS kind,

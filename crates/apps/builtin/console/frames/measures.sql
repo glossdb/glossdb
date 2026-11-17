@@ -1,5 +1,5 @@
 -- The measures: every view that serves a series, with its chip. The
--- facts, the views and the plans have their own lists. `$stopped` picks
+-- facts and the views have their own lists. `$stopped` picks
 -- the served ones (0) or the ones their author stopped (1). The rows
 -- are `view_definitions`, the catalog; the numbers beside them are
 -- `frames/latest`, joined in the browser by `name`. The axes value
@@ -40,6 +40,6 @@ FROM view_definitions s
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN decided r ON r.aspect = s.name
 LEFT JOIN view_summary() x ON x.view = s.name
-WHERE s.kind NOT IN ('scalar', 'plan', 'relation')
+WHERE s.kind NOT IN ('scalar', 'relation')
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY name

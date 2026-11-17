@@ -541,37 +541,28 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
     );
 }
 
-/// The plan, the harmonise and the outlook kits are pull-ins: a server
-/// that leaves out all three, or the outlook kit alone, serves `next`,
-/// `view_tests()`, `column_mapping()` and the console, the preview tiles
-/// and frames empty, and for a dataset with no stored preview or plan
-/// result it serves the same `next`, the same tests and the same column
-/// mapping as a server with all of them.
+/// The harmonise kit is an add-on: a server that leaves it out serves
+/// `next`, `view_tests()`, `column_mapping()` and the console, and the
+/// same `next`, tests and column mapping as a server with it.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_server_without_the_plan_the_harmonise_or_the_outlook_kit_serves_next_the_tests_and_the_console()
- {
+async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_console() {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
                    DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
-                   DECLARE ASPECT spend_budget WITH $${"title": "Spend budget", "x-kind": "plan", "x-plan-of": "spend"}$$ AS VIEW;
-                   GLOSS spend_budget ON fin AS $${"sql": "SELECT period, value * 1.1 AS value FROM fin.spend"}$$;"#;
+                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
     let next = "SELECT level, kind, asset, state, who, open, statement FROM next";
     let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
     let (with, _, _with_dir) = common::app_on("fin").await;
     say(&with, FIN, build).await;
-    let (neither, _, _neither_dir) =
-        common::app_on_without("fin", &["plan", "harmonise", "outlook"]).await;
+    let (neither, _, _neither_dir) = common::app_on_without("fin", &["harmonise"]).await;
     say(&neither, FIN, build).await;
-    let (plan_alone, _, _plan_dir) = common::app_on_without("fin", &["outlook"]).await;
-    say(&plan_alone, FIN, build).await;
     let served_next = rows(&with, FIN, next).await;
     let served_tests = rows(&with, FIN, tests).await;
     assert!(!served_tests.is_empty());
     let mapping = "SELECT view, target_column, branch, source_table, source_column FROM column_mapping() ORDER BY ALL";
     let served_mapping = rows(&with, FIN, mapping).await;
     assert!(!served_mapping.is_empty());
-    for app in [&neither, &plan_alone] {
+    for app in [&neither] {
         assert_eq!(rows(app, FIN, next).await, served_next);
         assert_eq!(rows(app, FIN, tests).await, served_tests);
         assert_eq!(rows(app, FIN, mapping).await, served_mapping);
@@ -586,26 +577,15 @@ async fn a_server_without_the_plan_the_harmonise_or_the_outlook_kit_serves_next_
             "/fin/app/console/frames/front",
             "/fin/app/console/frames/view_tests",
             "/fin/app/console/frames/trend?view=spend&grain=month&span=24",
-            "/fin/app/console/frames/breaches",
-            "/fin/app/console/frames/test_points?test=range_test",
-            "/fin/app/console/frames/corridor?view=spend",
-            "/fin/app/console/frames/movers?view=spend",
-            "/fin/app/console/frames/plan?view=spend",
         ] {
             let response = common::get(app, page).await;
             assert_eq!(response.status(), axum::http::StatusCode::OK, "{page}");
         }
     }
-    // the plan against the actual where the plan kit is loaded, nothing
-    // where it is not
-    let plan = "SELECT plan FROM plan_points()";
-    assert!(rows(&plan_alone, FIN, plan).await.len() > 1);
-    assert!(rows(&neither, FIN, plan).await.is_empty());
 }
 
-/// The interface keeps a dataset's `next` rows while the lake's snapshot
-/// holds. A write that did not come through the interface takes a
-/// snapshot too, so the rows the next call serves are read again.
+/// A write that did not come through the interface shows in the `next`
+/// rows the next call serves: they are read on every call.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_next_rows_follow_a_write_made_beside_the_interface() {
     let (app, plane, _dir) = common::app_on("fin").await;

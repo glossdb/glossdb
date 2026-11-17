@@ -111,9 +111,9 @@ SELECT uri, title FROM pages();
 - **Several statements, a declaration or a write** answer in the JSON
   shape of the MCP outcomes. A refused statement is a 422; a refused
   sequence carries `completed`.
-- A name the catalog does not hold is a 404. A preview measurement
-  whose model service is not named, refuses or does not answer is a
-  503 with the reason; where none is named the reason names
+- A name the catalog does not hold is a 404. A function that calls
+  the model service, where the service is not named, refuses or does
+  not answer, is a 503 with the reason; where none is named the reason names
   `GLOSSDB_SERVICE_URL`. The MCP tool reports the same reason as a
   refusal.
 - A refusal's body is `{"error": "<reason>"}`, with `"code"` beside
@@ -131,15 +131,8 @@ where the refusal came out of a function.
 | Code | Raised by | When |
 |---|---|---|
 | `unknown_name` | the server | a statement names something the catalog does not hold |
-| `service_not_configured` | the server | a preview measurement needs the model service and none is named |
+| `service_not_configured` | the server | a kit's function calls the model service and none is named |
 | `service_failed` | the server | the model service refused or did not answer |
-| `unknown_world` | `metric_series()` | `world` is not `actual`, `plan`, `forecast` or `scenario` |
-| `plan_not_named` | `metric_series()` | `world := 'plan'` without `plan` |
-| `unknown_plan` | `metric_series()` | `plan` names no declared property |
-| `not_a_plan` | `metric_series()`, `metric_plan()` | the view named is not a plan |
-| `plan_not_served` | `metric_series()`, `metric_plan()` | the plan's definition cannot be served; the reason says what to change |
-| `scenario_not_named` | `metric_series()` | `world := 'scenario'` without `scenario` |
-| `unknown_scenario` | `metric_series()` | `scenario` names no declared scenario |
 
 ## The app paths
 

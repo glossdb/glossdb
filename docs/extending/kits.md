@@ -13,9 +13,7 @@ reads. It does not add grammar.
 | `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
 | `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
-| `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |
 | `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
-| `outlook` | glossdb | preview: expected ranges, forecasts and scenario estimates from a model service, as functions an actor may run; the server serves the rest without it |
 | `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
 
 The server loads them at each start, in this order. A kit the lake

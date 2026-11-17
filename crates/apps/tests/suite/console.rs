@@ -503,7 +503,6 @@ async fn every_page_renders_and_passes_the_shells_policy() {
         "/perf/app/console/p/views?view=payables&kind=scalar",
         "/perf/app/console/p/quality",
         "/perf/app/console/p/quality?test=role_test",
-        "/perf/app/console/p/quality?test=range_test&kind=range",
         "/perf/app/console/p/review",
         "/perf/app/console/p/export",
         "/perf/app/console/p/query",
@@ -726,7 +725,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // cannot, so the browser's store keeps it across decisions. The
     // class is about what a frame serves: a metric's row (`axes`) is
     // catalog, its cells (`slices`, `latest`, `drivers`) are data, and
-    // the trend, which joins the stored forecast, is catalog.
+    // the trend, which reads the view's title, is catalog.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
 
@@ -752,7 +751,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("aspect_head", "catalog"),
         ("aspect_values", "catalog"),
         ("findings", "catalog"),
-        ("breaches", "catalog"),
         ("measured", "catalog"),
         ("relations", "catalog"),
         ("view_fields", "catalog"),
@@ -762,7 +760,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("axes", "catalog"),
         ("view", "catalog"),
         ("trend", "catalog"),
-        ("plan", "catalog"),
         ("slices", "data"),
         ("dims", "data"),
         ("drivers", "data"),

@@ -21,7 +21,7 @@ cols AS (
   JOIN loaded l ON l.table_name = c.table_name
   WHERE c.table_catalog = current_database()),
 views AS (
-  SELECT name, kind FROM view_definitions WHERE kind <> 'plan'),
+  SELECT name, kind FROM view_definitions),
 test AS (
   SELECT name, aspect, detector
   FROM tests

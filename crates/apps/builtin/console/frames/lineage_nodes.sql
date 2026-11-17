@@ -62,7 +62,7 @@ fields AS (
   SELECT s.view AS node, 'view' AS kind, s.target_column AS col,
          CAST(row_number() OVER (PARTITION BY s.view ORDER BY s.target_column) AS BIGINT) AS ord,
          CASE v.kind WHEN 'relation' THEN 'table view' WHEN 'scalar' THEN 'single value'
-                     WHEN 'plan' THEN 'plan' ELSE 'metric' END AS sub,
+                     ELSE 'metric' END AS sub,
          (SELECT b FROM base) || 'views?view=' || s.view
            || CASE WHEN v.kind IN ('relation', 'scalar') THEN '&kind=' || v.kind ELSE '' END AS link
   FROM (SELECT DISTINCT view, target_column FROM column_mapping() WHERE target_column IS NOT NULL) s

@@ -442,7 +442,7 @@ CREATE OR REPLACE VIEW main.next AS
            OR array_to_string(string_split(g.subject, '.')[1:2], '.') NOT IN (SELECT ds.d || '.' || view FROM summary, ds))
       AND NOT (s.expectation AND g.state = 'missing')
       -- `entity` says what one row of a table is: asked on a loaded
-      -- table and on a table view, not on a metric, a single value or a plan
+      -- table and on a table view, not on a metric or a single value
       AND NOT (g.aspect = 'entity' AND g.state = 'missing'
                AND g.subject IN (SELECT ds.d || '.' || m.view FROM summary m, ds WHERE coalesce(m.kind, '') <> 'relation'))
       AND NOT (g.state = 'conflict'
@@ -669,7 +669,7 @@ CREATE OR REPLACE VIEW main.next AS
   -- a stored result out of date that the server does not compute (a
   -- view's lineage it does, results_due()): one
   -- about the dataset as a whole, a view or an asset of a kind a kit
-  -- declares (a scenario), whatever kit declares
+  -- declares, whatever kit declares
   -- its function, but a check a test on the view runs (view_tests()
   -- names it as the test's `run`)
   s_results AS (

@@ -105,8 +105,6 @@ without the token.
 
 ## The model service
 
-Forecasts, expected ranges and scenarios (preview) are answered by a
-model service, named as `GLOSSDB_SERVICE_URL`. Without it those
-measurements are refused by name and the rest works, plans compared
-with the actual among it
-([outlook](../usage/outlook.md)).
+A kit's function can call a model service, named as
+`GLOSSDB_SERVICE_URL`. No shipped kit calls one. Without it such a
+call is refused by name and the rest works.

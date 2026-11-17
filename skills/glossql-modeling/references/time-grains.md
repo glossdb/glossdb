@@ -57,8 +57,7 @@ One row per metric, dimension, member and period: `metric`, `world`,
 - Where rows must be combined and the value column has no
   `additivity`, the read refuses and names the annotation to write.
   `metric_series(unclaimed := 'skip')` serves the other metrics.
-- `world` is `actual` unless you ask for a preview feature's numbers
-  (`references/preview.md`).
+- `world` is `actual`.
 
 What each metric is served from, and what it still needs:
 

@@ -53,11 +53,10 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 
 --===------------------------------------------------------------------===--
 -- view_summary(): one row per view of the bound dataset (a metric, a
--- table, a single value, a plan) — a VIEW aspect whose definition is a
+-- table, a single value) — a VIEW aspect whose definition is a
 -- view — what the catalog says its columns are
 -- and whether a series can be served: view, kind (the aspect's x-kind),
--- plan_of and covers (a plan's metric and the grain its rows are booked
--- against), stopped (the author's text), applicable (a series can be
+-- stopped (the author's text), applicable (a series can be
 -- served), reason (what is missing when it cannot), period_column,
 -- value_column, numerator and denominator
 -- (a ratio's halves), grain_detected (the grain temporal() measured on the
@@ -81,11 +80,7 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- (x-kind scalar) have no series: applicable, period_column,
 -- grain_detected, floor and window_periods are NULL for them, and
 -- reason is filled only where the view is stopped or its definition
--- serves no view. A plan (x-kind plan) is
--- read through the metric it names: its period and value are the columns
--- named as that metric's, or period and value, its additivity the metric's,
--- its floor the grain its rows are booked against where the declaration
--- says so (x-covers); nothing is annotated on a plan's own columns.
+-- serves no view.
 --
 -- view_kinds(): view, kind and stopped alone, from each view's newest
 -- definition, for a read that needs no more of the summary than which
@@ -94,18 +89,17 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 --
 -- view_axes(): what a function's body reads of the same, through the read
 -- functions alone (the lineage kit's), on the subject's dataset: one row
--- per served view — view, kind, plan_of, covers, stopped, applicable,
+-- per served view — view, kind, stopped, applicable,
 -- reason, period_column, value_column, numerator, denominator, floor,
 -- window_periods, additivity, additivity_state, dims, columns (the view's
 -- columns by name). It reads the views'
 -- definitions, role, additivity, dimension and time_grains, and the
--- temporal profiles, on the dataset's metrics: a plan is no row here
--- (the plan kit's plan_axes_of()). A view whose definition serves no
--- view has no row.
+-- temporal profiles, on the dataset's metrics. A view whose definition
+-- serves no view has no row.
 --===------------------------------------------------------------------===--
 
--- series_reason(…) and plan_reason(…): why a view serves no series, NULL
--- where it does; view_summary() and view_axes() judge alike.
+-- series_reason(…): why a view serves no series, NULL where it does;
+-- view_summary() and view_axes() judge alike.
 CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS
   CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
        WHEN NOT served THEN 'the definition serves no view'
@@ -122,17 +116,6 @@ CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, pe
             'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || ds || '.' || metric || '.' || period_column || ', or annotate time_grains with a floor'
        WHEN floor IS NULL THEN
             'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
-  END;
-
-CREATE OR REPLACE MACRO main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS
-  CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-       WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
-       WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no VIEW aspect declares on this dataset'
-       WHEN NOT served THEN 'the metric definition serves no view'
-       WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
-       WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
-       WHEN period_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_period, 'period') || ' (its metric''s period) nor period'
-       WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
   END;
 
 CREATE OR REPLACE MACRO main.view_kinds() AS TABLE
@@ -209,8 +192,6 @@ without_role AS (
 rows_ AS (
   SELECT ch.view,
          json_extract_string(a.schema, '$.x-kind') AS kind,
-         json_extract_string(a.schema, '$.x-plan-of') AS plan_of,
-         json_extract_string(a.schema, '$.x-covers') AS covers,
          b.stopped,
          ch.period_column, ch.value_column, ch.period_cols, ch.measure_cols, ch.served,
          bh.additivity, bh.numerator, bh.denominator, coalesce(bh.additivity_state, 'none') AS additivity_state,
@@ -237,43 +218,19 @@ judged AS (
     main.series_reason(ds.dataset, view, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT (profiled AND profile_current) AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || view || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
-  FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
--- a plan's row: its columns through the metric it plans
-plan_cols AS (SELECT view, list(col ORDER BY pos) AS cols FROM cols GROUP BY view),
-plans AS (
-  SELECT p.view, p.kind, p.plan_of, p.covers, p.stopped, p.served,
-         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
-         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
-         m.view IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
-         m.period_column AS of_period, m.value_column AS of_value,
-         m.numerator, m.denominator, m.additivity, m.additivity_state
-  FROM rows_ p
-  LEFT JOIN plan_cols pc ON pc.view = p.view
-  LEFT JOIN judged m ON m.view = p.plan_of
-  WHERE p.kind = 'plan'),
-judged_plans AS (
-  SELECT *,
-    main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason
-  FROM plans)
-SELECT view, kind, plan_of, covers, stopped,
+  FROM rows_, ds)
+SELECT view, kind, stopped,
        CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN grain_detected END AS grain_detected, CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
        additivity, additivity_state, dims, dimensions_without_rank, columns_without_role, missing, measurements_to_run, profile_current
 FROM (SELECT *, coalesce(kind, '') NOT IN ('scalar', 'relation') AS series FROM judged)
-UNION ALL
-SELECT view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
-       period_column, value_column, numerator, denominator, NULL AS grain_detected, covers AS floor, NULL AS window_periods,
-       additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
-       []::VARCHAR[], true
-FROM judged_plans
 ORDER BY view;
 
 CREATE OR REPLACE MACRO main.view_axes_of(views_at, columns_at) AS TABLE
 WITH defs AS MATERIALIZED (
-  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind,
-         json_extract_string(schema, '$.x-plan-of') AS plan_of, json_extract_string(schema, '$.x-covers') AS covers, stopped, columns
+  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, stopped, columns
   FROM definition(views_at)),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
@@ -319,8 +276,8 @@ rows_ AS (
 judged AS (
   SELECT *, main.series_reason(ds, metric, stopped, true, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
          coalesce(kind, '') NOT IN ('scalar', 'relation') AS series
-  FROM rows_ WHERE coalesce(kind, '') <> 'plan')
-SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
+  FROM rows_)
+SELECT metric AS view, kind, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
@@ -333,14 +290,12 @@ CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the da
 -- view_axes_of(views_at, columns_at) reads the definitions of the views
 -- of the place views_at names and the annotations and profiles of the
 -- columns of columns_at, constants both: view_axes() the dataset's
--- metrics, a plan's comparison its metric ('its metric' twice), a
--- metric's own forecast the metric and its columns ('itself', 'its
--- columns').
+-- metrics.
 
 
 --===------------------------------------------------------------------===--
--- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
--- of every applicable metric of the bound dataset — metric, world,
+-- metric_series(grain := NULL, unclaimed := 'refuse'): the cells
+-- of every applicable metric of the bound dataset — metric, world ('actual'),
 -- dimension ('' the total, else a slicing column), member, period (the
 -- bucket's start), value, num and den (a ratio's summed halves), additivity.
 -- Without a grain, each metric at its own floor; with one, each metric at
@@ -353,21 +308,7 @@ CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the da
 -- stopped early shows its zeros, not an older window);
 -- a stock keeps the bucket's last level, summed over what holds at that
 -- instant; a ratio re-divides its summed halves. A dimension wider than 24
--- members serves its top 23 by weight and 'other'. The actual world is
--- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
--- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
--- '<name>') are served under the metric through world_cells(), each
--- world by the macro of the kit that serves it: world_plan(w, p, g) the
--- plan kit's, world_forecast(w, g) and world_scenario(w, s, g) the
--- outlook kit's, empty here until that kit is loaded. world_series(grain):
--- the same worlds as the series beside a metric's actual one at a grain,
--- as a chart draws them — metric, series (its name), world, period,
--- value, low and high (a range around the value), held (what the range
--- rests on, in words) — from plan_series(g) and forecast_series(g), the
--- same two kits'. range_points() and plan_points(), the two kits' reads
--- the console draws, are empty here too, so a page draws nothing where
--- the kit is not loaded. Each is created only where no macro of its name
--- exists: this kit run again never replaces a kit's real macro.
+-- members serves its top 23 by weight and 'other'.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
@@ -376,85 +317,15 @@ CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the da
 -- such a metric serves no row, and its view_summary() row says what it needs.
 --===------------------------------------------------------------------===--
 
-CREATE MACRO IF NOT EXISTS main.world_plan(w, p, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.world_forecast(w, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.world_scenario(w, s, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
-
-CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
-WITH refusal AS (
-  SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario')
-              THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario') END AS r)
-SELECT * FROM main.world_plan(w, p, g) WHERE w = 'plan'
-UNION ALL SELECT * FROM main.world_forecast(w, g) WHERE w = 'forecast'
-UNION ALL SELECT * FROM main.world_scenario(w, s, g) WHERE w = 'scenario'
-UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refusal WHERE r IS NOT NULL;
-
-CREATE MACRO IF NOT EXISTS main.plan_series(g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
-       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.forecast_series(g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
-       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
-WHERE false;
-
-CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
-FROM main.plan_series(g) UNION ALL FROM main.forecast_series(g);
-
-CREATE MACRO IF NOT EXISTS main.range_points() AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::BOOLEAN AS applicable, NULL::VARCHAR AS reason, NULL::VARCHAR AS code,
-       NULL::BIGINT AS backtested, NULL::DOUBLE AS held_80, NULL::DOUBLE AS held_90, NULL::DOUBLE AS score, NULL::VARCHAR AS state,
-       NULL::VARCHAR AS period, NULL::DOUBLE AS actual, NULL::DOUBLE AS p05, NULL::DOUBLE AS p10, NULL::DOUBLE AS p50,
-       NULL::DOUBLE AS p90, NULL::DOUBLE AS p95, NULL::DOUBLE AS pit, NULL::DOUBLE AS displacement, NULL::VARCHAR AS withheld,
-       NULL::DOUBLE AS coverage_80, NULL::DOUBLE AS coverage_90, NULL::BOOLEAN AS newest, NULL::BIGINT AS point_seq,
-       NULL::VARCHAR AS served_by, NULL::TIMESTAMP WITH TIME ZONE AS computed_at, NULL::VARCHAR AS error
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.plan_points() AS TABLE
-SELECT NULL::VARCHAR AS plan, NULL::VARCHAR AS metric, NULL::VARCHAR AS grain, NULL::TIMESTAMP AS period, NULL::VARCHAR AS label,
-       NULL::DOUBLE AS value, NULL::DOUBLE AS actual, NULL::DOUBLE AS variance, NULL::DOUBLE AS low, NULL::DOUBLE AS expected,
-       NULL::DOUBLE AS high, NULL::VARCHAR AS planned, NULL::VARCHAR AS covers, NULL::DOUBLE AS coverage_80, NULL::VARCHAR AS origin
-WHERE false;
-
--- partial_periods_of(views_at, columns_at, g): per metric of the places,
--- the period at grain g (its own floor where NULL) that its data ends
--- inside, where its rows land finer than that grain: a short sum against
--- a whole period reads as a change that is only the calendar. The plan
--- kit's comparison and the outlook kit's requests leave it out alike.
-CREATE OR REPLACE MACRO main.partial_periods_of(views_at, columns_at, g) AS TABLE
-WITH axes AS (
-  SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
-  FROM main.view_axes_of(views_at, columns_at) WHERE applicable AND coalesce(kind, '') <> 'plan'),
-edges AS (
-  SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
-         count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
-           > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
-  FROM dataset_cells(current_schema(), views_at) c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
-  GROUP BY c."table")
-SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
-WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
-
 -- actual_series(grain, unclaimed): the actual world alone, which a
 -- function's body reads: through view_axes(), and no stored result.
 -- actual_series_of(views_at, columns_at, …) the same over the places
 -- view_axes_of() takes.
-CREATE OR REPLACE MACRO main.actual_series_of(views_at, columns_at, grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
+CREATE OR REPLACE MACRO main.actual_series_of(views_at, columns_at, grain := NULL, unclaimed := 'refuse') AS TABLE
 WITH asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
   FROM main.view_axes_of(views_at, columns_at) m
-  WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
+  WHERE m.applicable
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
 cells AS (
   SELECT * FROM dataset_cells(current_schema(), views_at) WHERE "table" IN (SELECT metric FROM asked)),
@@ -546,15 +417,11 @@ FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM
 WHERE refused.refusal IS NULL
 ORDER BY metric, dimension, member, period;
 
-CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
-FROM main.actual_series_of('the dataset''s metrics', 'the dataset''s metrics', grain := grain, unclaimed := unclaimed, world := world);
+CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse') AS TABLE
+FROM main.actual_series_of('the dataset''s metrics', 'the dataset''s metrics', grain := grain, unclaimed := unclaimed);
 
-CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
-SELECT * FROM main.actual_series(grain := grain, unclaimed := unclaimed, world := world)
-UNION ALL
-SELECT metric, world, dimension, member, period, value, num, den, additivity
-FROM main.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
-ORDER BY metric, dimension, member, period;
+CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse') AS TABLE
+FROM main.actual_series(grain := grain, unclaimed := unclaimed);
 
 --===------------------------------------------------------------------===--
 -- fact_values(): the single values of the bound dataset — one row per
@@ -957,7 +824,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
   a AS (
     SELECT split_part($subject, '.', 2) AS view, d.kind,
            CASE WHEN len(m.cols) = 1 OR m.cols[1] = 'value' THEN m.cols[1] END AS value_column,
-           CASE WHEN coalesce(d.kind, '') IN ('scalar', 'plan') THEN []::VARCHAR[]
+           CASE WHEN coalesce(d.kind, '') = 'scalar' THEN []::VARCHAR[]
                 ELSE coalesce((SELECT list(main.gloss_statement('role', $subject || '.' || col, '{"value": "<key|measure|dimension|timestamp|attribute>"}') ORDER BY pos)
                                FROM cols WHERE col NOT IN (SELECT col FROM roles)), []::VARCHAR[]) END AS missing,
            redefine_statement(d.view) AS redefine
@@ -967,7 +834,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
            (SELECT CASE WHEN state IN ('current', 'stale') THEN value->>'value' END FROM adds WHERE adds.col = a.value_column) AS additivity,
            coalesce((SELECT CASE WHEN state IN ('current', 'stale') THEN state ELSE 'conflict' END FROM adds WHERE adds.col = a.value_column), 'none') AS additivity_state
     FROM a),
-  ok AS (SELECT EXISTS (SELECT 1 FROM v WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
+  ok AS (SELECT EXISTS (SELECT 1 FROM v WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')) AS applicable),
   computed AS (SELECT max(cols.shape) AS shape FROM cols JOIN v ON cols.col = v.value_column)
   SELECT ok.applicable,
          CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM v WHERE coalesce(kind, '') IN ('scalar', 'relation')),
@@ -1201,20 +1068,16 @@ DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR 
 -- those marked x-set-by too only where the property it names is
 -- annotated on the view or the table or on one of its columns.
 -- Each view carries the tests on what it reads and the tests declared on
--- it; a plan and a sample have none of these, and a test on a result
--- about one carries the plan or the sample as its view. A test on the
--- dataset's own result has no view (''). Ordered by what to look at
+-- it. A test on the dataset's own result has no view (''). Ordered by what to look at
 -- first.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
 WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_kinds()),
--- every served view, a metric, a table and a single value alike: a plan
--- is compared with the metric it plans and a sample is a planner's
--- frame, so neither has the views' tests
+-- every served view, a metric, a table and a single value alike
 all_views AS (
   SELECT view, coalesce(kind, '') NOT IN ('scalar', 'relation') AS metric FROM summary
-  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
+  WHERE stopped IS NULL),
 results AS MATERIALIZED (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
@@ -1340,7 +1203,7 @@ WITH ds AS (SELECT current_schema() AS dataset),
 known AS (SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false) WHERE value IS NOT NULL),
 metrics AS (
   SELECT view AS metric, value_column, period_column, additivity, numerator, denominator
-  FROM main.view_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+  FROM main.view_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('scalar', 'relation')),
 cols AS (
   SELECT c.table_name, c.column_name, c.column_type, c.ordinal_position
   FROM glossql_columns(current_schema(), true) c

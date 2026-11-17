@@ -24,27 +24,6 @@
   },
   "layer": [
     {
-      "transform": [
-        {
-          "filter": "isValid(datum.low)"
-        }
-      ],
-      "mark": {
-        "type": "area",
-        "opacity": 0.18
-      },
-      "encoding": {
-        "y": {
-          "field": "low",
-          "type": "quantitative"
-        },
-        "y2": {
-          "field": "high"
-        },
-        "tooltip": null
-      }
-    },
-    {
       "mark": {
         "type": "line",
         "strokeWidth": 1.6,
@@ -63,11 +42,6 @@
             "zero": false
           }
         },
-        "strokeDash": {
-          "field": "world",
-          "type": "nominal",
-          "legend": null
-        },
         "tooltip": [
           {
             "field": "period",
@@ -81,23 +55,6 @@
             "field": "value",
             "type": "quantitative",
             "format": ".4~s"
-          },
-          {
-            "field": "low",
-            "type": "quantitative",
-            "format": ".4~s",
-            "title": "p10"
-          },
-          {
-            "field": "high",
-            "type": "quantitative",
-            "format": ".4~s",
-            "title": "p90"
-          },
-          {
-            "field": "held",
-            "type": "nominal",
-            "title": "the 80% range"
           }
         ]
       }

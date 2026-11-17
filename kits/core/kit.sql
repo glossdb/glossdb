@@ -122,7 +122,7 @@ CREATE OR REPLACE VIEW main.app_releases AS
 
 -- Every view of the bound dataset, with its state: one row per VIEW
 -- aspect with a definition here, served or stopped — name, title, kind
--- (the aspect's x-kind: relation, scalar, plan; measure for a metric),
+-- (the aspect's x-kind: relation, scalar; measure for a metric),
 -- meaning (the `meaning` annotation on the view), unit (the `unit`
 -- annotation on the value column of a metric or a single value; a table
 -- has none), defined (a definition with sql was written), stopped (the
