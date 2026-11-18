@@ -70,6 +70,12 @@ asks for alone.
   the reload after a write is a caching question in DuckLake is not
   explored.
 
+- **How kits are bundled** (a kit's version and config file, where its
+  code lives): discussed after this streamlining round. The extension's
+  seam for a kit's own kind of asset (`glossql_kind_assets`,
+  `glossql_kind_edges`, `glossql_kind_places`) stays for it, though no
+  shipped kit declares one now.
+
 ## Measured (Formula 1, one MCP call, by the session on its own server)
 
 | What | Start of the round | Before the cut | Now |
