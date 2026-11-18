@@ -31,7 +31,7 @@ missions and the issues.
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
 | Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
-| Integrate | A served column that empties is named: the running state on FERC | With `evaluation.md` | #243 |
+| Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
 | Integrate | Spreadsheets, documents and search as sources | When a customer brings the data | |
 | Describe | Citations to documents on tables, columns, relationships and metrics | With documents | #220 |

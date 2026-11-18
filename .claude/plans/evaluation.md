@@ -16,8 +16,10 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A served column that empties. On the `eia-generators` replay `next` names both emptied columns as a `must` (`completeness_test` red: 80.7% empty, 0.0% before, the definition empties it). On the FERC running replay three later years load and `next` shows no row come or gone, as before; whether a column empties there, or the new years only score lower (83 to 86% of cells against 97 to 98% so far), is not established | Medium: it is what the layer adds over a built table | the FERC running replay, `completeness_check`, `load_changes()` | Next | #243 |
-| The running state on `eia-generators`; a third `erp-supply` run; the harmonisation scorer on the rebuilt reconciliation, with a "handled" rule for a fault the builder removes at load | Low | glossval | In glossval | |
+| The reconciliation counts rows that arrive as missing. On `erp-supply` `onhand` it counts 1,978 of 2,938 mono stock rows missing where 67 are: the shortfall of the count, on a view whose grain is coarser than the source table's. `reconciliation_test` is red for it | Medium: a red test that is wrong teaches the agent to accept tolerances | `kits/harmonise` (reconciliation) | Next | |
+| The reconciliation lists no missing key where the target computes its key (every `erp-supply` target maps its key through the identity table): it counts the right rows per system (104, 32, 2 and 73, as planted) and names none of them | Low | `kits/harmonise` | | |
+| The FERC contract states the new system's `record_id` with a rule the reference does not use (glossval's `gen_ferc.py`): 4,434 of 5,221 keys of 2021 to 2025 under the contract's rule, 5,208 under the reference's. It is why a new year scores 83 to 86% of cells; no served column empties after a load (#243 answered) | Medium: every FERC score so far | glossval | In glossval, before the next round | |
+| The running state on `eia-generators`; a third `erp-supply` run; a "handled" rule for a fault the builder removes at load (`due_date_format`) | Low | glossval | In glossval | |
 | The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner | | #255 |
 | The results page | Low | glossval, the websites | Last | |
@@ -29,21 +31,26 @@ What the harness, the test cases and the scorers are, and the scores
 of each round, are glossval's own (`../glossval/README.md`,
 `evals/README.md`, `goldens/README.md`). The last round ran on the
 branch `snapshot-version` at glossql `58938e6e` and the extension
-`ce94506`: `ferc-steam` 93.7% of cells, `eia-generators` 99.0%, the
-goldens differing only where the branch changed behaviour on purpose.
-Open in glossval after it: the harmonisation scorer reads the
-reconciliation's earlier shape, and the goldens' baseline is not
-accepted yet.
+`ce94506`: `ferc-steam` 93.7% of cells, `eia-generators` 99.0%,
+`erp-supply` (generated) found 2, handled 1, missed 2, not covered 5
+with the scorer on the rebuilt reconciliation. The goldens' baseline is
+accepted at glossql `f7485aac` with the extension `ce94506`, every
+difference a deliberate change (glossval `512fd5e`). On the FERC
+running replay no served column loses its fill after a load: the years
+already built keep their rows and empty shares column by column, and a
+new year scores as the build's own new-system years, for the contract's
+key rule above. `next` naming nothing there is right.
 
 ## Next issue (draft)
 
-**The running state on FERC names what a later year changed.** What it
-buys: after a period is loaded, `next` says which served columns moved
-and in which period, or the replay shows that none did. What is there:
-the replay `--replay=runs/ferc-steam/20261116T112642Z --running=2` in
-glossval, `completeness_check` per served column, `load_changes()`.
-Done when: the replay's three periods are read column by column
-against the build before each load, and either `next` names each
-column whose filled share dropped with its period, or the plan states
-that no column emptied and the lower score of a new year has another
-cause.
+**The reconciliation counts a source row missing only when it does not
+arrive.** What it buys: `reconciliation_test` is red only for rows the
+view loses, so an agent does not learn to accept a tolerance for rows
+that arrived. What is there: the `erp-supply` run
+`runs/erp-supply/20261118T151119Z` in glossval (its `onhand` view:
+mono 1,978 of 2,938 counted missing, 67 planted), the reconciliation's
+`missing_rows` (the shortfall of the count or the unserved keys,
+whichever is more). Done when: on that workspace the reconciliation of
+`onhand` counts the planted 67 mono rows, or says why it cannot
+compare counts on a view of coarser grain, and the other targets'
+counts are unchanged.
