@@ -13,7 +13,7 @@ is refused.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| Statement-type lock: a connection that refuses DuckDB's own administrative statements, checked after planning by statement type | Low. The hooks are measured below. One wrinkle: the extension runs its own statements on a second connection it opens per statement | Extension: a per-connection state with a one-way switch, its tests. Server: `channel()` switches it for a non-admin after its own `SET`s; `admitted`, `words`, `after_comments` and `Session::admit` are deleted; both suites. Docs: statements.md, sql-here.md, installation | Next | drafted below |
+| Statement-type lock: a connection that refuses DuckDB's own administrative statements, checked after planning by statement type | Low. The hooks are measured below. One wrinkle: the extension runs its own statements on a second connection it opens per statement | Extension: a per-connection state with a one-way switch, its tests. Server: `channel()` switches it for a non-admin after its own `SET`s; `admitted`, `words`, `after_comments` and `Session::admit` are deleted; both suites. Docs: `docs/reference/interfaces.md` | Next | #254 |
 | A source's reads are confined to its declared location. Today a load query can read outside it, for example `read_parquet('../other/file.parquet')` | Medium. DuckDB's file settings apply to the whole instance, so the check is per load: on the plan of the load query, or on the paths it opens | Extension: the load (`IMPORT`, `DECLARE RECIPE`, `PREVIEW`), the refusal text, its tests. Server: both suites; `docs/usage/load.md` and `docs/reference/interfaces.md` say what is refused | With table access | |
 | Table access: what a statement reads and writes, per user, checked on the query plan | Medium. The hook is unmeasured. A metric is a view, so reading it plans its base tables. The catalog tables are read by everyone and written only through glossql statements | Extension: a walk over the plan, the refusal text. Server: who holds which grant | When a workspace has a second user | |
 | Roles and grants stored in the catalog | High. `GRANT` is grammar, so it goes through the corpus | SPEC and corpus (extension); the catalog; the server's config | After table access shows the need | |
@@ -60,21 +60,6 @@ is refused.
   name. A dataset is a schema; a metric is a view.
 - The glossql statements are open to every role.
 
-## Issue for the next row, drafted
+## Next issue
 
-**A connection locked against DuckDB's administrative statements**
-
-What it buys: the statement check uses the engine's parse, after its
-pragma rewrite, on every path through a connection. The server's
-word scanner and its three call sites are deleted.
-
-What is there: `crates/duck/src/lib.rs` (`admitted`, `words`,
-`after_comments`, `Session::admit`, `Plane::channel`); the two suite
-cases that assert the refusals; `docs/reference/interfaces.md`.
-
-Done when: the extension registers a per-connection state that, once
-switched, refuses the listed types at `OnFinalizePrepare` with a
-message naming the type, cannot be switched back, and exempts its own
-`Inner`. `channel()` switches it for a non-admin after its own
-`SET`s. The server's scanner is deleted. Both suites assert the
-engine's refusals. The docs list the types.
+#254: a connection locked against DuckDB's administrative statements.

@@ -58,7 +58,7 @@ workspace version.
 - **Results and next steps**: `results_due()` in
   `kits/goals/kit.sql` lists the results that are missing or
   outdated; the server computes them after a write
-  (`.claude/plans/dependencies.md`). The `next` view beside it lists
+  (`docs/reference/dependencies.md`). The `next` view beside it lists
   what only an actor can do, read from the states the catalog holds;
   a test brings its own finding and fix. The lines every result
   closes with:
@@ -89,9 +89,9 @@ workspace version.
 - **Dependencies** are demand-driven incremental computation, as in
   Adapton and Salsa's red-green algorithm. The revision is the lake's
   snapshot id, and it is the only version: no digest, counter or
-  fingerprint beside it. `.claude/plans/dependencies.md` holds the
-  model, its reference and what is open; that section survives every
-  rewrite of the plan.
+  fingerprint beside it. `docs/reference/dependencies.md` holds the
+  model and its reference; `.claude/plans/dependencies.md` holds what
+  is open and what must not exist beside the mechanism.
 - **The inside follows the outside.** When what is exposed changes (a
   name, a kit that becomes an add-on, the grain of what one asks
   for), the structure behind it changes in the same work. An old
@@ -161,7 +161,10 @@ workspace version.
 - **Docs** state what the system is and what is planned, not what was
   rejected or reversed. No dated decision stamps; git is the history.
 - **Plans** live in `.claude/plans/`; `harness.md` is the frame and
-  names the others. A plan is a table first (element, risk, what it
+  names the others. A plan holds what is open on a long-term mission:
+  what is built is in `docs/`, a small valid item is an issue, and an
+  idea with no customer and no measurement is not kept. A plan is a
+  table first (element, risk, what it
   touches, when, issue), in risk order, under 150 lines. It drafts an
   issue only for its next row. When the direction moves, the plan is
   rewritten, not patched. The project lead picks the next issue.

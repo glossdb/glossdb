@@ -34,7 +34,7 @@ kit.
 | a function's result (`SELECT column_profile() FROM orders.amount`) | a node it read changed: the data of a table it read, an annotation or another function's result it read, the function's own declaration, a macro its body calls |
 | a test's result, per asset and test | the asset's values of the tested property, the asset's definition, or the declarations of the test and its detector changed |
 | a view's lineage (function `lineage` on the view) | the view's definition, the definition of a table or view its SQL names, through the views it reads, or a macro it calls changed |
-| an annotation | it is an input, not a result. It reads `stale` once a load redefined, retyped or dropped its column ([describe](../usage/describe.md#states)) |
+| an annotation | it is an input, not a result. It reads `stale` once a load redefined, retyped or dropped its column, or once the view it is on was defined again ([describe](../usage/describe.md#states)) |
 
 A result that read another result waits for it. Once that result is
 computed again, the same value leaves the reader current, and another

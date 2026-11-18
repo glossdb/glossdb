@@ -15,22 +15,6 @@ tools use. Build order is risk order.
 | A database attached read-only (`postgres`, `mysql`, `sqlite`) and read by a load query | Low: the extensions exist and the image carries `postgres` | `SPEC.md` §3's `via`, the server's open, a suite case | When a customer names one | |
 | The workspace as code: declarations exported to `.glossql` files and loaded back; `TESTS()` in the team's CI | Medium: which annotations are code and which are run-time results is open | an export read, a load of a directory, a CI example | After the dbt rows; the files sit beside a dbt project | #219 |
 
-## What is there
-
-- `semantic_model()` returns the bound dataset as one Apache Ossie
-  document, and `lineage_events()` its lineage as OpenLineage events.
-  Both are valid against the standards' JSON schemas and readable
-  over the query endpoint (`kits/views/kit.sql`).
-- dbt writes its project metadata, column lineage included, as
-  Parquet files DuckDB reads, and builds models into a DuckLake
-  catalog (https://duckdb.org/2026/09/22/dbt-fusion).
-- Every declaration is a statement, and the catalog keeps each as a
-  row. Kits are loaded as files by `glossql_kit()`. Nothing writes a
-  workspace's own declarations back out as statements.
-- Reading a system of record in place is the customer's choice. A
-  scan puts load on a live database, so the default stays a load into
-  the lake.
-
 ## Issue for the next row, drafted
 
 ### Spike: a dbt project on the lake glossdb attaches
