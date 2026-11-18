@@ -432,12 +432,13 @@ ORDER BY metric, dimension, member, period;
 --===------------------------------------------------------------------===--
 -- fact_values(): the single values of the bound dataset — one row per
 -- view whose aspect declares x-kind scalar: view, value where the view
--- is one row with a value column, reason where it is not.
+-- is one row with a value column, reason where it is not. It reads the
+-- rows of those views alone, through the place the dataset's single values.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
 WITH facts AS (SELECT view AS metric, stopped FROM main.view_kinds() WHERE kind = 'scalar'),
-cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
+cells AS (SELECT * FROM dataset_cells(current_schema(), 'the dataset''s single values')),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
          max(CASE WHEN "column" = 'value' THEN TRY_CAST(val AS DOUBLE) END) AS value
