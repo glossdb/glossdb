@@ -49,7 +49,7 @@ asks for alone.
 
 | # | Element | Risk | What it touches | State |
 |---|---|---|---|---|
-| 1 | The glossary state read: one read plans about 565 operators and holds about 200 MB of buffers for under 3 MB of rows; `next` and a metric's axes run it several times at once (30 ms each, 0.6 GB for a metric's axes). More than half is the out-of-date check on function values. To be a smaller check | High | the extension's store | spike first |
+| 1 | The glossary state read is one relation of changes read by the outdated mark, the check and `glossql_outdated()`: 390 operators from 570, 25 to 34 ms from 35 to 46, a read of one property 17 to 20 ms. It still grows with the number of snapshots (43 ms at ten times the history) | Low | the extension's store | built; growth with history open |
 | 2 | `next`'s annotation rows: the bulk of its 1,067 operators, planned on every call (about 90 of 160 ms) | Medium | `kits/goals` | after 1 |
 | 3 | `dataset_cells` (text cells) stays for the discovery screens, the contract and code checks and the reconciliation, which compare values across types as text. The key check after a load reads every column of the table through it (0.3 to 0.4 s on 1M rows); it could read through a typed read of the key columns | Low | `kits/views`, `kits/harmonise`, the quality kit | open |
 | 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
@@ -80,10 +80,10 @@ asks for alone.
 
 | What | Start of the round | Before the cut | Now |
 |---|---|---|---|
-| a write that computes nothing | 0.24 s | 0.28 s | 0.27 s: one `results_due()` round (87 ms) and `next` (127 ms), mostly planning the kit SQL |
-| a table view over three tables | 1.9 s (10 results) | 2.6 s (28 results) | 1.12 s (28 results); 132 connections and 90 lake transactions, from 513 and 446 |
-| the setup that defines the metrics | | 5.9 s | 2.97 s |
-| the same annotation again | | 0.04 s, `next` kept | 0.17 s, `next` read on each call |
+| a write that computes nothing | 0.24 s | 0.28 s | 0.22 s |
+| a table view over three tables | 1.9 s (10 results) | 2.6 s (28 results) | 1.14 s (30 results) |
+| the setup that defines the metrics | | 5.9 s | 3.44 s; each view's definition now computes `relationship_test` and `series_test` too |
+| the same annotation again | | 0.04 s, `next` kept | 0.14 s, `next` read on each call |
 
 One metric's page frames on this build: 0.12 to 0.35 s on Formula 1,
 on 200 metrics, on 1.3M rows and on 10M rows; peak memory for the
@@ -104,11 +104,7 @@ rewrite.
 
 ## Next issue (draft)
 
-**A smaller glossary state read.** What it buys: every MCP call and
-every page pays this read several times; its plan, not its rows, sets
-the time and the memory. What is there: the read's SQL in the
-extension's `glossql_store.cpp` (`GLOSSARY()`, `glossql_glossary`), the
-out-of-date check it embeds, its callers in `next`, `results_due()`,
-`view_summary()` and `view_axes()`. Done when, walked on a running
-server: the same rows for every state, one read under 10 ms, a
-metric's page on 10M rows under 1 GB above idle.
+None drafted. Call time is 0.14 to 0.22 s on every size measured, most
+of it planning `next`; no further cheap step is known. The project
+lead picks what follows: the push of this branch with the pin move, a
+glossval round and a smoke test, or a row of the table above.
