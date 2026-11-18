@@ -15,10 +15,9 @@ reads AS (
   WHERE ms.source_column IS NOT NULL
   GROUP BY ALL),
 meanings AS (
-  SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning,
-         row_number() OVER (PARTITION BY g.subject ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'meaning' AND g.actor_kind IN ('human', 'agent')),
+  SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect = 'meaning' AND g.rank = 1),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 results AS (
   SELECT v.subject, v.aspect, v.test, v.state, v.score, v.error, v.computed_at, w.detector, w.threshold,
@@ -83,7 +82,7 @@ orphans AS (
          CAST(o.orphans AS DOUBLE) AS size
   FROM orphaned o
   CROSS JOIN d
-  LEFT JOIN meanings m ON m.subject = o.rel AND m.rn = 1
+  LEFT JOIN meanings m ON m.subject = o.rel
   LEFT JOIN reads rd ON d.dataset || '.' || rd.source = split_part(o.rel, ' -> ', 1)),
 broken AS (
   SELECT subject,

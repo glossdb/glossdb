@@ -13,11 +13,9 @@ coh AS (
         WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence'
           AND json_extract_string(g.body, '$.relationship') IS NOT NULL)),
 m AS (
-  SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind,
-         row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.actor_kind IN ('human', 'agent')),
+  SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.rank = 1),
 rels AS (
   SELECT r.left_side, r.op, r.right_side,
          substr(r.left_side, len(d.dataset) + 2) AS left_path,
@@ -34,7 +32,7 @@ SELECT r.left_path || ' → ' || r.right_path AS rel,
        '?table=' || split_part(r.left_path, '.', 1) AS link
 FROM rels r
 LEFT JOIN coh c ON c.rel = r.left_side || ' ' || r.op || ' ' || r.right_side
-LEFT JOIN m ON m.subject = r.left_side || ' ' || r.op || ' ' || r.right_side AND m.rn = 1
+LEFT JOIN m ON m.subject = r.left_side || ' ' || r.op || ' ' || r.right_side
 WHERE (coalesce(CAST($table AS VARCHAR), '') = ''
        OR split_part(r.left_path, '.', 1) = CAST($table AS VARCHAR)
        OR split_part(r.right_path, '.', 1) = CAST($table AS VARCHAR))

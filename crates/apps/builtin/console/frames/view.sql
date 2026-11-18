@@ -5,14 +5,10 @@
 WITH a AS (
   SELECT name, schema FROM aspects
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
-q AS (
-  SELECT g.aspect, g.body, g.actor_kind, g.actor_id, g.written_at
-  FROM glossary g JOIN current_dataset d ON d.dataset = g.dataset
-  WHERE g.subject = d.dataset AND g.aspect = $view AND g.actor_kind IN ('human', 'agent')
-  QUALIFY row_number() OVER (PARTITION BY g.aspect, g.actor_kind ORDER BY g.begin_snapshot DESC) = 1),
 w AS (
-  SELECT * FROM q
-  QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
+  SELECT g.aspect, g.body, g.actor_kind, g.actor_id, g.written_at
+  FROM ranked_annotations g JOIN current_dataset d ON d.dataset = g.dataset
+  WHERE g.subject = d.dataset AND g.aspect = $view AND g.rank = 1),
 d AS (SELECT name, unit, meaning FROM view_definitions WHERE name = $view)
 SELECT w.aspect,
   coalesce(json_extract_string(a.schema, '$.title'), w.aspect) AS title,

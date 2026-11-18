@@ -6,14 +6,11 @@
 -- across its authored annotations. A row opens the column's page.
 WITH d AS (SELECT dataset FROM current_dataset),
 tbl AS (SELECT d.dataset || '.' || CAST($table AS VARCHAR) AS subject FROM d),
-annotations AS (
-  SELECT g.subject, g.aspect, g.actor_kind, g.body, g.written_at,
-         row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
+cur AS (
+  SELECT g.subject, g.aspect, g.actor_kind, g.written_at, json_extract_string(g.body, '$.value') AS value
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
   WHERE g.subject LIKE (SELECT subject FROM tbl) || '.%'
-    AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
-cur AS (SELECT subject, aspect, actor_kind, written_at, json_extract_string(body, '$.value') AS value FROM annotations WHERE rn = 1),
+    AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.rank = 1),
 states AS (
   SELECT subject,
          max(CASE WHEN state = 'conflict' THEN 2 WHEN state = 'stale' THEN 1 ELSE 0 END) AS worst,
@@ -24,10 +21,9 @@ states AS (
   GROUP BY subject),
 human AS (SELECT subject, max(written_at) AS annotated_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
 entity AS (
-  SELECT json_extract_string(g.body, '$.time_axis') AS axis,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.actor_kind IN ('human', 'agent')),
+  SELECT json_extract_string(g.body, '$.time_axis') AS axis
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.rank = 1),
 measured AS (
   SELECT g.subject, g.aspect, g.body
   FROM GLOSSARY(all => true) g
@@ -81,6 +77,6 @@ LEFT JOIN cur u ON u.subject = c.subject AND u.aspect = 'unit'
 LEFT JOIN cur b ON b.subject = c.subject AND b.aspect = 'additivity'
 LEFT JOIN states st ON st.subject = c.subject
 LEFT JOIN human h ON h.subject = c.subject
-LEFT JOIN entity e ON e.rn = 1
+LEFT JOIN entity e ON true
 LEFT JOIN summaries s ON s.subject = c.subject
 ORDER BY c.ordinal_position

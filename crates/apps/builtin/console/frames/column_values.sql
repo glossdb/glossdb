@@ -7,11 +7,9 @@ WITH d AS (SELECT dataset FROM current_dataset),
 subj AS (SELECT d.dataset || '.' || CAST($column AS VARCHAR) AS subject FROM d),
 states AS (SELECT aspect, state FROM GLOSSARY() WHERE subject = (SELECT subject FROM subj)),
 said AS (
-  SELECT g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at,
-         row_number() OVER (PARTITION BY g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.subject = (SELECT subject FROM subj) AND g.actor_kind IN ('human', 'agent')),
+  SELECT g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at, g.rank AS rn
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.subject = (SELECT subject FROM subj)),
 authored AS (
   SELECT s.aspect, 'said' AS kind,
          CASE s.aspect

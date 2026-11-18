@@ -12,6 +12,17 @@ CREATE OR REPLACE VIEW main.current_dataset AS
   SELECT current_schema() AS dataset
   WHERE current_schema() IN (SELECT name FROM main.datasets);
 
+-- Each annotation a person or an agent wrote, with its rank among the
+-- annotations on its asset and aspect: 1 for the one the console shows, a
+-- person's over an agent's; 2 for an agent's that a person's outranks. Unlike
+-- GLOSSARY(), it withholds no value in conflict and keeps who wrote each.
+CREATE OR REPLACE VIEW main.ranked_annotations AS
+  SELECT dataset, subject, aspect, actor_kind, actor_id, body, written_at, begin_snapshot,
+         row_number() OVER (PARTITION BY subject, aspect
+           ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END, begin_snapshot DESC) AS rank
+  FROM main.glossary
+  WHERE actor_kind IN ('human', 'agent');
+
 -- The agent's current assumptions, one row each: the latest agent
 -- annotation per (subject, aspect), its `assumptions` unnested, `idx`
 -- from 0. Derived from the agent's CURRENT body, never a frozen copy, so
@@ -81,18 +92,14 @@ CREATE OR REPLACE VIEW main.open_questions AS
 -- Apps authored as glosses, one row per file: the aspect says what kind
 -- of file, the subject where it goes — `app` on `<dataset>.<app>` the
 -- manifest, `app_page` on `<dataset>.<app>.<page>` a page, `app_frame` a
--- query, `app_spec` a chart spec. Two collapses: the newest writing per
--- (dataset, subject, aspect, actor kind), then the human's over the
--- agent's. This is the draft; the console serves the app at its release.
+-- query, `app_spec` a chart spec, the one ranked_annotations ranks first.
+-- This is the draft; the console serves the app at its release.
 CREATE OR REPLACE VIEW main.app_parts AS
-  WITH newest AS (
-    SELECT * FROM main.glossary
-    WHERE aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
+  WITH winning AS (
+    SELECT * FROM main.ranked_annotations
+    WHERE rank = 1 AND aspect IN ('app', 'app_page', 'app_frame', 'app_spec')
       AND split_part(subject, '.', 1) = dataset AND split_part(subject, '.', 2) <> ''
-      AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> '')),
-  winning AS (
-    SELECT * FROM newest
-    QUALIFY row_number() OVER (PARTITION BY dataset, subject, aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
+      AND (aspect = 'app' OR substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) <> ''))
   SELECT dataset, split_part(subject, '.', 2) AS app,
          CASE aspect WHEN 'app' THEN 'app'
                      WHEN 'app_page' THEN substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) || '.html'
@@ -107,13 +114,10 @@ CREATE OR REPLACE VIEW main.app_parts AS
 
 -- What is released of each glossed app: one row per app that carries a
 -- release, cut at `at` — the release's own time, or the earlier release
--- its body names. The same two collapses as app_parts.
+-- its body names, the one ranked_annotations ranks first.
 CREATE OR REPLACE VIEW main.app_releases AS
-  WITH newest AS (
-    SELECT * FROM main.glossary WHERE aspect = 'app_release' AND split_part(subject, '.', 1) = dataset),
-  winning AS (
-    SELECT * FROM newest
-    QUALIFY row_number() OVER (PARTITION BY dataset, subject ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1)
+  WITH winning AS (
+    SELECT * FROM main.ranked_annotations WHERE rank = 1 AND aspect = 'app_release' AND split_part(subject, '.', 1) = dataset)
   SELECT dataset, split_part(subject, '.', 2) AS app,
          coalesce(json_extract_string(body, '$.at'), written_at::VARCHAR) AS at,
          json_extract_string(body, '$.note') AS note,
@@ -131,13 +135,9 @@ CREATE OR REPLACE VIEW main.app_releases AS
 CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
   aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
-  current_values AS (
-    SELECT g.aspect, g.body, g.actor_kind FROM main.glossary g, ds
-    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.actor_kind IN ('human', 'agent')
-      AND g.aspect IN (SELECT name FROM aspects)),
   collapsed AS (
-    SELECT aspect, body FROM current_values
-    QUALIFY row_number() OVER (PARTITION BY aspect ORDER BY CASE actor_kind WHEN 'human' THEN 0 ELSE 1 END) = 1),
+    SELECT g.aspect, g.body FROM main.ranked_annotations g, ds
+    WHERE g.rank = 1 AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)),
   defined AS (
     SELECT DISTINCT g.aspect FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
