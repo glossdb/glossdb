@@ -16,7 +16,7 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A change that empties a served column: `completeness_test` judges each served column after a load and a new definition. The two cases that showed the gap (a column from 0 to 81% NULL on `eia-generators`; the running state on FERC) are replayed on the branch `snapshot-version` | Medium: it is what the layer adds over a built table | glossval's replays, `next` | With the glossval round | #243 |
+| A served column that empties. On the `eia-generators` replay `next` names both emptied columns as a `must` (`completeness_test` red: 80.7% empty, 0.0% before, the definition empties it). On the FERC running replay three later years load and `next` shows no row come or gone, as before; whether a column empties there, or the new years only score lower (83 to 86% of cells against 97 to 98% so far), is not established | Medium: it is what the layer adds over a built table | the FERC running replay, `completeness_check`, `load_changes()` | Next | #243 |
 | The running state on `eia-generators`; a third `erp-supply` run; the scorer's "handled" rule for a fault the builder removes at load (the second date format) | Low | glossval | With the row above | |
 | The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
@@ -78,6 +78,21 @@ DuckDB only as a comparison (a story for the docs later).
   accepted at these commits, every difference explained. 14.66 USD in
   all.
 
+- **Measured on `snapshot-version`** at glossql `58938e6e` and the
+  extension `ce94506`, same setup, one run each: `ferc-steam` 93.7% of
+  cells, 83.9% of rows, 34 turns, 1.21 USD; `eia-generators` 99.0% of
+  cells, 98.7% of rows, 45 turns, 1.70 USD; `erp-supply` (generated)
+  the blank global ids and the unmapped local codes found, with
+  `reconciliation_test` red on three targets beside `orphan_test`.
+  glossval's harmonisation scorer still reads the reconciliation's
+  earlier shape, so it counts `leading_zeros` as missed and the
+  reconciliation as naming nothing. The goldens differ from the
+  baseline in 7,782 lines, each explained by a deliberate change (the
+  offloaded kits, the new checks, stored test results, the rebuilt
+  reconciliation, the cadence of a date column); the cube and the
+  data-update path serve the same cells. The baseline is not accepted
+  yet.
+
 ## What the scores are
 
 - **Build.** Cells right, keys right, rows right in every column,
@@ -92,11 +107,13 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**The glossval round on `snapshot-version`.** What it buys: the scores
-of the three test cases and the goldens' differences on the branch
-that holds the dependency mechanism and the cut, before the pull
-requests. What is there: glossval's `evals/` and `goldens/`, the image
-built from the two checkouts. Done when: each test case has a run on
-the branch, the two replays above say whether `next` names the emptied
-column and the period, the goldens' differences are each explained,
-and the "Measured" paragraph above carries the new commits.
+**The running state on FERC names what a later year changed.** What it
+buys: after a period is loaded, `next` says which served columns moved
+and in which period, or the replay shows that none did. What is there:
+the replay `--replay=runs/ferc-steam/20261116T112642Z --running=2` in
+glossval, `completeness_check` per served column, `load_changes()`.
+Done when: the replay's three periods are read column by column
+against the build before each load, and either `next` names each
+column whose filled share dropped with its period, or the plan states
+that no column emptied and the lower score of a new year has another
+cause.
