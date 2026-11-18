@@ -717,6 +717,41 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
     assert!(refused.is_empty(), "{}", refused.join("\n"));
 }
 
+/// A metric's page reads that metric alone: a second metric whose rows
+/// must be combined and whose value column has no additivity refuses its
+/// own trend, slices and drivers, and the first metric's still answer
+/// with its cells.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_metric_without_additivity_refuses_its_own_page_and_no_other() {
+    let (app, plane, _dir) = workspace().await;
+    seed_model_shapes(&plane).await;
+    builder(&plane)
+        .await
+        .execute(
+            r#"USE perf;
+               DECLARE ASPECT lines WITH $${"title": "Lines"}$$ AS VIEW;
+               GLOSS lines ON perf AS $${"sql": "SELECT month, value FROM perf.ledger"}$$;
+               GLOSS role ON lines.month AS $${"value": "timestamp"}$$;
+               GLOSS role ON lines.value AS $${"value": "measure"}$$;
+               SELECT temporal() FROM lines.month;"#,
+        )
+        .await
+        .unwrap();
+    let uri = |frame: &str, view: &str| {
+        format!("/perf/app/console/frames/{frame}?view={view}&dim=cohort&grain=month&span=24")
+    };
+    let trend = frame(get(&app, &uri("trend", "dso")).await).await;
+    assert_eq!(trend.col("value"), ["12.5", "4.0"], "{:?}", trend.rows);
+    let slices = frame(get(&app, &uri("slices", "dso")).await).await;
+    assert_eq!(slices.len(), 3, "{:?}", slices.rows);
+    let drivers = get(&app, &uri("drivers", "dso")).await;
+    assert_eq!(drivers.status(), StatusCode::OK);
+    for name in ["trend", "slices", "drivers"] {
+        let refused = get(&app, &uri(name, "lines")).await;
+        assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY, "{name}");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // Every frame response carries `glossql-frame-class`, derived from

@@ -179,6 +179,54 @@ GLOSS role ON headcount.dept AS $${"value": "dimension"}$$;
 statement ok
 GLOSS additivity ON headcount.value AS $${"value": "semi-additive"}$$;
 
+query TR
+SELECT period::DATE, value FROM metric_series(view := 'headcount') WHERE dimension = '' ORDER BY period;
+----
+2024-01-01	14.0
+2024-02-01	16.0
+2024-03-01	17.0
+2024-04-01	18.0
+
+# --- one metric's read: another metric's missing additivity does not refuse it, its own does; a flow whose
+# rows stop early fills zeros up to the newest instant of the dataset's metrics
+
+statement ok
+DECLARE ASPECT early WITH $${"title": "Early"}$$ AS VIEW;
+
+statement ok
+GLOSS early ON fin AS $${"sql": "SELECT d AS period, n AS value FROM fin.levels WHERE d < DATE '2024-03-01'"}$$;
+
+statement ok
+GLOSS role ON early.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON early.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS time_grains ON early.period AS $${"floor": "month"}$$;
+
+query I
+SELECT count(*) FROM metric_series(view := 'spend') WHERE dimension = '';
+----
+4
+
+statement error
+SELECT * FROM metric_series(view := 'early');
+
+statement ok
+GLOSS additivity ON early.value AS $${"value": "additive"}$$;
+
+query TR
+SELECT period::DATE, value FROM metric_series(view := 'early') WHERE dimension = '' ORDER BY period;
+----
+2024-01-01	14.0
+2024-02-01	16.0
+2024-03-01	0.0
+2024-04-01	0.0
+
+statement ok
+GLOSS early ON fin AS $${"stopped": "the edge case only"}$$;
+
 # --- a ratio re-divides its summed halves, which the view serves as columns the claim names
 
 statement ok
@@ -203,6 +251,13 @@ GLOSS role ON win_rate.dept AS $${"value": "dimension"}$$;
 
 statement ok
 GLOSS additivity ON win_rate.value AS $${"value": "ratio", "numerator": "won", "denominator": "offered"}$$;
+
+query TTRRR
+SELECT member, period::DATE, value, num, den FROM metric_series(view := 'win_rate', grain := 'quarter') ORDER BY dimension, member;
+----
+(empty)	2024-01-01	0.5	6.0	12.0
+ops	2024-01-01	0.5	4.0	8.0
+sales	2024-01-01	0.5	2.0	4.0
 
 # --- the time_grains: a floor coarser than the measured grain, and a window of one period
 
