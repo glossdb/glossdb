@@ -759,7 +759,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
     // glossary and can change under a review decision; a `data` frame
     // cannot, so the browser's store keeps it across decisions. The
     // class is about what a frame serves: a metric's row (`axes`) is
-    // catalog, its cells (`slices`, `latest`, `drivers`) are data, and
+    // catalog, its cells (`slices`, `drivers`) are data, and
     // the trend, which reads the view's title, is catalog.
     let (app, plane, _dir) = workspace().await;
     seed_model_shapes(&plane).await;
@@ -798,7 +798,6 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("slices", "data"),
         ("dims", "data"),
         ("drivers", "data"),
-        ("latest", "data"),
     ] {
         let response = get(
             &app,
