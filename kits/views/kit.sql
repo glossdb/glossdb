@@ -413,9 +413,12 @@ member_periods AS (
          CASE additivity WHEN 'semi-additive' THEN arg_max_null(value, instant) ELSE sum(value) END AS value,
          sum(num) AS num, sum(den) AS den, sum(weight) AS weight
   FROM windowed WHERE dimension <> '' GROUP BY metric, dimension, member, period, additivity),
+-- ranked at seven significant digits: a parallel sum of doubles differs in
+-- its last bits from run to run, and members of equal weight are then
+-- ordered by name, so the same members are served each time
 weights AS (
   SELECT metric, dimension, member,
-         row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(weight) DESC NULLS LAST, member) AS rank
+         row_number() OVER (PARTITION BY metric, dimension ORDER BY TRY_CAST(sum(weight) AS FLOAT) DESC NULLS LAST, member) AS rank
   FROM member_periods GROUP BY metric, dimension, member),
 member_cells AS (
   SELECT p.metric, p.dimension, CASE WHEN wt.rank <= 23 THEN p.member ELSE 'other' END AS member, p.period, p.additivity,
