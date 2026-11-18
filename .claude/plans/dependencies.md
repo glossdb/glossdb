@@ -40,6 +40,8 @@ asks for alone.
 | A function declared on columns alone, called on a table or view, computes each column in one write (`completeness_check` per served column) | built |
 | A load whose columns differ alters the table in place; an annotation is stale by the snapshot rule | built |
 | One second connection per statement; a result's inputs and the current check are one query over all due subjects; the empty confirming round after a write is skipped | built |
+| A metric's series is aggregated on the view's typed columns when it is read (`series_aggregate`, the columns named at bind by the kit's `series_axes()`); nothing is stored for it. A page reads its own view; the metrics list reads the catalog alone | built |
+| `next` lists stored states: a join without a declared relationship and a metric that serves no series are tests (`relationship_test`, `series_test`); `load_changes()` is a read of its own | built |
 | The suites: tests of replaced structures, hand-run test statements, text comparisons and duplicates across layers are deleted; the kit runner brings results current after a write as the server does | cut |
 | Offloaded at the tag `before-cut` (both repositories): the `plan` and `outlook` kits, review by MCP elicitation, `workspace_status`, the `definitions` registry, `branch_rows` | gone from the branch |
 
@@ -47,9 +49,9 @@ asks for alone.
 
 | # | Element | Risk | What it touches | State |
 |---|---|---|---|---|
-| 1 | `dataset_cells`: every cell unpivoted to text, pivoted back by each caller (1.8 s for 1M rows by 5 columns). To be a typed read of the view by name, first for a metric's series and the reconciliation | High | the extension, `kits/views`, `kits/harmonise`, the quality kit | spike first |
-| 2 | The console frames: nine compute the whole dataset's series and filter to one view, so one metric without additivity refuses the page of every metric (422); the person-over-agent collapse repeated in 14. To read one view's series | Medium | `crates/apps`, `kits/views` | after 1 |
-| 3 | The metric series is not stored. Spiked: stored rows read in 10 ms, but every load then computes every grain of every metric it feeds (11 s for 12 metrics on 1.3M rows) and keeps megabytes per version. Measured again after 1 and 2; taken up only if a read is still in seconds | Low | `kits/views` | after 2 |
+| 1 | The glossary state read: one read plans about 565 operators and holds about 200 MB of buffers for under 3 MB of rows; `next` and a metric's axes run it several times at once (30 ms each, 0.6 GB for a metric's axes). More than half is the out-of-date check on function values. To be a smaller check | High | the extension's store | spike first |
+| 2 | `next`'s annotation rows: the bulk of its 1,067 operators, planned on every call (about 90 of 160 ms) | Medium | `kits/goals` | after 1 |
+| 3 | `dataset_cells` (text cells) stays for the discovery screens, the contract and code checks and the reconciliation, which compare values across types as text. The key check after a load reads every column of the table through it (0.3 to 0.4 s on 1M rows); it could read through a typed read of the key columns | Low | `kits/views`, `kits/harmonise`, the quality kit | open |
 | 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
 | 5 | Review and summary logic in Rust that repeats kit reads; statement splitting and classifying in the server | Medium | `crates/serverd`, `crates/duck` | open |
 | 6 | Three parse-tree walkers beside the bound-plan walk in the extension | Medium | the extension | spike first |
@@ -77,9 +79,10 @@ asks for alone.
 | the setup that defines the metrics | | 5.9 s | 2.97 s |
 | the same annotation again | | 0.04 s, `next` kept | 0.17 s, `next` read on each call |
 
-One view's console frames on this build: 0.13 to 0.20 s on Formula 1,
-0.64 to 1.4 s on 200 metrics over 200 tables, 1.0 to 1.9 s on 12
-metrics over 1.3M rows.
+One metric's page frames on this build: 0.12 to 0.35 s on Formula 1,
+on 200 metrics, on 1.3M rows and on 10M rows; peak memory for the
+page on 10M rows about 1.5 GB above idle, from 12 GB. An MCP read is
+0.16 to 0.20 s.
 
 ## How this plan is worked
 
@@ -95,14 +98,11 @@ rewrite.
 
 ## Next issue (draft)
 
-**A typed read of a view's data for the kits.** What it buys: a
-metric's series, the reconciliation and the profile aggregate typed
-columns in the engine; the text unpivot and each caller's pivot back
-go. What is there: `DatasetCellsBindReplace` in the extension's
-`glossql_runner.cpp`; its callers in `kits/views/kit.sql` (three),
-`kits/harmonise/kit.sql` (four) and the extension's quality kit
-(four, the discovery screens, which read across columns of any type).
-Done when, walked on a running server: a view's page and the
-reconciliation read through the typed read, the callers it replaces
-and their modes of `dataset_cells` are deleted, and one view's frames
-on 1.3M rows answer in well under a second.
+**A smaller glossary state read.** What it buys: every MCP call and
+every page pays this read several times; its plan, not its rows, sets
+the time and the memory. What is there: the read's SQL in the
+extension's `glossql_store.cpp` (`GLOSSARY()`, `glossql_glossary`), the
+out-of-date check it embeds, its callers in `next`, `results_due()`,
+`view_summary()` and `view_axes()`. Done when, walked on a running
+server: the same rows for every state, one read under 10 ms, a
+metric's page on 10M rows under 1 GB above idle.
