@@ -282,7 +282,7 @@ with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
 |---|---|---|
 | `contract_test` | `breaches`: per column, `rule` (`key`, `required`, `values`, `codes`, `type`, `missing`), `count` of rows and up to three `examples`; `rows` | the key repeats or is empty, a required value is empty, a value is not allowed, a code has no row in its code table, a column is served as another type. `breach_rate` is the share of rows of the largest breach |
 | `code_test` | `codes`: per target column and source column, the `system`, the `literals` the expression names, `told`, `contracted`, `rows`, and `unnamed`, each value the literals do not name with its rows | a value the expression does not name reaches a column with a contract: it falls to the `ELSE` or to NULL. Name every code. Values are counted over the rows the view's condition on the source table keeps (comparisons with literals joined by `and`). Where a column is tested by a range, a pattern or a function of it, or the condition has another form (a window, an `or`), `told` is false; where no column is told, the check is not applicable and the test is yellow, not green |
-| `reconciliation_test` | `rows`: per system and period, the `source_rows` and `target_rows`, `missing_rows`, the first ten `missing_keys` and `missing_key_count`, and `measures` (per column with role `measure`, the `source` and the `target` sum); `notes` | a source row does not arrive. `breach_rate` is the share of source rows that do not arrive: per system and period, the shortfall of the count, or the rows whose key the view does not serve, whichever is more |
+| `reconciliation_test` | `comparison`; `rows`: per system and period, `compared_on`, the `source_rows` the view's condition keeps, the `excluded_rows` it leaves out, the `target_rows`, `missing_rows`, the first ten `missing_keys` and `missing_key_count`, and `measures` (per column with role `measure`, the `source` and the `target` sum); `notes` | a source row the view's condition keeps does not arrive. `breach_rate` is the share of compared source rows that do not arrive. Row counts are shown and not compared: a view that groups, or a join that matches one row to many, serves another number of rows than it reads |
 
 **The reconciliation.** The source of each branch of the union is the
 table it reads that is joined to nothing before it (the lineage's
@@ -294,12 +294,26 @@ needs none; a view of several without one is not applicable, and the
 fix says to add it. The period is the view's `time_axis` (its
 `entity`), else its column with role `timestamp`, a date truncated to
 its `time_grains` floor, a month where none is stated. The key is the
-`grain` of the view's `entity`. The source side reads the key, the
-period and each measure where the branch copies the column from its
-source table, as it is or cast. Where a branch computes one of them,
-`notes` says so: its missing keys are not listed, its rows are
-counted over every period, or the measure has no `source` sum. The
-fix lists the source rows whose key the view does not serve.
+`grain` of the view's `entity`.
+
+The comparison is at the view's grain. A source row the view's
+condition on its table keeps (comparisons with literals joined by
+`and`) gets the columns of `compared_on` as the view computes them:
+each key column the branch copies from the source table, as it is or
+cast, and each column it looks up through a join from the source
+table (a mapping or identity table), with that table's condition. A
+row whose join finds no partner gets no value there. The row arrives
+where the view serves a row of its system with the same values. Rows
+the condition leaves out are `excluded_rows`, not missing. Where a
+branch compares nothing (its key is computed and it looks nothing
+up), or its condition has another form (an `or`, a window), its rows
+are counted and `missing_rows` is NULL; `notes` says which and why.
+A period or a measure the branch computes is named in `notes` too:
+the rows are counted over every period, or the measure has no
+`source` sum. A missing row is named by the source table's own
+columns the compared values come from (`ZESTPIL6, BR01, 2025-10-01`
+for a local code, a warehouse and a date). The fix lists those rows
+at the source.
 
 A server opened without the kit serves the same `next`, the same
 tests and the same `column_mapping()` for a dataset with no contract.

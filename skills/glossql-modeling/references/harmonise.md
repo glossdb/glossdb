@@ -85,10 +85,14 @@ GLOSS onhand ON supply AS $${"sql": "SELECT 'sap' AS source_system, i.global_mat
   system by it. The mapping knows each table's system without it.
 - **Read the system's table first, and copy what you can.** The
   reconciliation holds the first table of each branch against the
-  target. It reads the key, the period and each measure at the source
-  where the branch copies the column from that table, as it is or
-  cast. A key looked up in a mapping table, or a period the branch
-  computes, is named in its `notes`: the rows are still counted.
+  target, row by row at the target's grain. It compares each key
+  column the branch copies from that table, as it is or cast, and
+  each column it looks up through a join from that table (a mapping
+  table). Rows the branch's `WHERE` leaves out are counted as
+  excluded, not missing. A key the branch computes (`'SAP/' ||
+  o.vbeln`) is left out of the comparison; where nothing is left, the
+  rows are only counted, and `notes` says so. A view that groups is
+  compared the same way.
 - **One row per key.** Where a system sends a key twice, keep one in
   a subquery over its table, before the joins, and state the choice
   as an assumption (step 7):
@@ -158,7 +162,7 @@ A `must` here is served data that is wrong:
 | `code_test`: a column gets codes its expression does not name, per system, with rows (`'Pal' 1 row`) | naming the code in the `CASE` (`WHEN 'Pal' THEN …`) and defining the view again |
 | `orphan_test`: keys that find no parent, with their rows (`X9: 1 row`) | the code in the mapping table at its source, then `IMPORT model_identities;`. Adding the row is the mapping owner's work: ask the person |
 | `contract_test`: the key repeats, a required value is empty, a value is not allowed | the cause, in the load query or the definition. An empty value is often an unnamed code: close `code_test` first |
-| `reconciliation_test`: source rows that do not arrive, per system and period, with their keys (`north 2 of 6 rows, keys N-3, N-6`) | running the statement in the fix that lists those rows at the source, finding why each is left out (a join with no partner, a condition), and fixing the definition. Rows left out on purpose (a blocked status) are the person's to accept with a tolerance |
+| `reconciliation_test`: source rows that do not arrive, per system and period, with their keys (`north 2 of 6 rows, keys N-3, N-6`) | running the statement in the fix that lists those rows at the source, finding why each is left out (most often a join with no partner: the code in the mapping table, as for `orphan_test`), and fixing the definition or the mapping table. Rows the view's `WHERE` leaves out (a blocked status) are not counted as missing |
 | a keyed load missed keys, and the source is stated `full` | the load query declared again without the key |
 
 A `should` is the layer incomplete: a column with no `contract`,
@@ -185,12 +189,15 @@ SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS sourc
 ```
 
 Per system (and per period, where the view has a `time_axis`): the
-rows of the system's table and the rows the target serves from it,
-the keys at the source the target does not serve, and per measure the
+rows of the system's table the view's condition keeps
+(`source_rows`) and leaves out (`excluded_rows`), the rows the target
+serves from it, the source rows it does not serve, named by the
+source's own columns (`compared_on` says which target columns were
+compared), and per measure the
 `source` and the `target` sum, to hold against the system's own
 report. A period with source rows and no target rows is a period the
 target is short of. Tell the person, per system: rows in, rows out,
 and each missing key with its reason from the source row, such as
-"Poland: 4 rows at the source, 2 in the target; X9 has no identity,
-P300 is blocked". `notes` names what the result cannot hold against
-the source, and why.
+"Poland: 4 rows at the source, 1 left out as blocked, 2 in the
+target; X9 has no identity". `notes` names what the result cannot
+compare, and why.

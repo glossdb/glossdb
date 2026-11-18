@@ -135,12 +135,14 @@ branch is the table it reads first, joined to nothing before it. Serve
 the system as a literal in each branch (`'sap' AS source_system`): the
 served rows are counted per system by that column. A red test is a
 `must` row of `next` with the systems, the periods and the keys, and
-the statement that lists those rows at the source. Where the view
-leaves rows out on purpose, a person accepts the rate with a
-tolerance. A key, a period or a measure that a branch computes
-instead of copying it from its source table is named in the result's
-`notes`: the rows are still counted
-([reads](../reference/reads.md#the-harmonise-kit-preview)).
+the statement that lists those rows at the source. Each source row is
+compared at the view's grain: by the key columns the branch copies
+and the columns it looks up through a join, against the rows the view
+serves. A view that groups is not red for serving fewer rows than it
+reads. Rows the view's condition leaves out (`WHERE m.status = 'D'`)
+are counted as excluded, not missing. A branch that compares nothing
+(a computed key, no join) is counted only, and the result's `notes`
+says so ([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ```glossql
 GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
