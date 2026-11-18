@@ -47,9 +47,9 @@ asks for alone.
 
 | # | Element | Risk | What it touches | State |
 |---|---|---|---|---|
-| 1 | The metric series: a metric's periods and values derived again inside each macro that needs them (`view_axes_of`, `actual_series_of`, `metric_series`, the half of `view_summary` that judges a series). To be one stored result `series` per metric that frames and add-ons read | High | `kits/views`, the console frames | spike first |
-| 2 | The console frames: nine compute the whole dataset's series and filter to one view (the trend frame: 13.6 s on `big`); the person-over-agent collapse repeated in 14 | Medium | `crates/apps` | after 1 |
-| 3 | `dataset_cells`: every cell unpivoted to text, pivoted back by each caller. To be a typed read of the view by name | Medium | the extension, `kits/views`, `kits/harmonise`, the quality kit | open |
+| 1 | `dataset_cells`: every cell unpivoted to text, pivoted back by each caller (1.8 s for 1M rows by 5 columns). To be a typed read of the view by name, first for a metric's series and the reconciliation | High | the extension, `kits/views`, `kits/harmonise`, the quality kit | spike first |
+| 2 | The console frames: nine compute the whole dataset's series and filter to one view, so one metric without additivity refuses the page of every metric (422); the person-over-agent collapse repeated in 14. To read one view's series | Medium | `crates/apps`, `kits/views` | after 1 |
+| 3 | The metric series is not stored. Spiked: stored rows read in 10 ms, but every load then computes every grain of every metric it feeds (11 s for 12 metrics on 1.3M rows) and keeps megabytes per version. Measured again after 1 and 2; taken up only if a read is still in seconds | Low | `kits/views` | after 2 |
 | 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
 | 5 | Review and summary logic in Rust that repeats kit reads; statement splitting and classifying in the server | Medium | `crates/serverd`, `crates/duck` | open |
 | 6 | Three parse-tree walkers beside the bound-plan walk in the extension | Medium | the extension | spike first |
@@ -77,9 +77,9 @@ asks for alone.
 | the setup that defines the metrics | | 5.9 s | 2.97 s |
 | the same annotation again | | 0.04 s, `next` kept | 0.17 s, `next` read on each call |
 
-`big` (200 tables, 300 views, 5,000 results; `gen/gen.py` in the
-session's scratchpad, about 25 minutes) has to be rebuilt on this
-build before it is measured again.
+One view's console frames on this build: 0.13 to 0.20 s on Formula 1,
+0.64 to 1.4 s on 200 metrics over 200 tables, 1.0 to 1.9 s on 12
+metrics over 1.3M rows.
 
 ## How this plan is worked
 
@@ -95,13 +95,14 @@ rewrite.
 
 ## Next issue (draft)
 
-**The metric series as a stored result.** What it buys: a view's page
-and every read of a metric's series scan stored rows; the macro chain
-that plans the same series several times per statement goes. What is
-there: `view_axes_of`, `actual_series_of`, `metric_series` and
-`view_summary` in `kits/views/kit.sql`; the frames under
-`crates/apps/builtin/console/frames`. Done when, walked on a running
-server: a metric's series is stored when the metric is defined or its
-data loaded, with the nodes it read; the view's page reads it; the
-chain is deleted; the trend frame on `big` answers in well under a
-second.
+**A typed read of a view's data for the kits.** What it buys: a
+metric's series, the reconciliation and the profile aggregate typed
+columns in the engine; the text unpivot and each caller's pivot back
+go. What is there: `DatasetCellsBindReplace` in the extension's
+`glossql_runner.cpp`; its callers in `kits/views/kit.sql` (three),
+`kits/harmonise/kit.sql` (four) and the extension's quality kit
+(four, the discovery screens, which read across columns of any type).
+Done when, walked on a running server: a view's page and the
+reconciliation read through the typed read, the callers it replaces
+and their modes of `dataset_cells` are deleted, and one view's frames
+on 1.3M rows answer in well under a second.
