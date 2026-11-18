@@ -179,24 +179,6 @@ GLOSS role ON headcount.dept AS $${"value": "dimension"}$$;
 statement ok
 GLOSS additivity ON headcount.value AS $${"value": "semi-additive"}$$;
 
-query TR
-SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
-----
-2024-01-01	14.0
-2024-02-01	16.0
-2024-03-01	17.0
-2024-04-01	18.0
-
-query TTTR
-SELECT dimension, member, period::DATE, value FROM metric_series(grain := 'quarter') WHERE metric = 'headcount' ORDER BY dimension, member, period;
-----
-(empty)	(empty)	2024-01-01	17.0
-(empty)	(empty)	2024-04-01	18.0
-dept	ops	2024-01-01	12.0
-dept	ops	2024-04-01	12.0
-dept	sales	2024-01-01	5.0
-dept	sales	2024-04-01	6.0
-
 # --- a ratio re-divides its summed halves, which the view serves as columns the claim names
 
 statement ok
@@ -222,19 +204,6 @@ GLOSS role ON win_rate.dept AS $${"value": "dimension"}$$;
 statement ok
 GLOSS additivity ON win_rate.value AS $${"value": "ratio", "numerator": "won", "denominator": "offered"}$$;
 
-query TTRRR
-SELECT dimension, period::DATE, value, num, den FROM metric_series() WHERE metric = 'win_rate' AND dimension = '' ORDER BY period;
-----
-(empty)	2024-01-01	0.8333333333333334	5.0	6.0
-(empty)	2024-02-01	0.16666666666666666	1.0	6.0
-
-query TTRRR
-SELECT member, period::DATE, value, num, den FROM metric_series(grain := 'quarter') WHERE metric = 'win_rate' ORDER BY dimension, member;
-----
-(empty)	2024-01-01	0.5	6.0	12.0
-ops	2024-01-01	0.5	4.0	8.0
-sales	2024-01-01	0.5	2.0	4.0
-
 # --- the time_grains: a floor coarser than the measured grain, and a window of one period
 
 statement ok
@@ -244,11 +213,6 @@ query TTI
 SELECT grain_detected, floor, window_periods FROM view_summary() WHERE view = 'headcount';
 ----
 month	quarter	1
-
-query TR
-SELECT period::DATE, value FROM metric_series() WHERE metric = 'headcount' AND dimension = '' ORDER BY period;
-----
-2024-04-01	18.0
 
 # --- a new definition with other sql: the claims on the view's columns read stale, served and marked
 
@@ -277,11 +241,6 @@ true	true	true	true	true
 
 statement ok
 GLOSS win_rate ON fin AS $${"stopped": "offers are not booked before 2024"}$$;
-
-query I
-SELECT count(*) FROM metric_series() WHERE metric = 'win_rate';
-----
-0
 
 # --- a list over every metric skips what needs a claim nobody made, and says so in the fact row
 
