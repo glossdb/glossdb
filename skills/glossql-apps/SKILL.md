@@ -111,8 +111,7 @@ served as text and does not run.
 - `tiles::chart(frame, spec, …)`: a vega-lite spec over the frame.
 - `<gl-table frame="frames/<name>" rows="50">`: the frame as a table.
 - `<gl-rows>` with a `<template>`: a list where you place each field
-  by name (`{depot}`); `join="frames/<name>" on="<key>"` merges a
-  second frame's row into each row by key.
+  by name (`{depot}`).
 - `<gl-window frame="frames/<name>">`: links for the reader's grain
   and span, from a frame over `view_summary()`.
 - `<gl-graph nodes="frames/<nodes>" edges="frames/<edges>">`: column

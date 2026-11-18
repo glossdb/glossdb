@@ -72,7 +72,6 @@ pub const BUILTINS: &[BuiltinApp] = &[BuiltinApp {
         frame!("front.sql"),
         frame!("joins.sql"),
         frame!("loads.sql"),
-        frame!("latest.sql"),
         frame!("lineage_edges.sql"),
         frame!("lineage_nodes.sql"),
         frame!("history.sql"),

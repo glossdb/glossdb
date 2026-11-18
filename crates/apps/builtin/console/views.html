@@ -243,14 +243,12 @@
 
 
   <section class="tile">
-    <header><span class="eyebrow" title="Every metric with its review state, or why it charts nothing, beside the newest period, the change into it and its dimensions. A review decision refreshes the first part and leaves the numbers alone.">Metrics</span>
-      <code class="chip">view_definitions · view_summary() · metric_series()</code></header>
-    <gl-rows frame="frames/measures?stopped=0" join="frames/latest" on="name" empty="no metric is declared yet">
+    <header><span class="eyebrow" title="Every metric with its review state, its dimensions, or why it charts nothing. Its values are on its own page.">Metrics</span>
+      <code class="chip">view_definitions · view_summary()</code></header>
+    <gl-rows frame="frames/measures?stopped=0" empty="no metric is declared yet">
       <template>
-        <a class="rrow" href="{link}" style="grid-template-columns:11rem 7rem 5rem 1fr 11rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em></span></span>
-          <span class="r-num">{latest}<br><span class="r-meta">{unit} {period}</span></span>
-          <span class="r-num">{delta}</span>
+        <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em> {unit}</span></span>
           <span class="r-meta">{axes}</span>
           <code class="chip {scls}">{status}</code>
         </a>

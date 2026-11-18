@@ -68,7 +68,7 @@ Arrow JS, dagre and the tiles below.
 | Tile | Attributes | Shows |
 |---|---|---|
 | `gl-table` | `frame`, `rows` (default 50), `empty` | the frame as a table, with the row count |
-| `gl-rows` | `frame`, `rows`, `empty`; `join`, `on` | each row through the author's `<template>`; `{field}` takes the row's value. `join` merges a second frame's row with the same `on` key |
+| `gl-rows` | `frame`, `rows`, `empty` | each row through the author's `<template>`; `{field}` takes the row's value |
 | `gl-value` | `frame`, `field`, `format` (`compact` or `text`) | one value from the frame's first row |
 | `gl-chart` | `frame`, `spec`, `empty` | a Vega-Lite chart; the spec binds the data source named `frame` |
 | `gl-window` | `frame` | links that set `grain` and `span` on the page URL, from the metric's floor up; the frame reads `view_summary()` |
