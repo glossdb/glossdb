@@ -37,7 +37,8 @@ mode; this file is so nobody has to rediscover it.
   a source, a view and its columns), the lineage of views (a stored
   result per view, `SELECT lineage() FROM <view>`), a test's result
   (a stored result per subject and test, `SELECT <test>() FROM
-  <subject>`), the cells of a dataset (`dataset_cells`), the service
+  <subject>`), the cells of a dataset (`dataset_cells`), a
+  metric's series summed over a view's typed columns (`series_aggregate`), the service
   call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,

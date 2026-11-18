@@ -316,13 +316,35 @@ ORDER BY view;
 -- itself alone. A list over every metric asks unclaimed := 'skip' instead:
 -- such a metric serves no row, and its view_summary() row says what it needs.
 --
+-- The rows are summed by the extension's series_aggregate() over each
+-- asked view's own typed columns, per period and per member of each
+-- dimension, as they are read; series_axes() names the columns at bind.
 -- A function's body reads it as any read: the views' definitions, their
 -- columns' annotations and profiles, and their rows, all through the
 -- dataset's metrics.
 --===------------------------------------------------------------------===--
 
+-- series_axes(grain): view_axes() with what series_aggregate() reads of it
+-- at bind: at_grain, the grain a metric's periods start at where it is read
+-- at this grain (its floor where none is asked, none where its floor is
+-- coarser than the grain); by_instant, whether its rows are summed per
+-- instant within a period: a stock keeps the level at the period's last
+-- instant, and a value with no additivity or a non-additive one is checked
+-- for rows that share an instant.
+CREATE OR REPLACE MACRO main.series_axes(grain) AS TABLE
+SELECT *,
+       CASE WHEN applicable AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(floor))
+            THEN coalesce(grain, floor) END AS at_grain,
+       coalesce(additivity NOT IN ('additive', 'ratio'), true) AS by_instant
+FROM main.view_axes();
+
 CREATE OR REPLACE MACRO main.metric_series(view := NULL, grain := NULL, unclaimed := 'refuse') AS TABLE
-WITH axes AS MATERIALIZED (FROM main.view_axes() WHERE applicable),
+-- the sums of each asked view's typed columns per period and per member of each dimension, aggregated as
+-- the rows stream: no row of a view is kept
+WITH sums AS MATERIALIZED (
+  FROM series_aggregate(coalesce(current_schema() || '.' || view, current_schema()), 'the dataset''s metrics',
+                        'series_axes', grain)),
+axes AS MATERIALIZED (FROM main.view_axes() WHERE applicable),
 asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
   FROM axes m
@@ -336,27 +358,15 @@ data_edge AS (
   WHERE grain IS NULL
      OR (main.grain_rank(grain) >= main.grain_rank(floor)
          AND NOT (main.grain_rank(grain) > main.grain_rank(floor) AND coalesce(additivity, 'non-additive') = 'non-additive'))),
--- read once: a row's dimension cells are joined back to it by rn, which numbers the rows of one read
-cells AS MATERIALIZED (
-  SELECT * FROM dataset_cells(coalesce(current_schema() || '.' || view, current_schema()), 'the dataset''s metrics')
-  WHERE "table" IN (SELECT metric FROM asked)),
-all_rows AS MATERIALIZED (
-  SELECT c."table" AS metric, c.rn,
-         max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
-         max(CASE WHEN c."column" = a.value_column THEN TRY_CAST(c.val AS DOUBLE) END) AS value,
-         max(CASE WHEN c."column" = a.numerator THEN TRY_CAST(c.val AS DOUBLE) END) AS num,
-         max(CASE WHEN c."column" = a.denominator THEN TRY_CAST(c.val AS DOUBLE) END) AS den
-  FROM cells c JOIN asked a ON a.metric = c."table"
-  WHERE c."column" IN (a.period_column, a.value_column, a.numerator, a.denominator)
-  GROUP BY c."table", c.rn),
 -- a value column with no additivity or a conflicting one cannot be combined
 -- over rows, and the read refuses; one marked non-additive is served where
--- it has one row per period and left out where rows would have to be combined
+-- it has one row per period and left out where rows would have to be combined.
+-- Such a value is summed per instant, so rows share one where they outnumber the instants
 combining AS (
   SELECT a.metric, a.value_column, a.additivity, a.additivity_state,
          main.grain_rank(a.at_grain) > main.grain_rank(a.floor) AS coarser,
-         count(*) > count(DISTINCT r.instant) AS shared
-  FROM asked a JOIN all_rows r USING (metric)
+         sum(s."rows") > count(s.instant) AS shared
+  FROM asked a JOIN sums s ON s.view = a.metric AND s.dimension = ''
   WHERE a.additivity IS NULL OR a.additivity = 'non-additive'
   GROUP BY a.metric, a.value_column, a.additivity, a.additivity_state, a.at_grain, a.floor),
 refused AS (
@@ -367,63 +377,53 @@ refused AS (
            || ': annotate it — GLOSS additivity ON ' || current_schema() || '.' || metric || '.' || value_column || ' AS $${"value": "<additive|semi-additive|ratio|non-additive>"}$$', '; ')) END AS refusal
   FROM combining WHERE (coarser OR shared) AND additivity IS DISTINCT FROM 'non-additive'),
 -- the metrics served: every asked one but those that need a claim nobody made; the refusal gates the
--- cells served, below, where the rows are few
-rows_ AS (
-  SELECT r.* FROM all_rows r
-  WHERE r.metric NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
-bucketed AS (
-  SELECT r.metric, r.rn, r.instant, date_trunc(a.at_grain, r.instant) AS period, r.value, r.num, r.den,
-         coalesce(a.additivity, 'none') AS additivity, a.at_grain, a.window_periods
-  FROM rows_ r JOIN asked a USING (metric)
-  WHERE r.instant IS NOT NULL),
--- a metric's edge is its last bucket; a flow's is the data's edge at the flow's grain, so a flow whose
+-- cells served, below, where the rows are few. Rows with no instant have no period
+served AS (
+  SELECT s.* RENAME (view AS metric), coalesce(a.additivity, 'none') AS additivity
+  FROM sums s JOIN asked a ON a.metric = s.view
+  WHERE s.period IS NOT NULL AND s.view NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
+-- a metric's edge is its last period; a flow's is the data's edge at the flow's grain, so a flow whose
 -- rows stopped early shows its zeros, not an older window
 own_edges AS (
-  SELECT metric, min(period) AS first, max(period) AS own_edge, any_value(at_grain) AS at_grain,
-         any_value(window_periods) AS window_periods, any_value(additivity) AS additivity
-  FROM bucketed GROUP BY metric),
+  SELECT metric, min(period) AS first, max(period) AS own_edge FROM served WHERE dimension = '' GROUP BY metric),
 edges AS (
-  SELECT metric, first, at_grain, window_periods, additivity,
-         CASE WHEN additivity = 'additive' THEN greatest(own_edge, date_trunc(at_grain, (SELECT last_at FROM data_edge))) ELSE own_edge END AS edge
-  FROM own_edges),
+  SELECT a.metric, o.first, a.at_grain, a.window_periods, coalesce(a.additivity, 'none') AS additivity,
+         CASE WHEN a.additivity = 'additive' THEN greatest(o.own_edge, date_trunc(a.at_grain, (SELECT last_at FROM data_edge))) ELSE o.own_edge END AS edge
+  FROM asked a JOIN own_edges o USING (metric)),
 windowed AS (
-  SELECT b.* FROM bucketed b JOIN edges e USING (metric)
-  WHERE b.period > e.edge - main.grain_step(e.at_grain) * e.window_periods),
--- a stock's level in a bucket is what holds at the bucket's last instant: that instant, per stock metric and bucket,
--- grouped rather than windowed, since a window over every row of every flow costs the read more than the rest
-levels AS (
-  SELECT metric, period, max(instant) AS last_at FROM windowed WHERE additivity = 'semi-additive' GROUP BY metric, period),
+  SELECT s.* FROM served s JOIN edges e ON e.metric = s.metric
+  WHERE s.period > e.edge - main.grain_step(e.at_grain) * e.window_periods),
+-- a stock's level in a period is what holds at the period's last instant; a ratio re-divides its summed halves
 total AS (
-  SELECT w.metric, '' AS dimension, '' AS member, w.period, w.additivity,
-         CASE w.additivity WHEN 'semi-additive' THEN sum(w.value) FILTER (WHERE w.instant = l.last_at)
-                         WHEN 'ratio' THEN sum(w.num) / nullif(sum(w.den), 0)
-                         ELSE sum(w.value) END AS value,
-         CASE w.additivity WHEN 'ratio' THEN sum(w.num) END AS num,
-         CASE w.additivity WHEN 'ratio' THEN sum(w.den) END AS den
-  FROM windowed w LEFT JOIN levels l USING (metric, period) GROUP BY w.metric, w.period, w.additivity),
+  SELECT metric, '' AS dimension, '' AS member, period, additivity,
+         CASE additivity WHEN 'semi-additive' THEN arg_max_null(value, instant)
+                         WHEN 'ratio' THEN sum(num) / nullif(sum(den), 0)
+                         ELSE sum(value) END AS value,
+         CASE additivity WHEN 'ratio' THEN sum(num) END AS num,
+         CASE additivity WHEN 'ratio' THEN sum(den) END AS den
+  FROM windowed WHERE dimension = '' GROUP BY metric, period, additivity),
 filled AS (
   SELECT e.metric, '' AS dimension, '' AS member, g.period, e.additivity, 0.0 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den
   FROM edges e, unnest(generate_series(greatest(e.first, e.edge - main.grain_step(e.at_grain) * (e.window_periods - 1)), e.edge, main.grain_step(e.at_grain))) AS g(period)
   WHERE e.additivity = 'additive'
     AND NOT EXISTS (SELECT 1 FROM total t WHERE t.metric = e.metric AND t.period = g.period)),
-long AS (
-  SELECT w.metric, c."column" AS dimension, coalesce(c.val, 'NULL') AS member, w.instant, w.period, w.value, w.num, w.den, w.additivity,
-         max(w.instant) OVER (PARTITION BY w.metric, c."column", coalesce(c.val, 'NULL'), w.period) AS member_last_at
-  FROM windowed w JOIN cells c ON c."table" = w.metric AND c.rn = w.rn
-  JOIN asked a ON a.metric = w.metric AND list_contains(a.dims, c."column")),
+-- a member's stock level is what holds at the member's own last instant in the period
+member_periods AS (
+  SELECT metric, dimension, member, period, additivity,
+         CASE additivity WHEN 'semi-additive' THEN arg_max_null(value, instant) ELSE sum(value) END AS value,
+         sum(num) AS num, sum(den) AS den, sum(weight) AS weight
+  FROM windowed WHERE dimension <> '' GROUP BY metric, dimension, member, period, additivity),
 weights AS (
   SELECT metric, dimension, member,
-         row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(abs(value)) DESC NULLS LAST, member) AS rank
-  FROM long GROUP BY metric, dimension, member),
+         row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(weight) DESC NULLS LAST, member) AS rank
+  FROM member_periods GROUP BY metric, dimension, member),
 member_cells AS (
-  SELECT l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END AS member, l.period, l.additivity,
-         CASE l.additivity WHEN 'semi-additive' THEN sum(l.value) FILTER (WHERE l.instant = l.member_last_at)
-                         WHEN 'ratio' THEN sum(l.num) / nullif(sum(l.den), 0)
-                         ELSE sum(l.value) END AS value,
-         CASE l.additivity WHEN 'ratio' THEN sum(l.num) END AS num,
-         CASE l.additivity WHEN 'ratio' THEN sum(l.den) END AS den
-  FROM long l JOIN weights wt USING (metric, dimension, member)
-  GROUP BY l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END, l.period, l.additivity)
+  SELECT p.metric, p.dimension, CASE WHEN wt.rank <= 23 THEN p.member ELSE 'other' END AS member, p.period, p.additivity,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.num) / nullif(sum(p.den), 0) ELSE sum(p.value) END AS value,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.num) END AS num,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.den) END AS den
+  FROM member_periods p JOIN weights wt USING (metric, dimension, member)
+  GROUP BY p.metric, p.dimension, CASE WHEN wt.rank <= 23 THEN p.member ELSE 'other' END, p.period, p.additivity)
 SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, additivity
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL

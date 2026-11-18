@@ -214,6 +214,9 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 - A flow's total fills its empty periods with zero up to the newest
   instant of any metric served at that grain, as the temporal profile
   of its period column measured it.
+- The engine sums each view's own typed columns as it reads the rows,
+  per period and per member of each dimension. No row is kept. A
+  `member` is the dimension's value as text, `NULL` where it has none.
 
 ### The other reads
 
