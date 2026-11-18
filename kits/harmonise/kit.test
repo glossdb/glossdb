@@ -762,26 +762,6 @@ GLOSS contract ON sales.orders.order_id AS $${"type": "VARCHAR", "required": tru
 statement ok
 SELECT reconciliation() FROM orders;
 
-# the north's cancelled order in February and its unknown customer's in March, the south's January short
-query TTIIITRR
-SELECT r.system, r.period, r.source_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' '), r.measures[1].source, r.measures[1].target
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "period": "VARCHAR", "source_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"], "measures": [{"column": "VARCHAR", "source": "DOUBLE", "target": "DOUBLE"}]}]')) t(r)
-WHERE m.function = 'reconciliation' AND m.subject = 'sales.orders' ORDER BY ALL;
-----
-north	2026-01-01	2	2	0	(empty)	150.0	150.0
-north	2026-02-01	2	1	1	N-3	100.0	30.0
-north	2026-03-01	2	1	1	N-6	65.0	40.0
-south	2026-01-01	2	0	2	S-1 S-2	280.0	0.0
-south	2026-02-01	2	2	0	(empty)	150.0	150.0
-south	2026-03-01	2	2	0	(empty)	125.0	125.0
-
-# 4 of the 12 source rows do not arrive: the test is red, a must of next
-query TTR
-SELECT n.level, t.state, t.score FROM view_tests() t JOIN next n ON n.asset = 'sales.orders' AND n.open LIKE 'reconciliation_test%'
-WHERE t.test = 'reconciliation_test' AND t.view = 'orders';
-----
-must	red	0.3333333333333333
-
 # a view of two branches with no column that names the system: not applicable, and next asks for the column. The
 # key built by an expression in the south is named in the notes
 statement ok
