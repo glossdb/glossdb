@@ -782,3 +782,38 @@ GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(sta
 query T
 SELECT subject FROM measurements WHERE function IN ('completeness_check', 'completeness_test') AND subject LIKE 'fin.line_status.%' AND subject LIKE '%note';
 ----
+
+# --- a series over members that are not text: a boolean, a date and a decimal print as their text, a
+# missing member as NULL; the sums are those of the view's own rows
+statement ok
+DECLARE ASPECT kinds WITH $${"title": "Spend by kind"}$$ AS VIEW;
+
+statement ok
+GLOSS kinds ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund = 'water' AS watered, CASE WHEN object = 'supplies' THEN NULL ELSE DATE '2024-01-01' END AS since, 1.50::DECIMAL(4, 2) AS band FROM fin.ledger GROUP BY ALL"}$$;
+
+statement ok
+GLOSS role ON kinds.period AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON kinds.value AS $${"value": "measure"}$$;
+
+statement ok
+GLOSS additivity ON kinds.value AS $${"value": "additive"}$$;
+
+statement ok
+GLOSS role ON kinds.watered AS $${"value": "dimension"}$$;
+
+statement ok
+GLOSS role ON kinds.since AS $${"value": "dimension"}$$;
+
+statement ok
+GLOSS role ON kinds.band AS $${"value": "dimension"}$$;
+
+query TTR
+SELECT dimension, member, sum(value) FROM metric_series(view := 'kinds') WHERE dimension <> '' GROUP BY ALL ORDER BY dimension, member;
+----
+band	1.50	477.0
+since	2024-01-01	240.0
+since	NULL	237.0
+watered	false	318.0
+watered	true	159.0
