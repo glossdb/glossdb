@@ -1375,7 +1375,9 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 
 --===------------------------------------------------------------------===--
 -- semantic_model(): the bound dataset as one Apache Ossie document
--- (the open format for exchanging a semantic model; spec 0.3.0.dev0),
+-- (the open format for exchanging a semantic model; the 0.3.0.dev0
+-- draft as its schema stands at apache/ossie 74a26bef, pinned in
+-- crates/serverd/tests/fixtures/standards),
 -- one row, column `document` (JSON). Each loaded table and each served
 -- metric is an Ossie dataset with its fields; a column annotated as the
 -- time or a dimension carries `dimension`; a table's key is the `grain`
@@ -1383,7 +1385,7 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 -- the view; a metric's value is an Ossie metric whose
 -- expression follows its additivity (a sum for additive, the ratio of
 -- the summed halves for a ratio; a semi-additive or non-additive value
--- is exported as a sum with the additivity in `custom_extensions`, since
+-- is exported as a sum with the additivity in `nonportable_extensions`, since
 -- Ossie has no word for it); declared relationships are its
 -- relationships. Meanings ride as descriptions.
 --===------------------------------------------------------------------===--
@@ -1414,8 +1416,8 @@ fields AS (
                             WHEN c.column_type = 'BOOLEAN' THEN 'Boolean'
                             WHEN c.column_type = 'VARCHAR' THEN 'String' ELSE 'Opaque' END,
            'description': m.value->>'value',
-           'custom_extensions': CASE WHEN u.value IS NOT NULL THEN
-             [{'vendor_name': 'glossdb', 'data': to_json({'unit': u.value->>'value'})::VARCHAR}] END
+           'nonportable_extensions': CASE WHEN u.value IS NOT NULL THEN
+             [{'vendor_name': 'glossdb', 'data': {'unit': u.value->>'value'}}] END
          })) AS field
   FROM cols c CROSS JOIN ds
   LEFT JOIN known r ON r.subject = ds.dataset || '.' || c.table_name || '.' || c.column_name AND r.aspect = 'role'
@@ -1429,8 +1431,8 @@ measures AS (
                                       THEN 'SUM("' || x.numerator || '") / SUM("' || x.denominator || '")'
                                       ELSE 'SUM("' || x.value_column || '")' END},
            'description': coalesce(vm.value->>'value', json_extract_string(a.schema, '$.title')),
-           'custom_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
-             [{'vendor_name': 'glossdb', 'data': to_json({'additivity': x.additivity, 'time_column': x.period_column})::VARCHAR}] END
+           'nonportable_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
+             [{'vendor_name': 'glossdb', 'data': {'additivity': x.additivity, 'time_column': x.period_column}}] END
          })) AS measure
   FROM metrics x CROSS JOIN ds
   LEFT JOIN known vm ON vm.subject = ds.dataset || '.' || x.metric AND vm.aspect = 'meaning'
