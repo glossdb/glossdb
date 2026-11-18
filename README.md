@@ -104,7 +104,8 @@ SQL, and serves the skills (`skill://`), the docs and the language
 | Sources, load queries, annotations, measurements, tests, review decisions | stable |
 | Views (tables, single values, metrics), metric series, `next` | stable |
 | The MCP interface, the query endpoint, the console, data apps, export | stable |
-| Semantic model (Apache Ossie) and lineage (OpenLineage) export | stable |
+| Lineage export (OpenLineage) | stable |
+| Semantic model export (Apache Ossie, following its 0.3.0.dev0 draft) | preview |
 | Sign-in through an identity provider | stable |
 | Forecasts, expected ranges, plans, scenarios | planned |
 | Reading a lake in place; dbt and semantic-model import; access per user | planned |
