@@ -53,7 +53,7 @@ asks for alone.
 | 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
 | 5 | Review and summary logic in Rust that repeats kit reads; statement splitting and classifying in the server | Medium | `crates/serverd`, `crates/duck` | open |
 | 6 | Three parse-tree walkers beside the bound-plan walk in the extension | Medium | the extension | spike first |
-| 7 | The numeric evidence (stock and flow evidence, the discovery screens): stays. Direction: a kit only the server loads; Rust on Arrow was spiked and does not pay for these (`scratchpad` spike, the Rust replaces only the SQL half) | Low | the quality kit | waits on the project lead |
+| 7 | The numeric evidence (stock and flow evidence, the discovery screens): stays. Direction: a kit only the server loads; Rust on Arrow was spiked and does not pay for these (`scratchpad` spike, the Rust replaces only the SQL half) | Low | the quality kit | agreed: a kit only the server loads, after 3 |
 | 8 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
 ## Left out, by the project lead
@@ -64,7 +64,9 @@ asks for alone.
   and no audit needs, or an archive, monthly or quarterly.
 - **Kit code outside the lake.** Spiked: the catalog reload after a
   write drops by about 60%, plan time does not change, and a reader of
-  the lake alone loses `next`. Waits on whether that matters.
+  the lake alone loses `next`. The kit code stays in the lake. Whether
+  the reload after a write is a caching question in DuckLake is not
+  explored.
 
 ## Measured (Formula 1, one MCP call, by the session on its own server)
 
