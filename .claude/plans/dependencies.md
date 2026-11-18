@@ -53,7 +53,7 @@ asks for alone.
 | 4 | The stored lineage as one JSON value unnested into the columns of deleted functions (`views_*`). To be rows | Medium | the lineage kit | open |
 | 5 | Review and summary logic in Rust that repeats kit reads; statement splitting and classifying in the server | Medium | `crates/serverd`, `crates/duck` | open |
 | 6 | Three parse-tree walkers beside the bound-plan walk in the extension | Medium | the extension | spike first |
-| 7 | The numeric evidence (stock and flow evidence, the discovery screens): stays. Direction: a kit only the server loads; Rust on Arrow was spiked and does not pay for these (`scratchpad` spike, the Rust replaces only the SQL half) | Low | the quality kit | agreed: a kit only the server loads, after 3 |
+| 7 | The numeric evidence (stock and flow evidence, the discovery screens): stays where it is, in the extension's quality kit on text cells, while the code under it stays C++. Rust on Arrow was spiked and does not pay for these | Low | the quality kit | nothing to do |
 | 8 | An interrupt during a computation; the Postgres catalog's lost-race path | Low | the extension | #247 |
 
 ## Left out, by the project lead
