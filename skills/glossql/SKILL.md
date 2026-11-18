@@ -332,7 +332,7 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
 | `fact_values()` | each single value: `view`, `value`, `reason` |
-| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
+| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. `view := '<metric>'` reads one metric alone. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
 | `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
 | `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
 | `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |

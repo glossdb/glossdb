@@ -176,13 +176,16 @@ SELECT view, kind, applicable, reason, floor, additivity, dims FROM view_summary
 ### metric_series()
 
 ```
-metric_series(grain := NULL, unclaimed := 'refuse')
+metric_series(view := NULL, grain := NULL, unclaimed := 'refuse')
 ```
 
 The cells of each served metric: `metric`, `world` (`actual`), `dimension` (`''`
 for the total), `member`, `period`, `value`, `num`, `den`,
 `additivity`.
 
+- `view`: one metric by its name. The read then reads that view's rows
+  alone, and only that metric's missing additivity refuses it. NULL
+  serves every metric.
 - `grain`: `minute`, `hour`, `day`, `week`, `month`, `quarter`,
   `year`. NULL serves each metric at its floor. A metric coarser than
   the grain asked serves no rows.
@@ -190,6 +193,9 @@ for the total), `member`, `period`, `value`, `num`, `den`,
   stated, where the default refuses and names the annotation.
 - A metric marked `non-additive` is served where it has one row per
   period.
+- A flow's total fills its empty periods with zero up to the newest
+  instant of any metric served at that grain, as the temporal profile
+  of its period column measured it.
 
 ### The other reads
 

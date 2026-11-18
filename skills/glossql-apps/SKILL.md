@@ -31,7 +31,7 @@ subject starts with the app's name, under the dataset of the call.
 ```glossql
 GLOSS app ON depots AS $${"title": "Depot review"}$$;
 GLOSS app_frame ON depots.monthly AS $${"sql":
-  "SELECT period, value FROM metric_series(grain := 'month') WHERE metric = 'parcels_delivered' AND dimension = '' ORDER BY period"}$$;
+  "SELECT period, value FROM metric_series(view := 'parcels_delivered', grain := 'month') WHERE dimension = '' ORDER BY period"}$$;
 ```
 
 The manifest names no dataset: the URL does, so one app serves each
@@ -83,8 +83,8 @@ whatever a call can: a view by its name, `metric_series()`,
   note.
 
 ```sql
-SELECT period, value FROM metric_series(grain := CAST($grain AS VARCHAR))
-WHERE metric = CAST($metric AS VARCHAR) AND dimension = '' ORDER BY period
+SELECT period, value FROM metric_series(view := CAST($metric AS VARCHAR), grain := CAST($grain AS VARCHAR))
+WHERE dimension = '' ORDER BY period
 ```
 
 ## Pages place what frames computed

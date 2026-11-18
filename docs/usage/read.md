@@ -27,14 +27,18 @@ FROM stays.room_count;
 start of the period), `value`.
 
 ```sql
-SELECT period, value FROM metric_series(grain := 'month')
-WHERE metric = 'booked_nights' AND dimension = '' ORDER BY period;
+SELECT period, value FROM metric_series(view := 'booked_nights', grain := 'month')
+WHERE dimension = '' ORDER BY period;
 ```
 
 ```sql
-SELECT member, period, value FROM metric_series(grain := 'quarter')
-WHERE metric = 'booked_nights' AND dimension = 'room_type' ORDER BY period, member;
+SELECT member, period, value FROM metric_series(view := 'booked_nights', grain := 'quarter')
+WHERE dimension = 'room_type' ORDER BY period, member;
 ```
+
+`view :=` reads that one metric's rows. Without it, the read serves
+every metric of the dataset, and one metric whose additivity is not
+stated refuses the whole read.
 
 - Without `grain`, each metric is served at its own finest grain. With
   one (`minute` to `year`), each metric at or below it is served at
@@ -79,7 +83,7 @@ statements, or a write, answer in JSON.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8080/stays/query \
-  -d "SELECT period, value FROM metric_series(grain := 'month') WHERE metric = 'booked_nights' AND dimension = ''" \
+  -d "SELECT period, value FROM metric_series(view := 'booked_nights', grain := 'month') WHERE dimension = ''" \
   -o booked_nights.arrow
 ```
 

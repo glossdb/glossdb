@@ -22,7 +22,7 @@ Each part is one annotation, written by an agent or a person:
 USE stays;
 GLOSS app ON occupancy_board AS $${"title": "Occupancy"}$$;
 GLOSS app_frame ON occupancy_board.trend AS $${
-  "sql": "SELECT period, value FROM metric_series(grain := $grain) WHERE metric = 'occupancy' AND dimension = '' ORDER BY period"
+  "sql": "SELECT period, value FROM metric_series(view := 'occupancy', grain := $grain) WHERE dimension = '' ORDER BY period"
 }$$;
 GLOSS app_page ON occupancy_board.index AS $${
   "html": "<h1>Occupancy</h1><gl-table frame=\"frames/trend?grain=month\" rows=\"24\"></gl-table>"
