@@ -39,6 +39,20 @@ variable: [configuration](../reference/configuration.md).
 - Run one server per workspace. The server keeps the workspace's
   summary in its own process.
 
+## Sizing
+
+Measured on a laptop, one server, the workspace on local disk. These
+are measurements, not guarantees; a deployment on Postgres and an
+object store adds the network to each.
+
+| What | Data | Measured |
+|---|---|---|
+| one MCP call | Formula 1, 200 metrics, 1.3M rows, 10M rows | 0.14 to 0.22 s; most of it plans `next` |
+| a write that computes nothing | Formula 1 | 0.22 s |
+| a table view over three tables, defined | Formula 1 | 1.14 s, 30 results computed after the write |
+| one metric's page in the console, its frames | Formula 1, 200 metrics, 1.3M rows, 10M rows | 0.12 to 0.35 s |
+| peak memory for one metric's page | 10M rows | about 1.5 GB above idle |
+
 ## The lake
 
 | | Laptop | Deployment |

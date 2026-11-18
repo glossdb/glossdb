@@ -40,6 +40,9 @@ first, from what each test's check reads. A test whose evidence is
 missing is `yellow` and its `reason` names the measurement to run. A
 table view and a single value carry the join, orphan, relationship and
 completeness tests, the tests on what they read and the tests you declare on them.
+The harmonise kit (preview) adds `contract_test`, `code_test` and
+`reconciliation_test` on a target view that carries a data contract
+([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ## Read the results
 
@@ -65,9 +68,18 @@ declarations of the test and its detector. After each write the
 server runs `SELECT <test>() FROM <dataset>` for each test whose
 results are missing or out of date; the statement computes those
 assets alone. `current` is false while a stored result is out of
-date. A detector that compares assets with each other is refused
-(`cross_subject`): declare such a test on the table or the dataset
-that holds the assets.
+date. A check that reads other functions' results, such as a profile,
+runs again when one of those results changes value
+([how results stay current](../reference/dependencies.md)). A test
+judges each asset alone. A detector that compares assets with each
+other is refused (`cross_subject`): declare such a test on the table
+or the dataset that holds the assets.
+
+A red test is a failed test. It does not withhold a value: only two
+values of one property that differ beyond the test's threshold are a
+`conflict` ([tests on annotations](#tests-on-annotations)). A test
+with nothing to check is green, and its `reason` says why: `orphan_test`
+on a view that joins over no declared relationship, for example.
 
 ## A test brings its finding and fix
 

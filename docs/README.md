@@ -54,6 +54,9 @@ must be done (served data is wrong or cannot be served), what should
   paths, the statements the server refuses.
 - [Reads](reference/reads.md): each catalog table, view and table
   function with its columns.
+- [How results stay current](reference/dependencies.md): what a
+  stored result read, what puts it out of date, and who computes it
+  again.
 - [Configuration](reference/configuration.md): flags and variables.
 - [App authoring](reference/apps.md): the parts and tiles of a data
   app.

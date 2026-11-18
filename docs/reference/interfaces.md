@@ -158,5 +158,8 @@ PKCE) and brought back. `POST /auth/logout` clears the cookie.
 
 The engine's own settings are closed to actors not named in
 `GLOSSDB_ROOT`: `SET`, `RESET`, `PRAGMA` switches, `ATTACH`, `DETACH`,
-`INSTALL`, `LOAD`, `CALL`, `IMPORT DATABASE`, `EXPORT DATABASE`. The
-refusal names the statement. Other SQL runs as DuckDB runs it.
+`INSTALL`, `FORCE INSTALL`, `LOAD`, `CALL`, `IMPORT DATABASE`,
+`EXPORT DATABASE`. The server checks a statement's first words before
+it runs; a `PRAGMA` called as a function, `PRAGMA table_info('t')`,
+runs. The refusal names the statement. Other SQL runs as DuckDB runs
+it, for every signed-in actor.

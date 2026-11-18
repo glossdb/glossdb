@@ -25,13 +25,16 @@ write replaced or removed, with its `end_snapshot`.
 | `relationships` | `dataset`, `left_side`, `op`, `right_side`, `declared_at`, `declared_by` |
 | `aspects` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
 | `glossary` | `dataset`, `subject`, `aspect`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
-| `functions` | `name`, `scope`, `script`, `returns`, `declared_at`, `declared_by` |
-| `measurements` | `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at`, `read_at`, `changed_at` (the lake snapshot the result read at, and the one its value last changed at) |
-| `inputs` | `begin_snapshot`, `asset`, `what` (each node a stored result read: an asset and what was read of it; joins `measurements` on `begin_snapshot`) |
+| `functions` | `name`, `scope`, `script`, `returns`, `reads` (what the body reads, by kind and place), `declared_at`, `declared_by` |
+| `measurements` | `id`, `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at`, `error`, `read_at`, `changed_at` (the stored results: a measurement, a test's result, a view's lineage; the lake snapshot the result read at, and the one its value last changed at) |
+| `inputs` | `result`, `asset`, `what` (each node a stored result read: an asset and what was read of it; `result` is the result's `id`) |
+| `edges` | `result`, `from`, `to`, `kind` (a view's lineage: one edge from the view to each table, column and view it reads) |
 | `tests` | `name`, `aspect`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
 | `kits` | `name`, `location`, `statements`, `loaded_at`, `hash` |
 
-`SHOW TABLES` lists the dataset's tables and views beside these.
+`SHOW TABLES` lists the dataset's tables and views beside these. How
+`measurements`, `inputs` and `edges` decide whether a result is
+current: [how results stay current](dependencies.md).
 
 ## The language's reads
 

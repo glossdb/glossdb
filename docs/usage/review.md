@@ -38,7 +38,9 @@ words.
 
 **In the agent's chat.** The agent relays the question, with the
 alternative it named and its reason. The person records the answer in
-the console.
+the console. What arrives over MCP is stored as the agent's, so an
+agent cannot record a person's decision; the console stores it as the
+signed-in person's.
 
 **With a statement**, over the query endpoint, which writes as a
 person:

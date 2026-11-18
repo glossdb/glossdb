@@ -127,6 +127,14 @@ SELECT event FROM lineage_events();
   with the column lineage the load recorded, and one per view, with
   the tables it scans and each column's source columns.
 
+Measured on a dataset of two loaded tables, a table view and a
+metric: the events of `lineage_events()`
+validate against OpenLineage's JSON schema (spec 2-0-2, with the column
+lineage facet 1-2-0). `semantic_model()` writes Ossie 0.3.0.dev0, a
+draft whose schema still changes: its current schema expects the
+extensions under another name than `custom_extensions`. Both reads
+answer over the query endpoint.
+
 ## The console
 
 `/<dataset>/app` opens the console, for people. `/` lists the
