@@ -1212,11 +1212,14 @@ DECLARE FUNCTION series_check FOR GLOBAL AS $$
            main.series_reason(split_part($subject, '.', 1), split_part($subject, '.', 2), d.stopped, coalesce(len(d.columns), 0) > 0,
                               d.kind, g.period_column, g.period_cols, g.value_column, g.measure_cols, g.floor, g.profiled) AS reason
     FROM grained g, d)
-  SELECT coalesce(kind, '') NOT IN ('scalar', 'relation') AS applicable,
-         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN 'a ' || kind || ' serves no series' END AS reason,
-         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN NULL WHEN reason IS NULL THEN 0.0 ELSE 1.0 END AS breach_rate,
-         CASE WHEN coalesce(kind, '') NOT IN ('scalar', 'relation') THEN reason END AS finding,
-         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') OR reason IS NULL THEN NULL
+  -- a subject with no definition (a loaded table) has no row in judged: it is
+  -- answered as not applicable, like a single value and a table view
+  SELECT coalesce(defined AND coalesce(kind, '') NOT IN ('scalar', 'relation'), false) AS applicable,
+         CASE WHEN defined IS NULL THEN 'a loaded table serves no series'
+              WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN 'a ' || kind || ' serves no series' END AS reason,
+         CASE WHEN defined IS NULL OR coalesce(kind, '') IN ('scalar', 'relation') THEN NULL WHEN reason IS NULL THEN 0.0 ELSE 1.0 END AS breach_rate,
+         CASE WHEN defined AND coalesce(kind, '') NOT IN ('scalar', 'relation') THEN reason END AS finding,
+         CASE WHEN defined IS NULL OR coalesce(kind, '') IN ('scalar', 'relation') OR reason IS NULL THEN NULL
               WHEN period_column IS NULL
               THEN main.gloss_statement('role', $subject || '.<period column>', '{"value": "timestamp"}')
               WHEN value_column IS NULL
@@ -1226,7 +1229,7 @@ DECLARE FUNCTION series_check FOR GLOBAL AS $$
               WHEN floor IS NULL
               THEN main.gloss_statement('time_grains', $subject || '.' || period_column, '{"floor": "<minute|hour|day|week|month|quarter|year>"}')
               ELSE redefine_statement($subject) END AS fix
-  FROM judged
+  FROM (SELECT 1) one LEFT JOIN (SELECT *, true AS defined FROM judged) j ON true
 $$ RETURNS series_check;
 
 DECLARE TEST series_test ON series_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
