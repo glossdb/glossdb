@@ -162,8 +162,8 @@ A `must` here is served data that is wrong:
 | a keyed load missed keys, and the source is stated `full` | the load query declared again without the key |
 
 A `should` is the layer incomplete: a column with no `contract`,
-`meaning` or `role`, a join with no declared relationship, an
-assumption waiting for a person. Where the fix
+`meaning` or `role`, a join with no declared relationship
+(`relationship_test` yellow), an assumption waiting for a person. Where the fix
 is a judgment, not a fact, state it as an assumption beside `sql` in
 the definition, with a `key`, the `alternative` and a confidence
 below 1. Two examples: the same SAP line sent twice is kept once

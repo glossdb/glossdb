@@ -1051,6 +1051,183 @@ $$ RETURNS completeness_check;
 
 DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.1;
 
+-- pairs_key(lt, rt, lc, rc): the column pairs of a join or a relationship
+-- between tables lt and rt (lc and rc their columns, pair by pair) as one
+-- key, the same whichever side is written first.
+-- relationship_side(ds, t, cols, quoted): one side of a relationship,
+-- dataset.table.column or dataset.table.(a, b), each name quoted where a
+-- statement needs it.
+CREATE OR REPLACE MACRO main.pairs_key(lt, rt, lc, rc) AS
+  CASE WHEN lt <= rt
+       THEN lt || '|' || rt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: lc[i] || '=' || rc[i])), ',')
+       ELSE rt || '|' || lt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: rc[i] || '=' || lc[i])), ',') END;
+
+CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
+  ds || '.' || t || '.' || CASE WHEN len(cols) = 1 THEN '' ELSE '(' END
+  || array_to_string(list_transform(cols, lambda c: CASE WHEN NOT quoted OR regexp_full_match(c, '[a-z_][a-z0-9_]*') THEN c
+                                                         ELSE '"' || replace(c, '"', '""') || '"' END), ', ')
+  || CASE WHEN len(cols) = 1 THEN '' ELSE ')' END;
+
+-- relationship_check: each join the view makes between two loaded tables
+-- has a declared relationship, so the orphan check and the reconciliation
+-- can test its keys. A join is the pairs of columns of one join between two
+-- tables; a relationship covers it where its pairs are the join's, either
+-- way round. Where one is missing, the result has no rate (yellow), the
+-- finding names the join and the fix declares the relationship: from the
+-- side that repeats the key to the side that holds it once, as a stored
+-- column_profile (a unique column) or the table's stated grain says; where
+-- neither does, in the join's order, left to right. Green where every join
+-- is covered. It is computed again when the view's definition, the
+-- relationships of the tables it reads, the profiles of its join columns
+-- or the grains of its tables change.
+DECLARE ASPECT relationship_check WITH $${
+  "description": "Each join the view makes between two loaded tables has a declared relationship.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "joins": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION relationship_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  ds AS (SELECT split_part($subject, '.', 1) AS d),
+  tables AS (SELECT DISTINCT r.table_name FROM d, unnest(d.reads) t(r), ds WHERE split_part(r.table_name, '.', 1) = ds.d),
+  pairs AS (
+    SELECT j.join_number, split_part(j.left_column, '.', 2) AS lt, split_part(j.right_column, '.', 2) AS rt,
+           regexp_replace(j.left_column, '^[^.]*\.[^.]*\.', '') AS lc, regexp_replace(j.right_column, '^[^.]*\.[^.]*\.', '') AS rc
+    FROM d, unnest(d.joins) t(j)
+    WHERE array_to_string(string_split(j.left_column, '.')[1:2], '.') IN (SELECT table_name FROM tables)
+      AND array_to_string(string_split(j.right_column, '.')[1:2], '.') IN (SELECT table_name FROM tables)
+      AND split_part(j.left_column, '.', 2) <> split_part(j.right_column, '.', 2)),
+  joined AS (
+    SELECT join_number, lt, rt, list(lc ORDER BY lc, rc) AS lc, list(rc ORDER BY lc, rc) AS rc
+    FROM pairs GROUP BY join_number, lt, rt),
+  -- the relationships between the tables it reads, each side as table and columns
+  sides AS (
+    SELECT regexp_split_to_array(asset, ' <?-> ') AS s FROM results('relationship_coherence', 'its relationships')),
+  declared AS (
+    SELECT main.pairs_key(split_part(s[1], '.', 2), split_part(s[2], '.', 2),
+             string_split(regexp_replace(regexp_replace(s[1], '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', '),
+             string_split(regexp_replace(regexp_replace(s[2], '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', ')) AS key
+    FROM sides WHERE len(s) = 2),
+  undeclared AS (
+    SELECT * FROM (SELECT *, main.pairs_key(lt, rt, lc, rc) AS key FROM joined)
+    WHERE key NOT IN (SELECT key FROM declared WHERE key IS NOT NULL)
+    QUALIFY row_number() OVER (PARTITION BY key ORDER BY join_number) = 1),
+  -- a side holds each key once: a unique column by its stored profile, or the grain its table's entity states
+  held_once AS (
+    SELECT split_part(asset, '.', 2) AS t, [split_part(asset, '.', 3)] AS cols
+    FROM results('column_profile', 'the columns it joins on')
+    WHERE value IS NOT NULL AND (value->>'total')::BIGINT > 0
+      AND (value->>'distinct')::BIGINT >= round((value->>'total')::DOUBLE * (1 - coalesce((value->>'null_ratio')::DOUBLE, 0)))
+    UNION ALL
+    SELECT split_part(asset, '.', 2), from_json(value->'grain', '["VARCHAR"]') FROM annotations('entity', 'its sources')
+    WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
+  sided AS (
+    SELECT u.*,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.lt AND list_has_all(u.lc, h.cols)) AS left_once,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.rt AND list_has_all(u.rc, h.cols)) AS right_once
+    FROM undeclared u),
+  -- from the side that repeats the key to the side that holds it once
+  directed AS (
+    SELECT key, left_once, right_once,
+           CASE WHEN left_once AND NOT right_once THEN rt ELSE lt END AS ft, CASE WHEN left_once AND NOT right_once THEN rc ELSE lc END AS fc,
+           CASE WHEN left_once AND NOT right_once THEN lt ELSE rt END AS tt, CASE WHEN left_once AND NOT right_once THEN lc ELSE rc END AS tc,
+           CASE WHEN left_once AND right_once THEN ' <-> ' ELSE ' -> ' END AS op
+    FROM sided),
+  said AS (
+    SELECT key, main.relationship_side(ds.d, ft, fc, false) || op || main.relationship_side(ds.d, tt, tc, false) AS relationship,
+           'the join of ' || ft || ' and ' || tt || ' on '
+             || array_to_string(list_transform(range(1, len(fc) + 1), lambda i: ft || '.' || fc[i] || ' = ' || tt || '.' || tc[i]), ' and ') AS join_,
+           CASE WHEN left_once AND right_once THEN '-- each side holds each key once'
+                WHEN left_once OR right_once THEN '-- ' || tt || ' holds each key once'
+                ELSE '-- no stored profile or grain says which side holds each key once: the direction is the join''s, left to right; where '
+                     || ft || ' holds each key once, write it the other way round' END
+             || '. Declare the relationship, and the server checks each key against the data:' || chr(10)
+             || 'DECLARE RELATIONSHIP ' || main.relationship_side(ds.d, ft, fc, true) || op || main.relationship_side(ds.d, tt, tc, true) || ';' AS statement
+    FROM directed, ds)
+  SELECT true AS applicable,
+         CAST(NULL AS VARCHAR) AS reason,
+         CASE WHEN EXISTS (SELECT 1 FROM said) THEN NULL ELSE 0.0 END AS breach_rate,
+         (SELECT list(relationship ORDER BY key) FROM said) AS joins,
+         (SELECT 'no relationship is declared for ' || string_agg(join_, '; ' ORDER BY key)
+                 || ': the orphan check and the reconciliation name no keys on it' FROM said HAVING count(*) > 0) AS finding,
+         (SELECT string_agg(statement, chr(10) ORDER BY key) FROM said HAVING count(*) > 0) AS fix
+$$ RETURNS relationship_check;
+
+DECLARE TEST relationship_test ON relationship_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- series_check: a metric serves a series. It needs a column with role
+-- timestamp (the one named period where several carry it), a column with
+-- role measure (the one named value where several carry it), and a grain
+-- for the period column: the floor its time grains state, else the grain
+-- its temporal profile measured. Where one is missing the metric serves
+-- nothing, the test is red, the finding says what is missing and the fix
+-- is the annotation or the measurement that brings it. Computed again when
+-- the definition, the roles, the time grains or the temporal profile of
+-- the metric's columns change.
+DECLARE ASPECT series_check WITH $${
+  "description": "The metric serves a series: a column carries role timestamp, a column carries role measure, and the period column has a grain.",
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION series_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  cols AS (SELECT c.name AS col, c.position AS pos FROM d, unnest(d.columns) t(c)),
+  claims AS (
+    SELECT substr(asset, length($subject) + 2) AS col, property, value
+    FROM (FROM annotations('role', 'its columns') UNION ALL FROM annotations('time_grains', 'its columns')
+          UNION ALL FROM annotations('temporal_profile', 'its columns'))
+    WHERE state IN ('current', 'stale') AND value IS NOT NULL),
+  roles AS (SELECT col, value->>'value' AS role FROM claims WHERE property = 'role'),
+  picked AS (
+    SELECT (SELECT list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (col)
+            WHERE r.role = 'timestamp') AS period_cols,
+           (SELECT list(r.col ORDER BY CASE WHEN r.col = 'value' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (col)
+            WHERE r.role = 'measure') AS measure_cols),
+  chosen AS (
+    SELECT *, CASE WHEN len(period_cols) = 1 OR period_cols[1] = 'period' THEN period_cols[1] END AS period_column,
+              CASE WHEN len(measure_cols) = 1 OR measure_cols[1] = 'value' THEN measure_cols[1] END AS value_column
+    FROM picked),
+  grained AS (
+    SELECT ch.*,
+           coalesce((SELECT max(value->>'floor') FROM claims WHERE property = 'time_grains' AND col = ch.period_column),
+                    (SELECT max(CASE WHEN value->>'applicable' = 'true'
+                                      AND value->>'granularity' IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
+                                     THEN value->>'granularity' END)
+                     FROM claims WHERE property = 'temporal_profile' AND col = ch.period_column)) AS floor,
+           EXISTS (SELECT 1 FROM claims WHERE property = 'temporal_profile' AND col = ch.period_column) AS profiled
+    FROM chosen ch),
+  judged AS (
+    SELECT g.*, d.kind,
+           main.series_reason(split_part($subject, '.', 1), split_part($subject, '.', 2), d.stopped, coalesce(len(d.columns), 0) > 0,
+                              d.kind, g.period_column, g.period_cols, g.value_column, g.measure_cols, g.floor, g.profiled) AS reason
+    FROM grained g, d)
+  SELECT coalesce(kind, '') NOT IN ('scalar', 'relation') AS applicable,
+         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN 'a ' || kind || ' serves no series' END AS reason,
+         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN NULL WHEN reason IS NULL THEN 0.0 ELSE 1.0 END AS breach_rate,
+         CASE WHEN coalesce(kind, '') NOT IN ('scalar', 'relation') THEN reason END AS finding,
+         CASE WHEN coalesce(kind, '') IN ('scalar', 'relation') OR reason IS NULL THEN NULL
+              WHEN period_column IS NULL
+              THEN main.gloss_statement('role', $subject || '.<period column>', '{"value": "timestamp"}')
+              WHEN value_column IS NULL
+              THEN main.gloss_statement('role', $subject || '.<value column>', '{"value": "measure"}')
+              WHEN floor IS NULL AND NOT profiled
+              THEN 'SELECT temporal() FROM ' || $subject || '.' || period_column || ';'
+              WHEN floor IS NULL
+              THEN main.gloss_statement('time_grains', $subject || '.' || period_column, '{"floor": "<minute|hour|day|week|month|quarter|year>"}')
+              ELSE redefine_statement($subject) END AS fix
+  FROM judged
+$$ RETURNS series_check;
+
+DECLARE TEST series_test ON series_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
 --===------------------------------------------------------------------===--
 -- view_tests(): every test on each view of the bound dataset and on
 -- what it reads, and every test on a result about the dataset as a whole

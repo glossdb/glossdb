@@ -19,8 +19,7 @@
 -- (join_check reads the profile of the columns a view joins on,
 -- orphan_check the coherence of the relationships between the tables it
 -- reads); the profile of each column a view scans, which load_changes()
--- compares to say what a load changed under the view (the cause `next`
--- names); and the measurement a metric's row names as not run (the grain
+-- compares to say what a load changed under the view; and the measurement a metric's row names as not run (the grain
 -- of its period column); then (ord 3) each test's result on
 -- each subject that holds a value of its property, or will once a result
 -- due before it in the round is computed, where none is stored, the
@@ -276,43 +275,27 @@ SELECT table_name, mode, delivery, rows, rows_before, source_rows, changed_rows,
               || 'GLOSS delivery ON ' || table_name || ' AS $${"value": "<full|incremental>", "basis": "<what the source sends>"}$$;' END AS statement
 FROM stated_state;
 
--- pairs_key(lt, rt, lc, rc): the column pairs of a join or a relationship
--- between tables lt and rt (lc and rc their columns, pair by pair) as one
--- key, the same whichever side is written first.
--- relationship_side(ds, t, cols, quoted): one side of a relationship,
--- dataset.table.column or dataset.table.(a, b), each name quoted where a
--- statement needs it.
-CREATE OR REPLACE MACRO main.pairs_key(lt, rt, lc, rc) AS
-  CASE WHEN lt <= rt
-       THEN lt || '|' || rt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: lc[i] || '=' || rc[i])), ',')
-       ELSE rt || '|' || lt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: rc[i] || '=' || lc[i])), ',') END;
-
-CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
-  ds || '.' || t || '.' || CASE WHEN len(cols) = 1 THEN '' ELSE '(' END
-  || array_to_string(list_transform(cols, lambda c: CASE WHEN NOT quoted OR regexp_full_match(c, '[a-z_][a-z0-9_]*') THEN c
-                                                         ELSE '"' || replace(c, '"', '""') || '"' END), ', ')
-  || CASE WHEN len(cols) = 1 THEN '' ELSE ')' END;
-
 -- next: what is open on the bound dataset, read from the states the
--- catalog holds. One row per asset, state and level: level, ord, kind,
--- asset, state, who (agent or person), open (the finding), for_view (the
--- views that read the asset), cause (what the newest load changed, or
--- the `cause` a test's result names),
+-- catalog holds: annotation states, test results, a person's decisions.
+-- It judges nothing itself: a judgement is a test whose result the server
+-- stores after a write, and its row is the test's. One row per asset,
+-- state and level: level, ord, kind, asset, state, who (agent or person),
+-- open (the finding), for_view (the views that read the asset),
 -- statement (what opens the work; <...> marks what only the author can
 -- fill). The rows are ordered by level, then ord, then asset, then the
 -- finding (a test's starts with the test's name).
 --
 -- level:
 -- must: served data is wrong or cannot be served. No table is loaded, no
---   view is defined, a metric serves no series, a test is red, two values
---   conflict, a person decided something (a load query, a review
---   decision) that is not carried yet.
+--   view is defined, a test is red (series_test: a metric serves no
+--   series), two values conflict, a person decided something (a load
+--   query, a review decision) that is not carried yet.
 -- should: the layer is incomplete for what is served. An annotation is
---   missing or outdated on what a view reads or serves, a join a view
---   makes between two loaded tables has no declared relationship, a test
---   on it is neither green nor red, an assumption waits for a person, a
---   stored result is out of date and the server does not compute it
---   (results_due() does not list it). A test stays a should while it has
+--   missing or outdated on what a view reads or serves, a test on it is
+--   neither green nor red (relationship_test: a join a view makes has no
+--   declared relationship), a load does not fit what the source sends,
+--   an assumption waits for a person, a stored result is out of date and
+--   the server does not compute it (results_due() does not list it). A test stays a should while it has
 --   not run, its result is out of date, it is orange or failed, or it is
 --   yellow with a fix; a yellow test whose check ran, is current and
 --   returns no fix has nothing to check and is no row: its statement
@@ -348,11 +331,6 @@ CREATE OR REPLACE VIEW main.next AS
     WHERE a.dataset = ds.d AND a.aspect = 'recipe_change' AND a.actor_kind = 'human'
       AND json_extract_string(a.body, '$.table') IS NOT NULL
       AND NOT coalesce(l.imported_at >= a.written_at, false)),
-  reloaded AS (SELECT table_name AS tbl, cause FROM main.load_changes()),
-  -- what the newest load changed under each view, per table it scans
-  view_causes AS (
-    SELECT v.view, string_agg(r.tbl || ' ' || r.cause, chr(10) ORDER BY r.tbl) AS causes
-    FROM (SELECT DISTINCT view, tbl FROM scans) v JOIN reloaded r ON r.tbl = v.tbl GROUP BY v.view),
   -- the statement that records each view's definition again, as it is now
   redefines AS (
     SELECT g.aspect AS view, main.gloss_statement(g.aspect, ds.d, g.body::VARCHAR) AS statement
@@ -472,7 +450,7 @@ CREATE OR REPLACE VIEW main.next AS
           WHERE m.stopped IS NULL) u, ds),
   s_load AS (
     SELECT 'must' AS level, 1 AS ord, 'integrate' AS kind, ds.d AS asset, 'missing' AS state, 'agent' AS who,
-           'no table is loaded' AS open, '' AS for_view, '' AS cause,
+           'no table is loaded' AS open, '' AS for_view,
            'DECLARE SOURCE <source> SET (type: <csv|parquet|json|relational_db>, location: ''<directory or URL>'');' || chr(10)
              || 'PREVIEW <source> AS $$SELECT file FROM glob(''*'')$$;' || chr(10)
              || '-- a typed file (parquet, json) loads as it is:' || chr(10)
@@ -483,7 +461,7 @@ CREATE OR REPLACE VIEW main.next AS
                               WHERE t.database_name = current_database() AND t.schema_name = ds.d)
     UNION ALL
     SELECT 'must', 2, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
-           'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '', '',
+           'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '',
            '-- a person approved a new load query for ' || o.tbl || '; read it, then declare it:' || chr(10)
              || 'SELECT body FROM glossary WHERE aspect = ''recipe_change'';' || chr(10)
              || 'DECLARE RECIPE ' || o.tbl || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
@@ -493,29 +471,21 @@ CREATE OR REPLACE VIEW main.next AS
            count(*) || ' ' || CASE h.state WHEN 'stale' THEN 'outdated' WHEN 'conflict' THEN 'in conflict' ELSE h.state END || ': '
              || string_agg(DISTINCT h.aspect, ', ' ORDER BY h.aspect),
            coalesce(max(h.views), ''),
-           -- what made the annotations outdated: the table's own load, the
-           -- view's definition recorded again, or a load of a table the view scans
-           CASE WHEN h.state = 'stale'
-                THEN coalesce(max(l.cause),
-                              CASE WHEN bool_or(h.redefined) THEN 'the definition of ' || h.home || ' was recorded again' END,
-                              max(vc.causes),
-                              '')
-                ELSE '' END,
            CASE h.state
              WHEN 'conflict'
              THEN '-- two values differ. Read both, check the data, and annotate again only if the data changed your mind:' || chr(10)
                   || 'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || h.home || ', all => true);'
              WHEN 'stale'
-             THEN CASE WHEN max(l.cause) IS NULL AND bool_or(h.redefined)
-                       THEN '-- the definition of ' || h.home || ' changed after these annotations were written. Check each value against the new definition and record it again:'
-                       ELSE '-- the data under these annotations changed. Check each value against the new data and record it again:' END || chr(10)
+             THEN CASE WHEN bool_or(h.redefined)
+                       THEN '-- the definition of ' || h.home || ' changed after these annotations were written. Check each value against the new definition and record it again.'
+                       ELSE '-- the data under these annotations changed. Check each value against the new data and record it again.' END || chr(10)
+                  || '-- what the newest load of each table changed: SELECT table_name, cause FROM load_changes();' || chr(10)
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss)
              ELSE CASE WHEN bool_or(h.unshaped)
                        THEN '-- the shape of a value: SELECT name, schema FROM aspects WHERE name = ''<property>'';' || chr(10)
                        ELSE '' END
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss) END
-    FROM homed h LEFT JOIN reloaded l ON l.tbl = h.home
-    LEFT JOIN view_causes vc ON current_schema() || '.' || vc.view = h.home
+    FROM homed h
     WHERE h.state IN ('missing', 'stale', 'conflict')
     GROUP BY h.home, h.state, h.level),
   -- how a rate is accepted where the data is right as it is: a
@@ -532,14 +502,14 @@ CREATE OR REPLACE VIEW main.next AS
   s_test AS (
     SELECT CASE t.state WHEN 'red' THEN 'must' ELSE 'should' END, 3, 'test', t.subject, t.state, 'agent',
            t.test || coalesce(': ' || coalesce(t.evidence->>'finding', t.evidence->>'reason'), ''), t.view,
-           coalesce(t.evidence->>'cause', vc.causes, ''),
            coalesce('-- ' || t.test || ' is ' || t.state || ': '
                       || replace(coalesce(t.evidence->>'finding', t.evidence->>'reason',
                                           CASE WHEN t.state IN ('red', 'orange') THEN 'the data breaks the rule, measured ' || round(t.score, 4) END), chr(10), ' ')
                       || chr(10), '')
            || coalesce(t.evidence->>'fix',
                     CASE WHEN t.state IN ('red', 'orange') AND t.declared_by NOT LIKE 'kit:%'
-                         THEN '-- fix the load query or the view''s definition, then run the check again:' || chr(10)
+                         THEN '-- fix the load query or the view''s definition, then run the check again.' || chr(10)
+                              || '-- what the newest load of each table changed: SELECT table_name, cause FROM load_changes();' || chr(10)
                               || nullif(t.run, '') || ';'
                               || coalesce(chr(10) || '-- where a person accepts the rate as it is (measured: ' || round(t.score, 4) || '), '
                                    || CASE k.by
@@ -553,78 +523,16 @@ CREATE OR REPLACE VIEW main.next AS
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
     FROM vo t LEFT JOIN accepts k ON k.test = t.test
-    LEFT JOIN view_causes vc ON vc.view = t.view
     LEFT JOIN written e ON e.subject = t.subject AND e.aspect = t.aspect),
-  -- a join a view makes between two loaded tables on columns no declared
-  -- relationship covers: the pairs of one join, its key, in the join's
-  -- order; a relationship covers it where its pairs are the join's, either
-  -- way round. The statement declares it from the side that repeats the key
-  -- to the side that holds it once, as a stored profile (a unique column)
-  -- or the table's stated grain says; where neither does, left to right
-  loaded AS (SELECT DISTINCT table_name FROM glossql_columns(current_schema()) WHERE table_type = 'BASE TABLE'),
-  joined AS (
-    SELECT j.view, j.join_number, split_part(j.left_column, '.', 2) AS lt, split_part(j.right_column, '.', 2) AS rt,
-           list(regexp_replace(j.left_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS lc,
-           list(regexp_replace(j.right_column, '^[^.]*\.[^.]*\.', '') ORDER BY j.left_column, j.right_column) AS rc
-    FROM main.views_joins(current_schema()) j
-    WHERE split_part(j.left_column, '.', 1) = current_schema() AND split_part(j.right_column, '.', 1) = current_schema()
-      AND split_part(j.left_column, '.', 2) <> split_part(j.right_column, '.', 2)
-      AND split_part(j.left_column, '.', 2) IN (SELECT table_name FROM loaded)
-      AND split_part(j.right_column, '.', 2) IN (SELECT table_name FROM loaded)
-      AND j.view IN (SELECT view FROM summary WHERE stopped IS NULL)
-    GROUP BY j.view, j.join_number, split_part(j.left_column, '.', 2), split_part(j.right_column, '.', 2)),
-  declared_pairs AS (
-    SELECT main.pairs_key(split_part(left_side, '.', 2), split_part(right_side, '.', 2),
-             string_split(regexp_replace(regexp_replace(left_side, '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', '),
-             string_split(regexp_replace(regexp_replace(right_side, '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', ')) AS key
-    FROM main.relationships, ds WHERE dataset = ds.d),
-  undeclared AS (
-    SELECT key, string_agg(DISTINCT view, ', ' ORDER BY view) AS views,
-           arg_min(lt, view) AS lt, arg_min(rt, view) AS rt, arg_min(lc, view) AS lc, arg_min(rc, view) AS rc
-    FROM (SELECT *, main.pairs_key(lt, rt, lc, rc) AS key FROM joined)
-    WHERE key NOT IN (SELECT key FROM declared_pairs WHERE key IS NOT NULL)
-    GROUP BY key),
-  held_once AS (
-    SELECT split_part(subject, '.', 2) AS t, [split_part(subject, '.', 3)] AS cols FROM main.measurements, ds
-    WHERE dataset = ds.d AND function = 'column_profile' AND value IS NOT NULL AND (value->>'total')::BIGINT > 0
-      AND (value->>'distinct')::BIGINT >= round((value->>'total')::DOUBLE * (1 - coalesce((value->>'null_ratio')::DOUBLE, 0)))
-    UNION ALL
-    SELECT split_part(subject, '.', 2), from_json(value->'grain', '["VARCHAR"]') FROM glossql_glossary(current_schema(), 'entity', false)
-    WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
-  sided AS (
-    SELECT u.*,
-           u.key IN (SELECT x.key FROM undeclared x JOIN held_once h ON h.t = x.lt AND list_has_all(x.lc, h.cols)) AS left_once,
-           u.key IN (SELECT x.key FROM undeclared x JOIN held_once h ON h.t = x.rt AND list_has_all(x.rc, h.cols)) AS right_once
-    FROM undeclared u),
-  -- from the side that repeats the key to the side that holds it once
-  directed AS (
-    SELECT views, left_once, right_once,
-           CASE WHEN left_once AND NOT right_once THEN rt ELSE lt END AS ft, CASE WHEN left_once AND NOT right_once THEN rc ELSE lc END AS fc,
-           CASE WHEN left_once AND NOT right_once THEN lt ELSE rt END AS tt, CASE WHEN left_once AND NOT right_once THEN lc ELSE rc END AS tc,
-           CASE WHEN left_once AND right_once THEN ' <-> ' ELSE ' -> ' END AS op
-    FROM sided),
-  s_joins AS (
-    SELECT 'should', 4, 'describe',
-           main.relationship_side(ds.d, ft, fc, false) || op || main.relationship_side(ds.d, tt, tc, false), 'missing', 'agent',
-           'no relationship is declared for the join of ' || ft || ' and ' || tt || ' on '
-             || array_to_string(list_transform(range(1, len(fc) + 1), lambda i: ft || '.' || fc[i] || ' = ' || tt || '.' || tc[i]), ' and ')
-             || ': the orphan check and the reconciliation name no keys on it', views, '',
-           CASE WHEN left_once AND right_once THEN '-- each side holds each key once'
-                WHEN left_once OR right_once THEN '-- ' || tt || ' holds each key once'
-                ELSE '-- no stored profile or grain says which side holds each key once: the direction is the join''s, left to right; where '
-                     || ft || ' holds each key once, write it the other way round' END
-             || '. Declare the relationship, and the server checks each key against the data:' || chr(10)
-             || 'DECLARE RELATIONSHIP ' || main.relationship_side(ds.d, ft, fc, true) || op || main.relationship_side(ds.d, tt, tc, true) || ';'
-    FROM directed, ds),
   -- a load that does not fit what the source sends (load_modes())
   s_loads AS (
-    SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''), '',
+    SELECT l.level, 1, 'integrate', l.table_name, l.state, 'agent', l.open, coalesce(x.views, ''),
            '-- ' || l.open || chr(10) || l.statement
     FROM main.load_modes() l LEFT JOIN reach x ON x.asset = l.table_name WHERE l.state IS NOT NULL),
   s_review AS (
     SELECT 'must', 2, 'review', ds.d || '.' || r.aspect, 'decided', 'agent',
            'a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(r.note, ''), '')
-             || '; the definition does not carry it yet', r.aspect, '',
+             || '; the definition does not carry it yet', r.aspect,
            '-- a person decided ' || r.key || ' (' || r.stance || ')' || coalesce(': ' || nullif(replace(r.note, chr(10), ' '), ''), '') || chr(10)
              || '-- set the assumption with key "' || r.key || '" to confidence 1.0 and basis "decided-by-person", change the SQL where the decision asks for it, then record the definition again:' || chr(10)
              || coalesce(rd.statement, main.gloss_statement(r.aspect, ds.d, '<the current definition>'))
@@ -633,11 +541,11 @@ CREATE OR REPLACE VIEW main.next AS
 
     UNION ALL
     SELECT 'should', 6, 'review', ds.d || '.' || q.aspect, 'waiting', 'person',
-           'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect, '',
+           'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.aspect,
            'SELECT key, assumption, basis, alternative FROM open_questions WHERE aspect = ''' || q.aspect || ''' AND key = ''' || q.key || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d),
   s_views AS (
-    SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '', '',
+    SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '',
            '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
              || '-- a table:' || chr(10)
              || 'DECLARE ASPECT <table_view> WITH $${"title": "<its name in the business''s words>", "x-kind": "relation"}$$ AS VIEW;' || chr(10)
@@ -649,24 +557,7 @@ CREATE OR REPLACE VIEW main.next AS
              || 'DECLARE ASPECT <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
              || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <dimension columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio|non-additive>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM summary WHERE stopped IS NULL)
-      AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)
-    UNION ALL
-    -- a metric with no series yet: the statement is the annotation or
-    -- the measurement its summary row names, else the definition again
-    SELECT 'must', 1, 'integrate', ds.d || '.' || m.view, 'blocked', 'agent', coalesce(m.reason, 'no series is served'), m.view, '',
-           CASE WHEN m.period_column IS NULL
-                THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<period column> AS $${"value": "timestamp"}$$;'
-                WHEN m.value_column IS NULL
-                THEN 'GLOSS role ON ' || ds.d || '.' || m.view || '.<value column> AS $${"value": "measure"}$$;'
-                WHEN m.floor IS NULL AND len(m.measurements_to_run) > 0
-                THEN coalesce('-- ' || m.reason || chr(10), '') || 'SELECT temporal() FROM ' || ds.d || '.' || m.view || '.' || m.period_column || ';'
-                WHEN m.floor IS NULL
-                THEN 'GLOSS time_grains ON ' || ds.d || '.' || m.view || '.' || m.period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$;'
-                ELSE coalesce('-- ' || m.reason || chr(10), '') || coalesce(rd.statement, main.gloss_statement(m.view, ds.d, '<the current definition>')) END
-    FROM summary m CROSS JOIN ds LEFT JOIN redefines rd ON rd.view = m.view
-    -- a single value and a table are served as they are; only a metric needs a series
-    WHERE NOT m.applicable AND m.stopped IS NULL AND coalesce(m.kind, '') NOT IN ('scalar', 'relation')
-      AND m.view NOT IN (SELECT view FROM vo)),
+      AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)),
   -- a stored result out of date that the server does not compute (a
   -- view's lineage it does, results_due()): one
   -- about the dataset as a whole, a view or an asset of a kind a kit
@@ -676,7 +567,7 @@ CREATE OR REPLACE VIEW main.next AS
   s_results AS (
     SELECT 'should', 5, 'test', o.subject, 'stale', 'agent',
            o.function || ': computed before a read of it changed (' || o.inputs || ')',
-           coalesce(o.view, ''), '',
+           coalesce(o.view, ''),
            '-- computed before ' || o.inputs || ' changed' || chr(10) || 'SELECT ' || o.function || '() FROM ' || o.subject || ';'
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
@@ -687,7 +578,7 @@ CREATE OR REPLACE VIEW main.next AS
             AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
-    SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe UNION ALL SELECT * FROM s_joins
+    SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe
     UNION ALL SELECT * FROM s_test
     UNION ALL SELECT * FROM s_review UNION ALL SELECT * FROM s_views UNION ALL SELECT * FROM s_results)
   ORDER BY CASE level WHEN 'must' THEN 1 WHEN 'should' THEN 2 ELSE 3 END, ord, asset, state, open;

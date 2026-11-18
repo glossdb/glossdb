@@ -163,6 +163,7 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
             row("completeness_test", "fin.ledger_funds.label", "green"),
             row("join_test", "fin.ledger_funds", "green"),
             row("orphan_test", "fin.ledger_funds", "red"),
+            row("relationship_test", "fin.ledger_funds", "green"),
         ]
     );
     let open = open_tests(&app).await;

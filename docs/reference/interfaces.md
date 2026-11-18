@@ -91,7 +91,7 @@ first: must test sales.order_value (red): orphan_test: 4.6% of rows … find no 
 | `doc://SPEC.md`, `doc://grammar.ebnf` | the language specification and grammar |
 | `doc://vendor/duckdb/sql/…` | DuckDB's SQL guide for the bundled release |
 | `doc://functions/interface.md` | the functions a statement can call, each once: the kits' reads and the declared functions |
-| `next://<dataset>/<kind>` | the open rows of one kind of work (`integrate`, `describe`, `test`, `review`), each with its level, cause and statement; `next://<dataset>` serves every open row, by level |
+| `next://<dataset>/<kind>` | the open rows of one kind of work (`integrate`, `describe`, `test`, `review`), each with its level and statement; `next://<dataset>` serves every open row, by level |
 
 The same pages are rows of `pages()` (`uri`, `title`, `body`), for a
 client that reads no resources:

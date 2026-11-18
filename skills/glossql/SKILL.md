@@ -62,21 +62,24 @@ decisions to apply), and `window:` after a read of `metric_series()`.
 Read the list after a piece of work, in a call of its own:
 
 ```sql
-SELECT level, kind, asset, state, open, cause, statement FROM next WHERE level <> 'could'
+SELECT level, kind, asset, state, open, statement FROM next WHERE level <> 'could'
 ```
 
 `kind` is the row's kind of work. Each row has a statement that opens
 it; `<…>` marks what you fill in. A comment line (`--`) above a
 statement says why the row is open, or which of two statements it is
 and when to take it; a statement a person must decide is handed
-commented out. `cause` says what the newest load changed. `level` says how much the row matters:
+commented out. Where data changed under the row, a comment names the read
+that says what the newest load changed, `load_changes()`. `level` says how much the row matters:
 
-- `must`: served data is wrong or cannot be served. A red test, a view
-  that serves nothing, a conflict between two values, a decision a
-  person made that the definition does not carry yet.
+- `must`: served data is wrong or cannot be served. A red test (a
+  metric that serves no series is one: `series_test`), a conflict
+  between two values, a decision a person made that the definition
+  does not carry yet.
 - `should`: the layer is incomplete for what is served. A missing or
-  outdated annotation on what a view reads or serves, a join with no
-  declared relationship, a test not run,
+  outdated annotation on what a view reads or serves, a test not run
+  or yellow with a fix (a join with no declared relationship is one:
+  `relationship_test`), a load that does not fit what the source sends,
   an assumption waiting for a person, a stored result out of date.
 - `could`: what sits beside it, such as the tables no view reads. Read
   it on request: `SELECT kind, asset, open, statement FROM next WHERE

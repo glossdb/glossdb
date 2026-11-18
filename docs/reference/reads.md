@@ -75,10 +75,15 @@ narrows either to one property.
 ### next
 
 The open work of the dataset in use, one row per asset, state and
-level, ordered by `level`, then `ord`. A test has one row per asset it
+level, ordered by `level`, then `ord`. It lists the states the catalog
+holds: annotations, test results, a person's decisions. It judges
+nothing itself: a judgement is a test, computed by the server after a
+write, and `next` lists its result. A test has one row per asset it
 is not green on, and each assumption that waits for a person has a
 row. A test of your own is listed on the assets that carry its
-expectation.
+expectation. A row for outdated annotations names the read that says
+what the newest load changed, `load_changes()`, in a comment above its
+statement.
 
 | Column | Holds |
 |---|---|
@@ -86,28 +91,27 @@ expectation.
 | `ord` | the order inside one level, what blocks other work first: a source, a table or a view (1), a person's decision to apply (2), a test (3), an annotation (4), a stored result to compute again (5), a question for a person (6) |
 | `kind` | the kind of work: `integrate` (a source to connect, a table to load, a view to define), `describe`, `test`, `review` (a question for a person, or a person's decision to apply) |
 | `asset` | the dataset, table, column, relationship or view |
-| `state` | `missing`, `stale`, `conflict`, a test's state, `decided`, `waiting`, `blocked`; for a load, `keys missing` or `unchanged` (`load_modes()`) |
+| `state` | `missing`, `stale`, `conflict`, a test's state, `decided`, `waiting`; for a load, `keys missing` or `unchanged` (`load_modes()`) |
 | `who` | `agent` or `person` |
 | `open` | the finding |
 | `for_view` | the views that read the asset |
-| `cause` | what the newest load changed: row counts, and the columns whose profile moved |
 | `statement` | the statement that opens the work; `<…>` marks what the author fills. A comment line above a statement says why the row is open, or which choice it is and when to take it; one a person decides is commented out |
 
 What each level holds:
 
-- `must`: no table is loaded; no view is defined; a metric serves no
-  series; a test is red; two values of one property conflict; a
+- `must`: no table is loaded; no view is defined; a test is red (a
+  metric that serves no series is `series_test` red); two values of one property conflict; a
   person approved a load query or decided a review question, and the
   definition does not carry it yet; a keyed load
   missed keys of a table whose source is stated to send its complete
   state.
 - `should`: a load does not fit what the source likely sends
   (`load_modes()`); an annotation is missing or outdated on an asset a view
-  reads or serves; a join a view makes between two loaded tables has no
-  declared relationship (the statement declares it, from the side that
-  repeats the key where a profile or a stated grain says which side
-  holds it once); a test on it is not run, out of date, orange or
-  failed, or yellow with a fix (a yellow test whose current result has
+  reads or serves; a test on it is not run, out of date, orange or
+  failed, or yellow with a fix (a join a view makes between two loaded
+  tables with no declared relationship is `relationship_test` yellow:
+  its fix declares it, from the side that repeats the key where a
+  profile or a stated grain says which side holds it once) (a yellow test whose current result has
   no fix has nothing to check and is no row);
   an assumption waits for a person; a stored result about the dataset
   is out of date, and the server does not compute it
@@ -129,6 +133,20 @@ result out of date is a `should` with the statement that computes it
 again. A column property whose schema says `"x-asked": "per table"` is
 asked on each column of a table or view once one of its columns
 carries it.
+
+### load_changes()
+
+Per table of the dataset in use loaded more than once, what its
+newest load changed against the load before.
+
+| Column | Holds |
+|---|---|
+| `table_name` | `<dataset>.<table>` |
+| `cause` | the row counts of the two loads, and each column whose stored profile moved: distinct values, the share empty, the lowest and the highest value |
+
+```sql
+SELECT table_name, cause FROM load_changes();
+```
 
 ### load_modes()
 
@@ -298,9 +316,8 @@ JSON list.
 the column's share of empty values rose past the tolerance, its
 evidence holds `before`, `now`, `emptied_by` (`load` or `definition`)
 and, for a load, `sources`: the table columns that emptied too. Its
-`cause` names them, or says the definition empties the column, and
-`next` serves it as the row's cause. The share before is read from the
-values the column's `column_profile` held, oldest first: the last
-share within the tolerance. `SELECT completeness_check() FROM
+`cause` names them, or says the definition empties the column. The
+share before is read from the values the column's `column_profile`
+held, oldest first: the last share within the tolerance. `SELECT completeness_check() FROM
 <dataset>.<view>` computes the check on each column of the view.
 

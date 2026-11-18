@@ -315,14 +315,15 @@ SELECT count(DISTINCT metric) FROM metric_series();
 
 # --- the built-in tests: a metric over one table cannot fan out and has no join to check; its additivity is its additivity
 
-# a single value carries the join, orphan and completeness tests, green where it reads no table, and not the
-# additivity test, which needs a measure; a stopped definition has no tests of this kind
+# a single value carries the join, orphan, relationship and completeness tests, green where it reads no table, and
+# not the additivity and series tests, which need a measure; a stopped definition has no tests of this kind
 query TT
 SELECT test, state FROM view_tests() WHERE view IN ('fte_cap', 'win_rate') ORDER BY view, test;
 ----
 completeness_test	green
 join_test	green
 orphan_test	green
+relationship_test	green
 
 # a metric joining two tables on a column whose values repeat on both sides fans out: the definition's own join and the columns' profiles are the evidence, and until they are profiled the test says so
 statement ok
