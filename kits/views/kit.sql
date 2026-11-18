@@ -87,15 +87,16 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- views there are (view_tests(), fact_values(), column_mapping());
 -- view_summary() reads its rows from it.
 --
--- view_axes(): what a function's body reads of the same, through the read
--- functions alone (the lineage kit's), on the subject's dataset: one row
--- per served view — view, kind, stopped, applicable,
--- reason, period_column, value_column, numerator, denominator, floor,
--- window_periods, additivity, additivity_state, dims, columns (the view's
--- columns by name). It reads the views'
--- definitions, role, additivity, dimension and time_grains, and the
--- temporal profiles, on the dataset's metrics. A view whose definition
--- serves no view has no row.
+-- view_axes(): what metric_series() reads of the same, through the read
+-- functions alone (the lineage kit's), so that a function's body can read
+-- a series, on the subject's dataset: one row per served view — view,
+-- kind, stopped, applicable, reason, period_column, value_column,
+-- numerator, denominator, floor, window_periods, additivity,
+-- additivity_state, dims, columns (the view's columns by name), newest
+-- (the latest instant in the period column, as its temporal profile
+-- measured it). It reads the views' definitions, role, additivity,
+-- dimension and time_grains, and the temporal profiles, on the dataset's
+-- metrics. A view whose definition serves no view has no row.
 --===------------------------------------------------------------------===--
 
 -- series_reason(…): why a view serves no series, NULL where it does;
@@ -228,16 +229,16 @@ SELECT view, kind, stopped,
 FROM (SELECT *, coalesce(kind, '') NOT IN ('scalar', 'relation') AS series FROM judged)
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes_of(views_at, columns_at) AS TABLE
+CREATE OR REPLACE MACRO main.view_axes() AS TABLE
 WITH defs AS MATERIALIZED (
   SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, stopped, columns
-  FROM definition(views_at)),
+  FROM definition('the dataset''s metrics')),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          property AS aspect, value, state
-  FROM (FROM annotations('role', columns_at) UNION ALL FROM annotations('additivity', columns_at)
-        UNION ALL FROM annotations('dimension', columns_at) UNION ALL FROM annotations('time_grains', columns_at))
+  FROM (FROM annotations('role', 'the dataset''s metrics') UNION ALL FROM annotations('additivity', 'the dataset''s metrics')
+        UNION ALL FROM annotations('dimension', 'the dataset''s metrics') UNION ALL FROM annotations('time_grains', 'the dataset''s metrics'))
   WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -260,15 +261,17 @@ profiles AS (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          CASE WHEN json_extract_string(value, '$.applicable') = 'true'
                    AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
-              THEN json_extract_string(value, '$.granularity') END AS grain_detected
-  FROM results('temporal', columns_at) WHERE value IS NOT NULL),
+              THEN json_extract_string(value, '$.granularity') END AS grain_detected,
+         TRY_CAST(json_extract_string(value, '$.max') AS TIMESTAMP) AS newest
+  FROM results('temporal', 'the dataset''s metrics') WHERE value IS NOT NULL),
 rows_ AS (
   SELECT ch.*,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'numerator' END AS numerator,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'denominator' END AS denominator,
          coalesce(CASE WHEN a.state IN ('current', 'stale') THEN a.state ELSE 'conflict' END, 'none') AS additivity_state,
-         coalesce(t.value->>'floor', pr.grain_detected) AS floor, t.value->'windows' AS windows, pr.metric IS NOT NULL AS profiled
+         coalesce(t.value->>'floor', pr.grain_detected) AS floor, t.value->'windows' AS windows, pr.metric IS NOT NULL AS profiled,
+         pr.newest
   FROM chosen ch
   LEFT JOIN annotated a ON a.aspect = 'additivity' AND a.metric = ch.metric AND a.col = ch.value_column
   LEFT JOIN claims t ON t.aspect = 'time_grains' AND t.metric = ch.metric AND t.col = ch.period_column
@@ -281,54 +284,61 @@ SELECT metric AS view, kind, stopped, CASE WHEN series THEN reason IS NULL END A
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
-       additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns
+       additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns,
+       CASE WHEN series THEN newest END AS newest
 FROM judged
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the dataset''s metrics', 'the dataset''s metrics');
-
--- view_axes_of(views_at, columns_at) reads the definitions of the views
--- of the place views_at names and the annotations and profiles of the
--- columns of columns_at, constants both: view_axes() the dataset's
--- metrics.
-
 
 --===------------------------------------------------------------------===--
--- metric_series(grain := NULL, unclaimed := 'refuse'): the cells
--- of every applicable metric of the bound dataset — metric, world ('actual'),
+-- metric_series(view := NULL, grain := NULL, unclaimed := 'refuse'): the
+-- cells of one metric of the bound dataset, the view named, or of every
+-- applicable metric where no view is named — metric, world ('actual'),
 -- dimension ('' the total, else a slicing column), member, period (the
 -- bucket's start), value, num and den (a ratio's summed halves), additivity.
--- Without a grain, each metric at its own floor; with one, each metric at
--- or below it at that grain, a metric coarser than the asked grain serving
--- no rows. Only the window is served: the latest window_periods periods
--- of each metric (view_summary() has the number, by default 48 months or
--- 20 years; time_grains `windows` sets it), the newest period the last. A
--- flow sums and fills its total's empty periods with zero up to the data's
--- edge (the last instant any served metric reaches, so a flow whose rows
--- stopped early shows its zeros, not an older window);
--- a stock keeps the bucket's last level, summed over what holds at that
--- instant; a ratio re-divides its summed halves. A dimension wider than 24
--- members serves its top 23 by weight and 'other'.
+-- A named view reads that view's rows alone. Without a grain, each metric at
+-- its own floor; with one, each metric at or below it at that grain, a
+-- metric coarser than the asked grain serving no rows. Only the window is
+-- served: the latest window_periods periods of each metric (view_summary()
+-- has the number, by default 48 months or 20 years; time_grains `windows`
+-- sets it), the newest period the last. A flow sums and fills its total's
+-- empty periods with zero up to the data's edge: the newest instant any
+-- metric served at that grain reaches, as the temporal profile of its
+-- period column measured it, so a flow whose rows stopped early shows its
+-- zeros, not an older window. A stock keeps the bucket's last level, summed
+-- over what holds at that instant; a ratio re-divides its summed halves. A
+-- dimension wider than 24 members serves its top 23 by weight and 'other'.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
 -- the value column, the read refuses and names the gloss. It defaults
--- nothing. A list over every metric asks unclaimed := 'skip' instead:
+-- nothing. The refusal concerns the metrics read: a named view refuses for
+-- itself alone. A list over every metric asks unclaimed := 'skip' instead:
 -- such a metric serves no row, and its view_summary() row says what it needs.
+--
+-- A function's body reads it as any read: the views' definitions, their
+-- columns' annotations and profiles, and their rows, all through the
+-- dataset's metrics.
 --===------------------------------------------------------------------===--
 
--- actual_series(grain, unclaimed): the actual world alone, which a
--- function's body reads: through view_axes(), and no stored result.
--- actual_series_of(views_at, columns_at, …) the same over the places
--- view_axes_of() takes.
-CREATE OR REPLACE MACRO main.actual_series_of(views_at, columns_at, grain := NULL, unclaimed := 'refuse') AS TABLE
-WITH asked AS MATERIALIZED (
+CREATE OR REPLACE MACRO main.metric_series(view := NULL, grain := NULL, unclaimed := 'refuse') AS TABLE
+WITH axes AS MATERIALIZED (FROM main.view_axes() WHERE applicable),
+asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_axes_of(views_at, columns_at) m
-  WHERE m.applicable
+  FROM axes m
+  WHERE (view IS NULL OR m.view = view)
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
+-- the data's edge: the newest instant of every metric served at this grain, read off the profiles, so
+-- that one view's read reads no other view's rows; a metric coarser than the grain with no additivity
+-- to combine by is served by no read and has no part in it
+data_edge AS (
+  SELECT max(newest) AS last_at FROM axes
+  WHERE grain IS NULL
+     OR (main.grain_rank(grain) >= main.grain_rank(floor)
+         AND NOT (main.grain_rank(grain) > main.grain_rank(floor) AND coalesce(additivity, 'non-additive') = 'non-additive'))),
 cells AS (
-  SELECT * FROM dataset_cells(current_schema(), views_at) WHERE "table" IN (SELECT metric FROM asked)),
+  SELECT * FROM dataset_cells(coalesce(current_schema() || '.' || view, current_schema()), 'the dataset''s metrics')
+  WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
   SELECT c."table" AS metric, c.rn,
          max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
@@ -365,15 +375,15 @@ bucketed AS (
          coalesce(a.additivity, 'none') AS additivity, a.at_grain, a.window_periods
   FROM rows_ r JOIN asked a USING (metric)
   WHERE r.instant IS NOT NULL),
--- a metric's edge is its last bucket; a flow's is the data's edge — the last instant any served metric
--- reaches, at the flow's grain — so a flow whose rows stopped early shows its zeros, not an older window
+-- a metric's edge is its last bucket; a flow's is the data's edge at the flow's grain, so a flow whose
+-- rows stopped early shows its zeros, not an older window
 own_edges AS (
-  SELECT metric, min(period) AS first, max(period) AS own_edge, max(instant) AS last_at, any_value(at_grain) AS at_grain,
+  SELECT metric, min(period) AS first, max(period) AS own_edge, any_value(at_grain) AS at_grain,
          any_value(window_periods) AS window_periods, any_value(additivity) AS additivity
   FROM bucketed GROUP BY metric),
 edges AS (
   SELECT metric, first, at_grain, window_periods, additivity,
-         CASE WHEN additivity = 'additive' THEN greatest(own_edge, date_trunc(at_grain, max(last_at) OVER ())) ELSE own_edge END AS edge
+         CASE WHEN additivity = 'additive' THEN greatest(own_edge, date_trunc(at_grain, (SELECT last_at FROM data_edge))) ELSE own_edge END AS edge
   FROM own_edges),
 windowed AS (
   SELECT b.* FROM bucketed b JOIN edges e USING (metric)
@@ -416,12 +426,6 @@ SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, ad
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL
 ORDER BY metric, dimension, member, period;
-
-CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse') AS TABLE
-FROM main.actual_series_of('the dataset''s metrics', 'the dataset''s metrics', grain := grain, unclaimed := unclaimed);
-
-CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse') AS TABLE
-FROM main.actual_series(grain := grain, unclaimed := unclaimed);
 
 --===------------------------------------------------------------------===--
 -- fact_values(): the single values of the bound dataset — one row per

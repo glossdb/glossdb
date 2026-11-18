@@ -5,7 +5,7 @@ SELECT dimension,
   count(DISTINCT member) AS members,
   '?view=' || CAST($view AS VARCHAR) || '&dim=' || dimension
     || '&grain=' || CAST($grain AS VARCHAR) || '&span=' || CAST($span AS VARCHAR) AS link
-FROM metric_series(unclaimed := 'skip')
-WHERE metric = CAST($view AS VARCHAR) AND dimension <> ''
+FROM metric_series(view := CAST($view AS VARCHAR), unclaimed := 'skip')
+WHERE dimension <> ''
 GROUP BY dimension
 ORDER BY dimension

@@ -5,8 +5,8 @@
 WITH story AS (
   SELECT period, dimension, member, value, num, den, additivity,
          dense_rank() OVER (ORDER BY period DESC) AS recency
-  FROM metric_series(grain := $grain)
-  WHERE metric = CAST($view AS VARCHAR) AND dimension = ''),
+  FROM metric_series(view := CAST($view AS VARCHAR), grain := $grain)
+  WHERE dimension = ''),
 a AS (
   SELECT name, schema FROM aspects WHERE name = CAST($view AS VARCHAR)
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
