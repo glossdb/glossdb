@@ -285,6 +285,65 @@ USE grid;
 statement ok
 CREATE TABLE grid.results AS SELECT DATE '2024-01-01' + (i % 40)::INTEGER AS date, i % 7 AS driver_id, (i % 10)::DOUBLE AS points FROM range(400) t(i);
 
+# --- a join a view makes between two loaded tables with no declared relationship is relationship_test on the view,
+# yellow, a should; its fix declares the relationship toward the side a stored profile says holds each key once
+
+statement ok
+DECLARE DATASET harm SET (purpose: 'a joined table');
+
+statement ok
+USE harm;
+
+statement ok
+CREATE TABLE harm.drivers AS SELECT i AS driver_id, 'driver ' || i AS surname FROM range(5) t(i);
+
+statement ok
+CREATE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, (i % 10)::DOUBLE AS points FROM range(60) t(i);
+
+statement ok
+DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
+
+query TTTTT
+SELECT level, kind, state, starts_with(open, 'relationship_test'), contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
+FROM next WHERE asset = 'harm.driver_results' AND contains(statement, 'DECLARE RELATIONSHIP');
+----
+should	test	yellow	true	true
+
+statement ok
+DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;
+
+query T
+SELECT state FROM view_tests() WHERE view = 'driver_results' AND test = 'relationship_test';
+----
+green
+
+# --- a metric that serves no series is series_test on the metric, red, a must; the roles it asks for close it
+
+statement ok
+DECLARE ASPECT points_per_driver WITH $${"title": "Points per driver"}$$ AS VIEW;
+
+statement ok
+GLOSS points_per_driver ON harm AS $${"sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
+
+query TTT
+SELECT level, kind, state FROM next WHERE asset = 'harm.points_per_driver' AND starts_with(open, 'series_test');
+----
+must	test	red
+
+statement ok
+GLOSS role ON harm.points_per_driver.day AS $${"value": "timestamp"}$$;
+
+statement ok
+GLOSS role ON harm.points_per_driver.value AS $${"value": "measure"}$$;
+
+query T
+SELECT state FROM view_tests() WHERE view = 'points_per_driver' AND test = 'series_test';
+----
+green
+
 # --- a result an actor computes that read a result out of date is possibly out of date: it stays out of
 # next; the result it read computed again with the same value leaves it current, with another value it
 # enters next

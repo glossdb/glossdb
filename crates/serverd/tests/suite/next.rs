@@ -414,6 +414,68 @@ async fn a_load_that_adds_a_column_brings_the_lineage_of_the_view_over_it_curren
     assert!(outdated.is_empty(), "{outdated:?}");
 }
 
+/// A load that derives a column otherwise makes the annotations on its
+/// table outdated. The row under "describe" names the read that says
+/// what the load changed, in a comment above its statement, and that
+/// read runs: it lists the table, three rows before and four after.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_outdated_annotation_names_the_read_of_what_the_load_changed() {
+    let (app, _, dir) = fin().await;
+    let file = dir.path().join("bookings.csv");
+    let head =
+        "booked,amount,fund\n2024-01-01,10,general\n2024-01-02,20,water\n2024-02-01,30,parks\n";
+    std::fs::write(&file, head).unwrap();
+    let load = "DECLARE RECIPE bookings ON fin FROM erp AS $$SELECT CAST(booked AS DATE) AS booked, \
+                CAST(amount AS DOUBLE) AS amount, fund FROM read_csv('bookings.csv')$$;";
+    say(
+        &app,
+        FIN,
+        &format!(
+            "DECLARE SOURCE erp SET (type: csv, location: '{}'); {load}",
+            dir.path().display()
+        ),
+    )
+    .await;
+    say(
+        &app,
+        FIN,
+        r#"GLOSS meaning ON fin.bookings.fund AS $${"value": "the fund a booking is charged to"}$$;"#,
+    )
+    .await;
+    std::fs::write(&file, format!("{head}2024-03-01,40,roads\n")).unwrap();
+    say(
+        &app,
+        FIN,
+        &load.replace(", fund FROM", ", upper(fund) AS fund FROM"),
+    )
+    .await;
+    let stale = rows(
+        &app,
+        FIN,
+        "SELECT statement FROM next WHERE asset = 'fin.bookings' AND state = 'stale'",
+    )
+    .await;
+    assert_eq!(stale.len(), 1, "{stale:?}");
+    let statement = text(&stale[0], "statement");
+    let read = statement
+        .lines()
+        .find(|line| line.starts_with("--") && line.contains("load_changes()"))
+        .and_then(|line| line.split_once(": "))
+        .map(|(_, read)| read.to_string())
+        .unwrap_or_else(|| panic!("{statement}"));
+    let changed = rows(&app, FIN, &read).await;
+    assert_eq!(changed.len(), 1, "{changed:?}");
+    assert_eq!(text(&changed[0], "table_name"), "fin.bookings");
+    say(&app, FIN, &statement).await;
+    let closed = rows(
+        &app,
+        FIN,
+        "SELECT state FROM next WHERE asset = 'fin.bookings' AND state = 'stale'",
+    )
+    .await;
+    assert!(closed.is_empty(), "{closed:?}");
+}
+
 /// The `next:` line under a result counts the rows `next` lists that
 /// must and should be done, per kind of work; what could be done is not
 /// counted. A call that defines a metric and reads `next` gets the same
