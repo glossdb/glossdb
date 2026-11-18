@@ -336,7 +336,8 @@ data_edge AS (
   WHERE grain IS NULL
      OR (main.grain_rank(grain) >= main.grain_rank(floor)
          AND NOT (main.grain_rank(grain) > main.grain_rank(floor) AND coalesce(additivity, 'non-additive') = 'non-additive'))),
-cells AS (
+-- read once: a row's dimension cells are joined back to it by rn, which numbers the rows of one read
+cells AS MATERIALIZED (
   SELECT * FROM dataset_cells(coalesce(current_schema() || '.' || view, current_schema()), 'the dataset''s metrics')
   WHERE "table" IN (SELECT metric FROM asked)),
 all_rows AS MATERIALIZED (
@@ -344,9 +345,9 @@ all_rows AS MATERIALIZED (
          max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
          max(CASE WHEN c."column" = a.value_column THEN TRY_CAST(c.val AS DOUBLE) END) AS value,
          max(CASE WHEN c."column" = a.numerator THEN TRY_CAST(c.val AS DOUBLE) END) AS num,
-         max(CASE WHEN c."column" = a.denominator THEN TRY_CAST(c.val AS DOUBLE) END) AS den,
-         list({'dimension': c."column", 'member': coalesce(c.val, 'NULL')}) FILTER (WHERE list_contains(a.dims, c."column")) AS members
+         max(CASE WHEN c."column" = a.denominator THEN TRY_CAST(c.val AS DOUBLE) END) AS den
   FROM cells c JOIN asked a ON a.metric = c."table"
+  WHERE c."column" IN (a.period_column, a.value_column, a.numerator, a.denominator)
   GROUP BY c."table", c.rn),
 -- a value column with no additivity or a conflicting one cannot be combined
 -- over rows, and the read refuses; one marked non-additive is served where
@@ -371,7 +372,7 @@ rows_ AS (
   SELECT r.* FROM all_rows r
   WHERE r.metric NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
 bucketed AS (
-  SELECT r.metric, r.instant, date_trunc(a.at_grain, r.instant) AS period, r.value, r.num, r.den, r.members,
+  SELECT r.metric, r.rn, r.instant, date_trunc(a.at_grain, r.instant) AS period, r.value, r.num, r.den,
          coalesce(a.additivity, 'none') AS additivity, a.at_grain, a.window_periods
   FROM rows_ r JOIN asked a USING (metric)
   WHERE r.instant IS NOT NULL),
@@ -406,9 +407,10 @@ filled AS (
   WHERE e.additivity = 'additive'
     AND NOT EXISTS (SELECT 1 FROM total t WHERE t.metric = e.metric AND t.period = g.period)),
 long AS (
-  SELECT w.metric, u.m.dimension AS dimension, u.m.member AS member, w.instant, w.period, w.value, w.num, w.den, w.additivity,
-         max(w.instant) OVER (PARTITION BY w.metric, u.m.dimension, u.m.member, w.period) AS member_last_at
-  FROM windowed w, unnest(w.members) AS u(m)),
+  SELECT w.metric, c."column" AS dimension, coalesce(c.val, 'NULL') AS member, w.instant, w.period, w.value, w.num, w.den, w.additivity,
+         max(w.instant) OVER (PARTITION BY w.metric, c."column", coalesce(c.val, 'NULL'), w.period) AS member_last_at
+  FROM windowed w JOIN cells c ON c."table" = w.metric AND c.rn = w.rn
+  JOIN asked a ON a.metric = w.metric AND list_contains(a.dims, c."column")),
 weights AS (
   SELECT metric, dimension, member,
          row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(abs(value)) DESC NULLS LAST, member) AS rank
