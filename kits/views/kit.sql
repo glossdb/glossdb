@@ -1100,8 +1100,10 @@ set_on AS (
   SELECT DISTINCT g.aspect, split_part(g.subject, '.', 2) AS view FROM main.glossary g
   WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
     AND g.aspect IN (SELECT set_by FROM expected WHERE set_by IS NOT NULL)),
+-- a test's evidence is the stored result of its property: no other result is read
 evidence AS (
-  SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements WHERE dataset = current_schema()
+  SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements
+  WHERE dataset = current_schema() AND aspect IN (SELECT aspect FROM main.tests)
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
 view_columns AS MATERIALIZED (
   SELECT table_name AS view, column_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW'),
