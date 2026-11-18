@@ -13,7 +13,7 @@ is refused.
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| Statement-type lock: a connection that refuses DuckDB's own administrative statements, checked after planning by statement type | Low. The hooks are measured below. One wrinkle: the extension runs its own statements on the same connection | Extension: a per-connection state with a one-way switch, its tests. Server: `channel()` switches it for a non-admin after its own `SET`s; `admitted`, `words`, `after_comments` and `Session::admit` are deleted; both suites. Docs: statements.md, sql-here.md, installation | Next | drafted below |
+| Statement-type lock: a connection that refuses DuckDB's own administrative statements, checked after planning by statement type | Low. The hooks are measured below. One wrinkle: the extension runs its own statements on a second connection it opens per statement | Extension: a per-connection state with a one-way switch, its tests. Server: `channel()` switches it for a non-admin after its own `SET`s; `admitted`, `words`, `after_comments` and `Session::admit` are deleted; both suites. Docs: statements.md, sql-here.md, installation | Next | drafted below |
 | A source's reads are confined to its declared location. Today a load query can read outside it, for example `read_parquet('../other/file.parquet')` | Medium. DuckDB's file settings apply to the whole instance, so the check is per load: on the plan of the load query, or on the paths it opens | Extension: the load (`IMPORT`, `DECLARE RECIPE`, `PREVIEW`), the refusal text, its tests. Server: both suites; `docs/usage/load.md` and `docs/reference/interfaces.md` say what is refused | With table access | |
 | Table access: what a statement reads and writes, per user, checked on the query plan | Medium. The hook is unmeasured. A metric is a view, so reading it plans its base tables. The catalog tables are read by everyone and written only through glossql statements | Extension: a walk over the plan, the refusal text. Server: who holds which grant | When a workspace has a second user | |
 | Roles and grants stored in the catalog | High. `GRANT` is grammar, so it goes through the corpus | SPEC and corpus (extension); the catalog; the server's config | After table access shows the need | |
@@ -31,10 +31,11 @@ is refused.
 - The optimizer hook sees every plan except `PREPARE`'s, so table
   access can walk `LogicalGet`, `LogicalInsert`, `LogicalUpdate`,
   `LogicalDelete` and the create operators with their catalog entries.
-- The extension runs its inner statements on the caller's connection
-  (`Inner`, `src/include/glossql_grammar.hpp`). `IMPORT` runs `SET
-  search_path` and `SET file_search_path`, so `Inner` is exempt from
-  the lock.
+- The extension runs its inner statements on a second connection it
+  opens per statement (`Inner`, `src/include/glossql_grammar.hpp`).
+  `IMPORT` runs `SET search_path` and `SET file_search_path` there.
+  Whether the lock has to exempt that connection is measured again
+  with the first row.
 - DuckDB's server mode has an authorization callback for its own wire
   protocol only. glossdb embeds the engine, so it does not apply.
 - The Rust crate keeps the statement type and the raw connection

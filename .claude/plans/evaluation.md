@@ -16,7 +16,7 @@ Two cases, by what the source is:
 
 | Element | Risk | What it touches | When | Issue |
 |---|---|---|---|---|
-| A change that empties a served column is not named. A view defined again with a broken expression took a column from 0 to 81% NULL (272,821 of 338,186 rows) and no test or `next` row said so; in the running state on FERC three later years were loaded and `next` showed 0 rows come and 0 gone | Medium: it is what the layer adds over a built table | the views kit (a column held against its state before a load or a new definition), `load_changes()`, `next` | Next | #243 |
+| A change that empties a served column: `completeness_test` judges each served column after a load and a new definition. The two cases that showed the gap (a column from 0 to 81% NULL on `eia-generators`; the running state on FERC) are replayed on the branch `snapshot-version` | Medium: it is what the layer adds over a built table | glossval's replays, `next` | With the glossval round | #243 |
 | The running state on `eia-generators`; a third `erp-supply` run; the scorer's "handled" rule for a fault the builder removes at load (the second date format) | Low | glossval | With the row above | |
 | The read stage: a second agent reads the built lake with DuckDB, `ducklake` and glossql and answers questions; against the same agent on the sources | Medium | glossval | After the running state | |
 | The rejected lines of a CSV load are readable after the load, not only counted | Low | the extension's runner (`reject_errors` lives in the load's own connection) | After the first runs | |
@@ -92,10 +92,11 @@ numbers come from real data with a reference we did not write.
 
 ## Next issue (draft)
 
-**A served column that empties is named.** What it buys: a load or a
-new definition that takes a column of a served view from filled to
-mostly NULL, or drops its rows, is a row in `next` with the column
-and both shares. What is there: `column_profile` per column of a
-table view, `load_changes()`, the two cases above in glossval's runs
-(`eia-generators` 113746Z, the FERC running replay). Done when: on
-both cases replayed, `next` names the column and the period.
+**The glossval round on `snapshot-version`.** What it buys: the scores
+of the three test cases and the goldens' differences on the branch
+that holds the dependency mechanism and the cut, before the pull
+requests. What is there: glossval's `evals/` and `goldens/`, the image
+built from the two checkouts. Done when: each test case has a run on
+the branch, the two replays above say whether `next` names the emptied
+column and the period, the goldens' differences are each explained,
+and the "Measured" paragraph above carries the new commits.

@@ -34,8 +34,9 @@ them without real data is the hard part, and it widens every suite.
   (docling); it runs per deployment, since the text is customer
   content.
 - `glossql_service` calls a service from SQL with one table in and one
-  out. The forecast and the scenario estimate use it. The scalar
-  form, one text in and one vector out, is new with `embed`.
+  out. No shipped kit calls it while the `outlook` kit is offloaded.
+  The scalar form, one text in and one vector out, is new with
+  `embed`.
 - What each gives the layer. A workbook's formula becomes a metric
   definition whose basis names workbook, sheet and cell, checked
   against the value the workbook stored. A passage is cited by key

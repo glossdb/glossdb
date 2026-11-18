@@ -42,12 +42,10 @@ Cowork, and ChatGPT render it; Claude Code does not. Limits:
   for the model and nothing a person can open. The MCP endpoint does
   not know the server's address: `own_uri` reaches the console's
   routers (`crates/serverd/src/lib.rs`) and not the MCP code.
-- The question forms render in Claude Code and not in claude.ai. The
-  server skips them when the client lacks the capability
-  (`question_review` in `mcp.rs`), and the questions reach the person
-  as text. The model cannot record an answer: what arrives over MCP
-  is stored as the agent's, and SPEC.md §1 keeps an agent from
-  answering as a person.
+- The server sends no question forms over MCP: an open question
+  reaches the person as text and as a row of `next`. The model cannot
+  record an answer: what arrives over MCP is stored as the agent's,
+  and SPEC.md §1 keeps an agent from answering as a person.
 - The console stores a decision as the person's, by cookie
   (`crates/apps/src/decide.rs`). A page refreshes only after its own
   write (`HX-Trigger: glossql:written`, and `glossql:remeasured` from
