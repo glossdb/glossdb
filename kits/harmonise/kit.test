@@ -762,6 +762,89 @@ GLOSS contract ON sales.orders.order_id AS $${"type": "VARCHAR", "required": tru
 statement ok
 SELECT reconciliation() FROM orders;
 
+# the north's join over its customers drops the order of an unknown customer; its status condition leaves out a
+# cancelled order and the south's date condition its January: those rows are counted apart, not as missing. The
+# north is compared on its key and the region it looks up, the south on its key
+query TTIIIITT
+SELECT r.system, r.period, r.source_rows, r.excluded_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' '), array_to_string(r.compared_on, ' ')
+FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "period": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"], "compared_on": ["VARCHAR"]}]')) t(r)
+WHERE m.function = 'reconciliation' AND m.subject = 'sales.orders' ORDER BY ALL;
+----
+north	2026-01-01	2	0	2	0	(empty)	order_id region
+north	2026-02-01	1	1	1	0	(empty)	order_id region
+north	2026-03-01	2	0	1	1	N-6, C9	order_id region
+south	2026-01-01	0	2	0	0	(empty)	order_id
+south	2026-02-01	2	0	2	0	(empty)	order_id
+south	2026-03-01	2	0	2	0	(empty)	order_id
+
+# 1 of the 9 rows the conditions keep does not arrive: the test is red, a must of next
+query TTR
+SELECT n.level, t.state, t.score FROM view_tests() t JOIN next n ON n.asset = 'sales.orders' AND n.open LIKE 'reconciliation_test%'
+WHERE t.test = 'reconciliation_test' AND t.view = 'orders';
+----
+must	red	0.1111111111111111
+
+# a view that groups, its key looked up in a mapping table: the north's two bins of A1 are one served row, its
+# blocked row is left out by the condition, and A9 has no row in the mapping table
+statement ok
+COPY (FROM (VALUES ('A1', 'W1', 10, 'D'), ('A1', 'W1', 5, 'D'), ('A2', 'W1', 7, 'D'), ('A9', 'W1', 3, 'D'), ('A2', 'W1', 4, 'B'))
+      t(item, site, qty, status)) TO '{TEST_DIR}/north_stock.csv' (HEADER);
+
+statement ok
+COPY (FROM (VALUES ('s-1', 'X', 8), ('s-1', 'X', 2), ('s-2', 'X', 6)) t(item, site, qty)) TO '{TEST_DIR}/south_stock.csv' (HEADER);
+
+statement ok
+COPY (FROM (VALUES ('north', 'A1', 'P1'), ('north', 'A2', 'P2'), ('south', 's-1', 'P1'), ('south', 's-2', 'P2'))
+      t(system, local, global_item)) TO '{TEST_DIR}/items.csv' (HEADER);
+
+statement ok
+DECLARE RECIPE north_stock ON sales FROM north AS $$SELECT * FROM read_csv('north_stock.csv')$$;
+
+statement ok
+DECLARE RECIPE south_stock ON sales FROM south AS $$SELECT * FROM read_csv('south_stock.csv')$$;
+
+statement ok
+DECLARE RECIPE items ON sales FROM north AS $$SELECT * FROM read_csv('items.csv')$$;
+
+statement ok
+DECLARE ASPECT stock WITH $${"title": "Stock per item and site", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS stock ON sales AS $${"sql": "SELECT 'north' AS source_system, i.global_item AS item, s.site, sum(s.qty) AS qty FROM north_stock s JOIN items i ON i.system = 'north' AND i.local = s.item WHERE s.status = 'D' GROUP BY ALL UNION ALL SELECT 'south', i.global_item, t.site, sum(t.qty) FROM south_stock t JOIN items i ON i.system = 'south' AND i.local = t.item GROUP BY ALL"}$$;
+
+statement ok
+GLOSS entity ON sales.stock AS $${"value": "the stock of one item at one site", "grain": ["item", "site"]}$$;
+
+statement ok
+GLOSS contract ON sales.stock.item AS $${"type": "VARCHAR", "required": true}$$;
+
+statement ok
+SELECT reconciliation() FROM stock;
+
+query TIIIIT
+SELECT r.system, r.source_rows, r.excluded_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' ')
+FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"]}]')) t(r)
+WHERE m.function = 'reconciliation' AND m.subject = 'sales.stock' ORDER BY ALL;
+----
+north	4	1	2	1	A9, W1
+south	3	0	2	0	(empty)
+
+# A9 mapped: every row the condition keeps is under a served group, and the test is green
+statement ok
+COPY (FROM (VALUES ('north', 'A1', 'P1'), ('north', 'A2', 'P2'), ('north', 'A9', 'P9'), ('south', 's-1', 'P1'), ('south', 's-2', 'P2'))
+      t(system, local, global_item)) TO '{TEST_DIR}/items.csv' (HEADER);
+
+statement ok
+IMPORT items;
+
+statement ok
+SELECT reconciliation() FROM stock;
+
+query TR
+SELECT state, score FROM view_tests() WHERE test = 'reconciliation_test' AND view = 'stock';
+----
+green	0.0
+
 # a view of two branches with no column that names the system: not applicable, and next asks for the column. The
 # key built by an expression in the south is named in the notes
 statement ok
