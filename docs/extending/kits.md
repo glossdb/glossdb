@@ -8,15 +8,13 @@ reads. It does not add grammar.
 
 | Kit | From | Adds |
 |---|---|---|
-| `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions`, `workspace_status` |
+| `core` | glossdb | review decisions, load-query approvals and apps as annotations; the views `open_questions`, `review_decisions`, `view_definitions`, `ranked_annotations` |
 | `lineage` | the extension | `lineage(dataset)`, the lineage as one relation; the read functions a function's body reads through: `annotations()`, `results()`, `definition()` |
-| `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`, `definitions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
+| `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
-| `views` | glossdb | `view_summary()`, `metric_series()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
-| `plan` | glossdb | preview: a plan against its metric's actual, as a function an actor may run, with no model service; the server serves the rest without it |
+| `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `series_axes()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
 | `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
-| `outlook` | glossdb | preview: expected ranges, forecasts and scenario estimates from a model service, as functions an actor may run; the server serves the rest without it |
-| `goals` | glossdb | `results_due()`, `load_changes()` and `next` |
+| `goals` | glossdb | `results_due()`, `results_moved_since()`, `load_changes()` and `next` |
 
 The server loads them at each start, in this order. A kit the lake
 already recorded with the same text runs nothing. The extension also
@@ -71,8 +69,8 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
 - **An expectation** is a `FACT` property that a function returns
   and a test scores, without `x-subject`. It is set where someone
   annotates it, and is not required on the other assets:
-  `tested_properties()` lists these, and `next` and
-  `workspace_status` count each on the assets that carry it.
+  `tested_properties()` lists these, and `next` counts each on the
+  assets that carry it.
 - **A measurement** is a function with `RETURNS`. Its body is one SQL
   query. `$subject` is the asset it runs over, and
   `subject_column($subject)` is that column as a relation with one

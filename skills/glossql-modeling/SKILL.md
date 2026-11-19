@@ -1,6 +1,6 @@
 ---
 name: glossql-modeling
-description: The judgment inside each kind of work on a glossdb dataset — which kind of view fits the request, what a table is, which joins hold, how a measure adds up, what the data can settle before a person is asked, and what to hand back. Use with the glossql skill for any substantive work in a workspace; its references cover loading, defining views, tests, time grains, the preview features and the other interfaces.
+description: The judgment inside each kind of work on a glossdb dataset — which kind of view fits the request, what a table is, which joins hold, how a measure adds up, what the data can settle before a person is asked, and what to hand back. Use with the glossql skill for any substantive work in a workspace; its references cover loading, defining views, tests, time grains and the other interfaces.
 ---
 
 # Modeling: the judgment in each kind of work
@@ -156,6 +156,5 @@ row count, a metric's total. Then report in three lists:
 | `references/harmonise.md` | several systems of record mapped onto one target table: the branches, the contract, the mapping, the reconciliation (preview) |
 | `references/tests.md` | the built-in tests, tests of your own, tolerances |
 | `references/time-grains.md` | reading a metric: grains, windows, dimensions |
-| `references/preview.md` | expected ranges, forecasts, plans, scenarios (preview) |
 | `references/interfaces.md` | the console, the query endpoint, exports |
 | `skill://glossql/references/review.md` | assumptions, review decisions, conflicts |

@@ -10,13 +10,10 @@ decisions AS (
   FROM review_decisions r JOIN d ON d.dataset = r.dataset
   WHERE r.stance IN ('confirmed', 'corrected')
   GROUP BY r.aspect),
-annotations AS (
-  SELECT g.subject, g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at,
-         row_number() OVER (PARTITION BY g.subject, g.aspect
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.actor_kind IN ('human', 'agent')),
-cur AS (SELECT subject, aspect, actor_kind, actor_id, body, written_at FROM annotations WHERE rn = 1),
+cur AS (
+  SELECT g.subject, g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.rank = 1),
 states AS (SELECT subject, state FROM GLOSSARY() WHERE aspect = 'meaning'),
 joined AS (
   SELECT path, count(*) AS n FROM (
@@ -36,8 +33,7 @@ views AS (
            || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
   FROM view_definitions s
   CROSS JOIN d
-  LEFT JOIN decisions r ON r.aspect = s.name
-  WHERE s.kind <> 'plan'),
+  LEFT JOIN decisions r ON r.aspect = s.name),
 cols AS (
   SELECT json_extract_string(m.body, '$.term') AS term,
          substr(m.subject, len(d.dataset) + 2) AS name, 'column' AS kind,

@@ -62,19 +62,24 @@ decisions to apply), and `window:` after a read of `metric_series()`.
 Read the list after a piece of work, in a call of its own:
 
 ```sql
-SELECT level, kind, asset, state, open, cause, statement FROM next WHERE level <> 'could'
+SELECT level, kind, asset, state, open, statement FROM next WHERE level <> 'could'
 ```
 
 `kind` is the row's kind of work. Each row has a statement that opens
-it; `<…>` marks what you fill in. `cause` says what the newest load
-changed. `level` says how much the row matters:
+it; `<…>` marks what you fill in. A comment line (`--`) above a
+statement says why the row is open, or which of two statements it is
+and when to take it; a statement a person must decide is handed
+commented out. Where data changed under the row, a comment names the read
+that says what the newest load changed, `load_changes()`. `level` says how much the row matters:
 
-- `must`: served data is wrong or cannot be served. A red test, a view
-  that serves nothing, a conflict between two values, a decision a
-  person made that the definition does not carry yet.
+- `must`: served data is wrong or cannot be served. A red test (a
+  metric that serves no series is one: `series_test`), a conflict
+  between two values, a decision a person made that the definition
+  does not carry yet.
 - `should`: the layer is incomplete for what is served. A missing or
-  outdated annotation on what a view reads or serves, a join with no
-  declared relationship, a test not run,
+  outdated annotation on what a view reads or serves, a test not run
+  or yellow with a fix (a join with no declared relationship is one:
+  `relationship_test`), a load that does not fit what the source sends,
   an assumption waiting for a person, a stored result out of date.
 - `could`: what sits beside it, such as the tables no view reads. Read
   it on request: `SELECT kind, asset, open, statement FROM next WHERE
@@ -297,9 +302,9 @@ queue:
 SELECT aspect, key, assumption, basis, conf FROM open_questions
 ```
 
-A person confirms or corrects it in the console, or in a form the
-interface sends with your calls. Where the client shows no forms, ask
-in chat. The decision is stored as the person's annotation. It then
+A person confirms or corrects it in the console. Where the person is
+in chat with you, ask there and tell them to record the answer in the
+console. The decision is stored as the person's annotation. It then
 appears in `next` as a `review` row, with the definition to record
 again. Do not ask a person for something the
 data can tell you: measure it. More: `references/review.md`.
@@ -326,15 +331,14 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 |---|---|
 | `next` | what is open on the dataset: `level` (`must`, `should`, `could`), `kind` (the kind of work), the statement that opens it |
 | `view_summary()` | one row per view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
-| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `formula`, `defined`, `stopped` |
+| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
 | `fact_values()` | each single value: `view`, `value`, `reason` |
-| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
+| `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. `view := '<metric>'` reads one metric alone. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
 | `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
 | `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
 | `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |
-| `workspace_status` | what the workspace holds |
 | `datasets`, `sources`, `recipes`, `imports`, `relationships`, `aspects`, `functions`, `tests`, `glossary`, `measurements` | the catalog tables |
 | `pages()` | every page this server serves: `uri`, `title`, `body` |
 
@@ -345,7 +349,7 @@ is `information_schema.columns`.
 
 | Page | When |
 |---|---|
-| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each kind of work; its references: `load.md`, `define.md`, `harmonise.md` (several systems of record onto one table), `tests.md`, `time-grains.md`, `preview.md` (forecasts, plans, scenarios: preview), `interfaces.md` |
+| `skill://glossql-modeling/SKILL.md` | which kind of view; the judgment in each kind of work; its references: `load.md`, `define.md`, `harmonise.md` (several systems of record onto one table), `tests.md`, `time-grains.md`, `interfaces.md` |
 | `references/review.md` | assumptions, review decisions, conflicts |
 | `skill://glossql-apps/SKILL.md` | a data app over the views |
 | `skill://glossql-functions/SKILL.md` | a function of your own |

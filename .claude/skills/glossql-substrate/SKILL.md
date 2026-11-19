@@ -34,9 +34,12 @@ mode; this file is so nobody has to rediscover it.
   in the lake's catalog, served as views in `ws.main`), the catalog reads
   (`GLOSSARY()`, `TESTS()`, the collapse, the tests (`DECLARE TEST`), the
   stale rule), the subjects (a dataset, a table, a column, a relationship,
-  a source, a view and its columns), the lineage of views, the cells
-  of a dataset (`dataset_cells`), a view and a kit's read kept per store
-  version (`glossql_kept_view`, `glossql_kept`), the service call (`glossql_service`), and the kit loader (`glossql_kit`).
+  a source, a view and its columns), the lineage of views (a stored
+  result per view, `SELECT lineage() FROM <view>`), a test's result
+  (a stored result per subject and test, `SELECT <test>() FROM
+  <subject>`), the cells of a dataset (`dataset_cells`), a
+  metric's series summed over a view's typed columns (`series_aggregate`), the service
+  call (`glossql_service`), and the kit loader (`glossql_kit`).
 - **A kit** owns vocabulary about the data: aspects, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
@@ -61,12 +64,11 @@ mode; this file is so nobody has to rediscover it.
   the grammar on, the actor as session variables the extension reads,
   the dataset in use; the catalog reads bare, since the lake's `main`
   schema is on every search path. No interface keeps a cursor.
-- **A read never writes.** The catalog reads, the kept views and the
-  kept reads are computed once per store version — the lake's snapshot
-  and every relation's highest sequence — and served from the object
-  cache; a write moves the version. A read that several reads compose
-  (`view_summary()`, `view_tests()`) is read through
-  `glossql_kept('<macro>')`, so one write plans it once. An arm of
+- **A read never writes, and nothing keeps a read.** The catalog reads
+  (`GLOSSARY()`, `TESTS()`) read stored rows and mark them once per
+  statement; a result is computed by its statement, which the server
+  runs after a write (`results_due()`). A view's rows are data: a read
+  reads the view. An arm of
   `next` joins what it needs instead of a correlated subquery: DuckDB
   plans each correlated subquery as a dependent join and walks the whole
   plan once per such join. An arm of `next` reads the catalog and
@@ -82,9 +84,10 @@ mode; this file is so nobody has to rediscover it.
   additivity, the time grains — are glosses on its columns. A re-gloss of
   the view retires its columns' glosses by the stale rule; the reads
   serve what the catalog says and re-mark nothing.
-- **Measurements carry their provenance.** A measurement is current
-  while its inputs — the data's snapshot and the catalog relations the
-  function read — are unchanged, and is stale once one moved. A
+- **Measurements carry their provenance.** The lake's snapshot id is
+  the only version. A measurement stores the snapshot it read at and
+  one `inputs` row per node it read; it is current while no node it
+  read changed after that snapshot. A
   measurement is no input of a data version: a next step that must compare two
   measurements compares them itself.
 - **A refusal is a value where the kit must hold.** The service
@@ -103,7 +106,7 @@ mode; this file is so nobody has to rediscover it.
 1. Can the kit say it in SQL? Then it is a macro, a function body or
    a next step, with its `.test` beside it in the extension's repository.
 2. Does the extension already have the seam — a subject kind, a read,
-   a kept relation, the service call? Then use it; a missing seam is
+   a stored result, the service call? Then use it; a missing seam is
    a change in `../gloss`, with its test, before anything here.
 3. Is it the interface's — next steps composed, a page served, a
    form, the actor? Then it is the server's, in Rust, thin, over the facade.

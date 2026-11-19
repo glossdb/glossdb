@@ -9,7 +9,6 @@ SELECT n.level || ' · ' || n.kind AS kind,
        n.state,
        CASE n.who WHEN 'person' THEN 'a person' ELSE 'the agent' END AS who,
        n.open,
-       coalesce(n.cause, '') AS cause,
        CASE WHEN n.level = 'must' THEN 'warn' ELSE '' END AS scls,
        (SELECT b FROM base) || CASE n.kind
          WHEN 'describe' THEN 'glossary' WHEN 'test' THEN 'quality'

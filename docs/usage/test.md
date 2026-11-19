@@ -1,7 +1,8 @@
 # Test
 
 A test is a statement about the data that is checked against the
-data. It has a state, and the state is read again after each load.
+data. It has a state, stored per asset, and the server computes it
+again after each write that changes what it read.
 
 | State | Meaning |
 |---|---|
@@ -14,26 +15,34 @@ data. It has a state, and the state is read again after each load.
 
 ## The built-in tests
 
-Each view gets the join and orphan tests, on the tables its definition
-scans; each metric also gets the additivity test; each loaded table
-whose `entity` states a `grain` gets the grain test:
+Each view gets the join, orphan and relationship tests, on the tables
+its definition scans, and the completeness test on each column it
+serves; each metric also gets the additivity and series tests; each
+loaded table whose `entity` states a `grain` gets the grain test:
 
 | Test | Checks | Red when |
 |---|---|---|
 | `join_test` | join fan-out, and effective-dated tables (annotated `validity` with `valid_from`, `valid_to`) | the definition joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without bounding both validity dates, so a row counts once per version. A join on several columns is judged on its key as a whole: a side holds each key once where one of its columns is unique or its columns hold the grain its table states; where neither side does, the test is `yellow` and its fix states the grain |
 | `orphan_test` | referential integrity on the declared relationships between the scanned tables | rows find no parent; the score is the highest orphan rate |
+| `completeness_test` | a column the view serves, against its share of empty values (NULL) before a load or a new definition emptied it. One result per column: a column can be unusable while the others are fine | the column's share of empty values rose by more than the threshold, 0.1, over its last share within it. The score is the rise. The finding gives the share before and now, and the cause: a load, where a table column it is computed from emptied too, else the definition. The test stays red after later loads until the column is filled again or a person accepts the rate on that column. A column that rises by less per load, or was mostly empty before, stays green |
+| `relationship_test` | a declared relationship for each join between two loaded tables | never red: where a join has none, the test is `yellow` and its fix declares it, from the side that repeats the key to the side that holds it once, where a profile or a stated grain says which side that is |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
+| `series_test` | the metric serves a series | no column carries role `timestamp` or role `measure`, or the period column has no grain; the fix is the annotation or the measurement that is missing |
 | `grain_test` | the grain the table's `entity` states, at each load | a key repeats in the loaded rows, such as a line sent twice; the score is the share of rows past the first per key |
 
 The server runs them after a call that defines the view, annotates
 what a test reads or loads a table the view scans. They read the
 definition's lineage and stored measurements: `column_profile()` on
-the join columns, `relationship_coherence()` on each declared
+the join columns and on each column the view serves, with the values
+each profile held before, `relationship_coherence()` on each declared
 relationship between the scanned tables. The server computes those
 first, from what each test's check reads. A test whose evidence is
 missing is `yellow` and its `reason` names the measurement to run. A
-table view and a single value carry the join and orphan tests, the
-tests on what they read and the tests you declare on them.
+table view and a single value carry the join, orphan, relationship and
+completeness tests, the tests on what they read and the tests you declare on them.
+The harmonise kit (preview) adds `contract_test`, `code_test` and
+`reconciliation_test` on a target view that carries a data contract
+([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ## Read the results
 
@@ -45,17 +54,32 @@ SELECT view, test, subject, state, score, run FROM view_tests();
 columns it reads, worst first. `evidence` holds the check's result,
 `run` the statement that runs it again; it is empty for a test that
 compares annotations, which no function measures. A test on a result
-about the dataset as a whole or about a plan is a row too, with an
-empty `run`: an actor stores that result, and the server does not
-compute it after a write. A person accepts a red `range_test` with a
-`tolerance` on the dataset. The preview tests `range_test` and
-`plan_test` come in this way once their result is stored
-([outlook](outlook.md)). `TESTS()` is the language's own read, for
-any asset:
+about the dataset as a whole is a row too, with an empty `run`: an
+actor stores that result, and the server does not compute it after a
+write. `TESTS()` is the language's own read, for any asset:
 
 ```glossql
 SELECT subject, test, state, score, current FROM TESTS() WHERE state <> 'green';
 ```
+
+A test's result is stored per asset and test, with what it read: the
+asset's values of the property, the asset's definition, and the
+declarations of the test and its detector. After each write the
+server runs `SELECT <test>() FROM <dataset>` for each test whose
+results are missing or out of date; the statement computes those
+assets alone. `current` is false while a stored result is out of
+date. A check that reads other functions' results, such as a profile,
+runs again when one of those results changes value
+([how results stay current](../reference/dependencies.md)). A test
+judges each asset alone. A detector that compares assets with each
+other is refused (`cross_subject`): declare such a test on the table
+or the dataset that holds the assets.
+
+A red test is a failed test. It does not withhold a value: only two
+values of one property that differ beyond the test's threshold are a
+`conflict` ([tests on annotations](#tests-on-annotations)). A test
+with nothing to check is green, and its `reason` says why: `orphan_test`
+on a view that joins over no declared relationship, for example.
 
 ## A test brings its finding and fix
 
@@ -68,7 +92,7 @@ is a `should`. A red test of your own without a `fix` gets the check
 to run again and the annotation that records an accepted rate:
 
 ```sql
-SELECT level, asset, state, open, cause, statement FROM next WHERE kind = 'test';
+SELECT level, asset, state, open, statement FROM next WHERE kind = 'test';
 ```
 
 ```
@@ -76,8 +100,11 @@ orphan_test: 4.6% of rows on sales.orders.customer_id -> sales.customers.custome
 find no parent: an inner join drops them, an outer join keeps them with empty parent columns
 ```
 
-`cause` says what the newest load changed in the tables the view
-reads.
+What the newest load changed in each table is a read of its own:
+
+```sql
+SELECT table_name, cause FROM load_changes();
+```
 
 ## Accept a result
 
@@ -133,8 +160,8 @@ SELECT reading_filled_check() FROM readings;
    (`BY`) and the detector.
 4. **The annotation** sets the test on that asset: a table, or a
    column for a property declared `ON COLUMN`. The test is on the
-   assets that carry the expectation and on no other; `next` and
-   `workspace_status` count it there.
+   assets that carry the expectation and on no other; `next` counts
+   it there.
 5. **The detector** `rate_tolerance` compares the two: green at or
    under the tolerance, red above it, yellow while no check result
    exists. It reads a person's tolerance first, then an agent's, then

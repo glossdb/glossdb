@@ -964,7 +964,6 @@ gl-query .table-foot .wbtn { margin-left: 0.4rem; }
 dl.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.9rem 2rem; margin: 0; }
 dl.facts dt { font-family: var(--mono); font-size: var(--step); color: var(--faint); letter-spacing: 0.06em; text-transform: uppercase; }
 dl.facts dd { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
-.preview { font-family: var(--mono); font-size: 0.68rem; color: var(--open); border: 1px solid currentColor; border-radius: 2px; padding: 0 0.3rem; margin-left: 0.4rem; letter-spacing: 0.04em; text-transform: lowercase; }
 
 /* ---- the overview's five functions -------------------------------- */
 .steps gl-rows { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); margin-top: 1rem; }

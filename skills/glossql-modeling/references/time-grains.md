@@ -48,7 +48,9 @@ One row per metric, dimension, member and period: `metric`, `world`,
 - With a grain, every metric whose floor is that grain or finer is
   served at it; a metric with a coarser floor serves no rows. Without
   a grain, each metric is served at its own floor.
-- The metric is a `WHERE` filter, not an argument.
+- `view := '<metric>'` reads one metric's rows alone:
+  `metric_series(view := 'revenue', grain := 'month')`. Without it,
+  every metric is served.
 - An additive metric's empty period is a zero, up to the newest date
   any served metric reaches. A semi-additive metric's or a ratio's
   empty period is no row.
@@ -56,9 +58,9 @@ One row per metric, dimension, member and period: `metric`, `world`,
   `other`.
 - Where rows must be combined and the value column has no
   `additivity`, the read refuses and names the annotation to write.
-  `metric_series(unclaimed := 'skip')` serves the other metrics.
-- `world` is `actual` unless you ask for a preview feature's numbers
-  (`references/preview.md`).
+  `metric_series(unclaimed := 'skip')` serves the other metrics. A
+  read with `view :=` refuses only for that metric.
+- `world` is `actual`.
 
 What each metric is served from, and what it still needs:
 

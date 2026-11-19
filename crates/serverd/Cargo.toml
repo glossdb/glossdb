@@ -67,6 +67,9 @@ tempfile.workspace = true
 # only ever verifies. Already in the tree through jsonwebtoken, whose
 # pin this follows so one copy is in the tree (.github/dependabot.yml).
 ed25519-dalek = { version = "2", features = ["pkcs8"] }
+# The standards suite validates the exports against the pinned schemas
+# (JSON Schema draft 2020-12), offline.
+boon = "0.6"
 
 [lints]
 workspace = true

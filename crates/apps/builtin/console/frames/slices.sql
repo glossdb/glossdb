@@ -5,7 +5,7 @@ SELECT period, member AS series, value, num, den, additivity
 FROM (
   SELECT period, member, value, num, den, additivity,
          dense_rank() OVER (ORDER BY period DESC) AS recency
-  FROM metric_series(grain := $grain)
-  WHERE metric = CAST($view AS VARCHAR) AND dimension = CAST($dim AS VARCHAR))
+  FROM metric_series(view := CAST($view AS VARCHAR), grain := $grain)
+  WHERE dimension = CAST($dim AS VARCHAR))
 WHERE CAST($span AS VARCHAR) = 'all' OR recency <= TRY_CAST($span AS INT)
 ORDER BY period, series

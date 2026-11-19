@@ -81,5 +81,5 @@ lists the sign-in settings.
 
 The server opens the lake, replaces the catalog's views, and runs the
 kits in order: `core`, the extension's `kpi` and `quality`, `views`,
-`plan`, `outlook`, `goals`. A kit the lake already recorded with the same text
+`harmonise`, `goals`. A kit the lake already recorded with the same text
 runs nothing. Then it listens.

@@ -42,6 +42,11 @@ DECLARE RECIPE deliveries ON logistics FROM fleet_export AS $$
   FROM read_parquet('deliveries/*.parquet')$$;
 ```
 
+A load query is DuckDB SQL. It reads files through DuckDB's readers,
+`read_parquet`, `read_csv` and `read_json`, with paths under the
+source's `location`, or the tables of the database a `relational_db`
+source names.
+
 The table is named after the load query. Name the columns: a schema
 change at the source then fails at the next load.
 
@@ -148,9 +153,11 @@ carries 99.84% to 99.99% of the generators of the month before; a
 yearly filing of FERC Form 1 carries 3.7% to 13.2% of the rows filed
 before it.
 
-Annotations stay across loads. An annotation on a column the new load
-redefined, retyped or dropped reads `stale`
-([describe](describe.md#states)). After a load the server runs the
+Annotations stay across loads. A load whose columns differ from the
+table's alters the table in place. An annotation on a column the new
+load redefined, retyped or dropped reads `stale`
+([describe](describe.md#states)); a column added leaves the others
+current ([how results stay current](../reference/dependencies.md)). After a load the server runs the
 built-in tests of each metric that reads the table
 ([test](test.md)), and `next` says what the load changed: the row
 counts and the columns whose profile moved.

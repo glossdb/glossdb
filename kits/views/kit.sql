@@ -53,11 +53,10 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 
 --===------------------------------------------------------------------===--
 -- view_summary(): one row per view of the bound dataset (a metric, a
--- table, a single value, a plan) — a VIEW aspect whose definition is a
+-- table, a single value) — a VIEW aspect whose definition is a
 -- view — what the catalog says its columns are
 -- and whether a series can be served: view, kind (the aspect's x-kind),
--- plan_of and covers (a plan's metric and the grain its rows are booked
--- against), stopped (the author's text), applicable (a series can be
+-- stopped (the author's text), applicable (a series can be
 -- served), reason (what is missing when it cannot), period_column,
 -- value_column, numerator and denominator
 -- (a ratio's halves), grain_detected (the grain temporal() measured on the
@@ -81,28 +80,27 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- (x-kind scalar) have no series: applicable, period_column,
 -- grain_detected, floor and window_periods are NULL for them, and
 -- reason is filled only where the view is stopped or its definition
--- serves no view. A plan (x-kind plan) is
--- read through the metric it names: its period and value are the columns
--- named as that metric's, or period and value, its additivity the metric's,
--- its floor the grain its rows are booked against where the declaration
--- says so (x-covers); nothing is annotated on a plan's own columns.
+-- serves no view.
 --
--- view_rows(): the same rows, unordered.
+-- view_kinds(): view, kind and stopped alone, from each view's newest
+-- definition, for a read that needs no more of the summary than which
+-- views there are (view_tests(), fact_values(), column_mapping());
+-- view_summary() reads its rows from it.
 --
--- view_axes(): what a function's body reads of the same, through the read
--- functions alone (the lineage kit's), on the subject's dataset: one row
--- per served view — view, kind, plan_of, covers, stopped, applicable,
--- reason, period_column, value_column, numerator, denominator, floor,
--- window_periods, additivity, additivity_state, dims, columns (the view's
--- columns by name). It reads the views'
--- definitions, role, additivity, dimension and time_grains, and the
--- temporal profiles, on the dataset's metrics: a plan is no row here
--- (the plan kit's plan_axes_of()). A view whose definition serves no
--- view has no row.
+-- view_axes(): what metric_series() reads of the same, through the read
+-- functions alone (the lineage kit's), so that a function's body can read
+-- a series, on the subject's dataset: one row per served view — view,
+-- kind, stopped, applicable, reason, period_column, value_column,
+-- numerator, denominator, floor, window_periods, additivity,
+-- additivity_state, dims, columns (the view's columns by name), newest
+-- (the latest instant in the period column, as its temporal profile
+-- measured it). It reads the views' definitions, role, additivity,
+-- dimension and time_grains, and the temporal profiles, on the dataset's
+-- metrics. A view whose definition serves no view has no row.
 --===------------------------------------------------------------------===--
 
--- series_reason(…) and plan_reason(…): why a view serves no series, NULL
--- where it does; view_rows() and view_axes() judge alike.
+-- series_reason(…): why a view serves no series, NULL where it does;
+-- view_summary() and view_axes() judge alike.
 CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS
   CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
        WHEN NOT served THEN 'the definition serves no view'
@@ -121,41 +119,29 @@ CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, pe
             'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
   END;
 
-CREATE OR REPLACE MACRO main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS
-  CASE WHEN stopped IS NOT NULL THEN 'stopped: ' || stopped
-       WHEN plan_of IS NULL THEN 'a plan names the metric it plans: declare it with x-plan-of'
-       WHEN NOT of_declared THEN 'x-plan-of names ' || plan_of || ', which no VIEW aspect declares on this dataset'
-       WHEN NOT served THEN 'the metric definition serves no view'
-       WHEN covers IS NOT NULL AND covers NOT IN ('quarter', 'year') THEN 'x-covers names the grain a row is booked against, year or quarter — ' || covers || ' is neither'
-       WHEN NOT of_applicable THEN 'the metric it plans is not served: ' || of_reason
-       WHEN period_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_period, 'period') || ' (its metric''s period) nor period'
-       WHEN value_column IS NULL THEN 'the plan serves no column named ' || coalesce(of_value, 'value') || ' (its metric''s value) nor value'
-  END;
+CREATE OR REPLACE MACRO main.view_kinds() AS TABLE
+SELECT g.aspect AS view, json_extract_string(a.schema, '$.x-kind') AS kind, json_extract_string(g.body, '$.stopped') AS stopped
+FROM main.glossary g JOIN main.aspects a ON a.name = g.aspect AND a.kind = 'VIEW'
+WHERE g.dataset = current_schema() AND g.subject = current_schema()
+QUALIFY row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) = 1;
 
-CREATE OR REPLACE MACRO main.view_rows() AS TABLE
+CREATE OR REPLACE MACRO main.view_summary() AS TABLE
 WITH ds AS (SELECT current_schema() AS dataset),
 aspects AS (SELECT name, schema FROM main.aspects WHERE kind = 'VIEW'),
 views AS (
   SELECT DISTINCT c.table_name AS view FROM glossql_columns(current_schema()) c
   WHERE c.table_type = 'VIEW' AND c.table_name IN (SELECT name FROM aspects)),
-bodies AS (
-  SELECT aspect AS view, body FROM (
-    SELECT g.aspect, g.body, row_number() OVER (PARTITION BY g.aspect ORDER BY g.begin_snapshot DESC) AS rn
-    FROM main.glossary g, ds
-    WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND g.aspect IN (SELECT name FROM aspects)) WHERE rn = 1),
+bodies AS (SELECT view, stopped FROM main.view_kinds()),
 cols AS (
   SELECT c.table_name AS view, c.column_name AS col, c.ordinal_position AS pos
   FROM glossql_columns(current_schema()) c
   WHERE c.table_name IN (SELECT view FROM views)),
 annotated AS MATERIALIZED (
   SELECT split_part(subject, '.', 2) AS view, substr(subject, length(split_part(subject, '.', 1)) + length(split_part(subject, '.', 2)) + 3) AS col, aspect, value, state
-  -- one read per property: a result reads the stored results of these five alone
-  FROM (FROM glossql_glossary(current_schema(), 'role', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'additivity', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'dimension', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'time_grains', false)
-        UNION ALL FROM glossql_glossary(current_schema(), 'temporal_profile', false))
-  WHERE len(string_split(subject, '.')) >= 3
+  -- the dataset's glossary, read once by every read of one statement that reads it whole
+  FROM glossql_glossary(current_schema(), NULL, false)
+  WHERE aspect IN ('role', 'additivity', 'dimension', 'time_grains', 'temporal_profile')
+    AND len(string_split(subject, '.')) >= 3
     AND split_part(subject, '.', 2) IN (SELECT view FROM bodies)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT view, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -207,9 +193,7 @@ without_role AS (
 rows_ AS (
   SELECT ch.view,
          json_extract_string(a.schema, '$.x-kind') AS kind,
-         json_extract_string(a.schema, '$.x-plan-of') AS plan_of,
-         json_extract_string(a.schema, '$.x-covers') AS covers,
-         json_extract_string(b.body, '$.stopped') AS stopped,
+         b.stopped,
          ch.period_column, ch.value_column, ch.period_cols, ch.measure_cols, ch.served,
          bh.additivity, bh.numerator, bh.denominator, coalesce(bh.additivity_state, 'none') AS additivity_state,
          pr.grain_detected, coalesce(pr.profile_current, false) AS profile_current,
@@ -235,49 +219,26 @@ judged AS (
     main.series_reason(ds.dataset, view, stopped, served, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
     CASE WHEN period_column IS NOT NULL AND NOT (profiled AND profile_current) AND stopped IS NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')
          THEN ['temporal over ' || ds.dataset || '.' || view || '.' || period_column] ELSE []::VARCHAR[] END AS measurements_to_run
-  FROM rows_, ds WHERE coalesce(kind, '') <> 'plan'),
--- a plan's row: its columns through the metric it plans
-plan_cols AS (SELECT view, list(col ORDER BY pos) AS cols FROM cols GROUP BY view),
-plans AS (
-  SELECT p.view, p.kind, p.plan_of, p.covers, p.stopped, p.served,
-         CASE WHEN list_contains(pc.cols, m.period_column) THEN m.period_column WHEN list_contains(pc.cols, 'period') THEN 'period' END AS period_column,
-         CASE WHEN list_contains(pc.cols, m.value_column) THEN m.value_column WHEN list_contains(pc.cols, 'value') THEN 'value' END AS value_column,
-         m.view IS NOT NULL AS of_declared, m.reason IS NULL AS of_applicable, m.reason AS of_reason,
-         m.period_column AS of_period, m.value_column AS of_value,
-         m.numerator, m.denominator, m.additivity, m.additivity_state
-  FROM rows_ p
-  LEFT JOIN plan_cols pc ON pc.view = p.view
-  LEFT JOIN judged m ON m.view = p.plan_of
-  WHERE p.kind = 'plan'),
-judged_plans AS (
-  SELECT *,
-    main.plan_reason(stopped, plan_of, of_declared, served, covers, of_applicable, of_reason, period_column, of_period, value_column, of_value) AS reason
-  FROM plans)
-SELECT view, kind, plan_of, covers, stopped,
+  FROM rows_, ds)
+SELECT view, kind, stopped,
        CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN grain_detected END AS grain_detected, CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
        additivity, additivity_state, dims, dimensions_without_rank, columns_without_role, missing, measurements_to_run, profile_current
 FROM (SELECT *, coalesce(kind, '') NOT IN ('scalar', 'relation') AS series FROM judged)
-UNION ALL
-SELECT view, kind, plan_of, covers, stopped, reason IS NULL AS applicable, reason,
-       period_column, value_column, numerator, denominator, NULL AS grain_detected, covers AS floor, NULL AS window_periods,
-       additivity, additivity_state, []::VARCHAR[], []::VARCHAR[], []::VARCHAR[], []::VARCHAR[],
-       []::VARCHAR[], true
-FROM judged_plans
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes_of(views_at, columns_at) AS TABLE
+CREATE OR REPLACE MACRO main.view_axes() AS TABLE
 WITH defs AS MATERIALIZED (
-  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, plan_of, covers, stopped, columns
-  FROM definition(views_at)),
+  SELECT split_part(view, '.', 1) AS ds, split_part(view, '.', 2) AS metric, kind, stopped, columns
+  FROM definition('the dataset''s metrics')),
 cols AS (SELECT d.metric, c.name AS col, c.position AS pos FROM defs d, unnest(d.columns) t(c)),
 annotated AS MATERIALIZED (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          property AS aspect, value, state
-  FROM (FROM annotations('role', columns_at) UNION ALL FROM annotations('additivity', columns_at)
-        UNION ALL FROM annotations('dimension', columns_at) UNION ALL FROM annotations('time_grains', columns_at))
+  FROM (FROM annotations('role', 'the dataset''s metrics') UNION ALL FROM annotations('additivity', 'the dataset''s metrics')
+        UNION ALL FROM annotations('dimension', 'the dataset''s metrics') UNION ALL FROM annotations('time_grains', 'the dataset''s metrics'))
   WHERE state <> 'missing' AND len(string_split(asset, '.')) >= 3 AND split_part(asset, '.', 2) IN (SELECT metric FROM defs)),
 claims AS (SELECT * FROM annotated WHERE state IN ('current', 'stale') AND value IS NOT NULL),
 roles AS (SELECT metric, col, value->>'value' AS role FROM claims WHERE aspect = 'role'),
@@ -300,15 +261,17 @@ profiles AS (
   SELECT split_part(asset, '.', 2) AS metric, substr(asset, length(split_part(asset, '.', 1)) + length(split_part(asset, '.', 2)) + 3) AS col,
          CASE WHEN json_extract_string(value, '$.applicable') = 'true'
                    AND json_extract_string(value, '$.granularity') IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
-              THEN json_extract_string(value, '$.granularity') END AS grain_detected
-  FROM results('temporal', columns_at) WHERE value IS NOT NULL),
+              THEN json_extract_string(value, '$.granularity') END AS grain_detected,
+         TRY_CAST(json_extract_string(value, '$.max') AS TIMESTAMP) AS newest
+  FROM results('temporal', 'the dataset''s metrics') WHERE value IS NOT NULL),
 rows_ AS (
   SELECT ch.*,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'value' END AS additivity,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'numerator' END AS numerator,
          CASE WHEN a.state IN ('current', 'stale') THEN a.value->>'denominator' END AS denominator,
          coalesce(CASE WHEN a.state IN ('current', 'stale') THEN a.state ELSE 'conflict' END, 'none') AS additivity_state,
-         coalesce(t.value->>'floor', pr.grain_detected) AS floor, t.value->'windows' AS windows, pr.metric IS NOT NULL AS profiled
+         coalesce(t.value->>'floor', pr.grain_detected) AS floor, t.value->'windows' AS windows, pr.metric IS NOT NULL AS profiled,
+         pr.newest
   FROM chosen ch
   LEFT JOIN annotated a ON a.aspect = 'additivity' AND a.metric = ch.metric AND a.col = ch.value_column
   LEFT JOIN claims t ON t.aspect = 'time_grains' AND t.metric = ch.metric AND t.col = ch.period_column
@@ -316,167 +279,94 @@ rows_ AS (
 judged AS (
   SELECT *, main.series_reason(ds, metric, stopped, true, kind, period_column, period_cols, value_column, measure_cols, floor, profiled) AS reason,
          coalesce(kind, '') NOT IN ('scalar', 'relation') AS series
-  FROM rows_ WHERE coalesce(kind, '') <> 'plan')
-SELECT metric AS view, kind, plan_of, covers, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
+  FROM rows_)
+SELECT metric AS view, kind, stopped, CASE WHEN series THEN reason IS NULL END AS applicable, reason,
        CASE WHEN series THEN period_column END AS period_column, value_column, numerator, denominator,
        CASE WHEN series THEN floor END AS floor,
        CASE WHEN series AND floor IS NOT NULL THEN coalesce(json_extract(windows, '$.' || floor)::INTEGER, main.window_default(floor)) END AS window_periods,
-       additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns
+       additivity, additivity_state, dims, list_transform(columns, lambda c: c.name) AS columns,
+       CASE WHEN series THEN newest END AS newest
 FROM judged
 ORDER BY view;
 
-CREATE OR REPLACE MACRO main.view_axes() AS TABLE FROM main.view_axes_of('the dataset''s metrics', 'the dataset''s metrics');
-
--- view_axes_of(views_at, columns_at) reads the definitions of the views
--- of the place views_at names and the annotations and profiles of the
--- columns of columns_at, constants both: view_axes() the dataset's
--- metrics, a plan's comparison its metric ('its metric' twice), a
--- metric's own forecast the metric and its columns ('itself', 'its
--- columns').
-
--- view_summary() serves view_rows() as kept per store version
--- (glossql_kept): the reads that compose it, view_tests(), `next` and
--- results_due() among them, scan the rows of one computation per write.
-CREATE OR REPLACE MACRO main.view_summary() AS TABLE
-FROM glossql_kept('view_rows') ORDER BY view;
 
 --===------------------------------------------------------------------===--
--- metric_series(grain := NULL, world := 'actual', plan := NULL): the cells
--- of every applicable metric of the bound dataset — metric, world,
+-- metric_series(view := NULL, grain := NULL, unclaimed := 'refuse'): the
+-- cells of one metric of the bound dataset, the view named, or of every
+-- applicable metric where no view is named — metric, world ('actual'),
 -- dimension ('' the total, else a slicing column), member, period (the
 -- bucket's start), value, num and den (a ratio's summed halves), additivity.
--- Without a grain, each metric at its own floor; with one, each metric at
--- or below it at that grain, a metric coarser than the asked grain serving
--- no rows. Only the window is served: the latest window_periods periods
--- of each metric (view_summary() has the number, by default 48 months or
--- 20 years; time_grains `windows` sets it), the newest period the last. A
--- flow sums and fills its total's empty periods with zero up to the data's
--- edge (the last instant any served metric reaches, so a flow whose rows
--- stopped early shows its zeros, not an older window);
--- a stock keeps the bucket's last level, summed over what holds at that
--- instant; a ratio re-divides its summed halves. A dimension wider than 24
--- members serves its top 23 by weight and 'other'. The actual world is
--- this kit's; a plan (world := 'plan', plan := '<name>'), the forecast
--- (world := 'forecast') and a scenario (world := 'scenario', scenario :=
--- '<name>') are served under the metric through world_cells(), each
--- world by the macro of the kit that serves it: world_plan(w, p, g) the
--- plan kit's, world_forecast(w, g) and world_scenario(w, s, g) the
--- outlook kit's, empty here until that kit is loaded. world_series(grain):
--- the same worlds as the series beside a metric's actual one at a grain,
--- as a chart draws them — metric, series (its name), world, period,
--- value, low and high (a range around the value), held (what the range
--- rests on, in words) — from plan_series(g) and forecast_series(g), the
--- same two kits'. range_points() and plan_points(), the two kits' reads
--- the console draws, are empty here too, so a page draws nothing where
--- the kit is not loaded. Each is created only where no macro of its name
--- exists: this kit run again never replaces a kit's real macro.
+-- A named view reads that view's rows alone. Without a grain, each metric at
+-- its own floor; with one, each metric at or below it at that grain, a
+-- metric coarser than the asked grain serving no rows. Only the window is
+-- served: the latest window_periods periods of each metric (view_summary()
+-- has the number, by default 48 months or 20 years; time_grains `windows`
+-- sets it), the newest period the last. A flow sums and fills its total's
+-- empty periods with zero up to the data's edge: the newest instant any
+-- metric served at that grain reaches, as the temporal profile of its
+-- period column measured it, so a flow whose rows stopped early shows its
+-- zeros, not an older window. A stock keeps the bucket's last level, summed
+-- over what holds at that instant; a ratio re-divides its summed halves. A
+-- dimension wider than 24 members serves its top 23 by weight and 'other'.
 --
 -- The no-claim rule: where rows have to be combined — a coarser grain than
 -- the floor, or several rows in one period — and no additivity is annotated on
 -- the value column, the read refuses and names the gloss. It defaults
--- nothing. A list over every metric asks unclaimed := 'skip' instead:
+-- nothing. The refusal concerns the metrics read: a named view refuses for
+-- itself alone. A list over every metric asks unclaimed := 'skip' instead:
 -- such a metric serves no row, and its view_summary() row says what it needs.
+--
+-- The rows are summed by the extension's series_aggregate() over each
+-- asked view's own typed columns, per period and per member of each
+-- dimension, as they are read; series_axes() names the columns at bind.
+-- A function's body reads it as any read: the views' definitions, their
+-- columns' annotations and profiles, and their rows, all through the
+-- dataset's metrics.
 --===------------------------------------------------------------------===--
 
-CREATE MACRO IF NOT EXISTS main.world_plan(w, p, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
+-- series_axes(grain): view_axes() with what series_aggregate() reads of it
+-- at bind: at_grain, the grain a metric's periods start at where it is read
+-- at this grain (its floor where none is asked, none where its floor is
+-- coarser than the grain); by_instant, whether its rows are summed per
+-- instant within a period: a stock keeps the level at the period's last
+-- instant, and a value with no additivity or a non-additive one is checked
+-- for rows that share an instant.
+CREATE OR REPLACE MACRO main.series_axes(grain) AS TABLE
+SELECT *,
+       CASE WHEN applicable AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(floor))
+            THEN coalesce(grain, floor) END AS at_grain,
+       coalesce(additivity NOT IN ('additive', 'ratio'), true) AS by_instant
+FROM main.view_axes();
 
-CREATE MACRO IF NOT EXISTS main.world_forecast(w, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.world_scenario(w, s, g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS world, NULL::VARCHAR AS dimension, NULL::VARCHAR AS member,
-       NULL::TIMESTAMP AS period, NULL::DOUBLE AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den, NULL::VARCHAR AS additivity
-WHERE false;
-
-CREATE OR REPLACE MACRO main.world_cells(w, p, s, g) AS TABLE
-WITH refusal AS (
-  SELECT CASE WHEN w NOT IN ('actual', 'plan', 'forecast', 'scenario')
-              THEN error('unknown_world: metric_series(world := ''' || w || '''): the worlds are actual, plan, forecast and scenario') END AS r)
-SELECT * FROM main.world_plan(w, p, g) WHERE w = 'plan'
-UNION ALL SELECT * FROM main.world_forecast(w, g) WHERE w = 'forecast'
-UNION ALL SELECT * FROM main.world_scenario(w, s, g) WHERE w = 'scenario'
-UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM refusal WHERE r IS NOT NULL;
-
-CREATE MACRO IF NOT EXISTS main.plan_series(g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
-       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.forecast_series(g) AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::VARCHAR AS series, NULL::VARCHAR AS world, NULL::TIMESTAMP AS period, NULL::DOUBLE AS value,
-       NULL::VARCHAR AS additivity, NULL::DOUBLE AS low, NULL::DOUBLE AS high, NULL::VARCHAR AS held
-WHERE false;
-
-CREATE OR REPLACE MACRO main.world_series(g) AS TABLE
-FROM main.plan_series(g) UNION ALL FROM main.forecast_series(g);
-
-CREATE MACRO IF NOT EXISTS main.range_points() AS TABLE
-SELECT NULL::VARCHAR AS metric, NULL::BOOLEAN AS applicable, NULL::VARCHAR AS reason, NULL::VARCHAR AS code,
-       NULL::BIGINT AS backtested, NULL::DOUBLE AS held_80, NULL::DOUBLE AS held_90, NULL::DOUBLE AS score, NULL::VARCHAR AS state,
-       NULL::VARCHAR AS period, NULL::DOUBLE AS actual, NULL::DOUBLE AS p05, NULL::DOUBLE AS p10, NULL::DOUBLE AS p50,
-       NULL::DOUBLE AS p90, NULL::DOUBLE AS p95, NULL::DOUBLE AS pit, NULL::DOUBLE AS displacement, NULL::VARCHAR AS withheld,
-       NULL::DOUBLE AS coverage_80, NULL::DOUBLE AS coverage_90, NULL::BOOLEAN AS newest, NULL::BIGINT AS point_seq,
-       NULL::VARCHAR AS served_by, NULL::TIMESTAMP WITH TIME ZONE AS computed_at, NULL::VARCHAR AS error
-WHERE false;
-
-CREATE MACRO IF NOT EXISTS main.plan_points() AS TABLE
-SELECT NULL::VARCHAR AS plan, NULL::VARCHAR AS metric, NULL::VARCHAR AS grain, NULL::TIMESTAMP AS period, NULL::VARCHAR AS label,
-       NULL::DOUBLE AS value, NULL::DOUBLE AS actual, NULL::DOUBLE AS variance, NULL::DOUBLE AS low, NULL::DOUBLE AS expected,
-       NULL::DOUBLE AS high, NULL::VARCHAR AS planned, NULL::VARCHAR AS covers, NULL::DOUBLE AS coverage_80, NULL::VARCHAR AS origin
-WHERE false;
-
--- partial_periods_of(views_at, columns_at, g): per metric of the places,
--- the period at grain g (its own floor where NULL) that its data ends
--- inside, where its rows land finer than that grain: a short sum against
--- a whole period reads as a change that is only the calendar. The plan
--- kit's comparison and the outlook kit's requests leave it out alike.
-CREATE OR REPLACE MACRO main.partial_periods_of(views_at, columns_at, g) AS TABLE
-WITH axes AS (
-  SELECT view AS metric, period_column, coalesce(g, floor) AS at_grain
-  FROM main.view_axes_of(views_at, columns_at) WHERE applicable AND coalesce(kind, '') <> 'plan'),
-edges AS (
-  SELECT c."table" AS metric, any_value(a.at_grain) AS at_grain, max(TRY_CAST(c.val AS TIMESTAMP)) AS edge,
-         count(DISTINCT date_trunc('day', TRY_CAST(c.val AS TIMESTAMP)))
-           > count(DISTINCT date_trunc(a.at_grain, TRY_CAST(c.val AS TIMESTAMP))) AS finer
-  FROM dataset_cells(current_schema(), views_at) c JOIN axes a ON a.metric = c."table" AND a.period_column = c."column"
-  GROUP BY c."table")
-SELECT metric, date_trunc(at_grain, edge) AS period FROM edges
-WHERE finer AND edge::DATE < (date_trunc(at_grain, edge) + main.grain_step(at_grain) - INTERVAL 1 DAY)::DATE;
-
--- actual_series(grain, unclaimed): the actual world alone, which a
--- function's body reads: through view_axes(), and no stored result.
--- actual_series_of(views_at, columns_at, …) the same over the places
--- view_axes_of() takes.
-CREATE OR REPLACE MACRO main.actual_series_of(views_at, columns_at, grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
-WITH asked AS MATERIALIZED (
+CREATE OR REPLACE MACRO main.metric_series(view := NULL, grain := NULL, unclaimed := 'refuse') AS TABLE
+-- the sums of each asked view's typed columns per period and per member of each dimension, aggregated as
+-- the rows stream: no row of a view is kept
+WITH sums AS MATERIALIZED (
+  FROM series_aggregate(coalesce(current_schema() || '.' || view, current_schema()), 'the dataset''s metrics',
+                        'series_axes', grain)),
+axes AS MATERIALIZED (FROM main.view_axes() WHERE applicable),
+asked AS MATERIALIZED (
   SELECT m.* RENAME (view AS metric), coalesce(grain, m.floor) AS at_grain
-  FROM main.view_axes_of(views_at, columns_at) m
-  WHERE m.applicable AND coalesce(m.kind, '') <> 'plan' AND world = 'actual'
+  FROM axes m
+  WHERE (view IS NULL OR m.view = view)
     AND (grain IS NULL OR main.grain_rank(grain) >= main.grain_rank(m.floor))),
-cells AS (
-  SELECT * FROM dataset_cells(current_schema(), views_at) WHERE "table" IN (SELECT metric FROM asked)),
-all_rows AS MATERIALIZED (
-  SELECT c."table" AS metric, c.rn,
-         max(CASE WHEN c."column" = a.period_column THEN TRY_CAST(c.val AS TIMESTAMP) END) AS instant,
-         max(CASE WHEN c."column" = a.value_column THEN TRY_CAST(c.val AS DOUBLE) END) AS value,
-         max(CASE WHEN c."column" = a.numerator THEN TRY_CAST(c.val AS DOUBLE) END) AS num,
-         max(CASE WHEN c."column" = a.denominator THEN TRY_CAST(c.val AS DOUBLE) END) AS den,
-         list({'dimension': c."column", 'member': coalesce(c.val, 'NULL')}) FILTER (WHERE list_contains(a.dims, c."column")) AS members
-  FROM cells c JOIN asked a ON a.metric = c."table"
-  GROUP BY c."table", c.rn),
+-- the data's edge: the newest instant of every metric served at this grain, read off the profiles, so
+-- that one view's read reads no other view's rows; a metric coarser than the grain with no additivity
+-- to combine by is served by no read and has no part in it
+data_edge AS (
+  SELECT max(newest) AS last_at FROM axes
+  WHERE grain IS NULL
+     OR (main.grain_rank(grain) >= main.grain_rank(floor)
+         AND NOT (main.grain_rank(grain) > main.grain_rank(floor) AND coalesce(additivity, 'non-additive') = 'non-additive'))),
 -- a value column with no additivity or a conflicting one cannot be combined
 -- over rows, and the read refuses; one marked non-additive is served where
--- it has one row per period and left out where rows would have to be combined
+-- it has one row per period and left out where rows would have to be combined.
+-- Such a value is summed per instant, so rows share one where they outnumber the instants
 combining AS (
   SELECT a.metric, a.value_column, a.additivity, a.additivity_state,
          main.grain_rank(a.at_grain) > main.grain_rank(a.floor) AS coarser,
-         count(*) > count(DISTINCT r.instant) AS shared
-  FROM asked a JOIN all_rows r USING (metric)
+         sum(s."rows") > count(s.instant) AS shared
+  FROM asked a JOIN sums s ON s.view = a.metric AND s.dimension = ''
   WHERE a.additivity IS NULL OR a.additivity = 'non-additive'
   GROUP BY a.metric, a.value_column, a.additivity, a.additivity_state, a.at_grain, a.floor),
 refused AS (
@@ -487,86 +377,71 @@ refused AS (
            || ': annotate it — GLOSS additivity ON ' || current_schema() || '.' || metric || '.' || value_column || ' AS $${"value": "<additive|semi-additive|ratio|non-additive>"}$$', '; ')) END AS refusal
   FROM combining WHERE (coarser OR shared) AND additivity IS DISTINCT FROM 'non-additive'),
 -- the metrics served: every asked one but those that need a claim nobody made; the refusal gates the
--- cells served, below, where the rows are few
-rows_ AS (
-  SELECT r.* FROM all_rows r
-  WHERE r.metric NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
-bucketed AS (
-  SELECT r.metric, r.instant, date_trunc(a.at_grain, r.instant) AS period, r.value, r.num, r.den, r.members,
-         coalesce(a.additivity, 'none') AS additivity, a.at_grain, a.window_periods
-  FROM rows_ r JOIN asked a USING (metric)
-  WHERE r.instant IS NOT NULL),
--- a metric's edge is its last bucket; a flow's is the data's edge — the last instant any served metric
--- reaches, at the flow's grain — so a flow whose rows stopped early shows its zeros, not an older window
+-- cells served, below, where the rows are few. Rows with no instant have no period
+served AS (
+  SELECT s.* RENAME (view AS metric), coalesce(a.additivity, 'none') AS additivity
+  FROM sums s JOIN asked a ON a.metric = s.view
+  WHERE s.period IS NOT NULL AND s.view NOT IN (SELECT metric FROM combining WHERE coarser OR shared)),
+-- a metric's edge is its last period; a flow's is the data's edge at the flow's grain, so a flow whose
+-- rows stopped early shows its zeros, not an older window
 own_edges AS (
-  SELECT metric, min(period) AS first, max(period) AS own_edge, max(instant) AS last_at, any_value(at_grain) AS at_grain,
-         any_value(window_periods) AS window_periods, any_value(additivity) AS additivity
-  FROM bucketed GROUP BY metric),
+  SELECT metric, min(period) AS first, max(period) AS own_edge FROM served WHERE dimension = '' GROUP BY metric),
 edges AS (
-  SELECT metric, first, at_grain, window_periods, additivity,
-         CASE WHEN additivity = 'additive' THEN greatest(own_edge, date_trunc(at_grain, max(last_at) OVER ())) ELSE own_edge END AS edge
-  FROM own_edges),
+  SELECT a.metric, o.first, a.at_grain, a.window_periods, coalesce(a.additivity, 'none') AS additivity,
+         CASE WHEN a.additivity = 'additive' THEN greatest(o.own_edge, date_trunc(a.at_grain, (SELECT last_at FROM data_edge))) ELSE o.own_edge END AS edge
+  FROM asked a JOIN own_edges o USING (metric)),
 windowed AS (
-  SELECT b.* FROM bucketed b JOIN edges e USING (metric)
-  WHERE b.period > e.edge - main.grain_step(e.at_grain) * e.window_periods),
--- a stock's level in a bucket is what holds at the bucket's last instant: that instant, per stock metric and bucket,
--- grouped rather than windowed, since a window over every row of every flow costs the read more than the rest
-levels AS (
-  SELECT metric, period, max(instant) AS last_at FROM windowed WHERE additivity = 'semi-additive' GROUP BY metric, period),
+  SELECT s.* FROM served s JOIN edges e ON e.metric = s.metric
+  WHERE s.period > e.edge - main.grain_step(e.at_grain) * e.window_periods),
+-- a stock's level in a period is what holds at the period's last instant; a ratio re-divides its summed halves
 total AS (
-  SELECT w.metric, '' AS dimension, '' AS member, w.period, w.additivity,
-         CASE w.additivity WHEN 'semi-additive' THEN sum(w.value) FILTER (WHERE w.instant = l.last_at)
-                         WHEN 'ratio' THEN sum(w.num) / nullif(sum(w.den), 0)
-                         ELSE sum(w.value) END AS value,
-         CASE w.additivity WHEN 'ratio' THEN sum(w.num) END AS num,
-         CASE w.additivity WHEN 'ratio' THEN sum(w.den) END AS den
-  FROM windowed w LEFT JOIN levels l USING (metric, period) GROUP BY w.metric, w.period, w.additivity),
+  SELECT metric, '' AS dimension, '' AS member, period, additivity,
+         CASE additivity WHEN 'semi-additive' THEN arg_max_null(value, instant)
+                         WHEN 'ratio' THEN sum(num) / nullif(sum(den), 0)
+                         ELSE sum(value) END AS value,
+         CASE additivity WHEN 'ratio' THEN sum(num) END AS num,
+         CASE additivity WHEN 'ratio' THEN sum(den) END AS den
+  FROM windowed WHERE dimension = '' GROUP BY metric, period, additivity),
 filled AS (
   SELECT e.metric, '' AS dimension, '' AS member, g.period, e.additivity, 0.0 AS value, NULL::DOUBLE AS num, NULL::DOUBLE AS den
   FROM edges e, unnest(generate_series(greatest(e.first, e.edge - main.grain_step(e.at_grain) * (e.window_periods - 1)), e.edge, main.grain_step(e.at_grain))) AS g(period)
   WHERE e.additivity = 'additive'
     AND NOT EXISTS (SELECT 1 FROM total t WHERE t.metric = e.metric AND t.period = g.period)),
-long AS (
-  SELECT w.metric, u.m.dimension AS dimension, u.m.member AS member, w.instant, w.period, w.value, w.num, w.den, w.additivity,
-         max(w.instant) OVER (PARTITION BY w.metric, u.m.dimension, u.m.member, w.period) AS member_last_at
-  FROM windowed w, unnest(w.members) AS u(m)),
+-- a member's stock level is what holds at the member's own last instant in the period
+member_periods AS (
+  SELECT metric, dimension, member, period, additivity,
+         CASE additivity WHEN 'semi-additive' THEN arg_max_null(value, instant) ELSE sum(value) END AS value,
+         sum(num) AS num, sum(den) AS den, sum(weight) AS weight
+  FROM windowed WHERE dimension <> '' GROUP BY metric, dimension, member, period, additivity),
+-- ranked at seven significant digits: a parallel sum of doubles differs in
+-- its last bits from run to run, and members of equal weight are then
+-- ordered by name, so the same members are served each time
 weights AS (
   SELECT metric, dimension, member,
-         row_number() OVER (PARTITION BY metric, dimension ORDER BY sum(abs(value)) DESC NULLS LAST, member) AS rank
-  FROM long GROUP BY metric, dimension, member),
+         row_number() OVER (PARTITION BY metric, dimension ORDER BY TRY_CAST(sum(weight) AS FLOAT) DESC NULLS LAST, member) AS rank
+  FROM member_periods GROUP BY metric, dimension, member),
 member_cells AS (
-  SELECT l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END AS member, l.period, l.additivity,
-         CASE l.additivity WHEN 'semi-additive' THEN sum(l.value) FILTER (WHERE l.instant = l.member_last_at)
-                         WHEN 'ratio' THEN sum(l.num) / nullif(sum(l.den), 0)
-                         ELSE sum(l.value) END AS value,
-         CASE l.additivity WHEN 'ratio' THEN sum(l.num) END AS num,
-         CASE l.additivity WHEN 'ratio' THEN sum(l.den) END AS den
-  FROM long l JOIN weights wt USING (metric, dimension, member)
-  GROUP BY l.metric, l.dimension, CASE WHEN wt.rank <= 23 THEN l.member ELSE 'other' END, l.period, l.additivity)
+  SELECT p.metric, p.dimension, CASE WHEN wt.rank <= 23 THEN p.member ELSE 'other' END AS member, p.period, p.additivity,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.num) / nullif(sum(p.den), 0) ELSE sum(p.value) END AS value,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.num) END AS num,
+         CASE p.additivity WHEN 'ratio' THEN sum(p.den) END AS den
+  FROM member_periods p JOIN weights wt USING (metric, dimension, member)
+  GROUP BY p.metric, p.dimension, CASE WHEN wt.rank <= 23 THEN p.member ELSE 'other' END, p.period, p.additivity)
 SELECT metric, 'actual' AS world, dimension, member, period, value, num, den, additivity
 FROM (SELECT * FROM total UNION ALL SELECT * FROM filled UNION ALL SELECT * FROM member_cells), refused
 WHERE refused.refusal IS NULL
 ORDER BY metric, dimension, member, period;
 
-CREATE OR REPLACE MACRO main.actual_series(grain := NULL, unclaimed := 'refuse', world := 'actual') AS TABLE
-FROM main.actual_series_of('the dataset''s metrics', 'the dataset''s metrics', grain := grain, unclaimed := unclaimed, world := world);
-
-CREATE OR REPLACE MACRO main.metric_series(grain := NULL, unclaimed := 'refuse', world := 'actual', plan := NULL, scenario := NULL) AS TABLE
-SELECT * FROM main.actual_series(grain := grain, unclaimed := unclaimed, world := world)
-UNION ALL
-SELECT metric, world, dimension, member, period, value, num, den, additivity
-FROM main.world_cells(world, plan, scenario, grain) WHERE world <> 'actual'
-ORDER BY metric, dimension, member, period;
-
 --===------------------------------------------------------------------===--
 -- fact_values(): the single values of the bound dataset — one row per
 -- view whose aspect declares x-kind scalar: view, value where the view
--- is one row with a value column, reason where it is not.
+-- is one row with a value column, reason where it is not. It reads the
+-- rows of those views alone, through the place the dataset's single values.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.fact_values() AS TABLE
-WITH facts AS (SELECT view AS metric, stopped FROM main.view_summary() WHERE kind = 'scalar'),
-cells AS (SELECT * FROM dataset_cells(current_schema(), 'views') WHERE "table" IN (SELECT metric FROM facts)),
+WITH facts AS (SELECT view AS metric, stopped FROM main.view_kinds() WHERE kind = 'scalar'),
+cells AS (SELECT * FROM dataset_cells(current_schema(), 'the dataset''s single values')),
 shape AS (
   SELECT "table" AS metric, count(DISTINCT rn) AS rows_, bool_or("column" = 'value') AS has_value,
          max(CASE WHEN "column" = 'value' THEN TRY_CAST(val AS DOUBLE) END) AS value
@@ -602,7 +477,7 @@ ORDER BY f.metric;
 
 CREATE OR REPLACE MACRO main.column_mapping(for_view := NULL) AS TABLE
 WITH views AS (
-  SELECT m.view FROM main.view_summary() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
+  SELECT m.view FROM main.view_kinds() m WHERE m.stopped IS NULL AND (for_view IS NULL OR m.view = for_view)),
 -- a table's system of record, where an annotation names one, else its load's source
 stated AS (
   SELECT subject AS t, value->>'value' AS system FROM glossql_glossary(current_schema(), 'system_of_record', false)
@@ -613,7 +488,7 @@ systems AS (
 SELECT m.view, m."column" AS target_column, m.branch, s.system,
        split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
        m.alias, m.condition, m.lookup, m.derivation AS expression, m.literals, m.complete
-FROM glossql_views_mapping(current_schema()) m
+FROM main.views_mapping(current_schema()) m
 LEFT JOIN systems s ON s.t = m.table_name
 WHERE m.view IN (SELECT view FROM views);
 
@@ -623,6 +498,8 @@ WHERE m.view IN (SELECT view FROM views);
 -- stored, never against the data again. join_check is a join that
 -- repeats rows, orphan_check referential integrity on the declared
 -- joins, both on every view (a table, a single value, a metric);
+-- completeness_check a column a load or a new definition emptied, on
+-- each column of every view;
 -- additivity_check the additivity of a metric's value, which only a
 -- metric has. Each is a measurement over the view,
 -- `SELECT <check>() FROM <dataset>.<view>`, whose breach_rate
@@ -630,14 +507,14 @@ WHERE m.view IN (SELECT view FROM views);
 -- stored yet says so in `reason` and serves no rate, which reads yellow;
 -- a view over one table cannot fan out and has no join to check. A
 -- person who accepts a result records a tolerance at or above it on the
--- view; their value outranks the agent's. `x-subject: view` marks a test
--- view_tests() expects on every view, run or not, `x-subject: metric` one
+-- subject the result is on; their value outranks the agent's. `x-subject:
+-- view` marks a test view_tests() expects on every view, run or not, and on
+-- each of its columns where the property is declared on columns alone (a
+-- check over the view then computes each column), `x-subject: metric` one
 -- it expects on every metric, `x-subject: table` one it expects on every
 -- loaded table (grain_check); `x-set-by: <property>` beside any one
 -- it expects only where the view or one of its columns carries an
--- annotation of that property (a property no test reads, so marked, is a
--- result the server computes there: results_due() in the goals kit); the
--- server runs each itself after a call that defined the view, annotated
+-- annotation of that property; the server runs each itself after a call that defined the view, annotated
 -- what the check reads or loaded a table it scans. Each body reads the catalog through the read functions
 -- of the lineage kit alone (annotations(), results(), definition()).
 --
@@ -648,14 +525,14 @@ WHERE m.view IN (SELECT view FROM views);
 CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
 FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
-      FROM glossql_views_lineage(ds) l WHERE l.view = m)
+      FROM main.views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
 -- view_scans_of(ds, m): every table view m of dataset ds scans,
--- joins and filters included, from its view's plan.
+-- joins and filters included, from its stored lineage.
 CREATE OR REPLACE MACRO main.view_scans_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(s.table_name, '.', 2) AS table_name
-FROM glossql_views_scans(ds) s
+FROM main.views_scans(ds) s
 WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 
 -- A test brings its own advice: its check returns `finding`, one
@@ -765,8 +642,9 @@ DECLARE FUNCTION grain_check FOR GLOBAL AS $$
                    || (SELECT array_to_string(list(shown ORDER BY n DESC, shown)[1:3], ', ') FROM repeated WHERE shown IS NOT NULL)
                    || ', so a row counts twice in what reads it' END AS finding,
          CASE WHEN state.extra > 0 THEN concat_ws(chr(10),
-           '-- find why at the source (a line sent twice, a key that needs another column). Keep one row per key in the load query (QUALIFY row_number() OVER (PARTITION BY '
-             || array_to_string(state.cols, ', ') || ' ORDER BY <column>) = 1) and declare it again, or state the grain the rows have:',
+           '-- find why at the source (a line sent twice, a key that needs another column), or keep one row per key in the load query (QUALIFY row_number() OVER (PARTITION BY '
+             || array_to_string(state.cols, ', ') || ' ORDER BY <column>) = 1) and declare it again.',
+           '-- where the rows have another grain, state it:',
            main.gloss_statement('entity', $subject, state.entity::VARCHAR),
            '-- where a person accepts the rows as they are, record the rate with their reason:',
            '-- ' || main.gloss_statement('grain_check', $subject,
@@ -954,7 +832,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
   a AS (
     SELECT split_part($subject, '.', 2) AS view, d.kind,
            CASE WHEN len(m.cols) = 1 OR m.cols[1] = 'value' THEN m.cols[1] END AS value_column,
-           CASE WHEN coalesce(d.kind, '') IN ('scalar', 'plan') THEN []::VARCHAR[]
+           CASE WHEN coalesce(d.kind, '') = 'scalar' THEN []::VARCHAR[]
                 ELSE coalesce((SELECT list(main.gloss_statement('role', $subject || '.' || col, '{"value": "<key|measure|dimension|timestamp|attribute>"}') ORDER BY pos)
                                FROM cols WHERE col NOT IN (SELECT col FROM roles)), []::VARCHAR[]) END AS missing,
            redefine_statement(d.view) AS redefine
@@ -964,7 +842,7 @@ DECLARE FUNCTION additivity_check FOR GLOBAL AS $$
            (SELECT CASE WHEN state IN ('current', 'stale') THEN value->>'value' END FROM adds WHERE adds.col = a.value_column) AS additivity,
            coalesce((SELECT CASE WHEN state IN ('current', 'stale') THEN state ELSE 'conflict' END FROM adds WHERE adds.col = a.value_column), 'none') AS additivity_state
     FROM a),
-  ok AS (SELECT EXISTS (SELECT 1 FROM v WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation', 'plan', 'sample')) AS applicable),
+  ok AS (SELECT EXISTS (SELECT 1 FROM v WHERE value_column IS NOT NULL AND coalesce(kind, '') NOT IN ('scalar', 'relation')) AS applicable),
   computed AS (SELECT max(cols.shape) AS shape FROM cols JOIN v ON cols.col = v.value_column)
   SELECT ok.applicable,
          CASE WHEN NOT ok.applicable THEN coalesce((SELECT 'a ' || kind || ' has nothing to combine' FROM v WHERE coalesce(kind, '') IN ('scalar', 'relation')),
@@ -1072,12 +950,289 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
                                               ELSE '' END, ', ' ORDER BY relationship) FROM mine WHERE orphan_rate > 0)
                    || ' find no parent: an inner join drops them, an outer join keeps them with empty parent columns' END AS finding,
          CASE WHEN EXISTS (SELECT 1 FROM mine WHERE orphan_rate > 0)
-              THEN '-- add each key to the parent table at its source (a code table, a mapping table) and load that table again (IMPORT), or accept the rate with the reason:' || chr(10)
-                   || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}') END AS fix
+              THEN concat_ws(chr(10),
+                '-- add each key to the parent table at its source (a code table, a mapping table), then load that table again:',
+                (SELECT string_agg(DISTINCT 'IMPORT ' || regexp_extract(relationship, ' <?-> ([^.]+\.[^.]+)\.', 1) || ';', chr(10))
+                 FROM mine WHERE orphan_rate > 0),
+                '-- where a person accepts the rows without a parent, record the rate with their reason:',
+                '-- ' || main.gloss_statement('orphan_check', $subject, '{"tolerance": ' || (SELECT max(orphan_rate) FROM mine) || ', "basis": "<why these rows have no parent>"}')) END AS fix
   FROM n, plans
 $$ RETURNS orphan_check;
 
 DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- completeness_check: a column a view serves that a load or a new
+-- definition emptied, one result per column: whether a column can be used
+-- depends on what reads it, so each is judged and accepted on its own.
+-- The column's share of empty values (NULL) comes from its stored
+-- column_profile, which the server computes on each column of the view,
+-- and the state before from the values that profile held (results()'
+-- history): walked oldest first, a share that rose by more than the
+-- tolerance over the last share within it is a column that emptied, and
+-- that last share stays its state before until the column is filled again
+-- or the tolerance is raised. So a column that drifts by less than the
+-- tolerance per load stays quiet, a column mostly empty before cannot rise
+-- past it, and a later load that moves its rows again keeps it red.
+-- breach_rate is the rise; emptied_by is `load` where a table column it is
+-- computed from (its sources) emptied as well, by the same walk over that
+-- column's profile, else `definition`. A column with no profile yet is not
+-- applicable. `SELECT completeness_check() FROM <dataset>.<view>` computes
+-- each column of the view, the property being declared on columns alone.
+DECLARE ASPECT completeness_check WITH $${
+  "description": "The column a view serves keeps its values. Fails where a load of a table the view reads, or the view's definition recorded again, emptied the column on a larger share of the rows than the tolerance.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "before": {"type": ["number", "null"]}, "now": {"type": ["number", "null"]},
+                 "emptied_by": {"type": ["string", "null"]},
+                 "sources": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "cause": {"type": ["string", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON COLUMN;
+
+DECLARE FUNCTION completeness_check FOR GLOBAL AS $$
+  WITH tol AS (
+    SELECT coalesce(max(try_cast(value->>'tolerance' AS DOUBLE)), max(threshold), 0.0) AS tolerance
+    FROM annotations('completeness_check', 'itself') WHERE state IN ('current', 'stale', 'missing')),
+  -- the shares empty of the column and of the columns it is computed from, oldest first, each walked
+  -- to the last share within the tolerance
+  profiled AS (
+    SELECT asset, list_transform(history, lambda v: coalesce(try_cast(v->>'null_ratio' AS DOUBLE), 0.0)) AS shares
+    FROM (SELECT asset, history FROM results('column_profile', 'itself')
+          UNION ALL SELECT asset, history FROM results('column_profile', 'its sources'))
+    WHERE len(history) > 0),
+  walked AS (
+    SELECT p.asset, p.shares[-1] AS now_,
+           list_reduce(p.shares, lambda b, e: CASE WHEN e - b > t.tolerance THEN b ELSE e END) AS before
+    FROM profiled p, tol t),
+  rose AS (SELECT asset, before, now_, round(now_ - before, 4) AS rise FROM walked, tol WHERE now_ - before > tol.tolerance),
+  own AS (SELECT * FROM walked WHERE asset = $subject),
+  emptied AS (SELECT * FROM rose WHERE asset = $subject),
+  by_load AS (SELECT asset FROM rose WHERE asset <> $subject),
+  names AS (
+    SELECT split_part($subject, '.', 1) AS ds, split_part($subject, '.', 2) AS view,
+           array_to_string(string_split($subject, '.')[3:], '.') AS col),
+  state AS (
+    SELECT EXISTS (SELECT 1 FROM own) AS applicable, EXISTS (SELECT 1 FROM emptied) AS red,
+           EXISTS (SELECT 1 FROM by_load) AS loaded,
+           (SELECT list(asset ORDER BY asset) FROM by_load) AS sources,
+           (SELECT string_agg(split_part(asset, '.', 2) || '.' || array_to_string(string_split(asset, '.')[3:], '.'), ', ' ORDER BY asset)
+            FROM by_load) AS emptied_sources,
+           (SELECT string_agg(DISTINCT 'IMPORT ' || split_part(asset, '.', 1) || '.' || split_part(asset, '.', 2) || ';', chr(10))
+            FROM by_load) AS loads,
+           (SELECT before FROM emptied) AS before, (SELECT now_ FROM emptied) AS now_, (SELECT rise FROM emptied) AS rate),
+  said AS (
+    SELECT s.*, n.*,
+           CASE WHEN s.red
+                THEN n.col || ' of ' || n.view || ' is ' || round(s.now_ * 100, 1) || '% empty, ' || round(s.before * 100, 1) || '% before'
+                     || CASE WHEN s.loaded THEN ', since a load emptied ' || s.emptied_sources
+                             ELSE ', while what it is computed from is filled: the definition empties it' END
+                     || ', so ' || n.view || ' serves these rows without the value' END AS finding
+    FROM state s, names n)
+  SELECT applicable,
+         CASE WHEN NOT applicable THEN col || ' of ' || view || ' is not profiled yet: run column_profile() over it' END AS reason,
+         CASE WHEN applicable THEN coalesce(rate, 0.0) END AS breach_rate,
+         CASE WHEN red THEN before END AS before,
+         CASE WHEN red THEN now_ END AS now,
+         CASE WHEN red THEN CASE WHEN loaded THEN 'load' ELSE 'definition' END END AS emptied_by,
+         CASE WHEN red AND loaded THEN sources END AS sources,
+         CASE WHEN red THEN CASE WHEN loaded THEN 'a load emptied ' || emptied_sources
+                                 ELSE 'the definition of ' || view || ' empties ' || col END END AS cause,
+         finding,
+         CASE WHEN red THEN concat_ws(chr(10),
+           CASE WHEN loaded
+                THEN '-- send the values again at the source, or read them in the load query (load_changes() says what the load changed), then load again:'
+                     || chr(10) || loads
+                ELSE '-- correct the expression of ' || col || ' and record the definition again:'
+                     || chr(10) || redefine_statement(ds || '.' || view) END,
+           '-- where a person confirms ' || col || ' is right as it is now, record the rate with their reason:',
+           '-- ' || main.gloss_statement('completeness_check', $subject,
+                    '{"tolerance": ' || ceil(rate * 1000) / 1000 || ', "basis": "<why ' || col || ' is empty now>"}')) END AS fix
+  FROM said
+$$ RETURNS completeness_check;
+
+DECLARE TEST completeness_test ON completeness_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.1;
+
+-- pairs_key(lt, rt, lc, rc): the column pairs of a join or a relationship
+-- between tables lt and rt (lc and rc their columns, pair by pair) as one
+-- key, the same whichever side is written first.
+-- relationship_side(ds, t, cols, quoted): one side of a relationship,
+-- dataset.table.column or dataset.table.(a, b), each name quoted where a
+-- statement needs it.
+CREATE OR REPLACE MACRO main.pairs_key(lt, rt, lc, rc) AS
+  CASE WHEN lt <= rt
+       THEN lt || '|' || rt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: lc[i] || '=' || rc[i])), ',')
+       ELSE rt || '|' || lt || '|' || array_to_string(list_sort(list_transform(range(1, len(lc) + 1), lambda i: rc[i] || '=' || lc[i])), ',') END;
+
+CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
+  ds || '.' || t || '.' || CASE WHEN len(cols) = 1 THEN '' ELSE '(' END
+  || array_to_string(list_transform(cols, lambda c: CASE WHEN NOT quoted OR regexp_full_match(c, '[a-z_][a-z0-9_]*') THEN c
+                                                         ELSE '"' || replace(c, '"', '""') || '"' END), ', ')
+  || CASE WHEN len(cols) = 1 THEN '' ELSE ')' END;
+
+-- relationship_check: each join the view makes between two loaded tables
+-- has a declared relationship, so the orphan check and the reconciliation
+-- can test its keys. A join is the pairs of columns of one join between two
+-- tables; a relationship covers it where its pairs are the join's, either
+-- way round. Where one is missing, the result has no rate (yellow), the
+-- finding names the join and the fix declares the relationship: from the
+-- side that repeats the key to the side that holds it once, as a stored
+-- column_profile (a unique column) or the table's stated grain says; where
+-- neither does, in the join's order, left to right. Green where every join
+-- is covered. It is computed again when the view's definition, the
+-- relationships of the tables it reads, the profiles of its join columns
+-- or the grains of its tables change.
+DECLARE ASPECT relationship_check WITH $${
+  "description": "Each join the view makes between two loaded tables has a declared relationship.",
+  "type": "object", "x-subject": "view",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "joins": {"type": ["array", "null"], "items": {"type": "string"}},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION relationship_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  ds AS (SELECT split_part($subject, '.', 1) AS d),
+  tables AS (SELECT DISTINCT r.table_name FROM d, unnest(d.reads) t(r), ds WHERE split_part(r.table_name, '.', 1) = ds.d),
+  pairs AS (
+    SELECT j.join_number, split_part(j.left_column, '.', 2) AS lt, split_part(j.right_column, '.', 2) AS rt,
+           regexp_replace(j.left_column, '^[^.]*\.[^.]*\.', '') AS lc, regexp_replace(j.right_column, '^[^.]*\.[^.]*\.', '') AS rc
+    FROM d, unnest(d.joins) t(j)
+    WHERE array_to_string(string_split(j.left_column, '.')[1:2], '.') IN (SELECT table_name FROM tables)
+      AND array_to_string(string_split(j.right_column, '.')[1:2], '.') IN (SELECT table_name FROM tables)
+      AND split_part(j.left_column, '.', 2) <> split_part(j.right_column, '.', 2)),
+  joined AS (
+    SELECT join_number, lt, rt, list(lc ORDER BY lc, rc) AS lc, list(rc ORDER BY lc, rc) AS rc
+    FROM pairs GROUP BY join_number, lt, rt),
+  -- the relationships between the tables it reads, each side as table and columns
+  sides AS (
+    SELECT regexp_split_to_array(asset, ' <?-> ') AS s FROM results('relationship_coherence', 'its relationships')),
+  declared AS (
+    SELECT main.pairs_key(split_part(s[1], '.', 2), split_part(s[2], '.', 2),
+             string_split(regexp_replace(regexp_replace(s[1], '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', '),
+             string_split(regexp_replace(regexp_replace(s[2], '^[^.]+\.[^.]+\.', ''), '^\((.*)\)$', '\1'), ', ')) AS key
+    FROM sides WHERE len(s) = 2),
+  undeclared AS (
+    SELECT * FROM (SELECT *, main.pairs_key(lt, rt, lc, rc) AS key FROM joined)
+    WHERE key NOT IN (SELECT key FROM declared WHERE key IS NOT NULL)
+    QUALIFY row_number() OVER (PARTITION BY key ORDER BY join_number) = 1),
+  -- a side holds each key once: a unique column by its stored profile, or the grain its table's entity states
+  held_once AS (
+    SELECT split_part(asset, '.', 2) AS t, [split_part(asset, '.', 3)] AS cols
+    FROM results('column_profile', 'the columns it joins on')
+    WHERE value IS NOT NULL AND (value->>'total')::BIGINT > 0
+      AND (value->>'distinct')::BIGINT >= round((value->>'total')::DOUBLE * (1 - coalesce((value->>'null_ratio')::DOUBLE, 0)))
+    UNION ALL
+    SELECT split_part(asset, '.', 2), from_json(value->'grain', '["VARCHAR"]') FROM annotations('entity', 'its sources')
+    WHERE value IS NOT NULL AND state IN ('current', 'stale') AND json_array_length(value->'grain') > 0),
+  sided AS (
+    SELECT u.*,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.lt AND list_has_all(u.lc, h.cols)) AS left_once,
+           EXISTS (SELECT 1 FROM held_once h WHERE h.t = u.rt AND list_has_all(u.rc, h.cols)) AS right_once
+    FROM undeclared u),
+  -- from the side that repeats the key to the side that holds it once
+  directed AS (
+    SELECT key, left_once, right_once,
+           CASE WHEN left_once AND NOT right_once THEN rt ELSE lt END AS ft, CASE WHEN left_once AND NOT right_once THEN rc ELSE lc END AS fc,
+           CASE WHEN left_once AND NOT right_once THEN lt ELSE rt END AS tt, CASE WHEN left_once AND NOT right_once THEN lc ELSE rc END AS tc,
+           CASE WHEN left_once AND right_once THEN ' <-> ' ELSE ' -> ' END AS op
+    FROM sided),
+  said AS (
+    SELECT key, main.relationship_side(ds.d, ft, fc, false) || op || main.relationship_side(ds.d, tt, tc, false) AS relationship,
+           'the join of ' || ft || ' and ' || tt || ' on '
+             || array_to_string(list_transform(range(1, len(fc) + 1), lambda i: ft || '.' || fc[i] || ' = ' || tt || '.' || tc[i]), ' and ') AS join_,
+           CASE WHEN left_once AND right_once THEN '-- each side holds each key once'
+                WHEN left_once OR right_once THEN '-- ' || tt || ' holds each key once'
+                ELSE '-- no stored profile or grain says which side holds each key once: the direction is the join''s, left to right; where '
+                     || ft || ' holds each key once, write it the other way round' END
+             || '. Declare the relationship, and the server checks each key against the data:' || chr(10)
+             || 'DECLARE RELATIONSHIP ' || main.relationship_side(ds.d, ft, fc, true) || op || main.relationship_side(ds.d, tt, tc, true) || ';' AS statement
+    FROM directed, ds)
+  SELECT true AS applicable,
+         CAST(NULL AS VARCHAR) AS reason,
+         CASE WHEN EXISTS (SELECT 1 FROM said) THEN NULL ELSE 0.0 END AS breach_rate,
+         (SELECT list(relationship ORDER BY key) FROM said) AS joins,
+         (SELECT 'no relationship is declared for ' || string_agg(join_, '; ' ORDER BY key)
+                 || ': the orphan check and the reconciliation name no keys on it' FROM said HAVING count(*) > 0) AS finding,
+         (SELECT string_agg(statement, chr(10) ORDER BY key) FROM said HAVING count(*) > 0) AS fix
+$$ RETURNS relationship_check;
+
+DECLARE TEST relationship_test ON relationship_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
+
+-- series_check: a metric serves a series. It needs a column with role
+-- timestamp (the one named period where several carry it), a column with
+-- role measure (the one named value where several carry it), and a grain
+-- for the period column: the floor its time grains state, else the grain
+-- its temporal profile measured. Where one is missing the metric serves
+-- nothing, the test is red, the finding says what is missing and the fix
+-- is the annotation or the measurement that brings it. Computed again when
+-- the definition, the roles, the time grains or the temporal profile of
+-- the metric's columns change.
+DECLARE ASPECT series_check WITH $${
+  "description": "The metric serves a series: a column carries role timestamp, a column carries role measure, and the period column has a grain.",
+  "type": "object", "x-subject": "metric",
+  "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
+                 "breach_rate": {"type": ["number", "null"]},
+                 "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
+                 "tolerance": {"type": "number"}, "basis": {"type": "string"}}
+}$$ AS FACT ON TABLE;
+
+DECLARE FUNCTION series_check FOR GLOBAL AS $$
+  WITH d AS (SELECT * FROM definition('itself')),
+  cols AS (SELECT c.name AS col, c.position AS pos FROM d, unnest(d.columns) t(c)),
+  claims AS (
+    SELECT substr(asset, length($subject) + 2) AS col, property, value
+    FROM (FROM annotations('role', 'its columns') UNION ALL FROM annotations('time_grains', 'its columns')
+          UNION ALL FROM annotations('temporal_profile', 'its columns'))
+    WHERE state IN ('current', 'stale') AND value IS NOT NULL),
+  roles AS (SELECT col, value->>'value' AS role FROM claims WHERE property = 'role'),
+  picked AS (
+    SELECT (SELECT list(r.col ORDER BY CASE WHEN r.col = 'period' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (col)
+            WHERE r.role = 'timestamp') AS period_cols,
+           (SELECT list(r.col ORDER BY CASE WHEN r.col = 'value' THEN 0 ELSE 1 END, c.pos) FROM roles r JOIN cols c USING (col)
+            WHERE r.role = 'measure') AS measure_cols),
+  chosen AS (
+    SELECT *, CASE WHEN len(period_cols) = 1 OR period_cols[1] = 'period' THEN period_cols[1] END AS period_column,
+              CASE WHEN len(measure_cols) = 1 OR measure_cols[1] = 'value' THEN measure_cols[1] END AS value_column
+    FROM picked),
+  grained AS (
+    SELECT ch.*,
+           coalesce((SELECT max(value->>'floor') FROM claims WHERE property = 'time_grains' AND col = ch.period_column),
+                    (SELECT max(CASE WHEN value->>'applicable' = 'true'
+                                      AND value->>'granularity' IN ('minute', 'hour', 'day', 'week', 'month', 'quarter', 'year')
+                                     THEN value->>'granularity' END)
+                     FROM claims WHERE property = 'temporal_profile' AND col = ch.period_column)) AS floor,
+           EXISTS (SELECT 1 FROM claims WHERE property = 'temporal_profile' AND col = ch.period_column) AS profiled
+    FROM chosen ch),
+  judged AS (
+    SELECT g.*, d.kind,
+           main.series_reason(split_part($subject, '.', 1), split_part($subject, '.', 2), d.stopped, coalesce(len(d.columns), 0) > 0,
+                              d.kind, g.period_column, g.period_cols, g.value_column, g.measure_cols, g.floor, g.profiled) AS reason
+    FROM grained g, d)
+  -- a subject with no definition (a loaded table) has no row in judged: it is
+  -- answered as not applicable, like a single value and a table view
+  SELECT coalesce(defined AND coalesce(kind, '') NOT IN ('scalar', 'relation'), false) AS applicable,
+         CASE WHEN defined IS NULL THEN 'a loaded table serves no series'
+              WHEN coalesce(kind, '') IN ('scalar', 'relation') THEN 'a ' || kind || ' serves no series' END AS reason,
+         CASE WHEN defined IS NULL OR coalesce(kind, '') IN ('scalar', 'relation') THEN NULL WHEN reason IS NULL THEN 0.0 ELSE 1.0 END AS breach_rate,
+         CASE WHEN defined AND coalesce(kind, '') NOT IN ('scalar', 'relation') THEN reason END AS finding,
+         CASE WHEN defined IS NULL OR coalesce(kind, '') IN ('scalar', 'relation') OR reason IS NULL THEN NULL
+              WHEN period_column IS NULL
+              THEN main.gloss_statement('role', $subject || '.<period column>', '{"value": "timestamp"}')
+              WHEN value_column IS NULL
+              THEN main.gloss_statement('role', $subject || '.<value column>', '{"value": "measure"}')
+              WHEN floor IS NULL AND NOT profiled
+              THEN 'SELECT temporal() FROM ' || $subject || '.' || period_column || ';'
+              WHEN floor IS NULL
+              THEN main.gloss_statement('time_grains', $subject || '.' || period_column, '{"floor": "<minute|hour|day|week|month|quarter|year>"}')
+              ELSE redefine_statement($subject) END AS fix
+  FROM (SELECT 1) one LEFT JOIN (SELECT *, true AS defined FROM judged) j ON true
+$$ RETURNS series_check;
+
+DECLARE TEST series_test ON series_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 
 --===------------------------------------------------------------------===--
 -- view_tests(): every test on each view of the bound dataset and on
@@ -1095,25 +1250,22 @@ DECLARE TEST orphan_test ON orphan_check BY (AGENT, HUMAN) DETECTOR rate_toleran
 -- measures it, as role_test does, and on a result about the dataset or a
 -- view with no tests, which an actor stores and the server does not
 -- compute after a write). The tests marked x-subject view appear on
--- every view, run or not, those marked x-subject metric on every metric,
+-- every view, run or not, on each of its columns where the property is
+-- declared on columns alone, those marked x-subject metric on every metric,
 -- those marked x-subject table on every loaded table with no view (''),
 -- those marked x-set-by too only where the property it names is
 -- annotated on the view or the table or on one of its columns.
 -- Each view carries the tests on what it reads and the tests declared on
--- it; a plan and a sample have none of these, and a test on a result
--- about one carries the plan or the sample as its view. A test on the
--- dataset's own result has no view (''). Ordered by what to look at
+-- it. A test on the dataset's own result has no view (''). Ordered by what to look at
 -- first.
 --===------------------------------------------------------------------===--
 
 CREATE OR REPLACE MACRO main.view_tests() AS TABLE
-WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_summary()),
--- every served view, a metric, a table and a single value alike: a plan
--- is compared with the metric it plans and a sample is a planner's
--- frame, so neither has the views' tests
+WITH summary AS MATERIALIZED (SELECT view, kind, stopped FROM main.view_kinds()),
+-- every served view, a metric, a table and a single value alike
 all_views AS (
   SELECT view, coalesce(kind, '') NOT IN ('scalar', 'relation') AS metric FROM summary
-  WHERE stopped IS NULL AND coalesce(kind, '') NOT IN ('plan', 'sample')),
+  WHERE stopped IS NULL),
 results AS MATERIALIZED (SELECT subject, aspect, test, state, score, current FROM glossql_tests(current_schema(), NULL)),
 authors AS (
   SELECT name AS test, declared_by FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
@@ -1122,7 +1274,8 @@ authors AS (
 expected AS (
   SELECT t.name AS test, t.aspect, json_extract_string(a.schema, '$.x-subject') AS on_,
          json_extract_string(a.schema, '$.x-subject') = 'metric' AS metrics_only,
-         json_extract_string(a.schema, '$.x-set-by') AS set_by
+         json_extract_string(a.schema, '$.x-set-by') AS set_by,
+         coalesce(a.grains = ['COLUMN'], false) AS on_columns
   FROM (SELECT * FROM main.tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1) t
   JOIN main.aspects a ON a.name = t.aspect
   WHERE json_extract_string(a.schema, '$.x-subject') IN ('view', 'metric', 'table')),
@@ -1131,18 +1284,29 @@ set_on AS (
   SELECT DISTINCT g.aspect, split_part(g.subject, '.', 2) AS view FROM main.glossary g
   WHERE g.dataset = current_schema() AND g.actor_kind IN ('agent', 'human')
     AND g.aspect IN (SELECT set_by FROM expected WHERE set_by IS NOT NULL)),
+-- a test's evidence is the stored result of its property: no other result is read
 evidence AS (
-  SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements WHERE dataset = current_schema()
+  SELECT subject, aspect, main.with_definition(value::JSON, current_schema()) AS value FROM main.measurements
+  WHERE dataset = current_schema() AND aspect IN (SELECT aspect FROM main.tests)
   QUALIFY row_number() OVER (PARTITION BY subject, aspect ORDER BY begin_snapshot DESC) = 1),
+view_columns AS MATERIALIZED (
+  SELECT table_name AS view, column_name FROM glossql_columns(current_schema()) WHERE table_type = 'VIEW'),
+-- what a test a view expects is on: the view, or each of its columns where the property is declared on
+-- columns alone; the check over the view computes them all
+view_subjects AS (
+  SELECT m.view, m.metric, current_schema() || '.' || m.view AS subject, false AS on_columns FROM all_views m
+  UNION ALL
+  SELECT m.view, m.metric, current_schema() || '.' || c.view || '.' || c.column_name, true
+  FROM all_views m JOIN view_columns c ON c.view = m.view),
 own AS (
-  SELECT m.view, e.test, e.aspect, current_schema() || '.' || m.view AS subject,
+  SELECT m.view, e.test, e.aspect, m.subject,
          coalesce(r.state, 'not_run') AS state, coalesce(r.current, false) AS current,
          r.score, v.value::JSON AS evidence,
          'SELECT ' || e.aspect || '() FROM ' || current_schema() || '.' || m.view AS run
-  FROM all_views m JOIN expected e ON e.on_ <> 'table' AND (m.metric OR NOT e.metrics_only)
+  FROM view_subjects m JOIN expected e ON e.on_ <> 'table' AND e.on_columns = m.on_columns AND (m.metric OR NOT e.metrics_only)
    AND (e.set_by IS NULL OR EXISTS (SELECT 1 FROM set_on o WHERE o.aspect = e.set_by AND o.view = m.view))
-  LEFT JOIN results r ON r.subject = current_schema() || '.' || m.view AND r.test = e.test
-  LEFT JOIN evidence v ON v.subject = current_schema() || '.' || m.view AND v.aspect = e.aspect
+  LEFT JOIN results r ON r.subject = m.subject AND r.test = e.test
+  LEFT JOIN evidence v ON v.subject = m.subject AND v.aspect = e.aspect
   UNION ALL
   -- a kit's check on each loaded table (x-subject table), whatever view reads it: no view
   SELECT '', e.test, e.aspect, current_schema() || '.' || l.table_name,
@@ -1178,8 +1342,8 @@ inputs AS (
 itself AS (
   SELECT m.view, current_schema() || '.' || m.view AS subject FROM all_views m
   UNION
-  SELECT m.view, current_schema() || '.' || c.table_name || '.' || c.column_name
-  FROM all_views m JOIN glossql_columns(current_schema()) c ON c.table_name = m.view),
+  SELECT m.view, current_schema() || '.' || c.view || '.' || c.column_name
+  FROM all_views m JOIN view_columns c ON c.view = m.view),
 declared AS (
   SELECT DISTINCT d.view, r.test, r.aspect, r.subject,
          r.state AS state, r.current, r.score, v.value::JSON AS evidence,
@@ -1189,16 +1353,20 @@ declared AS (
   LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
   LEFT JOIN checks f ON f.aspect = r.aspect
   WHERE r.test NOT IN (SELECT test FROM expected)),
--- a test on a result an actor stored about the dataset as a whole or
--- about a view with no tests of its own: a kit's measurement and its
--- test come in here, by their results alone
+-- a test on a result an actor stored about the dataset as a whole,
+-- about a view with no tests of its own, or about a view by a kit's
+-- test no view expects (a metric's expected ranges): a kit's measurement
+-- and its test come in here, by their results alone
 stored AS (
-  SELECT coalesce(o.view, '') AS view, r.test, r.aspect, r.subject, r.state, r.current, r.score, v.value::JSON AS evidence, '' AS run
+  SELECT coalesce(o.view, k.view, '') AS view, r.test, r.aspect, r.subject, r.state, r.current, r.score, v.value::JSON AS evidence, '' AS run
   FROM results r
   LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL AND view NOT IN (SELECT view FROM all_views)) o
     ON r.subject = current_schema() || '.' || o.view
+  LEFT JOIN (SELECT view FROM all_views) k
+    ON r.subject = current_schema() || '.' || k.view AND r.test NOT IN (SELECT test FROM expected)
+   AND r.test IN (SELECT test FROM authors WHERE declared_by LIKE 'kit:%')
   LEFT JOIN evidence v ON v.subject = r.subject AND v.aspect = r.aspect
-  WHERE r.subject = current_schema() OR o.view IS NOT NULL)
+  WHERE r.subject = current_schema() OR o.view IS NOT NULL OR k.view IS NOT NULL)
 SELECT t.view, t.test, t.aspect, a.declared_by, t.subject, t.state, t.current, t.score, t.evidence, t.run
 FROM (SELECT * FROM own UNION ALL SELECT * FROM inputs UNION ALL SELECT * FROM declared UNION ALL SELECT * FROM stored) t
 LEFT JOIN authors a USING (test)
@@ -1207,7 +1375,9 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 
 --===------------------------------------------------------------------===--
 -- semantic_model(): the bound dataset as one Apache Ossie document
--- (the open format for exchanging a semantic model; spec 0.3.0.dev0),
+-- (the open format for exchanging a semantic model; the 0.3.0.dev0
+-- draft as its schema stands at apache/ossie 74a26bef, pinned in
+-- crates/serverd/tests/fixtures/standards),
 -- one row, column `document` (JSON). Each loaded table and each served
 -- metric is an Ossie dataset with its fields; a column annotated as the
 -- time or a dimension carries `dimension`; a table's key is the `grain`
@@ -1215,7 +1385,7 @@ ORDER BY CASE state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 
 -- the view; a metric's value is an Ossie metric whose
 -- expression follows its additivity (a sum for additive, the ratio of
 -- the summed halves for a ratio; a semi-additive or non-additive value
--- is exported as a sum with the additivity in `custom_extensions`, since
+-- is exported as a sum with the additivity in `nonportable_extensions`, since
 -- Ossie has no word for it); declared relationships are its
 -- relationships. Meanings ride as descriptions.
 --===------------------------------------------------------------------===--
@@ -1225,7 +1395,7 @@ WITH ds AS (SELECT current_schema() AS dataset),
 known AS (SELECT subject, aspect, value FROM glossql_glossary(current_schema(), NULL, false) WHERE value IS NOT NULL),
 metrics AS (
   SELECT view AS metric, value_column, period_column, additivity, numerator, denominator
-  FROM main.view_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('plan', 'sample', 'scalar', 'relation')),
+  FROM main.view_summary() WHERE stopped IS NULL AND applicable AND coalesce(kind, '') NOT IN ('scalar', 'relation')),
 cols AS (
   SELECT c.table_name, c.column_name, c.column_type, c.ordinal_position
   FROM glossql_columns(current_schema(), true) c
@@ -1246,8 +1416,8 @@ fields AS (
                             WHEN c.column_type = 'BOOLEAN' THEN 'Boolean'
                             WHEN c.column_type = 'VARCHAR' THEN 'String' ELSE 'Opaque' END,
            'description': m.value->>'value',
-           'custom_extensions': CASE WHEN u.value IS NOT NULL THEN
-             [{'vendor_name': 'glossdb', 'data': to_json({'unit': u.value->>'value'})::VARCHAR}] END
+           'nonportable_extensions': CASE WHEN u.value IS NOT NULL THEN
+             [{'vendor_name': 'glossdb', 'data': {'unit': u.value->>'value'}}] END
          })) AS field
   FROM cols c CROSS JOIN ds
   LEFT JOIN known r ON r.subject = ds.dataset || '.' || c.table_name || '.' || c.column_name AND r.aspect = 'role'
@@ -1261,8 +1431,8 @@ measures AS (
                                       THEN 'SUM("' || x.numerator || '") / SUM("' || x.denominator || '")'
                                       ELSE 'SUM("' || x.value_column || '")' END},
            'description': coalesce(vm.value->>'value', json_extract_string(a.schema, '$.title')),
-           'custom_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
-             [{'vendor_name': 'glossdb', 'data': to_json({'additivity': x.additivity, 'time_column': x.period_column})::VARCHAR}] END
+           'nonportable_extensions': CASE WHEN x.additivity IN ('semi-additive', 'non-additive') THEN
+             [{'vendor_name': 'glossdb', 'data': {'additivity': x.additivity, 'time_column': x.period_column}}] END
          })) AS measure
   FROM metrics x CROSS JOIN ds
   LEFT JOIN known vm ON vm.subject = ds.dataset || '.' || x.metric AND vm.aspect = 'meaning'
@@ -1347,10 +1517,10 @@ view_cols AS (
   SELECT v.view, v."column" AS field,
          (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)})
           FROM unnest(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
-  FROM glossql_views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
+  FROM main.views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
 view_scans AS (
   SELECT view, list(DISTINCT {'namespace': 'glossdb', 'name': table_name}) AS inputs
-  FROM glossql_views_scans(current_schema()) GROUP BY view),
+  FROM main.views_scans(current_schema()) GROUP BY view),
 view_events AS (
   SELECT NULL::TIMESTAMP AS happened,
          to_json({

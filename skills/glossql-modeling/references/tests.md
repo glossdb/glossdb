@@ -15,14 +15,18 @@ SELECT view, test, subject, state, score, current, run FROM view_tests()
 
 `view_tests()` lists, per view, the tests on the view and on the
 tables and columns it reads, worst first. A table view and a single
-value have rows too: the built-in join and orphan tests, the tests on
+value have rows too: the built-in join, orphan and completeness tests, the tests on
 what they read and the tests you declared on them. `not_run` means no result exists yet; `current` is
-false when the data changed after the result was stored. `run` is the
+false when something the stored result read changed after it was
+stored. A test's result is stored per asset; the server computes the
+ones out of date after each write. A detector that compares assets
+with each other is refused (`cross_subject`): declare that test on
+the table or the dataset that holds them. `run` is the
 statement that measures the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
-test on a result an actor stores (about the dataset, or a plan) is
-not run by the server. `TESTS(asset)` gives the same states for any
+test on a result an actor stores (about the dataset) is not run by
+the server. `TESTS(asset)` gives the same states for any
 asset. A test that is not green is a `test` row of `next`, on a view,
 a table, a column or the dataset alike: `must` where it is red,
 `should` otherwise. `open` is the test's name and its finding,
@@ -33,17 +37,18 @@ your own, the annotation that records an accepted rate.
 ## The built-in tests
 
 The server runs these after a call that defines a view, annotates
-what a test reads, or loads a table the view reads. `join_test` and
-`orphan_test` run on every view: a table view, a single value, a
-metric. `measure_additivity_test` runs on each metric, since only a
+what a test reads, or loads a table the view reads. `join_test`,
+`orphan_test` run on every view: a table view, a single value, a metric, and
+`completeness_test` on each column of every view. `measure_additivity_test` runs on each metric, since only a
 metric has a measure. The server also runs what the tests read first:
-a profile of each column the view joins on, and the check of each
-relationship between the tables it reads.
+a profile of each column the view joins on and of each column it
+serves, and the check of each relationship between the tables it reads.
 
 | Test | Red when | The usual fix |
 |---|---|---|
 | `join_test` | the view joins two tables on columns whose values repeat on both sides, so the join multiplies rows; or it reads an effective-dated table without both of its validity dates, so a row counts once per version | reduce one side to one row per key before the join; bound both dates in the join |
 | `orphan_test` | rows on a declared relationship the view joins over find no parent: an inner join drops them, an outer join keeps them with empty parent columns | fix the load (trim, pad, cast the key), or load the missing parents |
+| `completeness_test` | a load or a new definition emptied a column the view serves: its share of empty values rose by more than 0.1. It stays red until the column is filled again or the rate is accepted | where a table column it is computed from emptied too, fix the source or the load query; else correct the column's expression in the definition. Accept a rate that is right with `tolerance` on `completeness_check` on that column: the other columns stay held to 0.1 |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
 | `grain_test` | on a loaded table whose `entity` states a `grain`: a key repeats in the loaded rows | keep one row per key in the load query, or state the grain the rows have |
 
@@ -108,8 +113,8 @@ SELECT hours_match_check() FROM bookings;
 whole, `define.md` one check for a data contract.
 
 - **The annotation sets the test.** The test is on the assets that
-  carry the expectation and on no other. `next` and
-  `workspace_status` count it there. One property can hold for
+  carry the expectation and on no other. `next` counts it there.
+  One property can hold for
   several assets: annotate each, and run the function on each.
 - **`breach_rate` is the share of rows that break the rule.** 0.0
   passes. A pass rate under that name reads red.

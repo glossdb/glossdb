@@ -22,7 +22,7 @@ Each part is one annotation, written by an agent or a person:
 USE stays;
 GLOSS app ON occupancy_board AS $${"title": "Occupancy"}$$;
 GLOSS app_frame ON occupancy_board.trend AS $${
-  "sql": "SELECT period, value FROM metric_series(grain := $grain) WHERE metric = 'occupancy' AND dimension = '' ORDER BY period"
+  "sql": "SELECT period, value FROM metric_series(view := 'occupancy', grain := $grain) WHERE dimension = '' ORDER BY period"
 }$$;
 GLOSS app_page ON occupancy_board.index AS $${
   "html": "<h1>Occupancy</h1><gl-table frame=\"frames/trend?grain=month\" rows=\"24\"></gl-table>"
@@ -68,7 +68,7 @@ Arrow JS, dagre and the tiles below.
 | Tile | Attributes | Shows |
 |---|---|---|
 | `gl-table` | `frame`, `rows` (default 50), `empty` | the frame as a table, with the row count |
-| `gl-rows` | `frame`, `rows`, `empty`; `join`, `on` | each row through the author's `<template>`; `{field}` takes the row's value. `join` merges a second frame's row with the same `on` key |
+| `gl-rows` | `frame`, `rows`, `empty` | each row through the author's `<template>`; `{field}` takes the row's value |
 | `gl-value` | `frame`, `field`, `format` (`compact` or `text`) | one value from the frame's first row |
 | `gl-chart` | `frame`, `spec`, `empty` | a Vega-Lite chart; the spec binds the data source named `frame` |
 | `gl-window` | `frame` | links that set `grain` and `span` on the page URL, from the metric's floor up; the frame reads `view_summary()` |

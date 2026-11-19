@@ -48,10 +48,9 @@ ORDER BY o.conf
 
 `open_questions`, `review_decisions` and `agent_assumptions` cover
 the whole workspace; the join narrows them to the dataset of the
-call. A person answers in the console, or in a form the interface
-sends with a call that only reads the catalog. Where the client shows
-no forms, ask the open questions in chat, with the alternative and
-your reason, and tell the person to record the answer in the console.
+call. A person answers in the console. Where the person is in chat
+with you, ask the open questions there, with the alternative and your
+reason, and tell the person to record the answer in the console.
 The work goes on while a question waits; `next` counts it under
 `waiting for a person`.
 
@@ -76,13 +75,8 @@ again after the new definition. A test that turns red after a
 decision stays red for the person to see; do not change the
 definition to make it green.
 
-Two more rows carry a person's decision, one of kind `review` and
-one of kind `integrate`:
+One more row carries a person's decision, of kind `integrate`:
 
-- **A person's formula is newer than the definition.** A person wrote
-  a `formula` for the view in the business glossary. Change the SQL
-  to match and record the definition, or state the difference as an
-  assumption.
 - **A change to a load query is approved.** A person approved new
   SQL for a table (`recipe_change`). Declare the load query with it.
 

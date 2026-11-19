@@ -5,10 +5,9 @@
 -- or none for a name no loaded table carries.
 WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
-  SELECT g.body, g.actor_kind, g.written_at,
-         row_number() OVER (ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.actor_kind IN ('human', 'agent')),
+  SELECT g.body, g.actor_kind, g.written_at
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.rank = 1),
 latest AS (
   SELECT i.table_name, i.rows, i.imported_at,
          row_number() OVER (ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
@@ -45,5 +44,5 @@ FROM latest l
 CROSS JOIN cols c
 CROSS JOIN reads r
 CROSS JOIN src
-LEFT JOIN e ON e.rn = 1
+LEFT JOIN e ON true
 WHERE l.rn = 1

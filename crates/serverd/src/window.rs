@@ -161,7 +161,7 @@ pub fn next_line(dataset: &str, rows: &[Value]) -> String {
 
 /// The `next://<dataset>[/<kind>]` page: every open row in the list's
 /// own order (by level), labelled with its level and its kind of work,
-/// with its cause and the statement that opens the work.
+/// with the views that read its asset and the statement that opens the work.
 pub fn next_page(dataset: &str, rows: &[Value]) -> String {
     let mut out = format!("# next on {dataset}\n\n");
     if rows.is_empty() {
@@ -179,10 +179,6 @@ pub fn next_page(dataset: &str, rows: &[Value]) -> String {
         let views = field(row, "for_view");
         if !views.is_empty() {
             out.push_str(&format!("\nread by: {views}\n"));
-        }
-        let cause = field(row, "cause");
-        if !cause.is_empty() {
-            out.push_str(&format!("\ncause: {cause}\n"));
         }
         let statement = field(row, "statement");
         if !statement.is_empty() {

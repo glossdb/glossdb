@@ -104,16 +104,17 @@ SQL, and serves the skills (`skill://`), the docs and the language
 | Sources, load queries, annotations, measurements, tests, review decisions | stable |
 | Views (tables, single values, metrics), metric series, `next` | stable |
 | The MCP interface, the query endpoint, the console, data apps, export | stable |
-| Semantic model (Apache Ossie) and lineage (OpenLineage) export | stable |
+| Lineage export (OpenLineage) | stable |
+| Semantic model export (Apache Ossie, following its 0.3.0.dev0 draft) | preview |
 | Sign-in through an identity provider | stable |
-| Forecasts, expected ranges, plans, scenarios (need a model service) | preview |
+| Forecasts, expected ranges, plans, scenarios | planned |
 | Reading a lake in place; dbt and semantic-model import; access per user | planned |
 
 ## Building from source
 
 A Rust workspace: `crates/` (the server), `kits/` (the server's kits,
 [kits](kits/README.md)), `skills/` (the skills served to agents),
-`docs/`, `corpus/` (two examples the suite parses) and `vendor/`
+`docs/` and `vendor/`
 (DuckDB's SQL guide, served to agents). `cargo build -p
 glossdb-serverd` builds the server with DuckDB compiled in; the
 glossql extension comes from the sibling checkout `../gloss`

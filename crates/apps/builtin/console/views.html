@@ -50,7 +50,7 @@
   {{ tiles::chart(frame="frames/trend?grain=month&span=24", spec="specs/series.vl.json",
        title="Trend · " ~ view, chip="metric_series()",
        empty="no values at this grain — Grain and dimensions, below, says what is served; a grain finer than the metric's own serves nothing",
-       note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing. Where metric_forecast has run, the forecast continues as the dashed line named forecast: the newest run's medians at the metric's own resolution, never clipped by the span. The shaded area is its 80% range; a point's tooltip says how often such a range held and whose count that is: this metric's own history, the dataset's, or the service's held-out data.") }}
+       note="The metric's total series, regrouped to the grain you chose on the server — a flow sums, a stock takes the last period, a ratio divides its summed parts — with the disclosed alternative reading beside it where the definition names one. A grain finer than the metric's resolution serves nothing.") }}
 
   {% endif %}
 
@@ -82,13 +82,11 @@
 
   <div{% if kind != "scalar" and kind != "relation" %} class="half"{% endif %}>
   <section class="tile">
-    <header><span class="eyebrow" title="The decided definition: an expression over sibling metrics, with the window w as its only variable. It covers every window, so drilling into this metric recomputes its parts by this formula instead of regrouping its rows.">Definition · {{ view }}</span>
-      <code class="chip">formulas</code></header>
+    <header><span class="eyebrow" title="What the view means, as annotated on it, and what it is.">Definition · {{ view }}</span></header>
     <gl-rows frame="frames/view" empty="no view named {{ view }}">
       <template>
         <div class="rrow" style="grid-template-columns:1fr">
-          <span class="r-subj" style="font-size:1rem">{formula}</span>
-          <span class="r-meta">{meaning}</span>
+          <span class="r-subj" style="font-size:1rem">{meaning}</span>
           <span class="r-meta">{stopped}</span>
           <span class="r-meta">{meta}</span>
         </div>
@@ -130,24 +128,6 @@
 {% elif tab == "measurements" %}
   {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
   {% if kind != "scalar" and kind != "relation" %}
-  <section class="tile">
-    <header><span class="eyebrow" title="Each plan on this metric, period by period at the plan&#x27;s own grain: the planned number, the actual where the period has begun, and the variance (actual minus plan) once it is complete. Where a forecast covers the rest, its median and 80% range show beside it, with how often such a range has held. A plan outside the range goes to review. A year only partly covered says how much and has no range.">Plan · {{ view }}</span>
-      <code class="chip">plan_points()</code></header>
-    <gl-rows frame="frames/plan" empty="no plan is declared on this metric — a budget is loaded as a table and annotated as a plan, one per edition">
-      <template>
-        <div class="rrow" style="grid-template-columns:9rem 6rem 7rem 7rem 7rem 13rem 1fr">
-          <span class="r-subj asp">{plan}</span>
-          <span class="r-meta">{label}</span>
-          <span class="r-num">{planned}</span>
-          <span class="r-num">{actual}</span>
-          <span class="r-num">{variance}</span>
-          <span class="r-meta">{expected}</span>
-          <span class="r-meta"><code class="chip {scls}">{planned}</code> {held}</span>
-        </div>
-      </template>
-    </gl-rows>
-  </section>
-
   <section class="tile">
     <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">Largest changes · {{ view }}</span>
       <code class="chip">metric_series()</code></header>
@@ -263,14 +243,12 @@
 
 
   <section class="tile">
-    <header><span class="eyebrow" title="Every metric with its review state, or why it charts nothing, beside the newest period, the change into it and its dimensions. A review decision refreshes the first part and leaves the numbers alone.">Metrics</span>
-      <code class="chip">view_definitions · view_summary() · metric_series()</code></header>
-    <gl-rows frame="frames/measures?stopped=0" join="frames/latest" on="name" empty="no metric is declared yet">
+    <header><span class="eyebrow" title="Every metric with its review state, its dimensions, or why it charts nothing. Its values are on its own page.">Metrics</span>
+      <code class="chip">view_definitions · view_summary()</code></header>
+    <gl-rows frame="frames/measures?stopped=0" empty="no metric is declared yet">
       <template>
-        <a class="rrow" href="{link}" style="grid-template-columns:11rem 7rem 5rem 1fr 11rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em></span></span>
-          <span class="r-num">{latest}<br><span class="r-meta">{unit} {period}</span></span>
-          <span class="r-num">{delta}</span>
+        <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
+          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em> {unit}</span></span>
           <span class="r-meta">{axes}</span>
           <code class="chip {scls}">{status}</code>
         </a>

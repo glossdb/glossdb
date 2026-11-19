@@ -281,19 +281,6 @@ pub async fn app_on_without(dataset: &str, kits: &[&str]) -> Served {
     app_on_config(dataset, config, dir).await
 }
 
-/// The gated interfaces over a new workspace that holds `dataset`, the
-/// engine opened with the model service at `url`.
-pub async fn app_on_service(dataset: &str, url: &str) -> Served {
-    let dir = tempfile::tempdir().unwrap();
-    let mut config = glossdb_serverd::engine::Config::laptop(dir.path());
-    config.service = Some(glossdb_serverd::engine::Service {
-        url: url.to_string(),
-        token: None,
-        audience: None,
-    });
-    app_on_config(dataset, config, dir).await
-}
-
 async fn app_on_config(
     dataset: &str,
     mut config: glossdb_serverd::engine::Config,
@@ -320,26 +307,14 @@ async fn app_on_config(
     (app, plane, dir)
 }
 
-/// A `tools/call` of the one tool, stamped with `meta_value`; `answer`
-/// is a review form's answer under its key, sent back with the call.
-pub fn call_with(meta_value: Value, statements: &str, answer: Option<(&str, Value)>) -> Value {
-    let mut params = json!({
+/// A `tools/call` of the one tool, stamped with `meta_value`.
+pub fn call_with(meta_value: Value, statements: &str) -> Value {
+    let params = json!({
         "_meta": meta_value,
         "name": "glossql",
         "arguments": {"statements": statements}
     });
-    if let Some((key, answer)) = answer {
-        params["inputResponses"] = json!({ key: answer });
-        params["requestState"] = json!("review:v1");
-    }
     json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params})
-}
-
-/// The sessionless stamp with the elicitation capability advertised.
-pub fn meta_elicit() -> Value {
-    let mut stamp = meta();
-    stamp["io.modelcontextprotocol/clientCapabilities"] = json!({"elicitation": {}});
-    stamp
 }
 
 /// A JSON-RPC request other than a tool call, on the agent interface at `path`.
@@ -352,15 +327,8 @@ pub async fn rpc(app: &Router, path: &str, method: &str, params: Value) -> Value
 
 /// The JSON-RPC body of one tool call on the agent interface at `path`.
 pub async fn tool(app: &Router, path: &str, statements: &str) -> Value {
-    let payload = call_with(meta(), statements, None);
+    let payload = call_with(meta(), statements);
     expect_ok(mcp_on(app.clone(), path, "127.0.0.1", payload).await).await
-}
-
-/// One tool call on the workspace's agent interface from a client that
-/// takes review forms, with the answer to one form if given.
-pub async fn elicit(app: &Router, statements: &str, answer: Option<(&str, Value)>) -> Value {
-    let payload = call_with(meta_elicit(), statements, answer);
-    expect_ok(mcp_on(app.clone(), "/mcp", "127.0.0.1", payload).await).await
 }
 
 /// The outcomes of a tool call, one per statement.

@@ -126,22 +126,25 @@ by the CASE that maps it) on the view. A red test is a `must` row of
 column of the view with no contract is a `should` row. Name every code in the CASE and leave the rest to NULL:
 a new code then shows in `code_test` instead of falling to the `ELSE`.
 
-The reconciliation answers, after each load: did every row of each
-system arrive, and if not, which rows and why. Per system and period
-it counts the rows each branch reads from the table that drives it,
-the rows each condition and each join leaves out, the rows a join
-repeats and the rows that reach the target, with the sums of the
-columns annotated as measures. Declare the relationship each join
-follows, so that the keys with no partner are named, in the
-reconciliation and in the finding of `orphan_test` in `next`. The
-server computes it after each write on the view; read it with
-`SELECT value FROM measurements WHERE function = 'reconciliation'`. A
-branch that groups, takes distinct rows or has a limit is not
-followed: the result says so, and its other branches are counted
-([reads](../reference/reads.md#the-harmonise-kit-preview)).
+The server also runs `reconciliation_test` on the view after each
+load. It answers: did every row of each system arrive, and which did
+not. Per system and period it holds the rows and the sum of each
+measure at the source against what the view serves, and lists the
+keys at the source that the view does not serve. The source of a
+branch is the table it reads first, joined to nothing before it. Serve
+the system as a literal in each branch (`'sap' AS source_system`): the
+served rows are counted per system by that column. A red test is a
+`must` row of `next` with the systems, the periods and the keys, and
+the statement that lists those rows at the source. Each source row is
+compared at the view's grain: by the key columns the branch copies
+and the columns it looks up through a join, against the rows the view
+serves. A view that groups is not red for serving fewer rows than it
+reads. Rows the view's condition leaves out (`WHERE m.status = 'D'`)
+are counted as excluded, not missing. A branch that compares nothing
+(a computed key, no join) is counted only, and the result's `notes`
+says so ([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ```glossql
-DECLARE RELATIONSHIP supply.stock_mono.indeks -> supply.model_identities.local_code;
 GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 ```
 
@@ -162,20 +165,10 @@ GLOSS revenue_per_room ON stays AS $${
 
 A view's meaning is its `meaning` annotation, `GLOSS meaning ON
 <dataset>.<view>`, and a metric's unit is its measure's.
-`view_definitions` serves both. What else the business glossary keeps
-per view, such as an owner, a source or a derived metric's formula,
-goes into `definitions` on the dataset, keyed by the view's name. It
-is one annotation: read it, add your entry, write it back. Where a
-view carries no `meaning` or unit, `view_definitions` serves the
-entry's.
+`view_definitions` serves both.
 
 ```glossql
-GLOSS definitions ON stays AS $${"definitions": {
-  "booked_nights": {"meaning": "nights of confirmed bookings, counted at check-in",
-                    "unit": "nights", "owner": "Revenue management"},
-  "occupancy": {"meaning": "sold room nights over available room nights", "unit": "share",
-                "formula": "sold[w] / available[w]"}
-}}$$;
+GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available room nights"}$$;
 ```
 
 ## Read what you defined
@@ -195,6 +188,3 @@ series: `applicable`, `reason` and `floor` are empty on their rows.
 `missing` lists the annotations the columns still need,
 `measurements_to_run` the measurements to run. Reading the views:
 [read the views](read.md). Each column: [reads](../reference/reads.md).
-
-Plans, forecasts and scenarios on a metric are preview features:
-[outlook](outlook.md).

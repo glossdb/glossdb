@@ -469,35 +469,26 @@ pub struct SummaryCounts {
 /// The shape of a call, read off the statements before they run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallShape {
-    pub reviews: bool,
     pub writes: bool,
     pub dataset: Option<String>,
 }
 
 /// The shape, from the statements' text: `USE` names the dataset, the
 /// last one standing; a statement that is not a read, and an
-/// extraction, write; a call of reads alone that names a catalog
-/// relation is a review. Syntactic, as the interfaces need it before the
+/// extraction, write. Syntactic, as the interfaces need it before the
 /// engine runs anything: a statement that is none of these is refused
 /// by the engine, by name, when it runs.
 pub fn call_shape(statements: &str) -> CallShape {
-    let mut reads_the_catalog = false;
     let mut writes = false;
     let mut dataset = None;
     for piece in split_statements(statements) {
         if let Some(name) = use_target(&piece) {
             dataset = Some(name);
-        } else if is_read(&piece) && !is_extraction(&piece) {
-            reads_the_catalog |= reads_catalog(&piece);
-        } else {
+        } else if !is_read(&piece) || is_extraction(&piece) {
             writes = true;
         }
     }
-    CallShape {
-        reviews: reads_the_catalog && !writes,
-        writes,
-        dataset,
-    }
+    CallShape { writes, dataset }
 }
 
 /// `USE <dataset>`: the name, an unquoted one folded to lowercase as
@@ -528,7 +519,6 @@ const CATALOG: &[&str] = &[
     "view_summary",
     "column_mapping",
     "view_tests",
-    "workspace_status",
     "app_parts",
     "app_releases",
     "next",
@@ -713,7 +703,7 @@ struct Pieces {
     /// The language's documents, SPEC.md and grammar.ebnf, sit beside
     /// this directory, as they do in the extension's repository.
     glossql_kits: PathBuf,
-    /// This repository's kits, `kits/`: core, views, plan, harmonise, outlook and goals.
+    /// This repository's kits, `kits/`: core, views, harmonise and goals.
     kits: PathBuf,
     extension_dir: Option<PathBuf>,
 }
@@ -780,9 +770,7 @@ impl Config {
                 pieces.glossql_kits.join("kpi/kit.sql"),
                 pieces.glossql_kits.join("quality/kit.sql"),
                 pieces.kits.join("views/kit.sql"),
-                pieces.kits.join("plan/kit.sql"),
                 pieces.kits.join("harmonise/kit.sql"),
-                pieces.kits.join("outlook/kit.sql"),
                 pieces.kits.join("goals/kit.sql"),
             ],
             extension_dir: pieces.extension_dir,
@@ -1414,20 +1402,6 @@ impl Session {
         .map_err(|e| SessionError::Engine(e.to_string()))?
     }
 
-    /// The lake's snapshot: the version of the data and the catalog
-    /// together, since a load and a write to the catalog each take one.
-    /// A read of the lake alone holds while it does.
-    pub async fn lake_snapshot(&self) -> Option<String> {
-        let batches = self
-            .batches(
-                &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
-                &[],
-            )
-            .await
-            .ok()?;
-        one_cell(&batches)
-    }
-
     /// The statements, in order, each an outcome; a refusal names its
     /// place and carries what loaded before it.
     pub async fn execute(&self, text: &str) -> Result<Vec<Outcome>, SessionError> {
@@ -1454,6 +1428,9 @@ impl Session {
                 let reads = is_read(piece) && !measurement_call(piece);
                 if reads {
                     pending.run(&conn);
+                }
+                if !reads {
+                    pending.before_write(&conn);
                 }
                 let ran = if root {
                     execute_one(&conn, piece, cap)
@@ -1692,21 +1669,49 @@ fn execute_one(
     }
 }
 
-/// Whether a call wrote since its results were last brought current.
+/// Whether a call wrote since its results were last brought current,
+/// and the lake's snapshot then: a write of what the catalog holds
+/// writes nothing and takes no snapshot, so nothing can be due.
 #[derive(Default)]
 struct Pending {
     wrote: bool,
+    since: Option<String>,
 }
 
 impl Pending {
-    /// Brings the dataset's results current after a write, and clears
-    /// the mark. A result that cannot be computed is logged and never
-    /// fails the call.
-    fn run(&mut self, conn: &Connection) {
-        if std::mem::take(&mut self.wrote) {
-            bring_current(conn);
+    /// Takes the snapshot a write starts from, once per call and after
+    /// each time the results were brought current.
+    fn before_write(&mut self, conn: &Connection) {
+        if self.since.is_none() {
+            self.since = current_snapshot(conn);
         }
     }
+
+    /// Brings the dataset's results current after a write that took a
+    /// snapshot, and clears the mark. A result that cannot be computed
+    /// is logged and never fails the call.
+    fn run(&mut self, conn: &Connection) {
+        if !std::mem::take(&mut self.wrote) {
+            return;
+        }
+        let now = current_snapshot(conn);
+        if now.is_some() && now == self.since {
+            return;
+        }
+        bring_current(conn);
+        self.since = None;
+    }
+}
+
+/// The lake's newest snapshot, or none where it cannot be read.
+pub(crate) fn current_snapshot(conn: &Connection) -> Option<String> {
+    let (_, _, batches) = arrow_batches(
+        conn,
+        &format!("SELECT id::VARCHAR FROM ducklake_current_snapshot('{LAKE}')"),
+        &[],
+    )
+    .ok()?;
+    one_cell(&batches)
 }
 
 /// The rounds one write is followed for: a result computed in one
@@ -1715,17 +1720,22 @@ const ROUNDS: usize = 4;
 
 /// The results the bound dataset wants that are missing or out of
 /// date, computed until none is left: the kit's `results_due()` says
-/// which (a result whose inputs moved, by the catalog's own versions,
-/// or one never computed) and in which order, an input before what
-/// reads it. As CI runs a suite after a commit. A statement that fails
+/// which (a result a node of whose inputs changed after the snapshot
+/// it read at, or one never computed) and in which order, an input before what
+/// reads it. As CI runs a suite after a commit. A round is followed by
+/// another only where it changed what another result read before it
+/// (the kit's `results_moved_since()`). A statement that fails
 /// is logged and not tried again in this call; its result stays due and
 /// the test report says so.
-fn bring_current(conn: &Connection) {
+pub(crate) fn bring_current(conn: &Connection) {
     let mut failed = std::collections::BTreeSet::new();
-    for _ in 0..ROUNDS {
+    for round in 0..ROUNDS {
+        let since = current_snapshot(conn);
         let Ok((_, _, due)) = arrow_batches(
             conn,
-            &format!("SELECT run FROM {LAKE}.main.results_due() ORDER BY ord, run"),
+            &format!(
+                "SELECT run FROM {LAKE}.main.results_due() GROUP BY run ORDER BY min(ord), run"
+            ),
             &[],
         ) else {
             return;
@@ -1742,6 +1752,19 @@ fn bring_current(conn: &Connection) {
             if let Err(e) = run(conn, &statement) {
                 tracing::debug!(error = %e, %statement, "a result: not computed");
                 failed.insert(statement);
+            }
+        }
+        if round + 1 == ROUNDS {
+            return;
+        }
+        if let Some(since) = since {
+            let moved = arrow_batches(
+                conn,
+                &format!("SELECT 1 FROM {LAKE}.main.results_moved_since({since}) LIMIT 1"),
+                &[],
+            );
+            if matches!(moved, Ok((_, _, batches)) if batches.iter().all(|b| b.num_rows() == 0)) {
+                return;
             }
         }
     }
@@ -1914,7 +1937,8 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
 }
 
 /// Statements split on `;` outside quotes, dollar quotes (`$$` and
-/// tagged, `$tag$`) and comments.
+/// tagged, `$tag$`) and comments. A piece of comments alone is no
+/// statement: a text `next` hands over may close on a commented one.
 fn split_statements(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
@@ -1975,7 +1999,7 @@ fn split_statements(text: &str) -> Vec<String> {
         } else if !in_single && !in_dollar && c == '"' {
             in_double = !in_double;
         } else if !in_single && !in_double && !in_dollar && c == ';' {
-            if !current.trim().is_empty() {
+            if !after_comments(&current).trim().is_empty() {
                 out.push(current.trim().to_string());
             }
             current.clear();
@@ -1985,7 +2009,7 @@ fn split_statements(text: &str) -> Vec<String> {
         current.push(c);
         i += 1;
     }
-    if !current.trim().is_empty() {
+    if !after_comments(&current).trim().is_empty() {
         out.push(current.trim().to_string());
     }
     out
@@ -2032,16 +2056,21 @@ mod tests {
         assert!(pieces[1].contains("a; b"));
     }
 
+    /// A comment above a statement stays with it, and comments after
+    /// the last statement are no statement of their own.
     #[test]
-    fn a_glossary_read_reviews_and_a_gloss_writes() {
-        assert_eq!(
-            call_shape("SELECT * FROM glossary"),
-            CallShape {
-                reviews: true,
-                writes: false,
-                dataset: None
-            }
+    fn comments_alone_are_no_statement() {
+        let pieces = split_statements(
+            "-- why\nSELECT 1;\n-- where a person accepts:\n-- GLOSS t ON fin.v AS $${\"tolerance\": 1.0}$$;\n",
         );
+        assert_eq!(pieces.len(), 1, "{pieces:?}");
+        assert!(pieces[0].starts_with("-- why"));
+        assert!(split_statements("-- nothing to run").is_empty());
+    }
+
+    #[test]
+    fn a_glossary_read_does_not_write_and_a_gloss_does() {
+        assert!(!call_shape("SELECT * FROM glossary").writes);
         assert!(call_shape("USE fin; GLOSS meaning ON orders.amount AS $${}$$").writes);
         assert_eq!(
             call_shape("USE fin; SELECT * FROM next").dataset.as_deref(),
@@ -2056,7 +2085,7 @@ mod tests {
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
         let shape = call_shape(setup);
-        assert!(shape.writes && !shape.reviews, "{shape:?}");
+        assert!(shape.writes, "{shape:?}");
         assert_eq!(shape.dataset.as_deref(), Some("fin"));
         assert!(reads_catalog("SELECT * FROM GLOSSARY(orders)"));
         assert!(!reads_catalog("SELECT * FROM fin.orders"));

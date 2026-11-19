@@ -37,8 +37,8 @@ v AS (
   SELECT count(*) AS n,
          count(*) FILTER (WHERE kind = 'relation') AS tables,
          count(*) FILTER (WHERE kind = 'scalar') AS scalars,
-         count(*) FILTER (WHERE coalesce(kind, '') NOT IN ('relation', 'scalar', 'plan')) AS metrics
-  FROM view_definitions WHERE coalesce(kind, '') <> 'plan'),
+         count(*) FILTER (WHERE coalesce(kind, '') NOT IN ('relation', 'scalar')) AS metrics
+  FROM view_definitions),
 rows(ord, kind, title, question, have, more, page) AS (
   SELECT 1, 'integrate', 'Integration', 'Which sources map?',
          (SELECT count(*) FROM load) || CASE WHEN (SELECT count(*) FROM load) = 1 THEN ' table' ELSE ' tables' END || ' from ' || (SELECT count(DISTINCT source) FROM recipe) || CASE WHEN (SELECT count(DISTINCT source) FROM recipe) = 1 THEN ' source' ELSE ' sources' END || ', ' || (SELECT n FROM v) || CASE WHEN (SELECT n FROM v) = 1 THEN ' view' ELSE ' views' END,

@@ -181,8 +181,8 @@ FROM shop.customer_count;
 ```
 
 ```sql
-SELECT period, value FROM metric_series()
-WHERE metric = 'order_value' AND dimension = '' ORDER BY period;
+SELECT period, value FROM metric_series(view := 'order_value')
+WHERE dimension = '' ORDER BY period;
 ```
 
 The table returns 5 orders and 625.00 for north, 4 and 605.75 for

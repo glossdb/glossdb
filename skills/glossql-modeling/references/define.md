@@ -31,9 +31,7 @@ Spell the `GROUP BY` out.
 
 A view's meaning is its `meaning` annotation (`GLOSS meaning ON
 <dataset>.<view>`), which `next` asks for. A metric's unit is the
-`unit` of its `measure`. `view_definitions` shows both. Its `formula`
-is a formula a person recorded for the view; when it is newer than
-your definition, `next` lists it as a `review` row.
+`unit` of its `measure`. `view_definitions` shows both.
 
 ## A table to a data contract
 

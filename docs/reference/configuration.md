@@ -44,7 +44,7 @@ missing and does not start.
 
 | Variable | Meaning |
 |---|---|
-| `GLOSSDB_SERVICE_URL` | the model service for forecasts, expected ranges and scenarios. Unset: those measurements are refused by name |
+| `GLOSSDB_SERVICE_URL` | the model service a kit's function can call; no shipped kit calls one. Unset: such a call is refused by name |
 | `GLOSSDB_SERVICE_TOKEN` | the bearer token the service expects |
 | `GLOSSDB_SERVICE_AUDIENCE` | on Google Cloud, instead of a token: the server mints an ID token for this audience as the service account it runs as |
 

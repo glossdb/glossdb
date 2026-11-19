@@ -1,10 +1,10 @@
 -- The measures: every view that serves a series, with its chip. The
--- facts, the views and the plans have their own lists. `$stopped` picks
+-- facts and the views have their own lists. `$stopped` picks
 -- the served ones (0) or the ones their author stopped (1). The rows
--- are `view_definitions`, the catalog; the numbers beside them are
--- `frames/latest`, joined in the browser by `name`. The axes value
--- carries, until the data arrives, the fact row's own reason where the
--- metric serves no series — what its columns still miss.
+-- are `view_definitions` and `view_summary()`, the catalog alone: the
+-- values are on each metric's own page. The axes value is the
+-- dimensions the catalog names, or why the metric serves no series:
+-- what its columns still miss.
 WITH asked AS (
   SELECT q.aspect, count(*) AS n FROM open_questions q
   JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.aspect),
@@ -15,14 +15,11 @@ SELECT s.title,
        s.name,
        s.kind AS view_kind,
        s.unit,
-       '' AS period,
-       '—' AS latest,
-       '' AS delta,
        CASE
          WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped
          WHEN x.applicable IS FALSE THEN split_part(x.reason, ':', 1)
          WHEN x.applicable AND x.additivity IS NULL THEN 'no additivity annotated'
-         ELSE 'no axes admitted' END AS axes,
+         ELSE coalesce(nullif(array_to_string(list_sort(x.dims), ' · '), ''), 'no axes admitted') END AS axes,
        CASE
          WHEN s.stopped <> '' THEN 'stopped'
          WHEN coalesce(q.n, 0) > 0 THEN CAST(q.n AS VARCHAR) || ' open'
@@ -40,6 +37,6 @@ FROM view_definitions s
 LEFT JOIN asked q ON q.aspect = s.name
 LEFT JOIN decided r ON r.aspect = s.name
 LEFT JOIN view_summary() x ON x.view = s.name
-WHERE s.kind NOT IN ('scalar', 'plan', 'relation')
+WHERE s.kind NOT IN ('scalar', 'relation')
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY name

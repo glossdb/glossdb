@@ -28,8 +28,6 @@ grouped by it.
 | Governance | Who decides and may use it? | [Review and decide](usage/review.md): the review queue and review decisions |
 | Lineage | Where does this come from? | [Read the views](usage/read.md): column lineage, OpenLineage events, and how the views are read: SQL, Arrow, export, the console, data apps |
 
-Preview: [Forecasts, expected ranges, plans and scenarios](usage/outlook.md).
-
 ## The four kinds of work
 
 The work on a dataset is of four kinds: integrate (connect a source,
@@ -56,6 +54,9 @@ must be done (served data is wrong or cannot be served), what should
   paths, the statements the server refuses.
 - [Reads](reference/reads.md): each catalog table, view and table
   function with its columns.
+- [How results stay current](reference/dependencies.md): what a
+  stored result read, what puts it out of date, and who computes it
+  again.
 - [Configuration](reference/configuration.md): flags and variables.
 - [App authoring](reference/apps.md): the parts and tiles of a data
   app.
@@ -71,5 +72,5 @@ served from the glossql extension the server bundles.
 | Views, metric series, `next`, review decisions | stable |
 | MCP interface, query endpoint, console, data apps, export | stable |
 | Semantic model and lineage export | stable |
-| Forecasts, expected ranges, plans, scenarios | preview |
+| Forecasts, expected ranges, plans, scenarios | planned |
 | Reading a lake in place; dbt and semantic-model import; access per user | planned |

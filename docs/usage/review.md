@@ -36,18 +36,11 @@ asked.
 questions. Choose **Correct as stated**, or correct it in your own
 words.
 
-**In the agent's client.** While questions are open, a tool call that
-only reads the catalog carries one form per question, where the
-client supports MCP elicitation. A form offers:
-
-- Correct as stated;
-- Rather, this reading: the alternative the agent named;
-- Same as before: your decision on the same key for another view;
-- The question itself is unclear: it is asked again in other words;
-- What is right instead: your own words, which outrank the boxes.
-
-Where the client shows no forms, the agent relays the question in
-chat.
+**In the agent's chat.** The agent relays the question, with the
+alternative it named and its reason. The person records the answer in
+the console. What arrives over MCP is stored as the agent's, so an
+agent cannot record a person's decision; the console stores it as the
+signed-in person's.
 
 **With a statement**, over the query endpoint, which writes as a
 person:
@@ -100,7 +93,5 @@ Two more things a person decides:
 
 - **A test result.** Accept a measured rate as a tolerance with a
   reason ([test](test.md#accept-a-result)).
-- **A view's meaning or formula.** Annotate `meaning` on the view;
-  write a formula into `definitions`
-  ([define views](views.md)). A person's formula newer than the
-  view's definition shows in `next` as a `review` row.
+- **A view's meaning.** Annotate `meaning` on the view
+  ([define views](views.md)).

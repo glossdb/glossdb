@@ -27,14 +27,18 @@ FROM stays.room_count;
 start of the period), `value`.
 
 ```sql
-SELECT period, value FROM metric_series(grain := 'month')
-WHERE metric = 'booked_nights' AND dimension = '' ORDER BY period;
+SELECT period, value FROM metric_series(view := 'booked_nights', grain := 'month')
+WHERE dimension = '' ORDER BY period;
 ```
 
 ```sql
-SELECT member, period, value FROM metric_series(grain := 'quarter')
-WHERE metric = 'booked_nights' AND dimension = 'room_type' ORDER BY period, member;
+SELECT member, period, value FROM metric_series(view := 'booked_nights', grain := 'quarter')
+WHERE dimension = 'room_type' ORDER BY period, member;
 ```
+
+`view :=` reads that one metric's rows. Without it, the read serves
+every metric of the dataset, and one metric whose additivity is not
+stated refuses the whole read.
 
 - Without `grain`, each metric is served at its own finest grain. With
   one (`minute` to `year`), each metric at or below it is served at
@@ -79,7 +83,7 @@ statements, or a write, answer in JSON.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8080/stays/query \
-  -d "SELECT period, value FROM metric_series(grain := 'month') WHERE metric = 'booked_nights' AND dimension = ''" \
+  -d "SELECT period, value FROM metric_series(view := 'booked_nights', grain := 'month') WHERE dimension = ''" \
   -o booked_nights.arrow
 ```
 
@@ -118,10 +122,22 @@ SELECT event FROM lineage_events();
 - `semantic_model()` returns the dataset as one Apache Ossie document:
   each loaded table and each served metric with its fields, time and
   dimension columns, keys, relationships and descriptions. Units and a
-  semi-additive or non-additive value go into `custom_extensions`.
+  semi-additive or non-additive value go into `nonportable_extensions`,
+  under the vendor name `glossdb`.
 - `lineage_events()` returns OpenLineage run events: one per load,
   with the column lineage the load recorded, and one per view, with
   the tables it scans and each column's source columns.
+
+`semantic_model()` follows the Ossie 0.3.0.dev0 draft, as its schema
+stands at apache/ossie commit `74a26bef`. The draft still changes, so
+a later commit may expect other names. `lineage_events()` follows
+OpenLineage 2-0-2, with the column lineage facet 1-2-0.
+
+The server's test suite pins the three schemas and validates both
+reads against them, on a dataset of two loaded tables, a metric, a
+table view and a relationship. Measured: zero validation errors for
+the document and for each event. Both reads answer over the query
+endpoint.
 
 ## The console
 

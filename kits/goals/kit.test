@@ -1,5 +1,5 @@
 # name: kits/goals/kit.test
-# description: the goals kit — what the server computes after a write (`results_due()`) and the work list `next`, its rows by level and kind of work, on the kits before it, with and without the outlook kit; run again, it holds
+# description: the goals kit — what the server computes after a write (`results_due()`) and the work list `next`, its rows by level and kind of work, on the kits before it; run again, it holds
 # group: [sql]
 
 require glossql
@@ -51,8 +51,7 @@ FROM glossql_kit('{KITS}/goals/kit.sql');
 goals	current
 
 # --- the levels. A table no view reads is described on request (could); with no view, one must be defined.
-# A metric served: what its view reads is to be described (should). The outlook kit is a pull-in: loaded, with a
-# model service named, it changes neither `next` nor view_tests() while no preview result is stored
+# A metric served: what its view reads is to be described (should)
 
 statement ok
 COPY (SELECT (DATE '2023-01-01' + INTERVAL (m) MONTH)::DATE AS month, 100.0 + m AS orders, 10.0 + m % 3 AS price, 5 AS staff
@@ -102,56 +101,6 @@ SELECT applicable, floor FROM view_summary() WHERE view = 'orders';
 ----
 true	month
 
-# the view's column price has no role: the summary row and `next` ask for it with the same statement, on the
-# view's own column, as should
-query TTT
-SELECT n.level, contains(s.missing[1], 'ops.orders.price'), contains(n.statement, s.missing[1])
-FROM (SELECT missing FROM view_summary() WHERE view = 'orders') s,
-     (SELECT level, statement FROM next WHERE kind = 'describe' AND asset = 'ops.orders' AND state = 'missing') n;
-----
-should	true	true
-
-# nothing must be done: the dataset is complete. Its tests not run yet are should, the columns no view reads could
-query TTTT
-SELECT level, kind, asset, state FROM next WHERE kind <> 'describe' OR level <> 'should' ORDER BY ALL;
-----
-could	describe	ops.orders_raw	missing
-should	test	ops.orders	not_run
-should	test	ops.orders	not_run
-should	test	ops.orders	not_run
-
-statement ok
-CREATE TABLE memory.main.next_without AS SELECT * FROM next;
-
-statement ok
-CREATE TABLE memory.main.tests_without AS SELECT * EXCLUDE (evidence), evidence::VARCHAR AS evidence FROM view_tests();
-
-statement ok
-FROM glossql_kit('{KITS}/plan/kit.sql');
-
-statement ok
-FROM glossql_kit('{KITS}/outlook/kit.sql');
-
-statement ok
-SET GLOBAL glossql_service_url = 'http://model.test';
-
-query II
-SELECT (SELECT count(*) FROM (FROM next EXCEPT ALL FROM memory.main.next_without)),
-       (SELECT count(*) FROM (FROM memory.main.next_without EXCEPT ALL FROM next));
-----
-0	0
-
-query II
-SELECT (SELECT count(*) FROM (SELECT * EXCLUDE (evidence), evidence::VARCHAR FROM view_tests() EXCEPT ALL FROM memory.main.tests_without)),
-       (SELECT count(*) FROM (FROM memory.main.tests_without EXCEPT ALL SELECT * EXCLUDE (evidence), evidence::VARCHAR FROM view_tests()));
-----
-0	0
-
-query I
-SELECT count(*) FROM kits;
-----
-8
-
 # every shipped measurement reads the data of its subject's dataset alone: no table named, and no dataset but
 # the subject's (a read past the read functions is refused at the declaration)
 query I
@@ -163,185 +112,10 @@ WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
 ----
 0
 
-# --- a kit's stored results in `next`: an actor runs a preview function (the model service is stood in for); the
-# server computes none after a write. Current and green, it is no row;
-# out of date, it is a should with the statement that computes it again; a red test on it is a must with the test's
-# own finding and fix
-
-statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS (CASE
-  WHEN path = '/whatif' THEN '{"table":{"member":["orders","orders"],"period":["2025-08-01","2025-08-01"],"column":["value","value"],"status":["plan","scenario"],"level":[0.5,0.5],"value":[130,120],"effect":[null,-10]},"answer":{"service":"glossthesi","version":"test","errors":[],"changed":["orders.price"],"parts":[]}}'
-  WHEN json_extract(body, '$.spec.origins') IS NOT NULL
-    THEN '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[129,129,129,129,129],"pit":[0.7,0.7,0.7,0.7,0.7],"displacement":[0.4,0.4,0.4,0.4,0.4],"withheld":[null,null,null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[],"backtest":{"threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"period":"2025-06","score":0.4,"state":"green"}]}}}'
-  ELSE '{"table":{"member":["orders","orders","orders","orders","orders"],"origin":["2025-06-01","2025-06-01","2025-06-01","2025-06-01","2025-06-01"],"step":[1,1,1,1,1],"span":[null,null,null,null,null],"period":["2025-07-01","2025-07-01","2025-07-01","2025-07-01","2025-07-01"],"column":["value","value","value","value","value"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"coverage_80":[0.75,0.75,0.75,0.75,0.75]},"answer":{"service":"glossthesi","version":"test","errors":[]}}' END)::JSON;
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_forecast() FROM ops.orders;
-
-query TTT
-SELECT subject, state, current FROM TESTS() WHERE test = 'range_test';
-----
-ops	green	true
-
-query II
-SELECT (SELECT count(*) FROM next WHERE contains(statement, 'metric_')),
-       (SELECT count(*) FROM results_due() WHERE function LIKE 'metric_%');
-----
-0	0
-
-# a plan is declared and defined: nobody compared it yet, so it is no row; the ranges read the dataset's metrics and
-# the forecast its metric, and a plan is neither: they stay current
-statement ok
-DECLARE ASPECT orders_target WITH $${"title": "Orders target", "x-kind": "plan", "x-plan-of": "orders"}$$ AS VIEW;
-
-statement ok
-GLOSS orders_target ON ops AS $${"sql": "SELECT month, orders * 1.1 AS value FROM ops.orders_raw"}$$;
-
-statement ok
-GLOSS role ON orders_target.value AS $${"value": "measure"}$$;
-
-query I
-SELECT count(*) FROM glossql_outdated() WHERE function LIKE 'metric_%';
-----
-0
-
-statement ok
-SELECT metric_plan() FROM ops.orders_target;
-
-query TT
-SELECT view, subject FROM view_tests() WHERE test = 'plan_test';
-----
-orders_target	ops.orders_target
-
-query I
-SELECT count(*) FROM next WHERE contains(statement, 'metric_');
-----
-0
-
-# a metric declared beside them: the ranges read every metric and are out of date; the forecast of orders, and the
-# plan that reads it, stay current. The stale result is a should with the statement that computes it again
-statement ok
-DECLARE ASPECT staffing WITH $${"title": "Staffing"}$$ AS VIEW;
-
-statement ok
-GLOSS staffing ON ops AS $${"sql": "SELECT month, staff AS value FROM ops.orders_raw"}$$;
-
-query TTTTT
-SELECT level, kind, asset, state, statement FROM next WHERE contains(statement, 'metric_');
-----
-should	test	ops	stale	SELECT metric_ranges() FROM ops;
-
-statement ok
-GLOSS staffing ON ops AS $${"stopped": "not a metric of this test"}$$;
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-# a change to the metric makes its forecast, the plan and the ranges out of date: the forecast's row is on the
-# metric, the server does not compute it
-statement ok
-GLOSS dimension ON orders.price AS $${"value": "none"}$$;
-
-query TTTTT
-SELECT level, kind, asset, state, statement FROM next WHERE contains(statement, 'metric_') ORDER BY statement;
-----
-should	test	ops.orders	stale	SELECT metric_forecast() FROM ops.orders;
-should	test	ops.orders_target	stale	SELECT metric_plan() FROM ops.orders_target;
-should	test	ops	stale	SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_forecast() FROM ops.orders;
-
-statement ok
-SELECT metric_plan() FROM ops.orders_target;
-
-query I
-SELECT count(*) FROM next WHERE contains(statement, 'metric_');
-----
-0
-
-# a scenario is annotated: nobody estimated it, so it is no row; estimated, then changed, its estimate alone is out of date
-statement ok
-GLOSS lever ON orders.price AS $${"value": true, "basis": "the list price"}$$;
-
-statement ok
-DECLARE ASPECT price_cut WITH $${"title": "Price cut", "x-kind": "scenario", "type": "object", "required": ["levers"], "properties": {"levers": {"type": "array"}}}$$ AS FACT ON DATASET;
-
-statement ok
-GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.9}, "basis": "a cut in August"}]}$$;
-
-query I
-SELECT count(*) FROM next WHERE contains(statement, 'metric_') AND NOT contains(statement, 'metric_ranges') AND NOT contains(statement, 'metric_forecast');
-----
-0
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-statement ok
-SELECT metric_forecast() FROM ops.orders;
-
-statement ok
-SELECT metric_plan() FROM ops.orders_target;
-
-statement ok
-SELECT metric_scenario() FROM ops.orders;
-
-statement ok
-GLOSS price_cut ON ops AS $${"levers": [{"column": "orders.price", "factor": {"2025-08": 0.8}, "basis": "a deeper cut in August"}]}$$;
-
-query T
-SELECT statement FROM next WHERE contains(statement, 'metric_');
-----
-SELECT metric_scenario() FROM ops.orders;
-
-statement ok
-SELECT metric_scenario() FROM ops.orders;
-
-# the newest month falls far outside its expected range: the range test is red, a must on the dataset with the
-# result's own finding and fix. Work on the dataset is not complete; once a person accepts the change with the
-# statement the fix hands over, it is
-statement ok
-CREATE OR REPLACE MACRO main.service(path, body) AS '{"table":{"member":["orders","orders","orders","orders","orders"],"period":["2025-06","2025-06","2025-06","2025-06","2025-06"],"level":[0.05,0.1,0.5,0.9,0.95],"value":[100,110,120,130,140],"actual":[190,190,190,190,190],"pit":[0.999,0.999,0.999,0.999,0.999],"displacement":[0.998,0.998,0.998,0.998,0.998],"withheld":[null,null,null,null,null]},"answer":{"service":"glossthesi","version":"test","errors":[],"backtest":{"threshold":0.98,"members":[{"member":"orders","column":"value","backtested":1,"held_80":1.0,"held_90":1.0,"period":"2025-06","score":0.998,"state":"red"}]}}}'::JSON;
-
-statement ok
-SELECT metric_ranges() FROM ops;
-
-query TTTTTT
-SELECT level, kind, asset, state, starts_with(open, 'range_test: orders is 190'),
-       contains(statement, 'GLOSS metric_ranges ON ops AS $${"tolerance": 0.998')
-FROM next WHERE level = 'must';
-----
-must	test	ops	red	true	true
-
-statement ok
-SET VARIABLE glossql_actor = 'human';
-
-statement ok
-GLOSS metric_ranges ON ops AS $${"tolerance": 0.998, "basis": "a new customer in June, confirmed by sales"}$$;
-
-statement ok
-RESET VARIABLE glossql_actor;
-
-query II
-SELECT count(*) FILTER (WHERE level = 'must'), count(*) FILTER (WHERE level IN ('should', 'could')) > 0 FROM next;
-----
-0	true
-
 # --- a test of one's own on a column a view reads. The property holds the expectation, annotated on the one
 # column: `next` does not ask for it on the other assets the views read. Its row in `next` carries the check's
 # finding, the check to run again and the annotation that records a rate a person accepts, with the
-# expectation's own words kept; view_tests() names the check as `run`. The count of open tests in
-# workspace_status is compared with the count before the test was declared
-
-statement ok
-CREATE TABLE memory.main.open_before AS SELECT open FROM workspace_status WHERE area = 'tests';
+# expectation's own words kept; view_tests() names the check as `run`
 
 statement ok
 DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
@@ -352,39 +126,11 @@ DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <=
 statement ok
 DECLARE TEST price_test ON price_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
 
-# declared and set nowhere: nothing asks for it
-query II
-SELECT (SELECT count(*) FROM next WHERE contains(statement, 'price_rule')),
-       (SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests');
-----
-0	0
-
 statement ok
 GLOSS price_rule ON ops.orders_raw.price AS $${"outcome": "a price is above 11", "tolerance": 0.0, "basis": "the price list starts at 12"}$$;
 
-# set on the one column and not run: the test waits there, with the check as its statement, and counts as open once
-query TTT
-SELECT kind, asset, state FROM next WHERE contains(statement, 'price_rule') OR contains(statement, 'price_check');
-----
-test	ops.orders_raw.price	yellow
-
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-1
-
 statement ok
 SELECT price_check() FROM ops.orders_raw.price;
-
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-0
-
-query TT
-SELECT state, run FROM view_tests() WHERE test = 'price_test' AND view = 'orders';
-----
-red	SELECT price_check() FROM ops.orders_raw.price
 
 query TTTTT
 SELECT state, starts_with(open, 'price_test: ') AND contains(open, 'rows are priced'),
@@ -425,11 +171,6 @@ DECLARE FUNCTION staff_check FOR ops AS $$SELECT count(*) FILTER (WHERE staff < 
 statement ok
 DECLARE TEST staff_test ON staff_rule DETECTOR rate_tolerance THRESHOLD 0.0;
 
-query I
-SELECT open - (SELECT open FROM memory.main.open_before) FROM workspace_status WHERE area = 'tests';
-----
-0
-
 # --- each assumption that waits for a person is a should row of `next`, as open_questions counts them; `entity` is
 # asked on a table view, with its grain, and not on a metric
 
@@ -452,13 +193,12 @@ FROM next WHERE kind = 'describe';
 ----
 1	0
 
-# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view; a view
-# with no formula has none
+# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view
 
-query TTT
-SELECT kind, meaning, formula IS NULL FROM view_definitions WHERE name = 'orders';
+query TT
+SELECT kind, meaning FROM view_definitions WHERE name = 'orders';
 ----
-measure	orders taken per month	true
+measure	orders taken per month
 
 query T
 SELECT kind FROM view_definitions WHERE name = 'order_list';
@@ -536,52 +276,6 @@ SELECT (SELECT count(*) FROM next WHERE kind = 'describe' AND contains(statement
 ----
 0	1
 
-# --- a check that fails is stored with its error: not due again after a write it did not read, due again once what it read moves
-
-statement ok
-DECLARE ASPECT fund_named WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
-
-statement ok
-DECLARE FUNCTION fund_named_check FOR side AS $$SELECT CASE WHEN count(*) FILTER (WHERE fund IS NULL) > 0 THEN error('fund_missing: a row names no fund') ELSE 0.0 END AS breach_rate, count(*) AS rows FROM side.ledger_clean$$ RETURNS fund_named;
-
-statement ok
-DECLARE TEST fund_named_test ON fund_named BY (AGENT, HUMAN) DETECTOR rate_tolerance;
-
-statement ok
-GLOSS fund_named ON ledger_clean AS $${"outcome": "every row names its fund", "tolerance": 0.0, "basis": "a booking without a fund cannot be reported"}$$;
-
-statement ok
-INSERT INTO side.ledger SELECT booked, amount, NULL FROM side.ledger LIMIT 1;
-
-statement error
-SELECT fund_named_check() FROM ledger_clean;
-----
-fund_missing
-
-query TT
-SELECT current, error IS NOT NULL FROM GLOSSARY(ledger_clean, all => true) WHERE aspect = 'fund_named' AND actor = 'function';
-----
-true	true
-
-statement ok
-CREATE TABLE side.unrelated AS SELECT 1 AS x;
-
-query I
-SELECT count(*) FROM results_due() WHERE function = 'fund_named';
-----
-0
-
-statement ok
-INSERT INTO side.ledger SELECT booked, amount, 'water' FROM side.ledger LIMIT 1;
-
-query T
-SELECT run FROM results_due() WHERE function = 'fund_named';
-----
-SELECT fund_named_check() FROM side.ledger_clean
-
-# --- a check on a metric depends on the annotations of what the metric reads: an annotation on a
-# table no metric reads computes nothing, a role on a column one metric scans computes that metric's check
-
 statement ok
 DECLARE DATASET grid SET (purpose: 'two metrics over one table');
 
@@ -591,128 +285,11 @@ USE grid;
 statement ok
 CREATE TABLE grid.results AS SELECT DATE '2024-01-01' + (i % 40)::INTEGER AS date, i % 7 AS driver_id, (i % 10)::DOUBLE AS points FROM range(400) t(i);
 
-statement ok
-CREATE TABLE grid.circuits AS SELECT i AS circuit_id, 'circuit ' || i AS name FROM range(5) t(i);
+# --- a join a view makes between two loaded tables with no declared relationship is relationship_test on the view,
+# yellow, a should; its fix declares the relationship toward the side a stored profile says holds each key once
 
 statement ok
-DECLARE ASPECT points WITH $${"title": "Points"}$$ AS VIEW;
-
-statement ok
-GLOSS points ON grid AS $${"sql": "SELECT date AS period, sum(points) AS value FROM grid.results GROUP BY 1"}$$;
-
-statement ok
-DECLARE ASPECT entries WITH $${"title": "Entries"}$$ AS VIEW;
-
-statement ok
-GLOSS entries ON grid AS $${"sql": "SELECT date AS period, count(driver_id) AS value FROM grid.results GROUP BY 1"}$$;
-
-statement ok
-GLOSS role ON points.period AS $${"value": "timestamp"}$$;
-
-statement ok
-GLOSS role ON points.value AS $${"value": "measure"}$$;
-
-statement ok
-GLOSS additivity ON points.value AS $${"value": "additive"}$$;
-
-statement ok
-GLOSS role ON entries.period AS $${"value": "timestamp"}$$;
-
-statement ok
-GLOSS role ON entries.value AS $${"value": "measure"}$$;
-
-statement ok
-GLOSS additivity ON entries.value AS $${"value": "additive"}$$;
-
-statement ok
-SELECT column_profile() FROM grid.results.date;
-
-statement ok
-SELECT column_profile() FROM grid.results.driver_id;
-
-statement ok
-SELECT column_profile() FROM grid.results.points;
-
-statement ok
-SELECT temporal() FROM grid.entries.period;
-
-statement ok
-SELECT temporal() FROM grid.points.period;
-
-# the relationship check is due per relationship between the tables a metric scans, a new one too
-statement ok
-CREATE TABLE grid.drivers AS SELECT i AS driver_id FROM range(7) t(i);
-
-statement ok
-DECLARE ASPECT driver_points WITH $${"title": "Points of known drivers"}$$ AS VIEW;
-
-statement ok
-GLOSS driver_points ON grid AS $${"sql": "SELECT r.date AS period, sum(r.points) AS value FROM grid.results r JOIN grid.drivers d ON d.driver_id = r.driver_id GROUP BY 1"}$$;
-
-statement ok
-DECLARE RELATIONSHIP results.driver_id -> drivers.driver_id;
-
-query TT
-SELECT subject, run FROM results_due() WHERE function = 'relationship_coherence';
-----
-grid.results.driver_id -> grid.drivers.driver_id	SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id
-
-statement ok
-SELECT relationship_coherence() FROM grid.results.driver_id -> grid.drivers.driver_id;
-
-query I
-SELECT count(*) FROM results_due() WHERE function = 'relationship_coherence';
-----
-0
-
-statement ok
-GLOSS driver_points ON grid AS $${"stopped": "not a metric of this test"}$$;
-
-statement ok
-SELECT additivity_check(), join_check(), orphan_check() FROM grid.entries;
-
-statement ok
-SELECT additivity_check(), join_check(), orphan_check() FROM grid.points;
-
-query I
-SELECT count(*) FROM results_due();
-----
-0
-
-statement ok
-GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
-
-query I
-SELECT count(*) FROM results_due();
-----
-0
-
-# a role on a column a metric reads: no check reads role on a metric's sources, so nothing is due
-statement ok
-GLOSS role ON results.driver_id AS $${"value": "dimension"}$$;
-
-query I
-SELECT count(*) FROM results_due();
-----
-0
-
-# a role on a column of the metric: the additivity check reads role on its columns, and is due
-statement ok
-GLOSS role ON entries.value AS $${"value": "dimension"}$$;
-
-query T
-SELECT run FROM results_due();
-----
-SELECT additivity_check() FROM grid.entries
-
-# --- a table view and a single value want what a metric wants: a table view over two joined tables with a
-# declared relationship wants the profile of each column it reads (the join columns among them), the coherence
-# of the relationship and its own join and orphan checks; an orphaned key makes the orphan check red and `next`
-# lists it under test; a single value over one table wants the profile of the column it reads, no other, and its
-# own checks; a write that touches nothing the views' checks read wants nothing
-
-statement ok
-DECLARE DATASET harm SET (purpose: 'a harmonised table');
+DECLARE DATASET harm SET (purpose: 'a joined table');
 
 statement ok
 USE harm;
@@ -724,167 +301,101 @@ statement ok
 CREATE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, (i % 10)::DOUBLE AS points FROM range(60) t(i);
 
 statement ok
-CREATE TABLE harm.circuits AS SELECT i AS circuit_id, 'circuit ' || i AS name FROM range(3) t(i);
-
-statement ok
 DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
-GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.results r JOIN harm.drivers d ON d.driver_id = r.driver_id"}$$;
+GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
 
-# the view joins two loaded tables on a column pair no relationship covers: a should under describe, its statement
-# the relationship from the join's left input to its right while no profile says which side holds each key once
-query TTTTTT
-SELECT level, kind, asset, state, for_view, contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
-FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+query TTTTT
+SELECT level, kind, state, starts_with(open, 'relationship_test'), contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
+FROM next WHERE asset = 'harm.driver_results' AND contains(statement, 'DECLARE RELATIONSHIP');
 ----
-should	describe	harm.results.driver_id -> harm.drivers.driver_id	missing	driver_results	true
+should	test	yellow	true	true
 
 statement ok
 DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;
 
-query I
-SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+query T
+SELECT state FROM view_tests() WHERE view = 'driver_results' AND test = 'relationship_test';
 ----
-0
+green
 
-query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
+# --- a metric that serves no series is series_test on the metric, red, a must; the roles it asks for close it
+
+statement ok
+DECLARE ASPECT points_per_driver WITH $${"title": "Points per driver"}$$ AS VIEW;
+
+statement ok
+GLOSS points_per_driver ON harm AS $${"sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
+
+query TTT
+SELECT level, kind, state FROM next WHERE asset = 'harm.points_per_driver' AND starts_with(open, 'series_test');
 ----
-1	column_profile	harm.drivers.driver_id
-1	column_profile	harm.drivers.surname
-1	column_profile	harm.results.driver_id
-1	column_profile	harm.results.points
-1	column_profile	harm.results.result_id
-1	relationship_coherence	harm.results.driver_id -> harm.drivers.driver_id
-2	join_check	harm.driver_results
-2	orphan_check	harm.driver_results
+must	test	red
 
 statement ok
-SELECT column_profile() FROM harm.drivers.driver_id;
+GLOSS role ON harm.points_per_driver.day AS $${"value": "timestamp"}$$;
 
 statement ok
-SELECT column_profile() FROM harm.drivers.surname;
+GLOSS role ON harm.points_per_driver.value AS $${"value": "measure"}$$;
 
-statement ok
-SELECT column_profile() FROM harm.results.driver_id;
-
-statement ok
-SELECT column_profile() FROM harm.results.points;
-
-statement ok
-SELECT column_profile() FROM harm.results.result_id;
-
-statement ok
-SELECT relationship_coherence() FROM harm.results.driver_id -> harm.drivers.driver_id;
-
-statement ok
-SELECT join_check(), orphan_check() FROM harm.driver_results;
-
-query I
-SELECT count(*) FROM results_due();
+query T
+SELECT state FROM view_tests() WHERE view = 'points_per_driver' AND test = 'series_test';
 ----
-0
+green
 
-# driver 5 has no row in drivers: a sixth of the results find no parent
-query TTR
-SELECT test, state, round(score, 4) FROM view_tests() WHERE view = 'driver_results' ORDER BY test;
-----
-join_test	green	0.0
-orphan_test	red	0.1667
-
-query TTTTT
-SELECT level, asset, state, starts_with(open, 'orphan_test'), contains(statement, 'GLOSS orphan_check ON harm.driver_results AS')
-FROM next WHERE kind = 'test';
-----
-must	harm.driver_results	red	true	true
-
-query I
-SELECT count(*) FROM TESTS(harm.driver_results) WHERE state = 'red';
-----
-1
+# --- a result an actor computes that read a result out of date is possibly out of date: it stays out of
+# next; the result it read computed again with the same value leaves it current, with another value it
+# enters next
 
 statement ok
-GLOSS meaning ON circuits.name AS $${"value": "the circuit's name"}$$;
-
-query I
-SELECT count(*) FROM results_due();
-----
-0
+USE grid;
 
 statement ok
-GLOSS meaning ON drivers.surname AS $${"value": "the driver's family name"}$$;
-
-query I
-SELECT count(*) FROM results_due();
-----
-0
+DECLARE ASPECT top_points WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
 
 statement ok
-DECLARE ASPECT circuit_count WITH $${"title": "Circuits", "x-kind": "scalar"}$$ AS VIEW;
+DECLARE FUNCTION top_points FOR grid AS $$ SELECT max(points) AS n FROM grid.results $$ RETURNS top_points;
 
 statement ok
-GLOSS circuit_count ON harm AS $${"sql": "SELECT count(DISTINCT name) AS value FROM harm.circuits"}$$;
-
-query ITT
-SELECT ord, function, subject FROM results_due() ORDER BY ord, run;
-----
-1	column_profile	harm.circuits.name
-2	join_check	harm.circuit_count
-2	orphan_check	harm.circuit_count
-
-# --- a stored profile turns the relationship round: drivers holds each driver_id once, so the relationship runs
-# from laps to drivers, though the join writes drivers first
-statement ok
-CREATE TABLE harm.laps AS SELECT i AS lap_id, i % 5 AS driver_ref FROM range(20) t(i);
+DECLARE ASPECT top_seen WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
 
 statement ok
-DECLARE ASPECT driver_laps WITH $${"title": "Laps with their driver", "x-kind": "relation"}$$ AS VIEW;
+DECLARE FUNCTION top_seen FOR grid AS $$ SELECT max(value::DOUBLE) AS n FROM results('top_points', 'itself') $$ RETURNS top_seen;
 
 statement ok
-GLOSS driver_laps ON harm AS $${"sql": "SELECT d.surname, l.lap_id FROM harm.drivers d JOIN harm.laps l ON l.driver_ref = d.driver_id"}$$;
+SELECT top_points(), top_seen() FROM grid;
+
+statement ok
+INSERT INTO grid.results VALUES (DATE '2024-03-01', 1, 3.0);
 
 query TT
-SELECT asset, contains(statement, 'DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;') FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+SELECT function, reason FROM glossql_outdated() WHERE function IN ('top_points', 'top_seen') ORDER BY ALL;
 ----
-harm.laps.driver_ref -> harm.drivers.driver_id	true
+top_points	changed
+top_seen	possibly
+
+query T
+SELECT state FROM GLOSSARY(grid) WHERE aspect = 'top_seen';
+----
+possibly
 
 statement ok
-DECLARE RELATIONSHIP harm.laps.driver_ref -> harm.drivers.driver_id;
+SELECT top_points() FROM grid;
 
 query I
-SELECT count(*) FROM next WHERE contains(statement, 'DECLARE RELATIONSHIP');
+SELECT count(*) FROM next WHERE contains(statement, 'top_');
 ----
 0
 
-# --- a loaded table's stated grain is tested at each load: the server runs grain_check on each table whose entity
-# states one; a key the load sends twice is a must on the table, with the keys
 statement ok
-GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["driver_ref"]}$$;
+INSERT INTO grid.results VALUES (DATE '2024-03-02', 1, 30.0);
 
-query ITT
-SELECT ord, function, subject FROM results_due() WHERE function = 'grain_check';
+statement ok
+SELECT top_points() FROM grid;
+
+query TTT
+SELECT function, what, reason FROM glossql_outdated() WHERE function IN ('top_points', 'top_seen') ORDER BY ALL;
 ----
-2	grain_check	harm.laps
+top_seen	result top_points	changed
 
-statement ok
-SELECT grain_check() FROM harm.laps;
-
-query TTTRT
-SELECT level, kind, state, (SELECT round(score, 4) FROM view_tests() WHERE test = 'grain_test'),
-       (SELECT evidence->>'repeated' FROM view_tests() WHERE test = 'grain_test')
-FROM next WHERE asset = 'harm.laps' AND kind = 'test';
-----
-must	test	red	0.75	15
-
-# the grain stated as the rows have it: green, and no row
-statement ok
-GLOSS entity ON harm.laps AS $${"value": "one lap", "role": "fact", "grain": ["lap_id"]}$$;
-
-statement ok
-SELECT grain_check() FROM harm.laps;
-
-query TI
-SELECT (SELECT state FROM view_tests() WHERE test = 'grain_test'), count(*) FROM next WHERE asset = 'harm.laps' AND kind = 'test';
-----
-green	0

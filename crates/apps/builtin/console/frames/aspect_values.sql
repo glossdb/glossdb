@@ -8,11 +8,9 @@ WITH d AS (SELECT dataset FROM current_dataset),
 st AS (
   SELECT subject, state, value FROM GLOSSARY() WHERE aspect = CAST($aspect AS VARCHAR)),
 said AS (
-  SELECT g.subject, g.actor_kind, g.actor_id, g.body, g.written_at,
-         row_number() OVER (PARTITION BY g.subject
-           ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 ELSE 1 END, g.begin_snapshot DESC) AS rn
-  FROM glossary g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = CAST($aspect AS VARCHAR) AND g.actor_kind IN ('human', 'agent')),
+  SELECT g.subject, g.actor_kind, g.actor_id, g.body, g.written_at
+  FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
+  WHERE g.aspect = CAST($aspect AS VARCHAR) AND g.rank = 1),
 fn AS (
   SELECT g.subject, g.actor, g.written_at, g.body
   FROM GLOSSARY(all => true) g
@@ -36,7 +34,6 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
            WHEN 'dimension' THEN json_extract_string(s.body, '$.value') || coalesce(' — ' || json_extract_string(s.body, '$.basis'), '')
            WHEN 'meaning' THEN json_extract_string(s.body, '$.value') || coalesce(' (the term: ' || json_extract_string(s.body, '$.term') || ')', '')
            WHEN 'conventions' THEN array_to_string(json_keys(s.body), ', ')
-           WHEN 'definitions' THEN CAST(len(json_keys(s.body, '$.definitions')) AS VARCHAR) || ' definitions'
            ELSE coalesce(json_extract_string(s.body, '$.value'), substr(s.body::VARCHAR, 1, 200)) END END AS value,
        CASE WHEN st.state = 'missing' THEN ''
             WHEN a.kind = 'measurement' THEN coalesce(f.actor, '')
@@ -62,7 +59,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
 FROM st
 CROSS JOIN a
 CROSS JOIN d
-LEFT JOIN said s ON s.subject = st.subject AND s.rn = 1
+LEFT JOIN said s ON s.subject = st.subject
 LEFT JOIN fn f ON f.subject = st.subject
 LEFT JOIN loaded l ON d.dataset || '.' || l.table_name = st.subject
 ORDER BY CASE st.state WHEN 'conflict' THEN 0 WHEN 'stale' THEN 1 WHEN 'current' THEN 2 ELSE 3 END, subject

@@ -11,7 +11,7 @@ decided AS (
 SELECT s.title,
        s.name,
        CASE WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped
-            ELSE coalesce(nullif(s.meaning, ''), 'no definitions entry yet') END AS meaning,
+            ELSE coalesce(nullif(s.meaning, ''), 'no meaning annotated yet') END AS meaning,
        CASE
          WHEN s.stopped <> '' THEN 'stopped'
          WHEN coalesce(q.n, 0) > 0 THEN CAST(q.n AS VARCHAR) || ' open'
