@@ -20,16 +20,20 @@ not kept.
 
 ## State
 
-The branch `snapshot-version` is pushed in both repositories, the
-server pinned at the extension's head of it. A glossval round ran on
-it (`evaluation.md`). Next, in this order: the project lead's smoke
-test; the pull requests; then what the project lead picks from the
-missions and the issues.
+`snapshot-version` is merged in both repositories. The glossval round
+on it (`evaluation.md`) says what comes next: `next` asks for checks
+before descriptions, and a value is checked against its unit (the
+first two rows below). The kits plan follows in the next streamlining
+session, with what glossval says can be simpler.
 
 ## Open outside the missions
 
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
+| Test | `next` asks for checks before descriptions: per view the checks that fit it, each with its statement; a column's description is asked where a test or a metric reads it. The three levels do not steer an agent and are reworked with it. Spiked first on a ferc-steam build (`evaluation.md`) | Now | |
+| Test | A value is checked against its unit: continuity of a measure across the systems a view reads (harmonise kit), and a `range` on a column or a rule across columns as a view of the violating rows | Now, with the row above | |
+| Integrate | The harmonise kit lists each distinct source text with the code chosen for it, for a person to confirm once; a new text at a later load is the finding | After the two rows above | |
+| Review | The harmonise kit lists the transformations in a view's SQL that drop or change values (a filter, a `NULLIF`, a `CASE` with no `ELSE`, a narrowing cast) and have no recorded assumption, one row per view | After the row above | |
 | Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
 | Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
