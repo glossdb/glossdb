@@ -571,19 +571,26 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
     SELECT f.branch, x.rn, o.rn IS NOT NULL AS excluded
     FROM (SELECT DISTINCT t, rn FROM scells) x JOIN followed f ON f.table_name = x.t
     LEFT JOIN left_out o ON o.branch = f.branch AND o.t = x.t AND o.rn = x.rn),
-  -- each source row with each row of a joined table that every equality of the join finds
-  matched AS (
-    SELECT q.branch, q.col, s.rn, l.rn AS lrn
-    FROM pairs q JOIN followed f ON f.branch = q.branch
-    JOIN (SELECT t, col, rn, val, main.reconciliation_value(val) AS num FROM scells) s ON s.t = f.table_name AND s.col = q.source_column
-    JOIN (SELECT t, col, rn, val, main.reconciliation_value(val) AS num FROM scells) l ON l.t = q.t AND l.col = q.lookup_column
-         AND (CASE WHEN q.same_type THEN l.val ELSE l.num END) = (CASE WHEN q.same_type THEN s.val ELSE s.num END)
-    JOIN looked k ON k.branch = q.branch AND k.col = q.col
+  -- each source row with each row of a joined table that every equality of the join finds: each side's
+  -- values of the equalities, in their order, joined as one key (one equality at a time multiplies the rows)
+  source_key AS (
+    SELECT q.branch, q.col, s.rn, list(CASE WHEN q.same_type THEN s.val ELSE main.reconciliation_value(s.val) END ORDER BY q.j) AS k
+    FROM pairs q JOIN looked USING (branch, col) JOIN followed f ON f.branch = q.branch
+    JOIN scells s ON s.t = f.table_name AND s.col = q.source_column
+    GROUP BY q.branch, q.col, s.rn HAVING count(s.val) = any_value(q.n)),
+  lookup_key AS (
+    SELECT q.branch, q.col, l.rn, list(CASE WHEN q.same_type THEN l.val ELSE main.reconciliation_value(l.val) END ORDER BY q.j) AS k
+    FROM pairs q JOIN looked USING (branch, col)
+    JOIN scells l ON l.t = q.t AND l.col = q.lookup_column
     WHERE NOT EXISTS (SELECT 1 FROM left_out o WHERE o.branch = q.branch AND o.t = q.t AND o.rn = l.rn)
-    GROUP BY q.branch, q.col, s.rn, l.rn HAVING count(DISTINCT q.j) = any_value(q.n)),
+    GROUP BY q.branch, q.col, l.rn HAVING count(l.val) = any_value(q.n)),
+  matched AS (
+    SELECT s.branch, s.col, s.rn, l.rn AS lrn
+    FROM source_key s JOIN lookup_key l ON l.branch = s.branch AND l.col = s.col AND l.k = s.k),
   -- per source row the view's condition keeps, the values of each followed key column: one where it copies,
-  -- one per row the join finds where it looks up, no value where the join finds none
-  src_vals AS (
+  -- one per row the join finds where it looks up, no value where the join finds none; materialized, as the
+  -- recursive step of tuples reads it at each position
+  src_vals AS MATERIALIZED (
     SELECT w.branch, s.rn, w.pos, main.reconciliation_key(c.val, p.cast_to) AS val
     FROM follows w JOIN copies p USING (branch, col) JOIN followed f USING (branch)
     JOIN srows s ON s.branch = w.branch AND NOT s.excluded
