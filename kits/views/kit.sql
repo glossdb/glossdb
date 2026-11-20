@@ -524,7 +524,7 @@ WHERE m.view IN (SELECT view FROM views);
 
 CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
-FROM (SELECT unnest(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) AS path
+FROM (SELECT unnest(list_distinct(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1))) AS path
       FROM main.views_lineage(ds) l WHERE l.view = m)
 WHERE split_part(path, '.', 1) = ds;
 
@@ -1523,7 +1523,7 @@ load_events AS (
 view_cols AS (
   SELECT v.view, v."column" AS field,
          (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)})
-          FROM unnest(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
+          FROM unnest(list_distinct(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1))) u(leaf)) AS inputs
   FROM main.views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
 view_scans AS (
   SELECT view, list(DISTINCT {'namespace': 'glossdb', 'name': table_name}) AS inputs
@@ -1551,13 +1551,14 @@ SELECT event FROM (SELECT * FROM load_events UNION ALL SELECT * FROM view_events
 --===------------------------------------------------------------------===--
 -- rule_check: on a view of kind rule, whose rows are the rows that break
 -- the rule its meaning states, so it returns none while the rule holds.
--- rows (how many it returns), sample (its first five rows, column to
--- value), finding (the count, the rule's meaning and the first rows) and
+-- rows (how many it returns), sample (five of its rows, column to value,
+-- the first by their values), finding (the count, the rule's meaning and the first rows) and
 -- fix (the read of its rows, and the statement by which a person accepts
 -- that count of rows with the reason). rule_test is red while the view
 -- returns more rows than a person accepted (count_tolerance: a count, not
 -- a rate), and is set on every rule view with no statement beyond its
--- definition (x-subject: rule).
+-- definition (x-subject: rule). On a loaded table or a view of another
+-- kind it is not applicable, with the reason, and reads no row.
 --===------------------------------------------------------------------===--
 DECLARE PROPERTY rule_check WITH $${
   "description": "A rule view returns no row: each row it returns breaks the rule its meaning states. A person accepts a count of rows, with the reason.",
@@ -1569,15 +1570,25 @@ DECLARE PROPERTY rule_check WITH $${
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION rule_check FOR GLOBAL AS $$
-  WITH cells AS MATERIALIZED (SELECT rn, "column", ci, val FROM dataset_cells($subject, true)),
-  n AS (SELECT count(DISTINCT rn) AS rows FROM cells),
-  firsts AS (SELECT DISTINCT rn FROM cells ORDER BY rn LIMIT 5),
+  WITH d AS (SELECT kind FROM definition('itself')),
+  ok AS (SELECT coalesce((SELECT kind = 'rule' FROM d), false) AS applicable,
+                CASE WHEN NOT EXISTS (SELECT 1 FROM d) THEN 'a loaded table is no rule view'
+                     ELSE 'a ' || coalesce((SELECT kind FROM d), 'plain view') || ' view is no rule view' END AS why),
+  -- the rows, each in one piece; the sample is the first five by their
+  -- values, so the same rows give the same sample whatever order they are read in
+  cells AS MATERIALIZED (
+    SELECT rn, "column", ci, val FROM dataset_cells($subject, true) WHERE (SELECT applicable FROM ok)),
+  keyed AS MATERIALIZED (SELECT rn, list(val ORDER BY ci) AS vals FROM cells GROUP BY rn),
+  n AS (SELECT count(*) AS rows FROM keyed),
+  firsts AS (SELECT rn, vals FROM keyed ORDER BY vals LIMIT 5),
   sample AS (
-    SELECT list(r ORDER BY rn) AS rows FROM (
-      SELECT rn, map_from_entries(list({'k': "column", 'v': val} ORDER BY ci)) AS r
-      FROM cells WHERE rn IN (SELECT rn FROM firsts) GROUP BY rn)),
+    SELECT list(r ORDER BY vals) AS rows FROM (
+      SELECT f.vals, map_from_entries(list({'k': c."column", 'v': c.val} ORDER BY c.ci)) AS r
+      FROM cells c JOIN firsts f USING (rn) GROUP BY f.rn, f.vals)),
   m AS (SELECT max(value->>'value') AS meaning FROM annotations('meaning', 'itself') WHERE value IS NOT NULL)
-  SELECT true AS applicable, NULL::VARCHAR AS reason, n.rows, sample.rows AS sample,
+  -- off a rule view nothing is read, n.rows is 0, and no finding or fix is made
+  SELECT ok.applicable, CASE WHEN NOT ok.applicable THEN ok.why END AS reason,
+         CASE WHEN ok.applicable THEN n.rows END AS rows, CASE WHEN ok.applicable THEN sample.rows END AS sample,
          CASE WHEN n.rows > 0
               THEN n.rows || CASE WHEN n.rows = 1 THEN ' row breaks' ELSE ' rows break' END || ' the rule '
                    || split_part($subject, '.', 2) || coalesce(' (' || m.meaning || ')', '') || '; the first: '
@@ -1587,7 +1598,7 @@ DECLARE FUNCTION rule_check FOR GLOBAL AS $$
            '-- fix the load query or the definition of a view the rule reads. Where a person accepts these rows as they are, they record the count and why:',
            '-- ' || main.gloss_statement('rule_check', $subject,
                       '{"accepted": ' || n.rows || ', "basis": "<who accepted the rows and why>"}')) END AS fix
-  FROM n, sample, m
+  FROM ok, n, sample, m
 $$ RETURNS rule_check;
 
 -- count_tolerance: the rule detector. Green while the rows a rule view
@@ -1610,12 +1621,13 @@ DECLARE TEST rule_test ON rule_check BY (HUMAN) DETECTOR count_tolerance THRESHO
 --===------------------------------------------------------------------===--
 -- find(term): what the bound dataset loads and keeps that a term names:
 -- each view (kept or served), loaded table and column whose name,
--- meaning or tags hold the term, and each view that reads a column whose
+-- meaning or tags hold the term, each view whose kind is the term, and
+-- each view that reads a column whose
 -- name holds it (through its stored lineage), the term matched without
 -- regard to case. asset (its path), what (view, table, column), kind (a
 -- view's: table, value, metric, rule, NULL for a plain view), meaning,
 -- tags (a person's and the agents' lists as one, the person's words
--- first), matched_on (name, meaning, tags, reads), reads (the columns it
+-- first), matched_on (name, meaning, tags, kind, reads), reads (the columns it
 -- reads that hold the term), sql (a view's). A stopped view is not found.
 -- Views first, then tables, then columns.
 --
@@ -1656,15 +1668,16 @@ judged AS (
          list_filter(coalesce(a.reads, []::VARCHAR[]), lambda c: contains(lower(split_part(c, '.', 3)), q.q)) AS reads_matching,
          contains(lower(a.name), q.q) AS by_name,
          contains(lower(coalesce(m.meaning, '')), q.q) AS by_meaning,
-         coalesce(list_bool_or(list_transform(g.tags, lambda w: contains(lower(w), q.q))), false) AS by_tags
+         coalesce(list_bool_or(list_transform(g.tags, lambda w: contains(lower(w), q.q))), false) AS by_tags,
+         coalesce(lower(a.kind) = q.q, false) AS by_kind
   FROM assets a CROSS JOIN q LEFT JOIN meanings m ON m.subject = a.asset LEFT JOIN tagged g ON g.subject = a.asset)
 SELECT asset, what, kind, meaning, tags,
-       list_filter(['name', 'meaning', 'tags', 'reads'], lambda x, i: [by_name, by_meaning, by_tags, len(reads_matching) > 0][i]) AS matched_on,
+       list_filter(['name', 'meaning', 'tags', 'kind', 'reads'], lambda x, i: [by_name, by_meaning, by_tags, by_kind, len(reads_matching) > 0][i]) AS matched_on,
        reads_matching AS reads, sql
 FROM judged
-WHERE by_name OR by_meaning OR by_tags OR len(reads_matching) > 0
+WHERE by_name OR by_meaning OR by_tags OR by_kind OR len(reads_matching) > 0
 ORDER BY CASE what WHEN 'view' THEN 0 WHEN 'table' THEN 1 ELSE 2 END,
-         CASE WHEN by_tags THEN 0 WHEN by_name THEN 1 WHEN by_meaning THEN 2 ELSE 3 END, asset;
+         CASE WHEN by_tags THEN 0 WHEN by_name THEN 1 WHEN by_meaning THEN 2 WHEN by_kind THEN 3 ELSE 4 END, asset;
 
 CREATE OR REPLACE MACRO main.tag_statement(subj, words) AS
   main.gloss_statement('tags', subj, (

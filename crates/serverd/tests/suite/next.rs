@@ -252,12 +252,13 @@ async fn the_next_page_carries_the_test_and_its_statement() {
 
 /// One statement keeps a query with its reason: the server writes the
 /// definition's `meaning` and `tags` as annotations on the view, by the
-/// definition's actor, and the search read finds the view by a tag.
+/// definition's actor, and the search read finds the view by a tag. A
+/// comment before the statement changes none of it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_definitions_meaning_and_tags_are_annotations_on_its_view() {
     let (app, _, _dir) = fin().await;
     say(&app, FIN,
-        r#"GLOSS funds_seen ON fin AS $${"sql": "SELECT DISTINCT fund FROM fin.ledger", "meaning": "the funds the ledger books to", "tags": ["fund", "budget line"]}$$;"#,
+        concat!("-- the funds\n", r#"GLOSS funds_seen ON fin AS $${"sql": "SELECT DISTINCT fund FROM fin.ledger", "meaning": "the funds the ledger books to", "tags": ["fund", "budget line"]}$$;"#),
     )
     .await;
     let said = rows(

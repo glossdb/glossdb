@@ -57,7 +57,7 @@ narrows either to one property.
 | `open_questions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
 | `agent_assumptions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `property`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
-| `view_definitions` | dataset | `name`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
+| `view_definitions` | dataset | `name`, `kind`, `unit`, `meaning`, `defined`, `stopped`, `sql` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
 | `app_releases` | workspace | `dataset`, `app`, `at`, `note`, `actor_kind`, `released_at` |
@@ -72,7 +72,8 @@ narrows either to one property.
   stopped. `kind` is the definition's: `table`, `value`, `metric`,
   `rule`, NULL for a plain view. `meaning` is the `meaning`
   annotation on the view, `unit` the `unit` of a metric's or a single
-  value's value column.
+  value's value column. `sql` is the SQL of the definition in force,
+  NULL on a stopped view.
 - `tested_properties()` lists by `name` the properties that exist to
   be tested: an expectation a function measures and a test scores.
   `next` asks for one only on the assets that carry it.
@@ -231,7 +232,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 | Read | Columns |
 |---|---|
 | `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset, kept or served, with its kind (`table`, `value`, `metric`, `rule`, NULL for a plain view) and, where it is stopped, why |
-| `find(term)` | `asset`, `what` (`view`, `table`, `column`), `kind`, `meaning`, `tags`, `matched_on`, `reads`, `sql`: each view, loaded table and column whose name, meaning or tags hold the term, and each view that reads a column whose name holds it; `tags` is a person's and the agents' lists as one; a stopped view is not found |
+| `find(term)` | `asset`, `what` (`view`, `table`, `column`), `kind`, `meaning`, `tags`, `matched_on`, `reads`, `sql`: each view, loaded table and column whose name, meaning or tags hold the term, each view whose kind is the term, and each view that reads a column whose name holds it; `tags` is a person's and the agents' lists as one; a stopped view is not found |
 | `tag_statement(asset, words)` | the statement that adds the words to the actor's own `tags` on the asset: an actor's newest list replaces its list before |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
 | `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |

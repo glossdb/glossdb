@@ -84,7 +84,9 @@ const PAGES_DB: &str = "memory";
 pub enum SessionError {
     #[error("no dataset in use — USE one first")]
     NoDataset,
-    #[error("not a subject: {detail}")]
+    /// A name the catalog does not hold, in the engine's own words, or
+    /// the server's where it looked the name up itself.
+    #[error("{detail}")]
     UnknownName { detail: String },
     /// A read or a measurement that needs the model service, and none
     /// is named for the instance: `interface` is the service's path.
@@ -494,7 +496,10 @@ pub fn call_shape(statements: &str) -> CallShape {
 /// `USE <dataset>`: the name, an unquoted one folded to lowercase as
 /// the engine folds it, a quoted one as spelled.
 fn use_target(statement: &str) -> Option<String> {
-    let mut words = statement.trim().trim_end_matches(';').split_whitespace();
+    let mut words = after_comments(statement)
+        .trim()
+        .trim_end_matches(';')
+        .split_whitespace();
     if !words.next()?.eq_ignore_ascii_case("use") {
         return None;
     }
@@ -551,9 +556,6 @@ pub fn reads_catalog(sql: &str) -> bool {
         })
 }
 
-/// Whether one statement answers rows: a query by its first word, the
-/// comments before it skipped. Everything else is a statement of the
-/// language or of SQL, run for its effect.
 /// A statement's text after its leading comments.
 fn after_comments(statement: &str) -> &str {
     let mut rest = statement.trim_start();
@@ -627,6 +629,9 @@ fn admitted(sql: &str) -> Result<(), SessionError> {
     Err(SessionError::Closed { statement, why })
 }
 
+/// Whether one statement answers rows: a query by its first word, the
+/// comments before it skipped. Everything else is a statement of the
+/// language or of SQL, run for its effect.
 fn is_read(statement: &str) -> bool {
     let rest = after_comments(statement).trim_start_matches('(');
     let word: String = rest
@@ -896,7 +901,7 @@ fn names_parameter(sql: &str, name: &str) -> bool {
 /// An extraction, `SELECT <function>() FROM <subject>`: the language's
 /// form, which the grammar takes whole and a paging subquery would hide.
 fn is_extraction(sql: &str) -> bool {
-    let tokens: Vec<&str> = sql
+    let tokens: Vec<&str> = after_comments(sql)
         .trim()
         .trim_end_matches(';')
         .split_whitespace()
@@ -918,7 +923,7 @@ fn is_extraction(sql: &str) -> bool {
 
 /// The glossql heads: a statement of the language answers one line.
 fn is_glossql_head(sql: &str) -> bool {
-    let head = sql
+    let head = after_comments(sql)
         .split_whitespace()
         .next()
         .unwrap_or("")
@@ -1773,7 +1778,7 @@ pub(crate) fn bring_current(conn: &Connection) {
 /// Whether a statement is a measurement call, `SELECT <function>() FROM
 /// <subject>`: the shape every function in the library is run by.
 fn measurement_call(sql: &str) -> bool {
-    let lower = sql.trim().to_ascii_lowercase();
+    let lower = after_comments(sql).trim().to_ascii_lowercase();
     let Some(rest) = lower.strip_prefix("select") else {
         return false;
     };

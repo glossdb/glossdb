@@ -797,11 +797,11 @@ SELECT (SELECT list(level || ' ' || kind || ' ' || asset || ' ' || open ORDER BY
 ----
 true	0	0	0
 
-query TT
-SELECT name, kind FROM view_definitions ORDER BY name;
+query TTT
+SELECT name, kind, sql FROM view_definitions ORDER BY name;
 ----
-order_amounts	table
-status_counts	NULL
+order_amounts	table	SELECT order_id, amount FROM kept.orders
+status_counts	NULL	SELECT status, count(*) AS n FROM kept.orders GROUP BY status
 
 # --- tags: an actor's list, a person's and an agent's read as one; find() by a tag, a name and the columns a
 # view reads; tag_statement() hands the agent's list with the word added
@@ -865,6 +865,22 @@ SELECT view, run, state, evidence->>'rows', json_array_length(evidence->'sample'
 ----
 known_status	SELECT rule_check() FROM kept.known_status	green	0	0
 large_orders	SELECT rule_check() FROM kept.large_orders	red	4	4
+
+# off a rule view the check does not apply and counts no row: a loaded table's rows break no rule
+statement ok
+SELECT rule_check() FROM kept.orders;
+
+query TTT
+SELECT value->>'applicable', value->>'rows', value->>'reason' IS NOT NULL FROM main.results WHERE function = 'rule_check' AND subject = 'kept.orders';
+----
+false	NULL	true
+
+# find() finds a view by its kind
+query TT
+SELECT asset, matched_on FROM find('rule');
+----
+kept.known_status	[kind]
+kept.large_orders	[kind]
 
 query TTT
 SELECT level, kind, contains(statement, 'GLOSS rule_check ON kept.large_orders AS $${"accepted": 4,') FROM next WHERE asset = 'kept.large_orders';

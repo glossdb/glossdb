@@ -52,15 +52,16 @@ comparison, a mapping, a unit); it asks for nothing more. `table`, `value`, `met
 the dataset serves; `next` asks for their descriptions, and the built-in tests run on them. \
 `rule`: a query whose rows break a rule; it must return none, a test runs on it after every \
 write, and only a person accepts a count of rows. Keep each query that decided something \
-and tag it: `find('<term>')` searches views by name, meaning, tags and the columns they \
+and tag it: `find('<term>')` searches views by name, meaning, tags, kind and the columns they \
 read, so the next agent and the reviewer find it. A function (`DECLARE FUNCTION`) is a \
 kit's machinery: one stored result per asset, computed again when what it read changed. \
 Write one only for a measure that many assets need. \
 One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
 body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. Every page this server serves is \
 a row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. Read the \
-catalog as `main.<relation>` (`main.next`, `main.glossary`, `main.results`): a table of the \
-same name in a dataset would hide it. \
+catalog as `main.<relation>` (`main.next`, `main.glossary`, `main.results`, and \
+`main.view_definitions` for each view with its SQL): a table of the same name in a dataset \
+would hide it. \
 Every result ends with `status:`: whether the last statement ran or was refused. A call on \
 a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
 must and what should be done on the dataset per kind of work, and `first:`, the first of them. \
