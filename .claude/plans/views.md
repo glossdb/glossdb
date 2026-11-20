@@ -51,7 +51,7 @@ that work builds.
 
 | # | Element | Risk | What it touches | When |
 |---|---|---|---|---|
-| 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | When the branch is pushed and the pin moved, which the project lead says |
+| 5 | Point agents at the checks only they can write (magnitude, units, continuity across sources), since the kit's contract test already covers key, required, codes and format | Medium: touches the levels and checks-before-descriptions, which are on hold | `next`, the MCP text, the entry skill | The project lead decides the shape |
 | 6 | The queries an agent runs are logged, indexed by the columns they read, and served by the search read beside the kept views. Open: when the agent is asked to keep one; read access follows `gate.md` | Medium | the server, the extension's lineage of a SQL text | After 5 says what is still hidden |
 
 ## Measured
@@ -93,6 +93,18 @@ that work builds.
   five kept views leave `next` as it was and compute only their
   lineage (0.5 s a write).
 
+- The glossval round on this branch (15 builds): cells right after the
+  review as before (99.0 to 100%). 77 rule views, each with a meaning;
+  no `DECLARE TEST`, no function. 56 of 59 rules on the contract cases
+  restate the contract and stayed green; none checks magnitude. Rule
+  views were red on 0 of 89 wrong columns. In erp-supply, 13 rules of
+  the agents' own; one caught the planted brand conflict in 2 of 3
+  runs. 3 of 1,237 ad hoc reads became a view. `find()` was called 17
+  times, to read back a view's SQL.
+- Stacked views made one gbif workspace run out of memory at 5.7 GiB:
+  `place_sources` listed 26,043 scanned columns where 347 are
+  distinct. Listed once each, all 37 checks compute in 9 s.
+
 ## Open beside the steps
 
 | What | When |
@@ -100,10 +112,11 @@ that work builds.
 | A kept view is not compared between loads: a profile that grows a row (a new unit, a new code) is not a row of `next`. A function or a test on the view would say it | After the glossval round shows what agents keep |
 | `find()` matches a view on a column it reads only through another view: the stored lineage of a view over a view names every column the inner view reads | Before the query log, which uses the same index |
 | An agent with only the MCP instructions and the entry skill does not learn the five statements of a test with a tolerance or how to write a function (a count and a link are given), nor that a person's definition outranks its own | The glossval round says whether that costs anything |
+| The stored lineage of a stacked view is large (10.7 MB for one rule view, 3.5 MB of it one derivation repeated per scanned column): each reference to an inner column repeats its whole derivation | A proposal to the project lead; it changes the lineage's stored shape |
 | The console lists kept views nowhere of their own | With the text pass or after |
 | A rule view's scanned columns get a column profile computed, as a served view's do | Measure the cost first |
 | `next` says "no view is served" as a must on a dataset that holds only kept views | Shaped with the levels, which are on hold |
 
 ## Next issue
 
-Step 5, the glossval round.
+Step 5, once its shape is decided.
