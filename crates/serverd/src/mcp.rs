@@ -35,10 +35,12 @@ async fn summary_counts(plane: &Plane) -> Result<SummaryCounts, String> {
 
 const INSTRUCTIONS: &str = "glossdb is the data harness for people and agents. Here you \
 build this workspace's data intelligence layer in the lake, beside the data: what the data \
-means, how its sources map, whether it can be trusted, and who decides. There are four kinds \
-of work. Integrate: declare a source, load its tables with load queries, define views. \
-Describe: annotate the dataset, its tables, columns, relationships and views. Test: the \
-built-in tests run after each write, and a rule of your own is a view. Review: state each \
+means (metadata), how its sources map (integration), where a value comes from (lineage), \
+whether it is fit for its use (quality), and who decides (governance). The lineage is \
+computed for you. There are four kinds of work. Integrate: declare a source, load its tables with load queries, define views. \
+Describe: annotate the dataset, its tables, columns, relationships and views. Test: gauge whether the data is fit for its use. Read the values before you rely on them \
+(units, codes, ranges, gaps, duplicates), write what must hold as a rule view, and read the \
+built-in tests, which run after each write. Review: state each \
 judgment call as an assumption with a key and a confidence; a person confirms or corrects it, \
 and their decision outranks your annotation. The kinds are not stages: work in the order the \
 task asks for. \

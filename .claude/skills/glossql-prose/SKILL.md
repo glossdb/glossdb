@@ -45,7 +45,7 @@ versions.
 | type annotations, docstrings | annotations | gloss |
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
-| unit test | a measurement, a test | function, `TEST` |
+| unit test | a test; a rule of one's own is a rule view | `DECLARE TEST`; `"kind": "rule"` |
 | test coverage | coverage of required annotations | `missing` in `next` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
@@ -105,7 +105,7 @@ keyword as its own explanation: not "a test (`TEST`)".
   above.
 - Define by what it does, never by other terms of ours. Bad: "a
   disclosed grounding assumption held below full confidence".
-  Good: "an assumption in a metric definition that a person should
+  Good: "an assumption in a view definition that a person should
   confirm".
 - Write for the reader, not the project. No history, no research
   notes, no "not built on purpose", no "proof of concept". Status is
