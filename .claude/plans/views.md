@@ -81,10 +81,7 @@ that work builds.
 
 - A check that reads its subject's rows recorded its whole dataset,
   so each view defined and each other table loaded made it due. It
-  records the subject and what it reads now. The reconciliation took
-  19.5 s on ferc-steam (35,333 rows) because it matched a four-column
-  join one equality at a time; on the whole key it takes 0.95 s with
-  the same result.
+  records the subject and what it reads now.
 
 - Built and walked through MCP: a plain view kept in one statement
   with its meaning and tags (0.49 s), a rule view in one statement,

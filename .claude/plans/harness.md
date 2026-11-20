@@ -27,13 +27,20 @@ and hardly use the kits' tests. `views.md` holds the design that
 follows from it and is the work in hand, on the branch `views-layer`.
 The kits plan is shaped together with it.
 
+A test on 143 tables of six source systems showed the stored lineage of
+stacked views growing past 500 MB a view, so the server computed
+nothing after a load. On the branch `core-layer` a view's lineage
+holds the columns each output column is computed from, the tables
+scanned and the join pairs, and no text of its expressions. The code
+check and the reconciliation, which parsed that text, are gone; their
+needs come back as stated inputs (a crosswalk table, control totals as
+two queries) in the harmonise kit, which moves to `../glosskits`.
+
 ## Open outside the missions
 
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
 | Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after `views.md` | After `views.md` | |
-| Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
-| Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
 | Integrate | Spreadsheets, documents and search as sources | When a customer brings the data | |
 | Describe | Citations to documents on tables, columns, relationships and metrics | With documents | #220 |
