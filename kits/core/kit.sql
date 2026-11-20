@@ -157,7 +157,8 @@ CREATE OR REPLACE VIEW main.app_releases AS
 -- kept with its reason), meaning (the `meaning` annotation on the view),
 -- unit (the `unit` annotation on the value column of a metric or a single
 -- value; a table has none), defined (a definition with sql was written),
--- stopped (the definition's stop reason, '' where it serves). The numbers
+-- stopped (the definition's stop reason, '' where it serves), sql (the
+-- SQL of the definition in force, NULL where it stops the view). The numbers
 -- are view_summary() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
@@ -186,7 +187,8 @@ CREATE OR REPLACE VIEW main.view_definitions AS
          coalesce(CASE WHEN b.kind IN ('value', 'metric') THEN u.unit END, '') AS unit,
          coalesce(m.meaning, '') AS meaning,
          g.property IS NOT NULL AS defined,
-         coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
+         coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped,
+         json_extract_string(c.body, '$.sql') AS sql
   FROM bodies b
   LEFT JOIN defined g ON g.property = b.view
   LEFT JOIN collapsed c ON c.property = b.view

@@ -59,8 +59,9 @@ Write one only for a measure that many assets need. \
 One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
 body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. Every page this server serves is \
 a row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. Read the \
-catalog as `main.<relation>` (`main.next`, `main.glossary`, `main.results`): a table of the \
-same name in a dataset would hide it. \
+catalog as `main.<relation>` (`main.next`, `main.glossary`, `main.results`, and \
+`main.view_definitions` for each view with its SQL): a table of the same name in a dataset \
+would hide it. \
 Every result ends with `status:`: whether the last statement ran or was refused. A call on \
 a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
 must and what should be done on the dataset per kind of work, and `first:`, the first of them. \

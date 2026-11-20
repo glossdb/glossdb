@@ -57,7 +57,7 @@ narrows either to one property.
 | `open_questions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
 | `agent_assumptions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `property`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
-| `view_definitions` | dataset | `name`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
+| `view_definitions` | dataset | `name`, `kind`, `unit`, `meaning`, `defined`, `stopped`, `sql` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
 | `app_releases` | workspace | `dataset`, `app`, `at`, `note`, `actor_kind`, `released_at` |
@@ -72,7 +72,8 @@ narrows either to one property.
   stopped. `kind` is the definition's: `table`, `value`, `metric`,
   `rule`, NULL for a plain view. `meaning` is the `meaning`
   annotation on the view, `unit` the `unit` of a metric's or a single
-  value's value column.
+  value's value column. `sql` is the SQL of the definition in force,
+  NULL on a stopped view.
 - `tested_properties()` lists by `name` the properties that exist to
   be tested: an expectation a function measures and a test scores.
   `next` asks for one only on the assets that carry it.

@@ -797,11 +797,11 @@ SELECT (SELECT list(level || ' ' || kind || ' ' || asset || ' ' || open ORDER BY
 ----
 true	0	0	0
 
-query TT
-SELECT name, kind FROM view_definitions ORDER BY name;
+query TTT
+SELECT name, kind, sql FROM view_definitions ORDER BY name;
 ----
-order_amounts	table
-status_counts	NULL
+order_amounts	table	SELECT order_id, amount FROM kept.orders
+status_counts	NULL	SELECT status, count(*) AS n FROM kept.orders GROUP BY status
 
 # --- tags: an actor's list, a person's and an agent's read as one; find() by a tag, a name and the columns a
 # view reads; tag_statement() hands the agent's list with the word added
