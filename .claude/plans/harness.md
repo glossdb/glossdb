@@ -30,10 +30,11 @@ session, with what glossval says can be simpler.
 
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
-| Test | `next` asks for checks before descriptions: per view the checks that fit it, each with its statement; a column's description is asked where a test or a metric reads it. The three levels do not steer an agent and are reworked with it. Spiked first on a ferc-steam build (`evaluation.md`) | Now | |
-| Test | A value is checked against its unit: continuity of a measure across the systems a view reads (harmonise kit), and a `range` on a column or a rule across columns as a view of the violating rows | Now, with the row above | |
-| Integrate | The harmonise kit lists each distinct source text with the code chosen for it, for a person to confirm once; a new text at a later load is the finding | After the two rows above | |
-| Review | The harmonise kit lists the transformations in a view's SQL that drop or change values (a filter, a `NULLIF`, a `CASE` with no `ELSE`, a narrowing cast) and have no recorded assumption, one row per view | After the row above | |
+| Describe | A kept query: the spec and the skills present a view (`DECLARE ASPECT … AS VIEW`, `GLOSS … {"sql", "assumptions"}`) as any query worth keeping with its reason, a metric being one use; a function or a test on it makes it a check. Precondition: a plain view is asked for no descriptions and no served-view tests (`kits.md` step 2; measured: two kept queries took `next` from 6 to 22 rows) | Next, tried with glossval | |
+| Describe | The queries an agent runs are logged and indexed by the columns they read; `next` offers them for keeping and lists kept ones for reuse. Open: when and how the agent is asked. Measured on 38 builds: 81% of a view's decisions have an earlier query on their source column, but one query meets a median of 4 decisions | Not ready: the moment of the nudge is not based on a measurement yet | |
+| Test | `next` asks for checks before descriptions, and the three levels do not steer an agent. On hold until the two rows above are shaped | On hold | |
+| Test | A value is checked against a bound someone states: a `range` on a column, a rule across columns as a view of the violating rows. Measured: the capacity rule separates the wrong ferc-steam build (median 205 to 230) from the right one (0.22); a baseline taken from the build does not | With the rows above | |
+| Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after them | After the rows above | |
 | Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
 | Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
