@@ -387,7 +387,7 @@ async fn open_question_count(plane: &Plane) -> Option<usize> {
         let Ok(session) = plane.channel(actor.clone(), Some(&dataset)).await else {
             continue;
         };
-        if let Some(n) = read_rows(&session, "SELECT count(*) AS n FROM open_questions")
+        if let Some(n) = read_rows(&session, "SELECT count(*) AS n FROM main.open_questions")
             .await
             .ok()
             .and_then(|rows| rows.first().and_then(|r| r["n"].as_u64()))
@@ -830,7 +830,7 @@ impl GlossqlMcp {
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        let rows = read_rows(&session, "SELECT * FROM next").await?;
+        let rows = read_rows(&session, "SELECT * FROM main.next").await?;
         Ok(rows
             .into_iter()
             .filter(|row| kind.is_none_or(|k| row["kind"].as_str() == Some(k)))
