@@ -425,3 +425,44 @@ SELECT function, what, reason FROM glossql_outdated() WHERE function IN ('top_po
 ----
 top_seen	result top_points	changed
 
+# --- a column whose name is no plain name: the statement results_due() hands out quotes it, and it runs
+
+statement ok
+COPY (SELECT 'k' || (i % 3) AS kind, i * 1.5 AS amount FROM range(9) t(i)) TO '{TEST_DIR}/kinds.csv' (HEADER);
+
+statement ok
+DECLARE DATASET shop SET (purpose: 'odd column names');
+
+statement ok
+USE shop;
+
+statement ok
+DECLARE SOURCE files SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE RECIPE items ON shop FROM files AS $$SELECT * FROM read_csv('kinds.csv')$$;
+
+statement ok
+DECLARE PROPERTY per_kind WITH $${"title": "Per kind", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS per_kind ON shop AS $${"sql": "SELECT kind, count(*), sum(amount) AS \"order\" FROM items GROUP BY kind"}$$;
+
+statement ok
+DECLARE PROPERTY kinds WITH $${"title": "Kinds", "x-kind": "relation"}$$ AS VIEW;
+
+statement ok
+GLOSS kinds ON shop AS $${"sql": "SELECT p.kind, p.\"count_star()\" AS n, p.\"order\" AS total FROM per_kind p"}$$;
+
+# each write is followed by the results due, as the server follows it: the profiles of the odd columns are stored
+query TT
+SELECT subject, error IS NULL FROM results WHERE function = 'column_profile' AND subject IN ('shop.per_kind.count_star()', 'shop.per_kind.order') ORDER BY ALL;
+----
+shop.per_kind.count_star()	true
+shop.per_kind.order	true
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+

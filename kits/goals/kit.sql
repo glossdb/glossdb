@@ -80,12 +80,12 @@ holding AS (
 judged_now AS (SELECT function AS test, subject FROM main.results WHERE dataset = current_schema() AND property = 'test'),
 -- the results due before the tests (ord 1 and 2), each with the property it fills
 due AS (
-  SELECT 1 AS ord, w.function, w.property, w.subject, 'SELECT ' || w.function || '() FROM ' || w.subject AS run
+  SELECT 1 AS ord, w.function, w.property, w.subject, 'SELECT ' || w.function || '() FROM ' || main.subject_path(w.subject) AS run
   FROM wanted w LEFT JOIN stored s ON s.subject = w.subject AND s.property = w.property
   WHERE NOT coalesce(s.current, false)
   UNION
   SELECT 1, split_part(x.w, ' over ', 1), f.returns, split_part(x.w, ' over ', 2),
-         'SELECT ' || split_part(x.w, ' over ', 1) || '() FROM ' || split_part(x.w, ' over ', 2)
+         'SELECT ' || split_part(x.w, ' over ', 1) || '() FROM ' || main.subject_path(split_part(x.w, ' over ', 2))
   FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary()) x
   LEFT JOIN fns f ON f.name = split_part(x.w, ' over ', 1)
   UNION
@@ -110,7 +110,7 @@ lineages AS (
   UNION SELECT subject FROM changed WHERE function = 'lineage'
   UNION (SELECT subject FROM main.results WHERE dataset = current_schema() AND function = 'lineage'
          EXCEPT SELECT subject FROM views))
-SELECT 0 AS ord, 'lineage' AS function, subject, 'SELECT lineage() FROM ' || subject AS run FROM lineages
+SELECT 0 AS ord, 'lineage' AS function, subject, 'SELECT lineage() FROM ' || main.subject_path(subject) AS run FROM lineages
 UNION ALL
 SELECT ord, function, subject, run FROM due
 UNION ALL
@@ -409,7 +409,7 @@ CREATE OR REPLACE VIEW main.next AS
            CASE WHEN g.state = 'conflict' THEN 'must' WHEN x.asset IS NOT NULL THEN 'should' ELSE 'could' END AS level,
            s.shape IS NULL AND g.state = 'missing' AS unshaped,
            coalesce(g.state = 'stale' AND rd.subject IS NOT NULL, false) AS redefined,
-           'GLOSS ' || g.property || ' ON ' || g.subject || ' AS $$'
+           'GLOSS ' || g.property || ' ON ' || main.subject_path(g.subject) || ' AS $$'
              || CASE WHEN g.state = 'stale' THEN coalesce(w.body, s.shape, '<value>') ELSE coalesce(s.shape, '<value>') END
              || '$$;' AS gloss
     FROM g JOIN stated s ON s.name = g.property LEFT JOIN reach x ON x.asset = g.subject
@@ -431,7 +431,7 @@ CREATE OR REPLACE VIEW main.next AS
     -- column of a table or a view carries it, each other column is asked
     SELECT ds.d || '.' || c.table_name || '.' || c.column_name, a.name, 'missing', x.views, ds.d || '.' || c.table_name,
            CASE WHEN x.asset IS NOT NULL THEN 'should' ELSE 'could' END, false, false,
-           'GLOSS ' || a.name || ' ON ' || ds.d || '.' || c.table_name || '.' || c.column_name || ' AS $$' || coalesce(s.shape, '<value>') || '$$;'
+           'GLOSS ' || a.name || ' ON ' || main.subject_path(ds.d || '.' || c.table_name || '.' || c.column_name) || ' AS $$' || coalesce(s.shape, '<value>') || '$$;'
     FROM (SELECT DISTINCT name FROM main.properties WHERE json_extract_string(schema, '$.x-asked') = 'per table') a
     JOIN stated s ON s.name = a.name CROSS JOIN ds CROSS JOIN glossql_columns(current_schema()) c
     LEFT JOIN reach x ON x.asset = ds.d || '.' || c.table_name || '.' || c.column_name
@@ -569,14 +569,14 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT 'should', 5, 'test', o.subject, 'stale', 'agent',
            o.function || ': computed before a read of it changed (' || o.inputs || ')',
            coalesce(o.view, ''),
-           '-- computed before ' || o.inputs || ' changed' || chr(10) || 'SELECT ' || o.function || '() FROM ' || o.subject || ';'
+           '-- computed before ' || o.inputs || ' changed' || chr(10) || 'SELECT ' || o.function || '() FROM ' || main.subject_path(o.subject) || ';'
     FROM (SELECT u.function, u.subject, any_value(v.view) AS view, string_agg(DISTINCT u.asset || ' ' || u.what, ', ' ORDER BY u.asset || ' ' || u.what) AS inputs
           FROM glossql_outdated() u
           LEFT JOIN (SELECT view FROM summary WHERE stopped IS NULL) v ON u.subject = current_schema() || '.' || v.view
           WHERE u.dataset = current_schema() AND u.reason = 'changed' AND u.function <> 'lineage'
             AND (u.subject = current_schema() OR v.view IS NOT NULL
                  OR u.subject IN (SELECT asset FROM glossql_kind_assets(current_schema())))
-            AND 'SELECT ' || u.function || '() FROM ' || u.subject NOT IN (SELECT run FROM vt)
+            AND 'SELECT ' || u.function || '() FROM ' || main.subject_path(u.subject) NOT IN (SELECT run FROM vt)
           GROUP BY u.function, u.subject) o)
   SELECT * FROM (
     SELECT * FROM s_load UNION ALL SELECT * FROM s_loads UNION ALL SELECT * FROM s_describe

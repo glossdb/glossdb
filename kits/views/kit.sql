@@ -114,9 +114,9 @@ CREATE OR REPLACE MACRO main.series_reason(ds, metric, stopped, served, kind, pe
        WHEN value_column IS NULL THEN
             'no column carries role measure: annotate the value column, GLOSS role ON ' || ds || '.' || metric || '.<column> AS $${"value": "measure"}$$'
        WHEN floor IS NULL AND NOT profiled THEN
-            'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || ds || '.' || metric || '.' || period_column || ', or annotate time_grains with a floor'
+            'the period column ' || period_column || ' is not profiled, so its grain is not known: SELECT temporal() FROM ' || main.subject_path(ds || '.' || metric || '.' || period_column) || ', or annotate time_grains with a floor'
        WHEN floor IS NULL THEN
-            'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || ds || '.' || metric || '.' || period_column || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
+            'the dates in ' || period_column || ' follow no regular grain; say which grain the series is served at: GLOSS time_grains ON ' || main.subject_path(ds || '.' || metric || '.' || period_column) || ' AS $${"floor": "<minute|hour|day|week|month|quarter|year>"}$$'
   END;
 
 CREATE OR REPLACE MACRO main.view_kinds() AS TABLE
@@ -549,7 +549,7 @@ WHERE s.view = m AND split_part(s.table_name, '.', 1) = ds;
 -- current definition>, and view_tests() fills it from the catalog when
 -- it serves the fix (with_definition()).
 CREATE OR REPLACE MACRO main.gloss_statement(a, subj, body) AS
-  'GLOSS ' || a || ' ON ' || subj || ' AS $$' || body || '$$;';
+  'GLOSS ' || a || ' ON ' || main.subject_path(subj) || ' AS $$' || body || '$$;';
 
 CREATE OR REPLACE MACRO main.redefine_statement(v) AS
   main.gloss_statement(split_part(v, '.', 2), split_part(v, '.', 1), '<the current definition>');
@@ -1225,7 +1225,7 @@ DECLARE FUNCTION series_check FOR GLOBAL AS $$
               WHEN value_column IS NULL
               THEN main.gloss_statement('role', $subject || '.<value column>', '{"value": "measure"}')
               WHEN floor IS NULL AND NOT profiled
-              THEN 'SELECT temporal() FROM ' || $subject || '.' || period_column || ';'
+              THEN 'SELECT temporal() FROM ' || main.subject_path($subject || '.' || period_column) || ';'
               WHEN floor IS NULL
               THEN main.gloss_statement('time_grains', $subject || '.' || period_column, '{"floor": "<minute|hour|day|week|month|quarter|year>"}')
               ELSE redefine_statement($subject) END AS fix
@@ -1332,7 +1332,7 @@ checks AS (
 inputs AS (
   SELECT DISTINCT d.view, r.test, r.property, r.subject,
          r.state AS state, r.current, r.score, v.value::JSON AS evidence,
-         coalesce('SELECT ' || f.name || '() FROM ' || r.subject, '') AS run
+         coalesce('SELECT ' || f.name || '() FROM ' || main.subject_path(r.subject), '') AS run
   FROM reads d JOIN results r ON r.subject = d.subject
   LEFT JOIN evidence v ON v.subject = r.subject AND v.property = r.property
   LEFT JOIN checks f ON f.property = r.property
@@ -1347,7 +1347,7 @@ itself AS (
 declared AS (
   SELECT DISTINCT d.view, r.test, r.property, r.subject,
          r.state AS state, r.current, r.score, v.value::JSON AS evidence,
-         coalesce('SELECT ' || f.name || '() FROM ' || r.subject, '') AS run
+         coalesce('SELECT ' || f.name || '() FROM ' || main.subject_path(r.subject), '') AS run
   FROM itself d JOIN results r ON r.subject = d.subject
   JOIN authors w ON w.test = r.test AND w.declared_by NOT LIKE 'kit:%'
   LEFT JOIN evidence v ON v.subject = r.subject AND v.property = r.property

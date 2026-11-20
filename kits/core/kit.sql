@@ -6,6 +6,33 @@
 -- Replaced at every open so a view follows the build, never a lake's
 -- age; each open is one snapshot of the lake for it.
 
+-- quoted_name(name): one name as a statement spells it: as it is where it
+-- is a lower-case name and no reserved word, a placeholder (<...>) too,
+-- else double-quoted. subject_path(subject): a stored subject as a
+-- statement names it, dataset.table.column, the column all that follows
+-- the second dot, each name as quoted_name spells it; a relationship
+-- stays as it is. The reserved words are DuckDB's (duckdb_keywords()),
+-- written out: a function's body may not read the engine's catalog.
+CREATE OR REPLACE MACRO main.quoted_name(n) AS
+  CASE WHEN (regexp_full_match(n, '[a-z_][a-z0-9_]*')
+             AND NOT list_contains(['all', 'analyse', 'analyze', 'and', 'any', 'array', 'as', 'asc', 'asymmetric', 'both', 'case',
+               'cast', 'check', 'collate', 'column', 'constraint', 'create', 'default', 'deferrable', 'desc', 'describe', 'distinct',
+               'do', 'else', 'end', 'except', 'false', 'fetch', 'for', 'foreign', 'from', 'group', 'having', 'in', 'initially',
+               'intersect', 'into', 'lambda', 'lateral', 'leading', 'limit', 'not', 'null', 'offset', 'on', 'only', 'or', 'order',
+               'pivot', 'pivot_longer', 'pivot_wider', 'placing', 'primary', 'qualify', 'references', 'returning', 'select', 'show',
+               'some', 'summarize', 'symmetric', 'table', 'then', 'to', 'trailing', 'true', 'union', 'unique', 'unpivot', 'using',
+               'variadic', 'when', 'where', 'window', 'with'], n))
+            OR regexp_full_match(n, '<[^<>]*>') THEN n
+       ELSE '"' || replace(n, '"', '""') || '"' END;
+
+CREATE OR REPLACE MACRO main.subject_path(s) AS
+  CASE WHEN contains(s, ' -> ') THEN s
+       ELSE main.quoted_name(split_part(s, '.', 1))
+            || CASE WHEN contains(s, '.') THEN '.' || main.quoted_name(split_part(s, '.', 2)) ELSE '' END
+            || CASE WHEN length(s) - length(replace(s, '.', '')) >= 2
+                    THEN '.' || main.quoted_name(substr(s, length(split_part(s, '.', 1)) + length(split_part(s, '.', 2)) + 3))
+                    ELSE '' END END;
+
 -- The bound dataset as a relation: the schema in use when it is a
 -- dataset's, no row on an unbound channel. The interfaces join it.
 CREATE OR REPLACE VIEW main.current_dataset AS
