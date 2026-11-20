@@ -2,10 +2,10 @@
 
 Read before writing a view's SQL.
 
-## Declare, then define
+## Define
 
-A view is one name on the dataset. Declare it with a title and its
-kind, then define it. The definition is one annotation on the
+A view is one name on the dataset. Its definition names its
+kind and holds its SQL; the first definition declares the name. The definition is one annotation on the
 dataset; writing it again replaces it.
 
 | Kind | Declared with | Serves | Read with |

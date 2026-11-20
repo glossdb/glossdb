@@ -169,8 +169,8 @@ value to check and record again.
 
 ## Integrate: define views
 
-A view is named SQL on the dataset: declare the name, then define it.
-There are three kinds, each read as `FROM <view>`.
+A view is named SQL on the dataset, defined in one statement; its kind is in the body.
+A dataset serves three kinds, each read as `FROM <view>`; a plain view (no kind) and a rule (`"kind": "rule"`) are kept beside them.
 
 **A table** (`"kind": "table"`): cleaned, joined or reshaped rows.
 
@@ -187,7 +187,7 @@ GLOSS clean_deliveries ON logistics AS $${
 GLOSS depots_in_service ON logistics AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM depots"}$$;
 ```
 
-**A metric**: a value per period, with dimensions. Name the time
+**A metric** (`"kind": "metric"`): a value per period, with dimensions. Name the time
 column, the measure with its additivity, and the dimension columns:
 
 ```glossql
