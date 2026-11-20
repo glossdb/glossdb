@@ -51,9 +51,7 @@ that work builds.
 
 | # | Element | Risk | What it touches | When |
 |---|---|---|---|---|
-| 2 | The extension: a definition declares its property, the kind in the body, `AS VIEW` dropped; the corpus and `grammar.ebnf` with it | High: every statement an agent writes and every fixture | `grammar.ebnf`, `SPEC.md` §5 to §7, the store, the lineage kit's places, the corpus | Now |
-| 3 | The kits: kinds read from the body, the plain view, `rule` and its test, `tags`, the search read; `next` and `view_tests()` on kinds. What a rule view replaces in the tests reference is deleted | High | `kits/views`, `kits/goals`, `kits/core`, the extension's `kpi` kit, the console's frames | With 2 |
-| 4 | One pass over every text an agent reads, in the order it meets them: the MCP instructions, the entry skill, what `next` hands out, the references, the docs, the spec. One rule, one count of statements per form; every catalog read spelled `main.<relation>` (done in what `next` and the MCP text hand out) | Medium | `crates/serverd/src/mcp.rs`, `skills/`, `docs/`, `SPEC.md` | After 3 |
+| 4 | One pass over every text an agent reads, in the order it meets them: the MCP instructions, the entry skill, what `next` hands out, the references, the docs, the spec. One rule, one count of statements per form; every catalog read spelled `main.<relation>` (done in what `next` and the MCP text hand out) | Medium | `crates/serverd/src/mcp.rs`, `skills/`, `docs/`, `SPEC.md` | Now |
 | 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | After 4 |
 | 6 | The queries an agent runs are logged, indexed by the columns they read, and served by the search read beside the kept views. Open: when the agent is asked to keep one; read access follows `gate.md` | Medium | the server, the extension's lineage of a SQL text | After 5 says what is still hidden |
 
@@ -89,6 +87,22 @@ that work builds.
   join one equality at a time; on the whole key it takes 0.95 s with
   the same result.
 
+- Built and walked through MCP: a plain view kept in one statement
+  with its meaning and tags (0.49 s), a rule view in one statement,
+  red with its count and sample rows after the write and again after a
+  load (0.6 s), `find('unit')` in 0.2 s. On the ferc-steam workspace
+  five kept views leave `next` as it was and compute only their
+  lineage (0.5 s a write).
+
+## Open beside the steps
+
+| What | When |
+|---|---|
+| A kept view is not compared between loads: a profile that grows a row (a new unit, a new code) is not a row of `next`. A function or a test on the view would say it | After the glossval round shows what agents keep |
+| The console lists kept views nowhere of their own | With the text pass or after |
+| A rule view's scanned columns get a column profile computed, as a served view's do | Measure the cost first |
+| `next` says "no view is served" as a must on a dataset that holds only kept views | Shaped with the levels, which are on hold |
+
 ## Next issue
 
-Step 2.
+Step 4, the pass over the texts.
