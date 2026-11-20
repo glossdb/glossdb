@@ -51,8 +51,7 @@ that work builds.
 
 | # | Element | Risk | What it touches | When |
 |---|---|---|---|---|
-| 1 | A check that reads its subject's rows records the subject, not the dataset: today each new view makes the reconciliation, the contract check and the key check due (measured: about 19 s per kept view on ferc-steam, 3 s on the two others). Then why the reconciliation takes 19 s on 35,000 rows | High: the dependency mechanism | the extension's read tracker (`glossql_runner.cpp`, `DataRead`) | Now |
-| 2 | The extension: a definition declares its property, the kind in the body, `AS VIEW` dropped; the corpus and `grammar.ebnf` with it | High: every statement an agent writes and every fixture | `grammar.ebnf`, `SPEC.md` §5 to §7, the store, the lineage kit's places, the corpus | After 1 |
+| 2 | The extension: a definition declares its property, the kind in the body, `AS VIEW` dropped; the corpus and `grammar.ebnf` with it | High: every statement an agent writes and every fixture | `grammar.ebnf`, `SPEC.md` §5 to §7, the store, the lineage kit's places, the corpus | Now |
 | 3 | The kits: kinds read from the body, the plain view, `rule` and its test, `tags`, the search read; `next` and `view_tests()` on kinds. What a rule view replaces in the tests reference is deleted | High | `kits/views`, `kits/goals`, `kits/core`, the extension's `kpi` kit, the console's frames | With 2 |
 | 4 | One pass over every text an agent reads, in the order it meets them: the MCP instructions, the entry skill, what `next` hands out, the references, the docs, the spec. One rule, one count of statements per form; every catalog read spelled `main.<relation>` (done in what `next` and the MCP text hand out) | Medium | `crates/serverd/src/mcp.rs`, `skills/`, `docs/`, `SPEC.md` | After 3 |
 | 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | After 4 |
@@ -83,6 +82,13 @@ that work builds.
 - A table of the user's named `results` hides the catalog's `results`
   for a bare read while its dataset is in use.
 
+- A check that reads its subject's rows recorded its whole dataset,
+  so each view defined and each other table loaded made it due. It
+  records the subject and what it reads now. The reconciliation took
+  19.5 s on ferc-steam (35,333 rows) because it matched a four-column
+  join one equality at a time; on the whole key it takes 0.95 s with
+  the same result.
+
 ## Next issue
 
-Step 1.
+Step 2.
