@@ -136,34 +136,13 @@ GLOSS contract ON supply.onhand.site AS $${"type": "VARCHAR", "required": true, 
 GLOSS contract ON supply.onhand.cases AS $${"type": "DOUBLE", "required": true}$$;
 ```
 
-After each write the server runs `contract_test` (the rows keep the
-contract) and `code_test` (every code a source column holds is named
-by the CASE that maps it) on the view. A red test is a `must` row of
-`next` with the breaches per column, their rows and example values. A
-column of the view with no contract is a `should` row. Name every code in the CASE and leave the rest to NULL:
-a new code then shows in `code_test` instead of falling to the `ELSE`.
-
-The server also runs `reconciliation_test` on the view after each
-load. It answers: did every row of each system arrive, and which did
-not. Per system and period it holds the rows and the sum of each
-measure at the source against what the view serves, and lists the
-keys at the source that the view does not serve. The source of a
-branch is the table it reads first, joined to nothing before it. Serve
-the system as a literal in each branch (`'sap' AS source_system`): the
-served rows are counted per system by that column. A red test is a
-`must` row of `next` with the systems, the periods and the keys, and
-the statement that lists those rows at the source. Each source row is
-compared at the view's grain: by the key columns the branch copies
-and the columns it looks up through a join, against the rows the view
-serves. A view that groups is not red for serving fewer rows than it
-reads. Rows the view's condition leaves out (`WHERE m.status = 'D'`)
-are counted as excluded, not missing. A branch that compares nothing
-(a computed key, no join) is counted only, and the result's `notes`
-says so ([reads](../reference/reads.md#the-harmonise-kit-preview)).
-
-```glossql
-GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
-```
+After each write the server runs `contract_test` on the view: the
+rows keep the contract. A red test is a `must` row of `next` with the
+breaches per column, their rows and example values. A column of the
+view with no contract is a `should` row. Name every code in the CASE
+and leave the rest to NULL: a new code then shows as an empty required
+value in `contract_test` instead of falling to the `ELSE`
+([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ## Stop instead of serving
 

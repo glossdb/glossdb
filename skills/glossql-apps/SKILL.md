@@ -115,7 +115,7 @@ served as text and does not run.
 - `<gl-window frame="frames/<name>">`: links for the reader's grain
   and span, from a frame over `view_summary()`.
 - `<gl-graph nodes="frames/<nodes>" edges="frames/<edges>">`: column
-  lineage, from frames over `relationships` and `column_mapping()`.
+  lineage, from frames over `relationships` and `views_lineage()`.
 - **The chip** names where a tile's number comes from, the view or
   the read; `note` is its hover text.
 

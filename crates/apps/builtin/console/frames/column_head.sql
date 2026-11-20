@@ -2,7 +2,14 @@
 -- meaning (a person's over the agent's), and the views that read it.
 -- One row, or none for a name no loaded column carries. `$column` is
 -- `table.column`, spelled without the dataset.
-WITH d AS (SELECT dataset FROM current_dataset),
+-- each column of each served view with each loaded column it is computed from (views_lineage());
+-- a column computed from none has one row with no source
+WITH m AS (
+  SELECT view, target_column, split_part(i, '.', 2) AS source_table, nullif(split_part(i, '.', 3), '') AS source_column
+  FROM (SELECT view, "column" AS target_column, unnest(CASE WHEN len(inputs) > 0 THEN inputs ELSE [NULL::VARCHAR] END) AS i
+        FROM views_lineage(current_schema())
+        WHERE view IN (SELECT view FROM view_kinds() WHERE stopped IS NULL AND served_kind(kind)))),
+d AS (SELECT dataset FROM current_dataset),
 cur AS (
   SELECT g.property, json_extract_string(g.body, '$.value') AS value
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
@@ -16,7 +23,7 @@ a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
-  FROM column_mapping() ms LEFT JOIN a ON a.name = ms.view
+  FROM m ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.source_table || '.' || ms.source_column = CAST($column AS VARCHAR))
 SELECT col.table_name,
        col.column_name AS name,

@@ -182,7 +182,8 @@ SELECT subject, value::VARCHAR FROM main.results WHERE function = 'source_system
 supply.onhand	{"systems":[{"system":"d365","conventions":"missing"},{"system":"model","conventions":"missing"},{"system":"mono","conventions":"current"},{"system":"sap","conventions":"current"}],"without_conventions":2}
 supply.stock_d365	{"systems":[{"system":"d365","conventions":"missing"}],"without_conventions":1}
 
-# the Swiss conventions written: both results are out of date, and computed again they count them
+# the Swiss conventions written: both results are out of date; the one on the loaded table is computed again
+# after the write, the one on the view when it is asked for, and each counts them
 statement ok
 GLOSS conventions ON d365 AS $${"units": "UnitId: Cs a case, Pl a pallet"}$$;
 
@@ -190,7 +191,11 @@ query T
 SELECT subject FROM glossql_outdated() WHERE function = 'source_systems' ORDER BY ALL;
 ----
 supply.onhand
-supply.stock_d365
+
+query I
+SELECT (value->>'without_conventions')::INT FROM main.results WHERE function = 'source_systems' AND subject = 'supply.stock_d365';
+----
+0
 
 statement ok
 SELECT source_systems() FROM onhand;

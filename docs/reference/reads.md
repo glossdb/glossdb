@@ -235,7 +235,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 | `find(term)` | `asset`, `what` (`view`, `table`, `column`), `kind`, `meaning`, `tags`, `matched_on`, `reads`, `sql`: each view, loaded table and column whose name, meaning or tags hold the term, each view whose kind is the term, and each view that reads a column whose name holds it; `tags` is a person's and the agents' lists as one; a stopped view is not found |
 | `tag_statement(asset, words)` | the statement that adds the words to the actor's own `tags` on the asset: an actor's newest list replaces its list before |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
-| `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
+| `views_lineage(dataset)` | `dataset`, `view`, `column`, `inputs`, `complete`, `shape`: each column of each view with the columns of loaded tables it is computed from (`inputs`, as `dataset.table.column`, each once), read from the view's stored lineage. `complete` is false where the lineage could not follow a step; a view that does not plan has one row with no column. `views_scans(dataset)` lists the tables a view reads with the columns it reads of each, `views_joins(dataset)` the column pairs its joins equate (the lineage kit) |
 | `view_tests()` | `view`, `test`, `property`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (the 0.3.0.dev0 draft, schema at apache/ossie `74a26bef`); units and a semi-additive or non-additive value in `nonportable_extensions` |
 | `lineage_events()` | `event`: OpenLineage run events (spec 2-0-2), one per load and one per view |
@@ -255,12 +255,11 @@ result and the server does not.
 
 ## The harmonise kit (preview)
 
-Several systems of record mapped onto one target table view. Where
-each target column comes from, per branch of the view's union and per
-system, is `column_mapping()` above: the system is the source the
-source table is loaded from. The reconciliation counts the served
-rows per system by a column that names it in each branch. Where one
-source holds two systems, state the system on each loaded table:
+Several systems of record mapped onto one target table view. The
+loaded columns each target column is computed from are
+`views_lineage()` above; the system of a loaded table is the source it
+is loaded from. Where one source holds two systems, state the system
+on each loaded table:
 
 ```glossql
 GLOSS system_of_record ON ferc.steam_xbrl AS $${"value": "ferc_xbrl", "basis": "the XBRL filings, report years from 2021"}$$;
@@ -282,56 +281,20 @@ target is defined:
 | the code table | a relationship from the view's column: `DECLARE RELATIONSHIP <view>.<column> -> <code table>.<code>` |
 
 Once one column of a view carries a `contract`, `next` asks for one on
-each other column (`should`), and the server runs three tests on the
-view after each write. Each is red above a tolerance a person accepts
-with `GLOSS <check> ON <view> AS $${"tolerance": …, "basis": …}$$`:
+each other column (`should`), and the server runs `contract_test` on
+the view after each write. It is red above a tolerance a person
+accepts with `GLOSS contract_check ON <view> AS $${"tolerance": …, "basis": …}$$`:
 
 | Test | Its check returns | Red when |
 |---|---|---|
 | `contract_test` | `breaches`: per column, `rule` (`key`, `required`, `values`, `codes`, `type`, `missing`), `count` of rows and up to three `examples`; `rows` | the key repeats or is empty, a required value is empty, a value is not allowed, a code has no row in its code table, a column is served as another type. `breach_rate` is the share of rows of the largest breach |
-| `code_test` | `codes`: per target column and source column, the `system`, the `literals` the expression names, `told`, `contracted`, `rows`, and `unnamed`, each value the literals do not name with its rows | a value the expression does not name reaches a column with a contract: it falls to the `ELSE` or to NULL. Name every code. Values are counted over the rows the view's condition on the source table keeps (comparisons with literals joined by `and`). Where a column is tested by a range, a pattern or a function of it, or the condition has another form (a window, an `or`), `told` is false; where no column is told, the check is not applicable and the test is yellow, not green |
-| `reconciliation_test` | `comparison`; `rows`: per system and period, `compared_on`, the `source_rows` the view's condition keeps, the `excluded_rows` it leaves out, the `target_rows`, `missing_rows`, the first ten `missing_keys` and `missing_key_count`, and `measures` (per column with role `measure`, the `source` and the `target` sum); `notes` | a source row the view's condition keeps does not arrive. `breach_rate` is the share of compared source rows that do not arrive. Row counts are shown and not compared: a view that groups, or a join that matches one row to many, serves another number of rows than it reads |
-
-**The reconciliation.** The source of each branch of the union is the
-table it reads that is joined to nothing before it (the lineage's
-mapping: a read with no `lookup`); its system is its
-`system_of_record`, else its load's source. A served row belongs to a
-system by `system_column`: a column that each branch serves as a
-different literal (`'sap' AS source_system`). A view of one branch
-needs none; a view of several without one is not applicable, and the
-fix says to add it. The period is the view's `time_axis` (its
-`entity`), else its column with role `timestamp`, a date truncated to
-its `time_grains` floor, a month where none is stated. The key is the
-`grain` of the view's `entity`.
-
-The comparison is at the view's grain. A source row the view's
-condition on its table keeps (comparisons with literals joined by
-`and`) gets the columns of `compared_on` as the view computes them:
-each key column the branch copies from the source table, as it is or
-cast, and each column it looks up through a join from the source
-table (a mapping or identity table), with that table's condition. A
-row whose join finds no partner gets no value there. The row arrives
-where the view serves a row of its system with the same values. Rows
-the condition leaves out are `excluded_rows`, not missing. Where a
-branch compares nothing (its key is computed and it looks nothing
-up), or its condition has another form (an `or`, a window), its rows
-are counted and `missing_rows` is NULL; `notes` says which and why.
-A period or a measure the branch computes is named in `notes` too:
-the rows are counted over every period, or the measure has no
-`source` sum. A missing row is named by the source table's own
-columns the compared values come from (`ZESTPIL6, BR01, 2025-10-01`
-for a local code, a warehouse and a date). The fix lists those rows
-at the source.
 
 A server opened without the kit serves the same `next`, the same
-tests and the same `column_mapping()` for a dataset with no contract.
+tests and the same `views_lineage()` for a dataset with no contract.
 
 ```sql
 SELECT source_systems() FROM onhand;
-SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test IN ('contract_test', 'code_test', 'reconciliation_test');
-SELECT reconciliation() FROM onhand;
-SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys
-FROM main.results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
+SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test = 'contract_test';
 ```
 
 `orphan_test` names the keys that find no parent on each relationship

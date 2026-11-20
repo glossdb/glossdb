@@ -322,7 +322,7 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 | `main.view_definitions` | every view: `name`, `kind` (`table`, `value`, `metric`, `rule`, NULL for a plain view), `unit`, `meaning`, `defined`, `stopped`, `sql` (the view's SQL) |
 | `view_summary()` | one row per served view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
-| `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
+| `views_lineage(dataset)` | lineage: per view column the loaded columns it is computed from (`inputs`) |
 | `fact_values()` | each single value: `view`, `value`, `reason` |
 | `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. `view := '<metric>'` reads one metric alone. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
 | `GLOSSARY(asset)` | the annotations in force: `subject, property, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |

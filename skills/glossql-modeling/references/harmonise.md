@@ -6,9 +6,8 @@ The job: each market or entity runs its own system of record, with
 its own column names, codes and units. The person wants one table in
 one format. You load each system as it is, define the target as a
 table view with one branch per system, and state its data contract.
-After each load the server tests the target against the contract,
-lists the codes the mapping does not handle, and reconciles the rows
-per system. The examples follow three ERPs: SAP in Denmark, Dynamics
+After each load the server tests the target against the contract.
+The examples follow three ERPs: SAP in Denmark, Dynamics
 365 in Switzerland, a local system in Poland, and the group's
 identity and unit tables.
 
@@ -78,23 +77,14 @@ GLOSS onhand ON supply AS $${"kind": "table", "sql": "SELECT 'sap' AS source_sys
 ```
 
 - **Name each code, with no `ELSE`.** A code the `CASE` does not name
-  is then NULL, and the server lists it. An `ELSE` hides it. Keep the
+  is then NULL, and `contract_test` lists it as an empty required
+  value. An `ELSE` hides it. Keep the
   query that listed each system's codes and units as a plain view,
   tagged with the column it maps (`"tags": ["uom", "mapping"]`), so the
   reviewer finds why the `CASE` reads as it does.
 - **Name the system as a literal, once per branch.** `'sap' AS
-  source_system`: the reconciliation counts the target's rows per
-  system by it. The mapping knows each table's system without it.
-- **Read the system's table first, and copy what you can.** The
-  reconciliation holds the first table of each branch against the
-  target, row by row at the target's grain. It compares each key
-  column the branch copies from that table, as it is or cast, and
-  each column it looks up through a join from that table (a mapping
-  table). Rows the branch's `WHERE` leaves out are counted as
-  excluded, not missing. A key the branch computes (`'SAP/' ||
-  o.vbeln`) is left out of the comparison; where nothing is left, the
-  rows are only counted, and `notes` says so. A view that groups is
-  compared the same way.
+  source_system`: a reader of the target sees where each row comes
+  from.
 - **One row per key.** Where a system sends a key twice, keep one in
   a subquery over its table, before the joins, and state the choice
   as an assumption (step 7):
@@ -119,34 +109,22 @@ GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 ```
 
 From the first `contract`, the server runs `contract_test` (key,
-required values, allowed values, types), `code_test` (every code
-reaches a named branch of the `CASE`) and `reconciliation_test`
-(every source row arrives) after each write. `next` asks for a
-contract on each other column. A column with role `measure` is summed
-per system in the reconciliation, per period where the `entity` names
-a `time_axis`.
+required values, allowed values, types) after each write. `next` asks
+for a contract on each other column.
 Where the systems share no key, build it per branch from each
 system's own key columns (`'f1_steam_' || o.report_year || '_' ||
 o.respondent_id`) and make that column the grain.
 
-## 6. Read the mapping
+## 6. Read the lineage
 
 ```sql
-SELECT target_column, branch, system, source_table, source_column, condition, lookup, expression, literals FROM column_mapping(for_view := 'onhand') ORDER BY target_column, branch
+SELECT view, "column", inputs FROM views_lineage('supply') WHERE view = 'onhand' ORDER BY "column"
 ```
 
-One row per target column, branch and source column: the `system`,
-the source column, the `expression` that maps it, and in `literals`
-the codes it names. `condition` is what the branch's filters and
-literal join conditions require of that table (`market = 'PL'`).
-`lookup` is the join that looks a mapping table up: the system's own
-code first (`=(supply.stock_mono.indeks, supply.model_identities.local_code)`).
-`complete` is false where the lineage could not follow a step. For a
-person, one line per target column and branch:
-
-```sql
-SELECT target_column, branch, string_agg(DISTINCT system || ': ' || source_table || '.' || source_column, ', ') AS reads, max(array_to_string(literals, ' ')) AS codes FROM column_mapping(for_view := 'onhand') GROUP BY ALL ORDER BY ALL
-```
+One row per target column: the loaded columns it is computed from
+(`inputs`, as `dataset.table.column`), over every branch. `complete`
+is false where the lineage could not follow a step. The source each
+table is loaded from is in `lineage('supply')` (`loaded from`).
 
 ## 7. Close what `next` lists
 
@@ -161,10 +139,8 @@ A `must` here is served data that is wrong:
 
 | `next` says | Close it by |
 |---|---|
-| `code_test`: a column gets codes its expression does not name, per system, with rows (`'Pal' 1 row`) | naming the code in the `CASE` (`WHEN 'Pal' THEN …`) and defining the view again |
 | `orphan_test`: keys that find no parent, with their rows (`X9: 1 row`) | the code in the mapping table at its source, then `IMPORT model_identities;`. Adding the row is the mapping owner's work: ask the person |
-| `contract_test`: the key repeats, a required value is empty, a value is not allowed | the cause, in the load query or the definition. An empty value is often an unnamed code: close `code_test` first |
-| `reconciliation_test`: source rows that do not arrive, per system and period, with their keys (`north 2 of 6 rows, keys N-3, N-6`) | running the statement in the fix that lists those rows at the source, finding why each is left out (most often a join with no partner: the code in the mapping table, as for `orphan_test`), and fixing the definition or the mapping table. Rows the view's `WHERE` leaves out (a blocked status) are not counted as missing |
+| `contract_test`: the key repeats, a required value is empty, a value is not allowed | the cause, in the load query or the definition. An empty value is often an unnamed code: name it in the `CASE` (`WHEN 'Pal' THEN …`) and define the view again |
 | a keyed load missed keys, and the source is stated `full` | the load query declared again without the key |
 
 A `should` is the layer incomplete: a column with no `contract`,
@@ -178,28 +154,4 @@ below 1. Two examples: the same SAP line sent twice is kept once
 count", "confidence": 0.6}`); Switzerland's brand wins over Denmark's
 for a part both sell. A person decides it in the review. Where a
 person accepts rows as they are, each test's fix gives the annotation
-that records the rate with their reason. A test with nothing to check
-(`code_test` on a target that maps no codes through a `CASE`) stays
-yellow and is no row of `next`.
-
-## 8. Read the reconciliation
-
-The server computes it after each load. Read it per system:
-
-```sql
-SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM main.results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
-```
-
-Per system (and per period, where the view has a `time_axis`): the
-rows of the system's table the view's condition keeps
-(`source_rows`) and leaves out (`excluded_rows`), the rows the target
-serves from it, the source rows it does not serve, named by the
-source's own columns (`compared_on` says which target columns were
-compared), and per measure the
-`source` and the `target` sum, to hold against the system's own
-report. A period with source rows and no target rows is a period the
-target is short of. Tell the person, per system: rows in, rows out,
-and each missing key with its reason from the source row, such as
-"Poland: 4 rows at the source, 1 left out as blocked, 2 in the
-target; X9 has no identity". `notes` names what the result cannot
-compare, and why.
+that records the rate with their reason.

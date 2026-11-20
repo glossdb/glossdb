@@ -11,7 +11,7 @@
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="The loaded tables with what each column is, the declared relationships between them, and the view columns that descend from the table columns.">Model and lineage</span>
-      <code class="chip">recipes · relationships · GLOSSARY() · column_mapping()</code></header>
+      <code class="chip">recipes · relationships · GLOSSARY() · views_lineage()</code></header>
     <p class="hint">Left to right: the tables, then the views that read them. Beside a table's name: the source it is loaded from. Under it: what one row is. Beside a column: its role, a measure's additivity and unit, and whether it is part of the grain or the time axis. Switch a layer off to read the rest: without views the graph is the semantic model; without relationships it is the lineage. Hover a column to follow its lines; a click keeps it lit and puts it in the URL. A name opens its page.</p>
     <div class="graph-wrap">
       <gl-graph nodes="frames/lineage_nodes" edges="frames/lineage_edges" node-width="250" label="model and lineage" layers

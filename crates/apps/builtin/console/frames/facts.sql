@@ -3,13 +3,20 @@
 -- the tables the definition reads. Status and colour
 -- follow the measures frame's rule. `$stopped` picks the served facts (0) or
 -- the stopped ones (1).
-WITH asked AS (
+-- each column of each served view with each loaded column it is computed from (views_lineage());
+-- a column computed from none has one row with no source
+WITH m AS (
+  SELECT view, target_column, split_part(i, '.', 2) AS source_table, nullif(split_part(i, '.', 3), '') AS source_column
+  FROM (SELECT view, "column" AS target_column, unnest(CASE WHEN len(inputs) > 0 THEN inputs ELSE [NULL::VARCHAR] END) AS i
+        FROM views_lineage(current_schema())
+        WHERE view IN (SELECT view FROM view_kinds() WHERE stopped IS NULL AND served_kind(kind)))),
+asked AS (
   SELECT q.property, count(*) AS n FROM open_questions q
   JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.property),
 decided AS (
   SELECT r.property, max(r.written_at) AS decided_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.property),
-reads AS (SELECT DISTINCT view, source_table AS t FROM column_mapping() WHERE source_table IS NOT NULL),
+reads AS (SELECT DISTINCT view, source_table AS t FROM m WHERE source_table IS NOT NULL),
 loaded AS (
   SELECT i.table_name, max(i.imported_at) AS loaded_at
   FROM imports i JOIN current_dataset d ON d.dataset = i.dataset GROUP BY i.table_name),

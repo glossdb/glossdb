@@ -496,8 +496,8 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
 }
 
 /// The harmonise kit is an add-on: a server that leaves it out serves
-/// `next`, `view_tests()`, `column_mapping()` and the console, and the
-/// same `next`, tests and column mapping as a server with it.
+/// `next`, `view_tests()`, `views_lineage()` and the console, and the
+/// same `next`, tests and lineage as a server with it.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_console() {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
@@ -512,13 +512,14 @@ async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_consol
     let served_next = rows(&with, FIN, next).await;
     let served_tests = rows(&with, FIN, tests).await;
     assert!(!served_tests.is_empty());
-    let mapping = "SELECT view, target_column, branch, source_table, source_column FROM column_mapping() ORDER BY ALL";
-    let served_mapping = rows(&with, FIN, mapping).await;
-    assert!(!served_mapping.is_empty());
+    let lineage =
+        "SELECT view, \"column\", inputs::VARCHAR AS inputs FROM views_lineage('fin') ORDER BY ALL";
+    let served_lineage = rows(&with, FIN, lineage).await;
+    assert!(!served_lineage.is_empty());
     for app in [&neither] {
         assert_eq!(rows(app, FIN, next).await, served_next);
         assert_eq!(rows(app, FIN, tests).await, served_tests);
-        assert_eq!(rows(app, FIN, mapping).await, served_mapping);
+        assert_eq!(rows(app, FIN, lineage).await, served_lineage);
         let closing = window(&tool(app, FIN, "SELECT 1 AS one").await);
         assert!(closing.contains("next: must 0"), "{closing}");
         for page in [

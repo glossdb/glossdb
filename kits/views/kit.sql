@@ -86,7 +86,7 @@ CREATE OR REPLACE MACRO main.window_default(g) AS
 -- dataset, kept or served, from each view's newest definition
 -- (view_bodies(): table, value, metric, rule, NULL for a plain view), for
 -- a read that needs no more of the summary than which views there are
--- (view_tests(), fact_values(), column_mapping(), find()); view_summary()
+-- (view_tests(), fact_values(), find()); view_summary()
 -- reads its rows from it. served_kind(kind): the kinds the dataset serves.
 --
 -- view_axes(): what metric_series() reads of the same, through the read
@@ -455,43 +455,6 @@ FROM facts f LEFT JOIN shape s USING (metric)
 ORDER BY f.metric;
 
 --===------------------------------------------------------------------===--
--- column_mapping(for_view := NULL): where each column of each view of the
--- bound dataset, or of one, comes from, read off the view's SQL. One row
--- per target column, per branch of the union the view's rows come from
--- (1 where it has none) and per source column: view, target_column,
--- branch, system (the system of record the source table states, else the
--- source it is loaded from), source_table,
--- source_column, alias (where the view reads the table more than once),
--- condition (what the view's joins and filters require of that read of the
--- table alone), lookup (the equalities of the join that joins that read to
--- the rows before it: the columns it is looked up by against the columns of
--- the side it is joined to, such as the system's own code a mapping table is
--- looked up by), expression (the branch's derivation), literals (the codes
--- the expression tests or returns, as written), complete. A column computed
--- from no source column (a constant, count(*)) has one row with no source.
--- complete is false where the lineage could not follow a step, or reads two
--- reads of one table alike; a view that does not plan has one row, no
--- target column, complete false.
---===------------------------------------------------------------------===--
-
-CREATE OR REPLACE MACRO main.column_mapping(for_view := NULL) AS TABLE
-WITH views AS (
-  SELECT m.view FROM main.view_kinds() m WHERE m.stopped IS NULL AND main.served_kind(m.kind) AND (for_view IS NULL OR m.view = for_view)),
--- a table's system of record, where an annotation names one, else its load's source
-stated AS (
-  SELECT subject AS t, value->>'value' AS system FROM glossql_glossary(current_schema(), 'system_of_record', false)
-  WHERE value IS NOT NULL AND state IN ('current', 'stale')),
-systems AS (
-  SELECT l."from" AS t, coalesce(s.system, l."to") AS system
-  FROM main.loaded_from_edges(current_schema()) l LEFT JOIN stated s ON s.t = l."from")
-SELECT m.view, m."column" AS target_column, m.branch, s.system,
-       split_part(m.table_name, '.', 2) AS source_table, m.table_column AS source_column,
-       m.alias, m.condition, m.lookup, m.derivation AS expression, m.literals, m.complete
-FROM main.views_mapping(current_schema()) m
-LEFT JOIN systems s ON s.t = m.table_name
-WHERE m.view IN (SELECT view FROM views);
-
---===------------------------------------------------------------------===--
 -- The built-in tests on a view: what can break its rows or its number,
 -- checked against its definition and the evidence the quality kit
 -- stored, never against the data again. join_check is a join that
@@ -524,8 +487,7 @@ WHERE m.view IN (SELECT view FROM views);
 
 CREATE OR REPLACE MACRO main.view_reads_of(ds, m) AS TABLE
 SELECT DISTINCT split_part(path, '.', 2) AS table_name, split_part(path, '.', 3) AS column_name
-FROM (SELECT unnest(list_distinct(regexp_extract_all(l.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1))) AS path
-      FROM main.views_lineage(ds) l WHERE l.view = m)
+FROM (SELECT unnest(inputs) AS path FROM main.views_lineage(ds) WHERE view = m)
 WHERE split_part(path, '.', 1) = ds;
 
 -- view_scans_of(ds, m): every table view m of dataset ds scans,
@@ -690,7 +652,7 @@ DECLARE FUNCTION join_check FOR GLOBAL AS $$
     WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
   n AS (SELECT count(*) AS tables FROM scans),
   -- a view that reads no loaded table, a constant, plans and has nothing to join
-  plans AS (SELECT coalesce(bool_or(c.derivation IS NOT NULL), false) AS ok FROM d, unnest(d.columns) t(c)),
+  plans AS (SELECT coalesce(max(len(columns)), 0) > 0 AS ok FROM d),
   dated AS (
     SELECT asset AS table_path, value->>'valid_from' AS valid_from, value->>'valid_to' AS valid_to
     FROM annotations('validity', 'its sources') WHERE value IS NOT NULL),
@@ -907,7 +869,7 @@ DECLARE FUNCTION orphan_check FOR GLOBAL AS $$
             WHERE split_part(r.table_name, '.', 1) = split_part($subject, '.', 1)),
   n AS (SELECT count(*) AS tables, string_agg(table_name, ', ' ORDER BY table_name) AS names FROM reads),
   -- a view that reads no loaded table, a constant, plans and has no key to check
-  plans AS (SELECT coalesce(bool_or(c.derivation IS NOT NULL), false) AS ok FROM d, unnest(d.columns) t(c)),
+  plans AS (SELECT coalesce(max(len(columns)), 0) > 0 AS ok FROM d),
   joined AS (SELECT DISTINCT side AS column_path FROM d, unnest(d.joins) t(j), unnest([j.left_column, j.right_column]) u(side)),
   coherence AS (
     SELECT asset AS relationship, value,
@@ -1072,7 +1034,7 @@ CREATE OR REPLACE MACRO main.relationship_side(ds, t, cols, quoted) AS
   || CASE WHEN len(cols) = 1 THEN '' ELSE ')' END;
 
 -- relationship_check: each join the view makes between two loaded tables
--- has a declared relationship, so the orphan check and the reconciliation
+-- has a declared relationship, so the orphan check
 -- can test its keys. A join is the pairs of columns of one join between two
 -- tables; a relationship covers it where its pairs are the join's, either
 -- way round. Where one is missing, the result has no rate (yellow), the
@@ -1156,7 +1118,7 @@ DECLARE FUNCTION relationship_check FOR GLOBAL AS $$
          CASE WHEN EXISTS (SELECT 1 FROM said) THEN NULL ELSE 0.0 END AS breach_rate,
          (SELECT list(relationship ORDER BY key) FROM said) AS joins,
          (SELECT 'no relationship is declared for ' || string_agg(join_, '; ' ORDER BY key)
-                 || ': the orphan check and the reconciliation name no keys on it' FROM said HAVING count(*) > 0) AS finding,
+                 || ': the orphan check names no keys on it' FROM said HAVING count(*) > 0) AS finding,
          (SELECT string_agg(statement, chr(10) ORDER BY key) FROM said HAVING count(*) > 0) AS fix
 $$ RETURNS relationship_check;
 
@@ -1522,8 +1484,7 @@ load_events AS (
   FROM loads l),
 view_cols AS (
   SELECT v.view, v."column" AS field,
-         (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)})
-          FROM unnest(list_distinct(regexp_extract_all(v.derivation, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1))) u(leaf)) AS inputs
+         list_transform(v.inputs, lambda leaf: {'namespace': 'glossdb', 'name': split_part(leaf, '.', 1) || '.' || split_part(leaf, '.', 2), 'field': split_part(leaf, '.', 3)}) AS inputs
   FROM main.views_lineage(current_schema()) v WHERE v."column" IS NOT NULL),
 view_scans AS (
   SELECT view, list(DISTINCT {'namespace': 'glossdb', 'name': table_name}) AS inputs

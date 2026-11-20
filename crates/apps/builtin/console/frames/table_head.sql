@@ -3,7 +3,14 @@
 -- dimension table, how many rows and columns it holds, when it last
 -- loaded and from which source, and the views that read it. One row,
 -- or none for a name no loaded table carries.
-WITH d AS (SELECT dataset FROM current_dataset),
+-- each column of each served view with each loaded column it is computed from (views_lineage());
+-- a column computed from none has one row with no source
+WITH m AS (
+  SELECT view, target_column, split_part(i, '.', 2) AS source_table, nullif(split_part(i, '.', 3), '') AS source_column
+  FROM (SELECT view, "column" AS target_column, unnest(CASE WHEN len(inputs) > 0 THEN inputs ELSE [NULL::VARCHAR] END) AS i
+        FROM views_lineage(current_schema())
+        WHERE view IN (SELECT view FROM view_kinds() WHERE stopped IS NULL AND served_kind(kind)))),
+d AS (SELECT dataset FROM current_dataset),
 e AS (
   SELECT g.body, g.actor_kind, g.written_at
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
@@ -21,7 +28,7 @@ a AS (
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
-  FROM column_mapping() ms LEFT JOIN a ON a.name = ms.view
+  FROM m ms LEFT JOIN a ON a.name = ms.view
   WHERE ms.source_table = CAST($table AS VARCHAR)),
 src AS (
   SELECT max(r.source) AS source FROM recipes r JOIN d ON d.dataset = r.dataset

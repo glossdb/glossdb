@@ -430,3 +430,36 @@ SELECT count(*) FROM results_due();
 ----
 0
 
+
+# --- a result someone computed on a loaded table's column is computed again when the table loads, with no
+# test and no view that wants it
+
+statement ok
+COPY (SELECT i AS n FROM range(9) t(i)) TO '{TEST_DIR}/counts.csv' (HEADER);
+
+statement ok
+DECLARE RECIPE counts ON shop FROM files AS $$SELECT * FROM read_csv('counts.csv')$$;
+
+statement ok
+SELECT column_profile() FROM shop.counts.n;
+
+query I
+SELECT (value->>'total')::INT FROM results WHERE function = 'column_profile' AND subject = 'shop.counts.n';
+----
+9
+
+statement ok
+COPY (SELECT i AS n FROM range(12) t(i)) TO '{TEST_DIR}/counts.csv' (HEADER);
+
+statement ok
+IMPORT counts;
+
+query I
+SELECT (value->>'total')::INT FROM results WHERE function = 'column_profile' AND subject = 'shop.counts.n';
+----
+12
+
+query I
+SELECT count(*) FROM results_due();
+----
+0

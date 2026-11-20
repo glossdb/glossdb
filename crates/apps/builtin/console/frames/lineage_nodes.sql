@@ -6,7 +6,14 @@
 -- carries in the semantic model: its role, a measure's additivity and
 -- unit, a dimension's rank, and whether it is part of the table's
 -- grain or its time axis. `link` opens the node's page.
-WITH d AS (SELECT dataset FROM current_dataset),
+-- each column of each served view with each loaded column it is computed from (views_lineage());
+-- a column computed from none has one row with no source
+WITH m AS (
+  SELECT view, target_column, split_part(i, '.', 2) AS source_table, nullif(split_part(i, '.', 3), '') AS source_column
+  FROM (SELECT view, "column" AS target_column, unnest(CASE WHEN len(inputs) > 0 THEN inputs ELSE [NULL::VARCHAR] END) AS i
+        FROM views_lineage(current_schema())
+        WHERE view IN (SELECT view FROM view_kinds() WHERE stopped IS NULL AND served_kind(kind)))),
+d AS (SELECT dataset FROM current_dataset),
 base AS (SELECT '/' || dataset || '/app/console/p/' AS b FROM d),
 recipe AS (
   SELECT r.table_name, r.source
@@ -65,7 +72,7 @@ fields AS (
                      WHEN 'rule' THEN 'rule' ELSE 'plain view' END AS sub,
          (SELECT b FROM base) || 'views?view=' || s.view
            || CASE WHEN v.kind IN ('table', 'value') THEN '&kind=' || v.kind ELSE '' END AS link
-  FROM (SELECT DISTINCT view, target_column FROM column_mapping() WHERE target_column IS NOT NULL) s
+  FROM (SELECT DISTINCT view, target_column FROM m WHERE target_column IS NOT NULL) s
   LEFT JOIN defs v ON v.name = s.view)
 SELECT node, kind, col, ord, role, detail, sub, link, tag FROM cols
 UNION ALL

@@ -57,7 +57,7 @@
   {% if kind == "table" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every column of the view, with the column it comes from and that column&#x27;s role. A column computed from several names them all; one with no source column shows its type.">Columns · {{ view }}</span>
-      <code class="chip">information_schema · column_mapping()</code></header>
+      <code class="chip">information_schema · views_lineage()</code></header>
     <gl-rows frame="frames/view_tables" empty="">
       <template><p class="hint">Built from {tables}.</p></template>
     </gl-rows>
@@ -204,7 +204,7 @@
 {% elif tab == "used" %}
   <section class="tile">
     <header><span class="eyebrow" title="Each column of the view and the loaded column it comes from. A computed column has none.">Source columns</span>
-      <code class="chip">column_mapping()</code></header>
+      <code class="chip">views_lineage()</code></header>
     <gl-rows frame="frames/view_uses" empty="the view reads no loaded column the lineage can name">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:12rem minmax(0,1fr) 12rem">

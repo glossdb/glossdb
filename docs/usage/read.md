@@ -60,17 +60,18 @@ SELECT view, test, subject, state FROM view_tests() WHERE state <> 'green';
 ```
 
 ```sql
-SELECT target_column, source_table, source_column, expression FROM column_mapping(for_view := 'booked_nights');
+SELECT "column", inputs FROM views_lineage('stays') WHERE view = 'booked_nights';
 ```
 
 ```glossql
 SELECT subject, property, value, state FROM GLOSSARY(stays.booked_nights);
 ```
 
-`column_mapping()` is the column lineage: each column a view serves,
-the loaded column it comes from, the source system that table is
-loaded from, and the expression between them. Lineage needs no work
-of its own: each load and each view definition records it.
+`views_lineage()` is the column lineage: each column a view serves
+and the loaded columns it is computed from (`inputs`, as
+`dataset.table.column`). `views_scans()` lists the tables a view reads
+and `lineage()` the source each table is loaded from. Lineage needs no
+work of its own: each load and each view definition records it.
 
 ## Find what a dataset keeps
 

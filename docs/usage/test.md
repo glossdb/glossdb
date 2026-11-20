@@ -41,8 +41,8 @@ each profile held before, `relationship_coherence()` on each declared
 relationship between the scanned tables. The server computes those
 first, from what each test's check reads. A test whose evidence is
 missing is `yellow` and its `reason` names the function to run.
-The harmonise kit (preview) adds `contract_test`, `code_test` and
-`reconciliation_test` on a target view that carries a data contract
+The harmonise kit (preview) adds `contract_test` on a target view
+that carries a data contract
 ([reads](../reference/reads.md#the-harmonise-kit-preview)).
 
 ## Read the results

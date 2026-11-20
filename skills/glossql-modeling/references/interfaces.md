@@ -39,8 +39,8 @@ SELECT event FROM lineage_events()
 
 `lineage_events()` is the dataset's lineage as OpenLineage run
 events: one per load and one per view, with column lineage. Inside
-the workspace, `column_mapping()` gives the same lineage as rows:
+the workspace, `views_lineage()` gives the same lineage as rows:
 
 ```sql
-SELECT view, target_column, system, source_table, source_column FROM column_mapping()
+SELECT view, "column", inputs FROM views_lineage(current_schema())
 ```

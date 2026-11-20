@@ -522,7 +522,7 @@ const CATALOG: &[&str] = &[
     "agent_assumptions",
     "view_definitions",
     "view_summary",
-    "column_mapping",
+    "views_lineage",
     "view_tests",
     "app_parts",
     "app_releases",
