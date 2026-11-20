@@ -18,14 +18,16 @@ glossdb builds that layer with two properties:
   view definitions, tests and review decisions are tables beside the
   data, in a DuckLake. A description belongs to a version of the data:
   it reads `stale` once a load redefines, retypes or drops its column,
-  and a measurement once the tables it read change.
+  and a stored result once the tables it read change.
 - **Statements about the data are tested.** A unit, a key, a
   measure's additivity, a join: each is checked against the data, and
   checked again after each load.
 
 In practice glossdb is data middleware. Source data goes in. Described
 and tested tables, single values and metrics come out, readable by any
-tool that opens the lake. It is for data engineers and data leaders
+tool that opens the lake. Beside them the dataset keeps the queries
+that decided something, each with its reason, and the rules the data
+must hold. It is for data engineers and data leaders
 who build and run that layer. Harmonising several systems of record is
 the first use case. glossdb works beside dbt, semantic layers, catalogs
 and lakes, in their formats.
@@ -37,9 +39,9 @@ the data.
 
 | Function | The question | In glossdb |
 |---|---|---|
-| Integration | Which sources map? | A source is declared. A load query (`DECLARE RECIPE`) brings a table into a dataset, and each load is a snapshot with its row count. A view is named SQL on a dataset, read as `FROM <dataset>.<name>`: a table, a single value or a metric. |
-| Metadata | What does this mean? | An annotation (`GLOSS`) on each table, column and relationship: meaning, role, unit, additivity. Each is validated against a JSON Schema on write and stored with its author and the data version. |
-| Quality | Can we trust this value? | A test is a statement about the data with a state: green, yellow, orange or red. Each metric gets built-in tests for join fan-out, referential integrity and additivity. A test brings its finding and the statement that fixes it. |
+| Integration | Which sources map? | A source is declared. A load query (`DECLARE RECIPE`) brings a table into a dataset, and each load is a snapshot with its row count. Everything an agent keeps is a view: named SQL on a dataset, read as `FROM <dataset>.<name>`. A table, a single value or a metric is served; a plain view keeps a query with its reason; a rule view holds the rows that break a rule. |
+| Metadata | What does this mean? | An annotation (`GLOSS`) on each table, column, relationship and view: meaning, role, unit, additivity, tags. Each is validated against a JSON Schema on write and stored with its author and the data version. |
+| Quality | Can we trust this value? | A test is a statement about the data with a state: green, yellow, orange or red. Each served view gets built-in tests for join fan-out, referential integrity and completeness, and each metric for additivity. A rule view is tested after every write; only a person accepts the rows it returns. A test brings its finding and the statement that fixes it. |
 | Governance | Who decides and may use it? | An assumption in a view definition that a person should confirm goes to the review queue. The person's decision is stored and outranks the agent's annotation. Access per user is planned. |
 | Lineage | Where does this come from? | Each load records its column lineage, and each view the columns it reads. The lineage is served as OpenLineage events, the semantic model as an Apache Ossie document. |
 
@@ -101,8 +103,9 @@ SQL, and serves the skills (`skill://`), the docs and the language
 
 | Feature | Status |
 |---|---|
-| Sources, load queries, annotations, measurements, tests, review decisions | stable |
+| Sources, load queries, annotations, functions, tests, review decisions | stable |
 | Views (tables, single values, metrics), metric series, `next` | stable |
+| Plain views and rule views, tags, `find()` | preview |
 | The MCP interface, the query endpoint, the console, data apps, export | stable |
 | Lineage export (OpenLineage) | stable |
 | Semantic model export (Apache Ossie, following its 0.3.0.dev0 draft) | preview |

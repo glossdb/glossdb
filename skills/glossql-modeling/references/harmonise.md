@@ -78,7 +78,10 @@ GLOSS onhand ON supply AS $${"kind": "table", "sql": "SELECT 'sap' AS source_sys
 ```
 
 - **Name each code, with no `ELSE`.** A code the `CASE` does not name
-  is then NULL, and the server lists it. An `ELSE` hides it.
+  is then NULL, and the server lists it. An `ELSE` hides it. Keep the
+  query that listed each system's codes and units as a plain view,
+  tagged with the column it maps (`"tags": ["uom", "mapping"]`), so the
+  reviewer finds why the `CASE` reads as it does.
 - **Name the system as a literal, once per branch.** `'sap' AS
   source_system`: the reconciliation counts the target's rows per
   system by it. The mapping knows each table's system without it.
@@ -151,7 +154,7 @@ Read the `must` rows first; the full list with its statements is
 long:
 
 ```sql
-SELECT kind, asset, state, open, statement FROM next WHERE level = 'must'
+SELECT kind, asset, state, open, statement FROM main.next WHERE level = 'must'
 ```
 
 A `must` here is served data that is wrong:
@@ -184,7 +187,7 @@ yellow and is no row of `next`.
 The server computes it after each load. Read it per system:
 
 ```sql
-SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
+SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM main.results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
 ```
 
 Per system (and per period, where the view has a `time_axis`): the

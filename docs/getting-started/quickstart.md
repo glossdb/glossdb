@@ -122,7 +122,7 @@ DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
 SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id;
 ```
 
-The measurement finds the defect: 1 of 12 orders has no customer
+The result shows the defect: 1 of 12 orders has no customer
 (`"orphans":1,"orphan_rate":0.0833…`). Each result now ends with the
 open work. Nothing is served yet, so a view must be defined:
 

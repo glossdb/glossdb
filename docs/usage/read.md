@@ -1,6 +1,7 @@
 # Read the views
 
-The layer holds tables, single values and metrics, each with its
+The layer holds the views a dataset serves (tables, single values and
+metrics) and the views it keeps (plain views and rules), each with its
 description, its test results and its lineage. A view can be queried
 once it is defined. People, agents and tools read the views in four
 ways: SQL over an interface, files, the console, and the lake itself.
@@ -18,7 +19,7 @@ FROM stays.room_count;
 ```
 
 `fact_values()` returns each single value of the dataset as one row:
-`metric`, `value`, `reason`.
+`view`, `value`, `reason`.
 
 ## Read a metric's series
 
@@ -68,8 +69,18 @@ SELECT subject, property, value, state FROM GLOSSARY(stays.booked_nights);
 
 `column_mapping()` is the column lineage: each column a view serves,
 the loaded column it comes from, the source system that table is
-loaded from, and the expression between them. Lineage needs no work of its own. Each
-load and each view definition records it.
+loaded from, and the expression between them. Lineage needs no work
+of its own: each load and each view definition records it.
+
+## Find what a dataset keeps
+
+`find()` returns the views, tables and columns a term names: by name,
+meaning, tags, and for a view the columns it reads. A query an agent
+kept to decide a mapping or a unit is found this way:
+
+```sql
+SELECT asset, what, kind, meaning, tags, matched_on, sql FROM find('unit');
+```
 
 ## Over the interfaces
 

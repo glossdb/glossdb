@@ -22,19 +22,20 @@ definition's `assumptions` list:
   when you reword; a new key is a new question. One assumption under two
   keys is asked twice.
 - **`confidence`** is tied to the evidence. 1.0: a person decided it,
-  or a named measurement or test shows it. About 0.9: independent
+  or a named result or test shows it. About 0.9: independent
   evidence agrees. About 0.7: one source, or your reading of names
   and values. 0.5 and below: a default you took to go on. Everything
   below 1.0 with a key is asked, lowest first.
 - **`dimension`** names the kind of call: `scope`, `definition`,
   `convention`. An assumption with the dimension `additivity`, `sign`
   or `grain` is not asked: the data settles those. Measure, and
-  record it at 1.0 with the measurement as the basis.
+  record it at 1.0 with the read that settled it as the basis.
 - **`alternative`** names the strongest other reading, so the person
   sees the choice.
 
-Do not ask a person for something the data can tell you: run the
-function (`skill://glossql-modeling/SKILL.md` has the list). What is
+Do not ask a person for something the data can tell you: measure it
+(`skill://glossql-modeling/SKILL.md` has the reads), and keep the
+query as a plain view. What is
 left for a person is judgment: definitions, conventions, business
 meaning, a choice between two readings.
 
@@ -42,7 +43,7 @@ meaning, a choice between two readings.
 
 ```sql
 SELECT o.property, o.dimension, o.key, o.assumption, o.basis, o.conf
-FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
+FROM main.open_questions o JOIN main.current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf
 ```
 
@@ -74,6 +75,11 @@ definition carries the key at confidence 1.0. Tests on the view run
 again after the new definition. A test that turns red after a
 decision stays red for the person to see; do not change the
 definition to make it green.
+
+A person can also write a view's definition themselves, over the
+query endpoint. Theirs outranks yours under the same name: their
+`sql` serves over your `stopped`, their `stopped` stops your `sql`.
+Your new definition does not replace theirs; ask them.
 
 One more row carries a person's decision, of kind `integrate`:
 

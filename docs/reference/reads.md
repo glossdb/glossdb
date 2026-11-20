@@ -5,10 +5,12 @@ the MCP interface, the query endpoint and the console.
 
 - A table function's named arguments use `:=`.
 - The catalog tables and the views marked *workspace* carry `dataset`
-  on each row; join `current_dataset` to narrow them. The others
+  on each row; join `main.current_dataset` to narrow them. The others
   answer for the dataset in use and are refused on a call bound to
   none.
 - `DESCRIBE SELECT * FROM <read>` returns a read's columns with types.
+- In an example a catalog table or view is read as `main.<name>`: a
+  table of the same name in the dataset in use would hide it.
 
 ## The catalog tables
 
@@ -26,7 +28,7 @@ write replaced or removed, with its `end_snapshot`.
 | `properties` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
 | `glossary` | `dataset`, `subject`, `property`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
 | `functions` | `name`, `scope`, `script`, `returns`, `reads` (what the body reads, by kind and place), `declared_at`, `declared_by` |
-| `results` | `id`, `dataset`, `function`, `subject`, `property`, `value`, `computed_at`, `error`, `read_at`, `changed_at` (the stored results: a measurement, a test's result, a view's lineage; the lake snapshot the result read at, and the one its value last changed at) |
+| `results` | `id`, `dataset`, `function`, `subject`, `property`, `value`, `computed_at`, `error`, `read_at`, `changed_at` (the stored results: a function's value, a test's result, a view's lineage; the lake snapshot the result read at, and the one its value last changed at) |
 | `inputs` | `result`, `asset`, `what` (each node a stored result read: an asset and what was read of it; `result` is the result's `id`) |
 | `edges` | `result`, `from`, `to`, `kind` (a view's lineage: one edge from the view to each table, column and view it reads) |
 | `tests` | `name`, `property`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
@@ -83,7 +85,8 @@ holds: annotations, test results, a person's decisions. It judges
 nothing itself: a judgement is a test, computed by the server after a
 write, and `next` lists its result. A test has one row per asset it
 is not green on, and each assumption that waits for a person has a
-row. A test of your own is listed on the assets that carry its
+row. A rule view that returns rows is a `rule_test` row on the view.
+A test of your own is listed on the assets that carry its
 expectation. A row for outdated annotations names the read that says
 what the newest load changed, `load_changes()`, in a comment above its
 statement.
@@ -103,7 +106,8 @@ statement.
 What each level holds:
 
 - `must`: no table is loaded; no view is served; a test is red (a
-  metric that serves no series is `series_test` red); two values of one property conflict; a
+  rule view that returns rows is `rule_test` red, a metric that serves
+  no series is `series_test` red); two values of one property conflict; a
   person approved a load query or decided a review question, and the
   definition does not carry it yet; a keyed load
   missed keys of a table whose source is stated to send its complete
@@ -126,8 +130,8 @@ Work on a dataset is complete when no `must` row is open. The `should`
 rows make the layer complete. The `could` rows are read on request:
 
 ```sql
-SELECT level, kind, asset, state, who, open FROM next WHERE level <> 'could';
-SELECT kind, asset, state, open, statement FROM next WHERE level = 'could';
+SELECT level, kind, asset, state, who, open FROM main.next WHERE level <> 'could';
+SELECT kind, asset, state, open, statement FROM main.next WHERE level = 'could';
 ```
 
 A kit adds rows through its tests and its stored results alone: a red
@@ -188,7 +192,7 @@ One row per view the dataset in use serves (`table`, `value`,
 | `additivity`, `additivity_state` | the value column's additivity; `none` where nobody stated it, `conflict` where it is withheld |
 | `dims`, `dimensions_without_rank` | the slicing columns, primary first; dimension columns without a `dimension` annotation |
 | `columns_without_role`, `missing` | served columns without a `role`; the annotation each needs. Both are empty for a single value |
-| `measurements_to_run` | measurements the row reads that nobody ran or that are out of date; the server runs them after a write |
+| `measurements_to_run` | the functions the row reads whose results nobody computed or are out of date; the server runs them after a write |
 | `profile_current` | the period column's temporal profile is current |
 
 ```sql
@@ -226,7 +230,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 
 | Read | Columns |
 |---|---|
-| `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset, kept or served, with its kind (`table`, `value`, `metric`, `rule`, NULL for a plain view) and, where its definition serves no number, why |
+| `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset, kept or served, with its kind (`table`, `value`, `metric`, `rule`, NULL for a plain view) and, where it is stopped, why |
 | `find(term)` | `asset`, `what` (`view`, `table`, `column`), `kind`, `meaning`, `tags`, `matched_on`, `reads`, `sql`: each view, loaded table and column whose name, meaning or tags hold the term, and each view that reads a column whose name holds it; `tags` is a person's and the agents' lists as one; a stopped view is not found |
 | `tag_statement(asset, words)` | the statement that adds the words to the actor's own `tags` on the asset: an actor's newest list replaces its list before |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
@@ -326,7 +330,7 @@ SELECT source_systems() FROM onhand;
 SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test IN ('contract_test', 'code_test', 'reconciliation_test');
 SELECT reconciliation() FROM onhand;
 SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys
-FROM results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
+FROM main.results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
 ```
 
 `orphan_test` names the keys that find no parent on each relationship

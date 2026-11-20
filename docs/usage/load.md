@@ -98,7 +98,7 @@ before, by a sum of row hashes; measured on 2,000,000 rows of 23
 columns, the hash adds 0.05 s to a load of 1.0 s).
 
 ```sql
-SELECT table_name, mode, rows, source_rows, changed_rows, identical, dropped_rows_count, imported_at FROM imports;
+SELECT table_name, mode, rows, source_rows, changed_rows, identical, dropped_rows_count, imported_at FROM main.imports;
 ```
 
 ## Load again
@@ -158,7 +158,8 @@ table's alters the table in place. An annotation on a column the new
 load redefined, retyped or dropped reads `stale`
 ([describe](describe.md#states)); a column added leaves the others
 current ([how results stay current](../reference/dependencies.md)). After a load the server runs the
-built-in tests of each metric that reads the table
+built-in tests of each view that reads the table, a rule view's
+among them
 ([test](test.md)), and `next` says what the load changed: the row
 counts and the columns whose profile moved.
 
