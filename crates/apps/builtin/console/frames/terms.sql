@@ -6,15 +6,15 @@
 -- page or the column's.
 WITH d AS (SELECT dataset FROM current_dataset),
 decisions AS (
-  SELECT r.aspect, max(r.written_at) AS decided_at, count(*) AS n
+  SELECT r.property, max(r.written_at) AS decided_at, count(*) AS n
   FROM review_decisions r JOIN d ON d.dataset = r.dataset
   WHERE r.stance IN ('confirmed', 'corrected')
-  GROUP BY r.aspect),
+  GROUP BY r.property),
 cur AS (
-  SELECT g.subject, g.aspect, g.actor_kind, g.actor_id, g.body, g.written_at
+  SELECT g.subject, g.property, g.actor_kind, g.actor_id, g.body, g.written_at
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.rank = 1),
-states AS (SELECT subject, state FROM GLOSSARY() WHERE aspect = 'meaning'),
+  WHERE g.property IN ('meaning', 'role', 'unit', 'additivity', 'dimension') AND g.rank = 1),
+states AS (SELECT subject, state FROM GLOSSARY() WHERE property = 'meaning'),
 joined AS (
   SELECT path, count(*) AS n FROM (
     SELECT r.left_side AS path FROM relationships r JOIN d ON d.dataset = r.dataset
@@ -22,18 +22,18 @@ joined AS (
     SELECT r.right_side FROM relationships r JOIN d ON d.dataset = r.dataset)
   GROUP BY path),
 views AS (
-  SELECT s.title AS term, s.name,
-         CASE WHEN s.kind = 'relation' THEN 'view' WHEN s.kind IN ('', 'measure', 'metric') THEN 'metric' ELSE s.kind END AS kind,
+  SELECT s.name AS term, s.name,
+         CASE WHEN s.kind = 'table' THEN 'view' ELSE coalesce(s.kind, 'plain view') END AS kind,
          CASE WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped
               ELSE coalesce(nullif(s.meaning, ''), 'no definition yet') END AS meaning,
          coalesce(s.unit, '') AS aside,
          CASE WHEN r.n > 0 THEN 'decided' ELSE '' END AS mark,
          CASE WHEN r.n > 0 THEN 'a person decided the definition, ' || strftime(r.decided_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title,
          '/' || d.dataset || '/app/console/p/views?view=' || s.name
-           || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
+           || CASE WHEN s.kind IN ('table', 'value') THEN '&kind=' || s.kind ELSE '' END AS link
   FROM view_definitions s
   CROSS JOIN d
-  LEFT JOIN decisions r ON r.aspect = s.name),
+  LEFT JOIN decisions r ON r.property = s.name),
 cols AS (
   SELECT json_extract_string(m.body, '$.term') AS term,
          substr(m.subject, len(d.dataset) + 2) AS name, 'column' AS kind,
@@ -53,13 +53,13 @@ cols AS (
          '/' || d.dataset || '/app/console/p/glossary?column=' || substr(m.subject, len(d.dataset) + 2) AS link
   FROM cur m
   CROSS JOIN d
-  LEFT JOIN cur r ON r.subject = m.subject AND r.aspect = 'role'
-  LEFT JOIN cur x ON x.subject = m.subject AND x.aspect = 'dimension'
-  LEFT JOIN cur b ON b.subject = m.subject AND b.aspect = 'additivity'
-  LEFT JOIN cur u ON u.subject = m.subject AND u.aspect = 'unit'
+  LEFT JOIN cur r ON r.subject = m.subject AND r.property = 'role'
+  LEFT JOIN cur x ON x.subject = m.subject AND x.property = 'dimension'
+  LEFT JOIN cur b ON b.subject = m.subject AND b.property = 'additivity'
+  LEFT JOIN cur u ON u.subject = m.subject AND u.property = 'unit'
   LEFT JOIN joined j ON j.path = m.subject
   LEFT JOIN states st ON st.subject = m.subject
-  WHERE m.aspect = 'meaning' AND json_extract_string(m.body, '$.term') IS NOT NULL),
+  WHERE m.property = 'meaning' AND json_extract_string(m.body, '$.term') IS NOT NULL),
 every AS (SELECT * FROM views UNION ALL SELECT * FROM cols)
 SELECT term, name, kind, meaning, aside, mark,
        CASE mark WHEN 'decided' THEN 'v-decided' WHEN 'conflict' THEN 'v-open' WHEN 'stale' THEN 'v-stale' ELSE 'v-none' END AS mcls,

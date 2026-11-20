@@ -1,5 +1,5 @@
 -- The harmonise kit (preview): several systems of record mapped onto one
--- target table. The target is a table view (x-kind relation), each of its
+-- target table. The target is a table view (kind table), each of its
 -- branches reading one system's loaded tables. Where each target column
 -- comes from is read off the view's SQL by column_mapping() (the views
 -- kit), each source table's system being its `system_of_record` where the
@@ -17,7 +17,7 @@
 -- loads two filing systems). column_mapping() groups by it.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT system_of_record WITH $${
+DECLARE PROPERTY system_of_record WITH $${
   "description": "Preview. The system of record a loaded table's rows come from, where it is not the source the table is loaded from.",
   "type": "object", "required": ["value"],
   "properties": {"value": {"type": "string"}, "basis": {"type": "string"}}
@@ -34,7 +34,7 @@ DECLARE ASPECT system_of_record WITH $${
 -- source and carries none.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT source_systems WITH $${
+DECLARE PROPERTY source_systems WITH $${
   "description": "Preview. The source systems a table or a table view is loaded from, and whether the conventions of each are written down.",
   "type": "object",
   "properties": {
@@ -67,7 +67,7 @@ $$ RETURNS source_systems;
 -- (x-set-by: contract).
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT contract WITH $${
+DECLARE PROPERTY contract WITH $${
   "description": "Preview. A target column's part of the data contract: its type, whether a value is required, the allowed values.",
   "type": "object", "x-asked": "per table",
   "examples": [{"type": "<VARCHAR|BIGINT|DOUBLE|DATE|...>", "required": false}],
@@ -100,7 +100,7 @@ CREATE OR REPLACE MACRO main.contract_type_holds(served, stated) AS
 -- serve). breach_rate is the share of rows of the breach with the most.
 -- Not applicable until each code table relationship has its coherence
 -- stored, which the server computes first.
-DECLARE ASPECT contract_check WITH $${
+DECLARE PROPERTY contract_check WITH $${
   "description": "Preview. The rows of a target view keep its contract: the key is unique and filled, required values are filled, values are allowed, codes are in their code table, the types hold.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -247,7 +247,7 @@ CREATE OR REPLACE MACRO main.condition_holds(op, literals, v) AS
 -- column tests a code the literals tell.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT code_check WITH $${
+DECLARE PROPERTY code_check WITH $${
   "description": "Preview. Every code a source column holds is named by the expression of the target column it reaches.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -399,7 +399,7 @@ DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 -- computes it after a write on each view with a contract (x-set-by).
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT reconciliation WITH $${
+DECLARE PROPERTY reconciliation WITH $${
   "description": "Preview. Per source system and period, the rows and the sum of each measure at the source against what a target view serves, and the source rows whose key the view does not serve.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -571,19 +571,28 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
     SELECT f.branch, x.rn, o.rn IS NOT NULL AS excluded
     FROM (SELECT DISTINCT t, rn FROM scells) x JOIN followed f ON f.table_name = x.t
     LEFT JOIN left_out o ON o.branch = f.branch AND o.t = x.t AND o.rn = x.rn),
-  -- each source row with each row of a joined table that every equality of the join finds
-  matched AS (
-    SELECT q.branch, q.col, s.rn, l.rn AS lrn
-    FROM pairs q JOIN followed f ON f.branch = q.branch
-    JOIN (SELECT t, col, rn, val, main.reconciliation_value(val) AS num FROM scells) s ON s.t = f.table_name AND s.col = q.source_column
-    JOIN (SELECT t, col, rn, val, main.reconciliation_value(val) AS num FROM scells) l ON l.t = q.t AND l.col = q.lookup_column
-         AND (CASE WHEN q.same_type THEN l.val ELSE l.num END) = (CASE WHEN q.same_type THEN s.val ELSE s.num END)
-    JOIN looked k ON k.branch = q.branch AND k.col = q.col
+  -- each source row with each row of a joined table that every equality of the join finds: each side's
+  -- values of the equalities, in their order, joined as one key (one equality at a time multiplies the rows)
+  source_key AS (
+    SELECT q.branch, q.col, s.rn, list(CASE WHEN q.same_type THEN s.val ELSE main.reconciliation_value(s.val) END ORDER BY q.j) AS k
+    FROM pairs q JOIN looked USING (branch, col) JOIN followed f ON f.branch = q.branch
+    JOIN scells s ON s.t = f.table_name AND s.col = q.source_column
+    GROUP BY q.branch, q.col, s.rn
+    HAVING count(CASE WHEN q.same_type THEN s.val ELSE main.reconciliation_value(s.val) END) = any_value(q.n)),
+  lookup_key AS (
+    SELECT q.branch, q.col, l.rn, list(CASE WHEN q.same_type THEN l.val ELSE main.reconciliation_value(l.val) END ORDER BY q.j) AS k
+    FROM pairs q JOIN looked USING (branch, col)
+    JOIN scells l ON l.t = q.t AND l.col = q.lookup_column
     WHERE NOT EXISTS (SELECT 1 FROM left_out o WHERE o.branch = q.branch AND o.t = q.t AND o.rn = l.rn)
-    GROUP BY q.branch, q.col, s.rn, l.rn HAVING count(DISTINCT q.j) = any_value(q.n)),
+    GROUP BY q.branch, q.col, l.rn
+    HAVING count(CASE WHEN q.same_type THEN l.val ELSE main.reconciliation_value(l.val) END) = any_value(q.n)),
+  matched AS (
+    SELECT s.branch, s.col, s.rn, l.rn AS lrn
+    FROM source_key s JOIN lookup_key l ON l.branch = s.branch AND l.col = s.col AND l.k = s.k),
   -- per source row the view's condition keeps, the values of each followed key column: one where it copies,
-  -- one per row the join finds where it looks up, no value where the join finds none
-  src_vals AS (
+  -- one per row the join finds where it looks up, no value where the join finds none; materialized, as the
+  -- recursive step of tuples reads it at each position
+  src_vals AS MATERIALIZED (
     SELECT w.branch, s.rn, w.pos, main.reconciliation_key(c.val, p.cast_to) AS val
     FROM follows w JOIN copies p USING (branch, col) JOIN followed f USING (branch)
     JOIN srows s ON s.branch = w.branch AND NOT s.excluded

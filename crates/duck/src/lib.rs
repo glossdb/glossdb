@@ -95,8 +95,8 @@ pub enum SessionError {
     Service(String),
     #[error("not a subject: {detail}")]
     BadShape { detail: String },
-    #[error("not an aspect name: `{0}`")]
-    BadAspectName(String),
+    #[error("not a property name: `{0}`")]
+    BadPropertyName(String),
     #[error("the current review_decision annotation has no decisions list")]
     DecisionValueNotDecisions,
     #[error("a body carrying `$$` cannot ride the dollar-quoted statement")]
@@ -524,10 +524,10 @@ const CATALOG: &[&str] = &[
     "next",
     "imports",
     "recipes",
-    "aspects",
+    "properties",
     "tests",
     "functions",
-    "measurements",
+    "results",
     "relationships",
     "datasets",
     "sources",
@@ -1249,22 +1249,22 @@ impl Plane {
         let sql = format!(
             "WITH g AS (SELECT * FROM {LAKE}.main.glossary),
              humans AS (SELECT count(*) AS n, max(written_at)::VARCHAR AS latest FROM g WHERE actor_kind = 'human'),
-             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, aspect, actor_kind ORDER BY begin_snapshot DESC) AS rn FROM g) WHERE rn = 1),
+             latest AS (SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY dataset, subject, property, actor_kind ORDER BY begin_snapshot DESC) AS rn FROM g) WHERE rn = 1),
              approvals AS (
                SELECT dataset, json_extract_string(body, '$.table') AS tbl, written_at FROM latest
-               WHERE actor_kind = 'human' AND aspect = 'recipe_change' AND json_extract_string(body, '$.table') IS NOT NULL),
+               WHERE actor_kind = 'human' AND property = 'recipe_change' AND json_extract_string(body, '$.table') IS NOT NULL),
              pending AS (
                SELECT count(*) AS n FROM approvals a
                WHERE NOT EXISTS (SELECT 1 FROM {LAKE}.main.imports i
                                  WHERE i.dataset = a.dataset AND i.table_name = a.tbl AND i.imported_at >= a.written_at)),
              decisions AS (
-               SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.aspect') AS aspect
+               SELECT r.dataset, r.subject, json_extract_string(jr, '$.key') AS key, json_extract_string(jr, '$.property') AS property
                FROM latest r, unnest(coalesce(json_extract(r.body, '$.decisions')::JSON[], [])) t(jr)
-               WHERE r.actor_kind = 'human' AND r.aspect = 'review_decision'),
+               WHERE r.actor_kind = 'human' AND r.property = 'review_decision'),
              unapplied AS (
                SELECT count(*) AS n FROM decisions ru
                WHERE EXISTS (SELECT 1 FROM latest a, unnest(coalesce(json_extract(a.body, '$.assumptions')::JSON[], [])) t(ja)
-                             WHERE a.actor_kind = 'agent' AND a.dataset = ru.dataset AND a.subject = ru.subject AND a.aspect = ru.aspect
+                             WHERE a.actor_kind = 'agent' AND a.dataset = ru.dataset AND a.subject = ru.subject AND a.property = ru.property
                                AND json_extract_string(ja, '$.key') = ru.key
                                AND coalesce(json_extract(ja, '$.confidence')::DOUBLE, 0) < 1.0))
              SELECT humans.n::BIGINT, humans.latest, pending.n::BIGINT, unapplied.n::BIGINT FROM humans, pending, unapplied"
@@ -1794,10 +1794,11 @@ fn measurement_call(sql: &str) -> bool {
     rest.trim_start().starts_with("from")
 }
 
-/// A metric definition's write answers with the metric's fact row: what the
+/// A view definition's write answers with the view's summary row: what the
 /// view's columns say and what is missing, at the data version the write moved
 /// to, in place of the outcome's one line. Any other gloss keeps its
-/// line; a metric with no row (the kit not loaded) keeps it too.
+/// line; a view with no row (a plain view or a rule, which the dataset keeps
+/// and does not serve, or the kit not loaded) keeps it too.
 fn definition_row(
     conn: &Connection,
     outcome: &str,
@@ -1805,21 +1806,21 @@ fn definition_row(
     let Some(rest) = outcome.strip_prefix("glossed ") else {
         return Ok(None);
     };
-    let Some(aspect) = rest.split(" on ").next().filter(|a| !a.is_empty()) else {
+    let Some(property) = rest.split(" on ").next().filter(|a| !a.is_empty()) else {
         return Ok(None);
     };
-    let quoted = aspect.replace('\'', "''");
+    let quoted = property.replace('\'', "''");
     let (_, _, kind) = arrow_batches(
         conn,
         &format!(
-            "SELECT kind FROM {LAKE}.main.aspects WHERE name = '{quoted}' ORDER BY begin_snapshot DESC LIMIT 1"
+            "SELECT kind FROM {LAKE}.main.properties WHERE name = '{quoted}' ORDER BY begin_snapshot DESC LIMIT 1"
         ),
         &[],
     )?;
     if one_cell(&kind).as_deref() != Some("VIEW") {
         return Ok(None);
     }
-    inline_columns(conn, aspect, rest)?;
+    inline_columns(conn, property, rest)?;
     let (_, _, row) = arrow_batches(
         conn,
         &format!("SELECT * FROM {LAKE}.main.view_summary() WHERE view = '{quoted}'"),
@@ -1829,14 +1830,18 @@ fn definition_row(
     Ok((rows > 0).then_some(row))
 }
 
-/// A metric definition may say what its columns are, beside its SQL:
-/// `time` (the period column), `measure` (`column`, `additivity`, and
-/// `unit`, `numerator`, `denominator` where they apply) and `dimensions`
-/// (the first leads the slices). The server writes them as the column
-/// annotations the kits read, and profiles the time column, so one
-/// statement serves the metric. Additivity takes the industry's words
-/// or the kit's: additive is a flow, semi-additive a stock, a ratio
-/// re-divides its halves, non-additive combines by no rule.
+/// A view definition may say what the view means and how it is found,
+/// beside its SQL: `meaning` (a sentence) and `tags` (a list of words),
+/// written as those annotations on the view by the definition's actor,
+/// so one statement keeps a query with its reason. A metric's
+/// definition may also say what its columns are: `time` (the period
+/// column), `measure` (`column`, `additivity`, and `unit`, `numerator`,
+/// `denominator` where they apply) and `dimensions` (the first leads the
+/// slices). The server writes them as the column annotations the kits
+/// read, and profiles the time column, so one statement serves the
+/// metric. Additivity takes the industry's words or the kit's: additive
+/// is a flow, semi-additive a stock, a ratio re-divides its halves,
+/// non-additive combines by no rule.
 fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), SessionError> {
     let Some(dataset) = rest
         .split(" on ")
@@ -1851,7 +1856,7 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
         conn,
         &format!(
             "SELECT body::VARCHAR FROM {LAKE}.main.glossary WHERE dataset = '{d}' AND subject = '{d}' \
-             AND aspect = '{m}' ORDER BY begin_snapshot DESC LIMIT 1",
+             AND property = '{m}' ORDER BY begin_snapshot DESC LIMIT 1",
             d = dataset.replace('\'', "''"),
             m = metric.replace('\'', "''")
         ),
@@ -1868,12 +1873,31 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
             .map(str::to_string)
     };
     let annotate =
-        |aspect: &str, column: &str, value: serde_json::Value| -> Result<(), SessionError> {
+        |property: &str, column: &str, value: serde_json::Value| -> Result<(), SessionError> {
             run(
                 conn,
-                &format!("GLOSS {aspect} ON {dataset}.{metric}.{column} AS $${value}$$"),
+                &format!("GLOSS {property} ON {dataset}.{metric}.{column} AS $${value}$$"),
             )
         };
+    // the view's own annotations; a text that holds `$$` rides in a tagged quote
+    let on_view = |property: &str, value: serde_json::Value| -> Result<(), SessionError> {
+        let quote = if value.to_string().contains("$$") {
+            "$glossdb$"
+        } else {
+            "$$"
+        };
+        run(
+            conn,
+            &format!("GLOSS {property} ON {dataset}.{metric} AS {quote}{value}{quote}"),
+        )
+    };
+    if let Some(meaning) = body.get("meaning").and_then(|m| m.as_str()) {
+        on_view("meaning", serde_json::json!({"value": meaning}))?;
+    }
+    if let Some(tags) = body.get("tags").and_then(|t| t.as_array()) {
+        let words: Vec<&str> = tags.iter().filter_map(|w| w.as_str()).collect();
+        on_view("tags", serde_json::json!({"value": words}))?;
+    }
     let mut wrote = false;
     let time = body.get("time").and_then(name);
     if let Some(column) = &time {
@@ -2080,8 +2104,7 @@ mod tests {
         let setup = r#"
         DECLARE DATASET fin SET (purpose: 'summary delivery');
         USE fin;
-        DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
+        GLOSS dso ON fin AS $${"kind": "metric", "sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
         let shape = call_shape(setup);

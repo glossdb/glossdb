@@ -122,36 +122,33 @@ DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
 SELECT relationship_coherence() FROM orders.customer_id -> customers.customer_id;
 ```
 
-The measurement finds the defect: 1 of 12 orders has no customer
+The result shows the defect: 1 of 12 orders has no customer
 (`"orphans":1,"orphan_rate":0.0833…`). Each result now ends with the
 open work. Nothing is served yet, so a view must be defined:
 
 ```
 next: must integrate 1 · should 0
-first: must integrate shop (missing): no view is defined (a table, a single value or a metric) (next://shop/integrate)
+first: must integrate shop (missing): no view is served (a table, a single value or a metric) (next://shop/integrate)
 ```
 
 ## 3. Integrate: define three views
 
-A view is named SQL on the dataset. Declare the name (`AS VIEW`), then
-annotate it with its SQL.
+A view is named SQL on the dataset. One statement defines it: an
+annotation on the dataset with its SQL and its kind.
 
 ```glossql
-DECLARE ASPECT shipped_orders WITH $${"title": "Shipped orders", "x-kind": "relation"}$$ AS VIEW;
 GLOSS shipped_orders ON shop AS $${
-  "sql": "SELECT o.order_id, o.ordered, o.amount, c.region FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE o.status = 'shipped'",
+  "kind": "table", "sql": "SELECT o.order_id, o.ordered, o.amount, c.region FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE o.status = 'shipped'",
   "assumptions": [
     {"dimension": "scope", "key": "shipped-only", "assumption": "cancelled orders are left out",
      "basis": "the status column holds shipped and cancelled", "confidence": 0.7}
   ]
 }$$;
 
-DECLARE ASPECT customer_count WITH $${"title": "Customers", "x-kind": "scalar"}$$ AS VIEW;
-GLOSS customer_count ON shop AS $${"sql": "SELECT count(*) AS value FROM customers"}$$;
+GLOSS customer_count ON shop AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM customers"}$$;
 
-DECLARE ASPECT order_value WITH $${"title": "Order value"}$$ AS VIEW;
 GLOSS order_value ON shop AS $${
-  "sql": "SELECT ordered, amount AS value, region FROM shipped_orders",
+  "kind": "metric", "sql": "SELECT ordered, amount AS value, region FROM shipped_orders",
   "time": "ordered",
   "measure": {"column": "value", "additivity": "additive", "unit": "EUR"},
   "dimensions": ["region"]
@@ -159,9 +156,9 @@ GLOSS order_value ON shop AS $${
 GLOSS time_grains ON order_value.ordered AS $${"floor": "month", "basis": "orders are reported by month"}$$;
 ```
 
-- `shipped_orders` is a table (`x-kind: relation`). Its definition
+- `shipped_orders` is a table (`"kind": "table"`). Its definition
   states one assumption below full confidence, for a person to confirm.
-- `customer_count` is a single value (`x-kind: scalar`): one row, one
+- `customer_count` is a single value (`"kind": "value"`): one row, one
   `value` column.
 - `order_value` is a metric: a value per period, sliced by region. It
   builds on `shipped_orders`. The order dates follow no regular grain,
@@ -224,7 +221,7 @@ GLOSS orphan_check ON shop.order_value AS $${"tolerance": 0.1,
 GLOSS orphan_check ON shop.shipped_orders AS $${"tolerance": 0.1,
   "basis": "C9 is a walk-in customer without a master record"}$$;
 GLOSS review_decision ON shop AS $${"decisions": [
-  {"aspect": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
+  {"property": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
    "note": "cancelled orders are not revenue"}]}$$;
 ```
 

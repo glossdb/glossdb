@@ -1,7 +1,7 @@
 # How results stay current
 
-glossdb stores what its functions compute: a measurement, a test's
-result, a view's lineage. Each stored result knows what it read. When
+glossdb stores what its functions compute: a function's result, a
+test's result, a view's lineage. Each stored result knows what it read. When
 something it read changes, the result is out of date, and the server
 computes it again after the write. A result that nothing changed under
 is served again, not computed again.
@@ -18,7 +18,7 @@ that is kept.
 |---|---|
 | Revision | the lake's snapshot id. It is the only version: no digest, counter or fingerprint is stored beside it |
 | Input | a row of the catalog (an annotation on an asset, a view's definition, a relationship, a declaration) and a table's data. A row changed at the snapshot it begins or ends at; a table's data at the snapshot of its last load |
-| Derived value | a stored result of a function on an asset, a row of `measurements`. It carries the snapshot it read at (`read_at`) and the snapshot its value last changed at (`changed_at`) |
+| Derived value | a stored result of a function on an asset, a row of `results`. It carries the snapshot it read at (`read_at`) and the snapshot its value last changed at (`changed_at`) |
 | Dependency | one row of `inputs` per node the function read when it ran, recorded by the reads in the function's body |
 | Check | a result is current while nothing it read changed after `read_at`. The check runs on demand, along the result's inputs |
 | Early cutoff | a result computed again with the same value keeps its `changed_at`, so the results that read it stay current |
@@ -77,20 +77,20 @@ current.
 The stored results, with the snapshots they read at and changed at:
 
 ```sql
-SELECT function, subject, read_at, changed_at, error FROM measurements;
+SELECT function, subject, read_at, changed_at, error FROM main.results;
 ```
 
 What each result read, by the result's `id`:
 
 ```sql
-SELECT result, asset, what FROM inputs;
+SELECT result, asset, what FROM main.inputs;
 ```
 
 A view's lineage as edges, from the view to each table, column and
 view it reads:
 
 ```sql
-SELECT result, "from", "to", kind FROM edges;
+SELECT result, "from", "to", kind FROM main.edges;
 ```
 
 Each stored result out of date, with the node that changed. `reason`

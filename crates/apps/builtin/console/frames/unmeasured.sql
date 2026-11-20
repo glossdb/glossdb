@@ -1,18 +1,18 @@
--- The measurement aspects nobody has run: required on their subjects by
+-- The measurement properties nobody has run: required on their subjects by
 -- grain and condition, with no loaded body on any. The agent's backlog,
 -- not a question for a person; folded under the measured.
 WITH a AS (
-  SELECT name, lower(kind) AS kind, grains, condition FROM aspects
+  SELECT name, lower(kind) AS kind, grains, condition FROM properties
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
-SELECT g.aspect,
+SELECT g.property,
        'required on ' || CAST(count(*) AS VARCHAR) || ' '
          || CASE WHEN list_contains(a.grains, 'COLUMN') THEN 'columns'
                  WHEN list_contains(a.grains, 'TABLE') THEN 'tables'
                  ELSE 'subjects' END
-         || coalesce(' where ' || json_extract_string(a.condition, '$.aspect') || ' = ' || json_extract_string(a.condition, '$.value'), '')
+         || coalesce(' where ' || json_extract_string(a.condition, '$.property') || ' = ' || json_extract_string(a.condition, '$.value'), '')
          || ', none measured' AS missing
-FROM GLOSSARY() g JOIN a ON a.name = g.aspect
+FROM GLOSSARY() g JOIN a ON a.name = g.property
 WHERE a.kind = 'measurement'
-GROUP BY g.aspect, a.grains, a.condition
+GROUP BY g.property, a.grains, a.condition
 HAVING count(*) FILTER (WHERE g.state <> 'missing') = 0
-ORDER BY g.aspect
+ORDER BY g.property

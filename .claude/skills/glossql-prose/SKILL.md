@@ -41,11 +41,11 @@ versions.
 
 | Coding harness | Data harness | glossql |
 |---|---|---|
-| type system | the harness schema: what must be known per dataset, table, column, metric | aspect |
+| type system | the harness schema: what must be known per dataset, table, column, metric | property |
 | type annotations, docstrings | annotations | gloss |
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
-| unit test | a measurement, a test | function, `TEST` |
+| unit test | a test; a rule of one's own is a rule view | `DECLARE TEST`; `"kind": "rule"` |
 | test coverage | coverage of required annotations | `missing` in `next` |
 | CI on every commit | recomputed on every load; stale when the data changes | |
 | git history | snapshots of data and catalog together | DuckLake |
@@ -68,7 +68,7 @@ type it. Never a project word the reader cannot look up.
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
 | missing, required; coverage | owed | `missing` |
-| metric definition | grounding | |
+| view definition | grounding, metric definition | |
 | load | landing, land | `IMPORT` |
 | load query | recipe (in prose) | `RECIPE` |
 | the catalog | the record, the store | `glossql_*` tables |
@@ -81,14 +81,14 @@ type it. Never a project word the reader cannot look up.
 | asset (a dataset, table, column) | — | subject, in the grammar |
 | annotation; annotate | — | `GLOSS` |
 | the glossary | — | `GLOSSARY()` |
-| property of the harness schema | — | `ASPECT` |
+| property of the harness schema | — | `PROPERTY` |
 | test | witness | `DECLARE TEST` |
 | test results | attestation | `TESTS()` |
-| view (a metric, a scalar, a derived relation) | query aspect | kind `VIEW` (`AS VIEW`); `x-kind: scalar` for a single value |
+| view (a table, a single value, a metric, a rule, a plain view) | query property | a definition, `GLOSS <name> ON <dataset>`; its `"kind"` in the body |
 | preview, dry run | probe | `PREVIEW` |
 
 Name the statement where the reader will type it, once: "a test
-(`DECLARE TEST`)", "a view aspect (`AS VIEW`)". Do not repeat the
+(`DECLARE TEST`)", "a view (`GLOSS <name> ON <dataset>`)". Do not repeat the
 keyword as its own explanation: not "a test (`TEST`)".
 
 ## The rules
@@ -105,7 +105,7 @@ keyword as its own explanation: not "a test (`TEST`)".
   above.
 - Define by what it does, never by other terms of ours. Bad: "a
   disclosed grounding assumption held below full confidence".
-  Good: "an assumption in a metric definition that a person should
+  Good: "an assumption in a view definition that a person should
   confirm".
 - Write for the reader, not the project. No history, no research
   notes, no "not built on purpose", no "proof of concept". Status is

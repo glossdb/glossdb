@@ -15,11 +15,11 @@ SELECT CASE WHEN a.conf >= 1.0 THEN '●' ELSE '◐' END AS glyph,
               || CASE WHEN coalesce(r.note, '') <> '' THEN ' — ' || r.note ELSE '' END
               || CASE WHEN a.conf < 1.0 THEN ' · not yet applied' ELSE '' END
        END AS decision,
-       'GLOSS ' || a.aspect || ' ON ' || (SELECT dataset FROM current_dataset)
+       'GLOSS ' || a.property || ' ON ' || (SELECT dataset FROM current_dataset)
          || ' AS $$' || a.body::VARCHAR || '$$;' AS statement
 FROM agent_assumptions a
 LEFT JOIN review_decisions r
-  ON r.dataset = a.dataset AND r.subject = a.subject AND r.aspect = a.aspect AND r.key = a.key
-WHERE a.aspect = $view
+  ON r.dataset = a.dataset AND r.subject = a.subject AND r.property = a.property AND r.key = a.key
+WHERE a.property = $view
   AND a.dataset = (SELECT dataset FROM current_dataset)
 ORDER BY a.conf, dim

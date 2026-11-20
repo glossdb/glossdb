@@ -12,6 +12,7 @@ not kept.
 
 | Mission | Plan |
 |---|---|
+| What an agent keeps: views and their kinds, tags, rules; the texts that teach it | `views.md` |
 | A result is current or computed again, by one mechanism | `dependencies.md` |
 | Kits: the core and the add-ons, how a kit is versioned and bundled | `kits.md` |
 | glossdb works with the platform that is there: dbt, semantic models, lakes, the workspace as code | `platform.md` |
@@ -20,16 +21,17 @@ not kept.
 
 ## State
 
-The branch `snapshot-version` is pushed in both repositories, the
-server pinned at the extension's head of it. A glossval round ran on
-it (`evaluation.md`). Next, in this order: the project lead's smoke
-test; the pull requests; then what the project lead picks from the
-missions and the issues.
+`snapshot-version` is merged in both repositories. The glossval round
+on it (`evaluation.md`) shows agents write their checks as ad hoc SQL
+and hardly use the kits' tests. `views.md` holds the design that
+follows from it and is the work in hand, on the branch `views-layer`.
+The kits plan is shaped together with it.
 
 ## Open outside the missions
 
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
+| Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after `views.md` | After `views.md` | |
 | Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
 | Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |

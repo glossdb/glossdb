@@ -6,12 +6,12 @@
 //! the parts travel the way every other writing does.
 //!
 //! What the interface serves is the app at its release: a gloss of the
-//! `app_release` aspect on the app's name, and each part as it stood
+//! `app_release` property on the app's name, and each part as it stood
 //! when that gloss was written — or at the earlier release its `at`
 //! names. Every part written since is the draft, served under `?draft`
 //! on the same URLs; an app nobody released serves its draft. The
 //! collapses are the catalog's usual: the newest writing per (subject,
-//! aspect, actor kind), then the human's over the agent's. Loaded
+//! property, actor kind), then the human's over the agent's. Loaded
 //! whole and cut in Rust — an app is a handful of small strings, and
 //! its history not many more.
 
@@ -25,7 +25,7 @@ use futures::StreamExt;
 
 use crate::AppInterface;
 
-/// The aspects an app is made of, and where each part goes.
+/// The properties an app is made of, and where each part goes.
 const PARTS: [&str; 4] = ["app", "app_page", "app_frame", "app_spec"];
 const RELEASE: &str = "app_release";
 
@@ -48,7 +48,7 @@ pub(crate) struct Loaded {
 /// One writing on an app subject, as the catalog holds it.
 struct Row {
     subject: String,
-    aspect: String,
+    property: String,
     actor_kind: String,
     body: String,
     written_at: String,
@@ -66,7 +66,7 @@ pub(crate) async fn parts(interface: &AppInterface, dataset: &str, draft: bool) 
     if !draft {
         let apps: Vec<&str> = rows
             .iter()
-            .filter(|r| r.aspect == RELEASE)
+            .filter(|r| r.property == RELEASE)
             .map(|r| r.subject.as_str())
             .collect();
         for app in apps {
@@ -75,7 +75,7 @@ pub(crate) async fn parts(interface: &AppInterface, dataset: &str, draft: bool) 
             }
             let Some(release) = serving(
                 rows.iter()
-                    .filter(|r| r.aspect == RELEASE && r.subject == app),
+                    .filter(|r| r.property == RELEASE && r.subject == app),
             ) else {
                 continue;
             };
@@ -88,27 +88,27 @@ pub(crate) async fn parts(interface: &AppInterface, dataset: &str, draft: bool) 
     }
     let mut keys: Vec<(&str, &str)> = rows
         .iter()
-        .filter(|r| PARTS.contains(&r.aspect.as_str()))
-        .map(|r| (r.subject.as_str(), r.aspect.as_str()))
+        .filter(|r| PARTS.contains(&r.property.as_str()))
+        .map(|r| (r.subject.as_str(), r.property.as_str()))
         .collect();
     keys.sort_unstable();
     keys.dedup();
     let mut out = Vec::new();
-    for (subject, aspect) in keys {
+    for (subject, property) in keys {
         let app = subject.split('.').next().unwrap_or(subject);
         let part = subject.split_once('.').map(|(_, p)| p).unwrap_or("");
-        if aspect != "app" && part.is_empty() {
+        if property != "app" && part.is_empty() {
             continue;
         }
         let cut = releases.get(app);
         let Some(row) = serving(rows.iter().filter(|r| {
             r.subject == subject
-                && r.aspect == aspect
+                && r.property == property
                 && cut.is_none_or(|at| r.written_at.as_str() <= at.as_str())
         })) else {
             continue;
         };
-        let (path, key) = match aspect {
+        let (path, key) = match property {
             "app" => ("app".to_string(), None),
             "app_page" => (format!("{part}.html"), Some("html")),
             "app_frame" => (format!("frames/{part}.sql"), Some("sql")),
@@ -166,7 +166,7 @@ async fn rows(interface: &AppInterface, dataset: &str) -> Vec<Row> {
     let Ok(session) = interface.plane.channel(actor, Some(dataset)).await else {
         return Vec::new();
     };
-    let aspects = PARTS
+    let properties = PARTS
         .iter()
         .chain([RELEASE].iter())
         .map(|a| format!("'{a}'"))
@@ -174,9 +174,9 @@ async fn rows(interface: &AppInterface, dataset: &str) -> Vec<Row> {
         .join(", ");
     let Ok(query) = session
         .query_stream(&format!(
-            "SELECT g.subject, g.aspect, g.actor_kind, CAST(g.body AS VARCHAR) AS body, \
+            "SELECT g.subject, g.property, g.actor_kind, CAST(g.body AS VARCHAR) AS body, \
              g.written_at FROM glossary_history g \
-             JOIN current_dataset d ON d.dataset = g.dataset WHERE g.aspect IN ({aspects})"
+             JOIN current_dataset d ON d.dataset = g.dataset WHERE g.property IN ({properties})"
         ))
         .await
     else {
@@ -209,9 +209,9 @@ pub(crate) fn files_of(parts: &[Part], app: &str) -> BTreeMap<String, String> {
 
 fn decode(batch: &RecordBatch) -> Vec<Row> {
     let column = |name: &str| batch.column_by_name(name);
-    let (Some(subject), Some(aspect), Some(kind), Some(body), Some(at)) = (
+    let (Some(subject), Some(property), Some(kind), Some(body), Some(at)) = (
         column("subject"),
-        column("aspect"),
+        column("property"),
         column("actor_kind"),
         column("body"),
         column("written_at"),
@@ -223,7 +223,7 @@ fn decode(batch: &RecordBatch) -> Vec<Row> {
     // interface then cuts where it says.
     (0..batch.num_rows())
         .filter(|&i| {
-            [subject, aspect, kind, body, at]
+            [subject, property, kind, body, at]
                 .iter()
                 .all(|c| !c.is_null(i))
         })
@@ -231,7 +231,7 @@ fn decode(batch: &RecordBatch) -> Vec<Row> {
             let cell = |c: &ArrayRef| array_value_to_string(c.as_ref(), i).ok();
             Some(Row {
                 subject: cell(subject)?,
-                aspect: cell(aspect)?,
+                property: cell(property)?,
                 actor_kind: cell(kind)?,
                 body: cell(body)?,
                 written_at: cell(at)?,

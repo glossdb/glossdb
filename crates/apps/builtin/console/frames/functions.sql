@@ -17,7 +17,7 @@ said AS (
   SELECT count(*) FILTER (WHERE state <> 'missing') AS written,
          count(*) FILTER (WHERE state = 'stale') AS outdated
   FROM GLOSSARY()
-  WHERE aspect IN (SELECT name FROM aspects WHERE upper(kind) = 'FACT')),
+  WHERE property IN (SELECT name FROM properties WHERE upper(kind) = 'FACT')),
 rel AS (SELECT count(*) AS n FROM relationships r JOIN d ON d.dataset = r.dataset),
 t AS (
   SELECT count(*) AS n,
@@ -33,12 +33,13 @@ traced AS (
   SELECT count(*) FILTER (WHERE source IS NOT NULL) AS traced, count(*) AS n
   FROM (SELECT view, target_column, max(source_column) AS source FROM column_mapping()
         WHERE target_column IS NOT NULL GROUP BY ALL)),
+-- the views the dataset serves; a plain view and a rule are kept, not served
 v AS (
   SELECT count(*) AS n,
-         count(*) FILTER (WHERE kind = 'relation') AS tables,
-         count(*) FILTER (WHERE kind = 'scalar') AS scalars,
-         count(*) FILTER (WHERE coalesce(kind, '') NOT IN ('relation', 'scalar')) AS metrics
-  FROM view_definitions),
+         count(*) FILTER (WHERE kind = 'table') AS tables,
+         count(*) FILTER (WHERE kind = 'value') AS scalars,
+         count(*) FILTER (WHERE kind = 'metric') AS metrics
+  FROM view_definitions WHERE kind IN ('table', 'value', 'metric')),
 rows(ord, kind, title, question, have, more, page) AS (
   SELECT 1, 'integrate', 'Integration', 'Which sources map?',
          (SELECT count(*) FROM load) || CASE WHEN (SELECT count(*) FROM load) = 1 THEN ' table' ELSE ' tables' END || ' from ' || (SELECT count(DISTINCT source) FROM recipe) || CASE WHEN (SELECT count(DISTINCT source) FROM recipe) = 1 THEN ' source' ELSE ' sources' END || ', ' || (SELECT n FROM v) || CASE WHEN (SELECT n FROM v) = 1 THEN ' view' ELSE ' views' END,

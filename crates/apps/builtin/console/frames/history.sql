@@ -16,15 +16,15 @@ loads AS (
   FROM imports i JOIN d ON d.dataset = i.dataset),
 written AS (
   SELECT g.written_at AS ts,
-         CASE WHEN g.aspect = 'review_decision' THEN 'decision' ELSE 'annotation' END AS kind,
+         CASE WHEN g.property = 'review_decision' THEN 'decision' ELSE 'annotation' END AS kind,
          substr(g.subject, len(d.dataset) + 2) AS object,
          CASE g.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE g.actor_kind END
            || coalesce(' · ' || g.actor_id, '') AS who,
          CASE
-           WHEN g.aspect = 'review_decision' THEN array_to_string(list_transform(
-             from_json(json_extract(g.body, '$.decisions'), '[{"aspect": "VARCHAR", "key": "VARCHAR", "stance": "VARCHAR"}]'),
-             lambda x: x.aspect || ' · ' || x.key || ': ' || x.stance), '; ')
-           ELSE g.aspect || ': ' || coalesce(
+           WHEN g.property = 'review_decision' THEN array_to_string(list_transform(
+             from_json(json_extract(g.body, '$.decisions'), '[{"property": "VARCHAR", "key": "VARCHAR", "stance": "VARCHAR"}]'),
+             lambda x: x.property || ' · ' || x.key || ': ' || x.stance), '; ')
+           ELSE g.property || ': ' || coalesce(
              json_extract_string(g.body, '$.value'),
              CASE WHEN json_extract(g.body, '$.sql') IS NOT NULL THEN 'a metric definition' END,
              left(g.body::VARCHAR, 120) || CASE WHEN length(g.body::VARCHAR) > 120 THEN '…' ELSE '' END)
@@ -33,10 +33,10 @@ written AS (
 declared AS (
   SELECT declared_at AS ts, 'declaration' AS kind, name AS object, '' AS who,
          'property ' || name || ' (' || lower(kind) || ')' AS summary
-  FROM aspects
+  FROM properties
   UNION ALL
   SELECT declared_at, 'declaration', name, '',
-         'test ' || name || ' on ' || aspect
+         'test ' || name || ' on ' || property
   FROM tests
   UNION ALL
   SELECT r.declared_at, 'declaration', r.table_name, '',
@@ -59,7 +59,7 @@ SELECT strftime(ts, '%Y-%m-%d %H:%M') AS "at",
        CASE WHEN object = '' THEN 'the dataset' ELSE object END AS object,
        (SELECT b FROM base) || CASE
          WHEN object = '' THEN 'history'
-         WHEN kind = 'declaration' AND starts_with(summary, 'property ') THEN 'glossary?aspect=' || object
+         WHEN kind = 'declaration' AND starts_with(summary, 'property ') THEN 'glossary?property=' || object
          WHEN kind = 'declaration' AND starts_with(summary, 'test ') THEN 'quality?test=' || object
          WHEN object IN (SELECT name FROM views) THEN 'views?view=' || object
          WHEN contains(object, ' ') THEN 'lineage'

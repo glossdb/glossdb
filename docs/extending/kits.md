@@ -1,6 +1,6 @@
 # Kits
 
-A kit packages the properties, measurements and tests for one use
+A kit packages the properties, functions and tests for one use
 case, as a SQL script of glossql statements. A kit adds vocabulary and
 reads. It does not add grammar.
 
@@ -12,7 +12,7 @@ reads. It does not add grammar.
 | `lineage` | the extension | `lineage(dataset)`, the lineage as one relation; the read functions a function's body reads through: `annotations()`, `results()`, `definition()` |
 | `kpi` | the extension | `meaning`, `entity`, `role`, `additivity`, `unit`, `dimension`, `conventions`; `column_profile()`, `outlier_profile()`; the `value_entropy` detector |
 | `quality` | the extension | detection of relationships, hierarchies, derivations and duplicate definitions; `relationship_coherence()`, `additivity_evidence()`, `temporal()`; the `rate_tolerance` detector |
-| `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `series_axes()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`; `time_grains`; the four built-in tests on a metric |
+| `views` | glossdb | `view_summary()`, `view_kinds()`, `metric_series()`, `series_axes()`, `view_tests()`, `column_mapping()`, `fact_values()`, `semantic_model()`, `lineage_events()`, `find()`, `tag_statement()`; `time_grains`, `validity`; the built-in tests on each served view, on each metric and on each rule view |
 | `harmonise` | glossdb | preview: several systems of record mapped onto one target table view; `source_systems()`, the systems a table or a table view is loaded from and whether their conventions are written down; the server serves the rest without it |
 | `goals` | glossdb | `results_due()`, `results_moved_since()`, `load_changes()` and `next` |
 
@@ -21,7 +21,7 @@ already recorded with the same text runs nothing. The extension also
 ships `spatial`, a small example the server does not load.
 
 ```sql
-SELECT name, statements, loaded_at FROM kits;
+SELECT name, statements, loaded_at FROM main.kits;
 ```
 
 ## Write a kit
@@ -30,14 +30,14 @@ Statements in order: properties, then functions, then the tests that
 name both.
 
 ```glossql
-DECLARE ASPECT currency WITH $${
+DECLARE PROPERTY currency WITH $${
   "type": "object", "required": ["value"],
   "properties": {"value": {"type": "string", "pattern": "^[A-Z]{3}$"}}
 }$$ AS FACT ON COLUMN WHEN unit = 'money';
 
 DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 
-DECLARE ASPECT unit_check WITH $${
+DECLARE PROPERTY unit_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "breach_rate": {"type": ["number", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
@@ -47,7 +47,7 @@ DECLARE ASPECT unit_check WITH $${
 DECLARE FUNCTION unit_check FOR GLOBAL AS $$
   WITH v AS (SELECT view, value_column FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
   u AS (SELECT count(*) AS n FROM main.glossary g, v
-        WHERE g.subject = $subject || '.' || v.value_column AND g.aspect = 'unit')
+        WHERE g.subject = $subject || '.' || v.value_column AND g.property = 'unit')
   SELECT true AS applicable,
          CASE WHEN u.n > 0 THEN 0.0 ELSE 1.0 END AS breach_rate,
          CASE WHEN u.n = 0 THEN 'the value of ' || split_part($subject, '.', 2) || ' has no unit' END AS finding,
@@ -58,9 +58,9 @@ $$ RETURNS unit_check;
 DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 
-- **A property** (`DECLARE ASPECT`) has a JSON Schema and a kind:
+- **A property** (`DECLARE PROPERTY`) has a JSON Schema and a kind:
   `AS FACT` for a value someone states, `AS MEASUREMENT` for a
-  function's result, `AS VIEW` for a view name. `ON` names the assets
+  function's result; a view's name is declared by its first definition. `ON` names the assets
   it applies to: `DATASET`, `TABLE`, `COLUMN`, `RELATIONSHIP`,
   `SOURCE`.
 - **A condition** makes a property required only where it applies:
@@ -71,8 +71,9 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
   annotates it, and is not required on the other assets:
   `tested_properties()` lists these, and `next` counts each on the
   assets that carry it.
-- **A measurement** is a function with `RETURNS`. Its body is one SQL
-  query. `$subject` is the asset it runs over, and
+- **A function** with `RETURNS` is a kit's machinery: one stored
+  result per asset, computed again when what it read changed. Its body
+  is one SQL query. A query an agent keeps is a view, not a function. `$subject` is the asset it runs over, and
   `subject_column($subject)` is that column as a relation with one
   column `v`. The result is validated against the property's schema
   and stored. It is served again while the tables and catalog tables
@@ -81,12 +82,13 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
   `annotations` and returns `subject`, `state`, `score`. `$threshold`
   is the test's.
 - **A test on each view.** `"x-subject": "view"` on the property
-  marks a test the server expects on each view (a table view, a single
-  value, a metric) and runs itself: after the view is defined, after
+  marks a test the server expects on each served view (a table view, a
+  single value, a metric) and runs itself: after the view is defined, after
   something its check reads is annotated, and after a load of a table
   it scans. `"x-subject": "metric"` marks one it expects on each
   metric alone, as here: a check on the measure. Its function runs
-  over `<dataset>.<view>`. Before it, the server computes the results
+  over `<dataset>.<view>`. `"x-subject": "rule"` marks one it expects
+  on each rule view (`rule_check`). Before it, the server computes the results
   its body reads (`results(...)`) at the place it names.
   `"x-subject": "table"` marks one it expects on each loaded table,
   run over `<dataset>.<table>` after a load (`grain_check`).
@@ -114,7 +116,7 @@ FROM glossql_kit('/opt/kits/billing/kit.sql');
 
 `glossql_kit` runs the script one statement at a time and returns one
 row per statement with its outcome. A failing statement stops the
-load; the ones before it stay. The load is recorded in `kits`, and its
+load; the ones before it stay. The load is recorded in `main.kits`, and its
 tests show as `kit:<name>` in `view_tests()`. An agent without access
 to the server's files sends the same statements through the tool.
 

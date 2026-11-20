@@ -214,11 +214,11 @@ async fn the_served_pages_are_rows_of_pages() {
 /// and the glossary then holds one current row per actor kind.
 const NOTE_BY_AGENT: &str = "DECLARE DATASET fin SET (purpose: 'who wrote it');\n\
      USE fin;\n\
-     DECLARE ASPECT note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
+     DECLARE PROPERTY note WITH $${\"type\": \"object\"}$$ AS FACT ON DATASET;\n\
      GLOSS note ON fin AS $${\"value\": \"through the agent interface\"}$$;\n\
-     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note';";
+     SELECT actor_id, actor_kind FROM glossary WHERE property = 'note';";
 const NOTE_BY_HUMAN: &str = "GLOSS note ON fin AS $${\"value\": \"through the human interface\"}$$;\n\
-     SELECT actor_id, actor_kind FROM glossary WHERE aspect = 'note' ORDER BY actor_kind;";
+     SELECT actor_id, actor_kind FROM glossary WHERE property = 'note' ORDER BY actor_kind;";
 
 /// The note's writers, as the agent interface and then a human interface
 /// recorded them, each with `authorization` if given.
@@ -1059,7 +1059,7 @@ async fn a_data_read_is_cut_at_the_row_cap_and_a_catalog_read_is_whole() {
     let setup = r#"
         DECLARE DATASET fin SET (purpose: 'cap test');
         USE fin;
-        DECLARE ASPECT unit WITH $${"type": "object"}$$ AS FACT;
+        DECLARE PROPERTY unit WITH $${"type": "object"}$$ AS FACT;
         GLOSS unit ON t.a AS $${"value": "EUR"}$$;
         GLOSS unit ON t.b AS $${"value": "EUR"}$$;
         GLOSS unit ON t.c AS $${"value": "EUR"}$$;

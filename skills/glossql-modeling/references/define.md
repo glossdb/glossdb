@@ -1,22 +1,29 @@
-# Defining views: tables, single values, metrics, and a table to a data contract
+# Defining views: tables, single values, metrics, rules, and a table to a data contract
 
 Read before writing a view's SQL.
 
-## Declare, then define
+## Define
 
-A view is one name on the dataset. Declare it with a title and its
-kind, then define it. The definition is one annotation on the
-dataset; writing it again replaces it.
+A view is one name on the dataset. Its definition holds its SQL and
+names its kind; the first definition declares the name. The
+definition is one annotation on the dataset; writing it again
+replaces it.
 
-| Kind | Declared with | Serves | Read with |
+| Kind | `"kind"` | Serves | Read with |
 |---|---|---|---|
-| a table | `"x-kind": "relation"` | rows | `FROM <view>` |
-| a single value | `"x-kind": "scalar"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
-| a metric | no `x-kind` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+| a plain view | none | a query kept with its reason; asks for nothing more | `FROM <view>`, `find()` |
+| a table | `"table"` | rows | `FROM <view>` |
+| a single value | `"value"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
+| a metric | `"metric"` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+| a rule | `"rule"` | the rows that break a rule; none while it holds | `FROM <view>`, `view_tests()` |
 
 The definition's body holds:
 
 - `sql`, the query; or `stopped`, the reason no query is given.
+- `kind`, as above. A new definition may change it.
+- `meaning` and `tags`: the view's `meaning` and `tags` annotations,
+  written in the same statement. `view_definitions` shows the
+  meaning; `find()` searches both.
 - `assumptions`: the judgment calls, each `{"dimension", "key",
   "assumption", "basis", "confidence"}` and optionally
   `"alternative"`. The review asks a person about each one with a
@@ -24,14 +31,11 @@ The definition's body holds:
   (`skill://glossql/references/review.md`).
 - for a metric: `time`, `measure` and `dimensions` (below).
 
-The statement answers with the view's row of `view_summary()`. A view
-can read another view by name, so a decision on one reaches every
-view built on it. Put the mechanics in SQL comments inside `sql`.
-Spell the `GROUP BY` out.
-
-A view's meaning is its `meaning` annotation (`GLOSS meaning ON
-<dataset>.<view>`), which `next` asks for. A metric's unit is the
-`unit` of its `measure`. `view_definitions` shows both.
+The definition of a table, a single value or a metric answers with
+the view's row of `view_summary()`. A view can read another view by
+name, so a decision on one reaches every view built on it. Put the
+mechanics in SQL comments inside `sql`. Spell the `GROUP BY` out. A
+metric's unit is the `unit` of its `measure`.
 
 ## A table to a data contract
 
@@ -57,9 +61,8 @@ types and meanings, and the code tables.
    `harmonise.md`, step 5, which holds for one source as for several.
 
 ```glossql
-DECLARE ASPECT staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
 GLOSS staff ON hr AS $${
-  "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
+  "kind": "table", "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
   "assumptions": [
     {"dimension": "scope", "key": "latest-export-row", "assumption": "where an employee_id repeats, the row of the newest export is kept", "basis": "14 ids repeat, each with one newer row", "confidence": 0.7},
     {"dimension": "scope", "key": "no-id-left-out", "assumption": "rows without an employee_id are left out", "basis": "3 rows, all without a name", "confidence": 0.8},
@@ -77,7 +80,7 @@ GLOSS contract ON hr.staff.department_code AS $${"type": "VARCHAR", "required": 
 ```
 
 A rule the contract has no word for (a hire date not in the future) is
-a test of your own (`tests.md`). Where the export states its own key,
+a rule view (`tests.md`). Where the export states its own key,
 state it on the loaded table as well: `grain_test` holds each load
 against it, before any view reads the rows.
 
@@ -110,9 +113,8 @@ can write the same annotations yourself, on `<view>.<column>`.
   assumption. A count per member is a metric of its own.
 
 ```glossql
-DECLARE ASPECT on_time_rate WITH $${"title": "On-time delivery rate"}$$ AS VIEW;
 GLOSS on_time_rate ON logistics AS $${
-  "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
+  "kind": "metric", "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
   "time": "delivered_on",
   "measure": {"column": "value", "additivity": "ratio", "numerator": "on_time", "denominator": "total", "unit": "share"},
   "dimensions": ["depot_id"]
@@ -128,7 +130,7 @@ write. Reading a metric: `time-grains.md`.
 Serve with an assumption when the defect is bounded: you can say how
 many rows it touches and which way it moves the number. Put the count
 in the `basis`. Stop when it is not: rows are missing, a join key
-cannot be trusted, a column was not loaded. Do not serve a number
+cannot be trusted, a column was not loaded. Do not serve a view
 from a stand-in. Record the reason in place of the SQL:
 
 ```glossql
@@ -137,8 +139,9 @@ GLOSS utilisation ON fleet AS $${
 }$$;
 ```
 
-A stopped view is a finding to report. A definition with `sql`, yours
-or a person's, lifts the stop.
+A stopped view serves nothing, and its readers get the reason. It is
+a finding to report. A definition with `sql`, yours or a person's,
+lifts the stop.
 
 ## Defaults where the request is silent
 

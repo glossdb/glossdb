@@ -8,9 +8,9 @@ WITH v AS (
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 about AS (
   SELECT name, json_extract_string(schema, '$.description') AS description
-  FROM aspects QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
+  FROM properties QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 folded AS (
-  SELECT w.name AS test, w.aspect, w.detector, w.threshold, any_value(b.description) AS description,
+  SELECT w.name AS test, w.property, w.detector, w.threshold, any_value(b.description) AS description,
          count(v.state) AS n,
          count(*) FILTER (WHERE v.state = 'green') AS green,
          count(*) FILTER (WHERE v.state = 'yellow') AS yellow,
@@ -18,12 +18,12 @@ folded AS (
          count(*) FILTER (WHERE v.state = 'red') AS red,
          count(*) FILTER (WHERE v.state = 'error') AS errors,
          coalesce(max(v.severity), -1) AS worst
-  FROM w LEFT JOIN v ON v.test = w.name LEFT JOIN about b ON b.name = w.aspect
+  FROM w LEFT JOIN v ON v.test = w.name LEFT JOIN about b ON b.name = w.property
   WHERE w.detector IS NOT NULL
-  GROUP BY w.name, w.aspect, w.detector, w.threshold)
+  GROUP BY w.name, w.property, w.detector, w.threshold)
 SELECT test,
-       coalesce(description, 'The property ' || aspect || '.') AS asks,
-       'on ' || aspect AS expectation,
+       coalesce(description, 'The property ' || property || '.') AS asks,
+       'on ' || property AS expectation,
        n, green, yellow, orange, red, errors,
        CASE WHEN n = 0 THEN 'no result yet' ELSE concat_ws(' · ',
            CASE WHEN red > 0 THEN CAST(red AS VARCHAR) || ' red' END,

@@ -41,7 +41,7 @@ tabs; without it each page shows by its name, `index` first. The
 shell prints the manifest's title on every page.
 
 ```sql
-SELECT app, path, actor_kind FROM app_parts ORDER BY app, path
+SELECT app, path, actor_kind FROM main.app_parts ORDER BY app, path
 ```
 
 What you write is the draft. Until the first release, readers see it
@@ -55,7 +55,7 @@ GLOSS app_release ON depots AS $${"note": "first version"}$$;
 ```
 
 ```sql
-SELECT app, "at", note, released_at FROM app_releases
+SELECT app, "at", note, released_at FROM main.app_releases
 ```
 
 ## Frames are SQL

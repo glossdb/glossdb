@@ -1,12 +1,12 @@
-# Tests: the built-in tests, tests of your own, tolerances
+# Tests: the built-in tests, rule views, tolerances
 
 Read when a test is not green, or before declaring a test.
 
 ## What a test is
 
 A test (`DECLARE TEST`) gives a state to a property of an asset:
-`green`, `yellow`, `orange` or `red`. A function measures the
-property; a detector turns the measurement into the state. The
+`green`, `yellow`, `orange` or `red`. A function computes the
+property's value; a detector turns the value into the state. The
 results are rows:
 
 ```sql
@@ -16,13 +16,14 @@ SELECT view, test, subject, state, score, current, run FROM view_tests()
 `view_tests()` lists, per view, the tests on the view and on the
 tables and columns it reads, worst first. A table view and a single
 value have rows too: the built-in join, orphan and completeness tests, the tests on
-what they read and the tests you declared on them. `not_run` means no result exists yet; `current` is
+what they read and the tests you declared on them. A rule view has
+its `rule_test`. `not_run` means no result exists yet; `current` is
 false when something the stored result read changed after it was
 stored. A test's result is stored per asset; the server computes the
 ones out of date after each write. A detector that compares assets
 with each other is refused (`cross_subject`): declare that test on
 the table or the dataset that holds them. `run` is the
-statement that measures the test's property again. It is empty where
+statement that computes the test's property again. It is empty where
 no function measures it: `role_test`, `unit_test` and
 `additivity_test` compare an agent's and a person's annotation, and a
 test on a result an actor stores (about the dataset) is not run by
@@ -38,9 +39,12 @@ your own, the annotation that records an accepted rate.
 
 The server runs these after a call that defines a view, annotates
 what a test reads, or loads a table the view reads. `join_test`,
-`orphan_test` run on every view: a table view, a single value, a metric, and
-`completeness_test` on each column of every view. `measure_additivity_test` runs on each metric, since only a
-metric has a measure. The server also runs what the tests read first:
+`orphan_test` and `relationship_test` run on every view the dataset
+serves (a table, a single value, a metric), and `completeness_test`
+on each of its columns. `measure_additivity_test` and `series_test`
+run on each metric, since only a metric has a measure and a series.
+`rule_test` runs on each rule view. A plain view gets none. The
+server also runs what the tests read first:
 a profile of each column the view joins on and of each column it
 serves, and the check of each relationship between the tables it reads.
 
@@ -50,6 +54,9 @@ serves, and the check of each relationship between the tables it reads.
 | `orphan_test` | rows on a declared relationship the view joins over find no parent: an inner join drops them, an outer join keeps them with empty parent columns | fix the load (trim, pad, cast the key), or load the missing parents |
 | `completeness_test` | a load or a new definition emptied a column the view serves: its share of empty values rose by more than 0.1. It stays red until the column is filled again or the rate is accepted | where a table column it is computed from emptied too, fix the source or the load query; else correct the column's expression in the definition. Accept a rate that is right with `tolerance` on `completeness_check` on that column: the other columns stay held to 0.1 |
 | `measure_additivity_test` | the value column does not say how it adds up, or says additive where the SQL computes a ratio, an average or a distinct count | correct `additivity` in the definition |
+| `relationship_test` | never red; `yellow` where a join between two loaded tables has no declared relationship | the `DECLARE RELATIONSHIP` its fix names |
+| `series_test` | a metric serves no series: no column carries role `timestamp` or `measure`, or the period column has no grain | the annotation its fix names, such as `time_grains` |
+| `rule_test` | a rule view returns more rows than a person accepted | fix the load or the definition the rule reads; a person accepts a count |
 | `grain_test` | on a loaded table whose `entity` states a `grain`: a key repeats in the loaded rows | keep one row per key in the load query, or state the grain the rows have |
 
 `orphan_test` reads declared relationships only: `next` lists each
@@ -77,16 +84,47 @@ GLOSS orphan_check ON logistics.parcels_delivered AS $${"tolerance": 0.1, "basis
 Do not change a definition only to make a test green. Fix what is
 wrong, or accept what is right and say why.
 
-## A test of your own
+## A rule of your own: a rule view
 
-Four statements and one run:
+A rule the data must hold is a view of the rows that break it. One
+statement, no more:
+
+```glossql
+GLOSS booking_has_card ON workshop AS $${"kind": "rule",
+  "sql": "SELECT b.booking_id FROM bookings b LEFT JOIN job_cards c ON c.card_id = b.card_id WHERE c.card_id IS NULL",
+  "meaning": "every booking names a job card", "tags": ["job card"]}$$;
+```
+
+- `rule_test` runs on it after every write, with no further
+  statement. It is green while the view returns no row, red while it
+  returns rows: a `must` row of `next` with the count and the first
+  rows.
+- The view's `meaning` states the rule; the finding quotes it.
+- Select the columns that name a row (its key) and those that show
+  why it breaks the rule.
+- A red rule closes in one of two ways. Fix the load query or the
+  definition of a view the rule reads. Or a person accepts the count
+  of rows as it is, with the reason: `next` hands the statement, and
+  only a person may write it.
+
+```glossql
+GLOSS rule_check ON workshop.booking_has_card AS $${"accepted": 3, "basis": "three bookings before the card system started, confirmed by the workshop lead"}$$;
+```
+
+The test stays green while the view returns no more rows than the
+person accepted.
+
+## A rate with a tolerance: a test of your own
+
+Where a share of rows may break the rule (5% of deliveries late), the
+test needs a tolerance. That takes five statements:
 
 1. **A property for the expectation**, declared `AS FACT ON TABLE`,
    or `ON COLUMN` for one column. Its schema holds what a person
    states (`outcome`, `tolerance`, `basis`) and what the check
    returns (`breach_rate`, `finding`). Leave `required` out: the
    check's result is validated against the same schema.
-2. **A function that measures it**, with `RETURNS <property>`.
+2. **A function that computes it**, with `RETURNS <property>`.
 3. **The test**, with `BY (AGENT, HUMAN)`, which names who may
    annotate the property, and `DETECTOR rate_tolerance`.
 4. **The expectation, annotated on the asset** the rule holds for.
@@ -94,7 +132,7 @@ Four statements and one run:
    the column (`FROM <table>.<column>`).
 
 ```glossql
-DECLARE ASPECT hours_match WITH $${"type": "object",
+DECLARE PROPERTY hours_match WITH $${"type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION hours_match_check FOR workshop AS $$
@@ -105,24 +143,20 @@ DECLARE FUNCTION hours_match_check FOR workshop AS $$
 $$ RETURNS hours_match;
 DECLARE TEST hours_match_test ON hours_match BY (AGENT, HUMAN) DETECTOR rate_tolerance;
 GLOSS hours_match ON bookings AS $${"outcome": "booked hours match the hours on the job card",
-  "tolerance": 0.0, "basis": "the job card is the source of the booking"}$$;
+  "tolerance": 0.02, "basis": "the workshop lead allows a correction a day"}$$;
 SELECT hours_match_check() FROM bookings;
 ```
 
-`skill://glossql/SKILL.md` shows a table test and a column test
-whole, `define.md` one check for a data contract.
-
 - **The annotation sets the test.** The test is on the assets that
-  carry the expectation and on no other. `next` counts it there.
-  One property can hold for
-  several assets: annotate each, and run the function on each.
+  carry the expectation and on no other. `next` counts it there. One
+  property can hold for several assets: annotate each, and run the
+  function on each.
 - **`breach_rate` is the share of rows that break the rule.** 0.0
   passes. A pass rate under that name reads red.
-- **`tolerance` is the share of rows that may break the rule.** State
-  0.0 where the rule allows no exception. `rate_tolerance` is green
-  at or under the tolerance, red above it, and `yellow` while the
-  function has not run. It reads a person's tolerance first, then
-  yours, then the test's `THRESHOLD`, then 0.0.
+- **`tolerance` is the share of rows that may break the rule.**
+  `rate_tolerance` is green at or under the tolerance, red above it,
+  and `yellow` while the function has not run. It reads a person's
+  tolerance first, then yours, then the test's `THRESHOLD`, then 0.0.
 - **A test states the rule.** Where the data breaks the rule the test
   is red, and it stays red until the data is right or a person
   accepts the rate. Do not set the tolerance at what you measured to
@@ -156,8 +190,9 @@ whole, `define.md` one check for a data contract.
 
 What to test: a key that must be unique, a column that must be
 filled, a code that must be in its code table, a total that must
-match a second route to the same number. A check you ran by hand is
-right today; as a test it is run again at each load.
+match a second route to the same number. Each is a rule view first.
+A check you ran by hand is right today; as a rule view it is run
+again after every write.
 
 A property declared `AS MEASUREMENT` holds only what a function
 returns, such as a profile. It carries no expectation, so nobody can

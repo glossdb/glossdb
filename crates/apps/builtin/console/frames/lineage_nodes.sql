@@ -17,23 +17,23 @@ load AS (
   FROM imports i JOIN d ON d.dataset = i.dataset
   QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) = 1),
 said AS (
-  SELECT subject, aspect, value FROM GLOSSARY()
-  WHERE aspect IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
+  SELECT subject, property, value FROM GLOSSARY()
+  WHERE property IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
 ent AS (
   SELECT substr(s.subject, len(d.dataset) + 2) AS tbl,
          json_extract_string(s.value, '$.value') AS what,
          json_extract_string(s.value, '$.time_axis') AS time_axis,
          coalesce(from_json(json_extract(s.value, '$.grain'), '["VARCHAR"]'), []) AS grain
   FROM said s CROSS JOIN d
-  WHERE s.aspect = 'entity'),
+  WHERE s.property = 'entity'),
 colsaid AS (
   SELECT subject,
-         max(CASE WHEN aspect = 'role' THEN json_extract_string(value, '$.value') END) AS role,
-         max(CASE WHEN aspect = 'additivity' THEN json_extract_string(value, '$.value') END) AS additivity,
-         max(CASE WHEN aspect = 'unit' THEN json_extract_string(value, '$.value') END) AS unit,
-         max(CASE WHEN aspect = 'dimension' THEN json_extract_string(value, '$.value') END) AS dimension
+         max(CASE WHEN property = 'role' THEN json_extract_string(value, '$.value') END) AS role,
+         max(CASE WHEN property = 'additivity' THEN json_extract_string(value, '$.value') END) AS additivity,
+         max(CASE WHEN property = 'unit' THEN json_extract_string(value, '$.value') END) AS unit,
+         max(CASE WHEN property = 'dimension' THEN json_extract_string(value, '$.value') END) AS dimension
   FROM said
-  WHERE aspect <> 'entity'
+  WHERE property <> 'entity'
   GROUP BY subject),
 cols AS (
   SELECT c.table_name AS node, 'table' AS kind, c.column_name AS col,
@@ -61,10 +61,10 @@ defs AS (SELECT name, kind FROM view_definitions),
 fields AS (
   SELECT s.view AS node, 'view' AS kind, s.target_column AS col,
          CAST(row_number() OVER (PARTITION BY s.view ORDER BY s.target_column) AS BIGINT) AS ord,
-         CASE v.kind WHEN 'relation' THEN 'table view' WHEN 'scalar' THEN 'single value'
-                     ELSE 'metric' END AS sub,
+         CASE v.kind WHEN 'table' THEN 'table view' WHEN 'value' THEN 'single value' WHEN 'metric' THEN 'metric'
+                     WHEN 'rule' THEN 'rule' ELSE 'plain view' END AS sub,
          (SELECT b FROM base) || 'views?view=' || s.view
-           || CASE WHEN v.kind IN ('relation', 'scalar') THEN '&kind=' || v.kind ELSE '' END AS link
+           || CASE WHEN v.kind IN ('table', 'value') THEN '&kind=' || v.kind ELSE '' END AS link
   FROM (SELECT DISTINCT view, target_column FROM column_mapping() WHERE target_column IS NOT NULL) s
   LEFT JOIN defs v ON v.name = s.view)
 SELECT node, kind, col, ord, role, detail, sub, link, tag FROM cols

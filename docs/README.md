@@ -4,7 +4,9 @@ glossdb is the data harness for people and agents. Agents build a
 company's data intelligence layer in the lake, beside the data.
 glossdb tests what they state against the data at each load, and a
 person reviews and decides. Source data goes in; described and tested
-tables, single values and metrics come out.
+tables, single values and metrics come out. Everything an agent keeps
+is a view: the views a dataset serves, the queries that decided
+something, and the rules the data must hold.
 
 The MCP interface serves each page here as `doc://docs/<path>`.
 
@@ -22,7 +24,7 @@ grouped by it.
 
 | Function | The question | Page |
 |---|---|---|
-| Integration | Which sources map? | [Connect and load](usage/load.md): sources, load queries, loads. [Define views](usage/views.md): a table, a single value, a metric |
+| Integration | Which sources map? | [Connect and load](usage/load.md): sources, load queries, loads. [Define views](usage/views.md): a plain view, a table, a single value, a metric, a rule |
 | Metadata | What does this mean? | [Describe](usage/describe.md): annotations, relationships, the business glossary |
 | Quality | Can we trust this value? | [Test](usage/test.md): the built-in tests, your own tests, states |
 | Governance | Who decides and may use it? | [Review and decide](usage/review.md): the review queue and review decisions |
@@ -45,7 +47,7 @@ must be done (served data is wrong or cannot be served), what should
 
 - [Deployment](operations/deployment.md): the container, the lake,
   sign-in, logs.
-- [Kits](extending/kits.md): add annotations, measurements and tests
+- [Kits](extending/kits.md): add properties, functions and tests
   for a use case.
 
 ## Reference
@@ -68,8 +70,9 @@ served from the glossql extension the server bundles.
 
 | Feature | Status |
 |---|---|
-| Sources, load queries, datasets, annotations, measurements, tests | stable |
-| Views, metric series, `next`, review decisions | stable |
+| Sources, load queries, datasets, annotations, functions, tests | stable |
+| Views (tables, single values, metrics), metric series, `next`, review decisions | stable |
+| Plain views and rule views, tags, `find()` | preview |
 | MCP interface, query endpoint, console, data apps, export | stable |
 | Semantic model and lineage export | stable |
 | Forecasts, expected ranges, plans, scenarios | planned |

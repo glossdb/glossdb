@@ -6,9 +6,9 @@
 -- table; the name opens the table's page.
 WITH d AS (SELECT dataset FROM current_dataset),
 cur AS (
-  SELECT g.subject, g.aspect, g.body, json_extract_string(g.body, '$.value') AS value
+  SELECT g.subject, g.property, g.body, json_extract_string(g.body, '$.value') AS value
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'entity', 'dimension') AND g.rank = 1),
+  WHERE g.property IN ('role', 'meaning', 'unit', 'additivity', 'entity', 'dimension') AND g.rank = 1),
 loaded AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 cols AS (
   SELECT c.table_name, c.column_name, c.ordinal_position,
@@ -23,11 +23,11 @@ cols AS (
   FROM information_schema.columns c
   JOIN d ON d.dataset = c.table_schema
   JOIN loaded l ON l.table_name = c.table_name
-  LEFT JOIN cur r ON r.aspect = 'role' AND r.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
-  LEFT JOIN cur x ON x.aspect = 'dimension' AND x.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
-  LEFT JOIN cur m ON m.aspect = 'meaning' AND m.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
-  LEFT JOIN cur u ON u.aspect = 'unit' AND u.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
-  LEFT JOIN cur b ON b.aspect = 'additivity' AND b.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
+  LEFT JOIN cur r ON r.property = 'role' AND r.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
+  LEFT JOIN cur x ON x.property = 'dimension' AND x.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
+  LEFT JOIN cur m ON m.property = 'meaning' AND m.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
+  LEFT JOIN cur u ON u.property = 'unit' AND u.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
+  LEFT JOIN cur b ON b.property = 'additivity' AND b.subject = d.dataset || '.' || c.table_name || '.' || c.column_name
   WHERE c.table_catalog = current_database()),
 folded AS (
   SELECT table_name, count(*) AS n,
@@ -52,6 +52,6 @@ SELECT f.table_name AS name,
        '?table=' || f.table_name AS link
 FROM folded f
 CROSS JOIN d
-LEFT JOIN cur e ON e.aspect = 'entity' AND e.subject = d.dataset || '.' || f.table_name
+LEFT JOIN cur e ON e.property = 'entity' AND e.subject = d.dataset || '.' || f.table_name
 LEFT JOIN latest l ON l.table_name = f.table_name AND l.rn = 1
 ORDER BY rows DESC, name

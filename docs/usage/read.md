@@ -1,6 +1,7 @@
 # Read the views
 
-The layer holds tables, single values and metrics, each with its
+The layer holds the views a dataset serves (tables, single values and
+metrics) and the views it keeps (plain views and rules), each with its
 description, its test results and its lineage. A view can be queried
 once it is defined. People, agents and tools read the views in four
 ways: SQL over an interface, files, the console, and the lake itself.
@@ -18,7 +19,7 @@ FROM stays.room_count;
 ```
 
 `fact_values()` returns each single value of the dataset as one row:
-`metric`, `value`, `reason`.
+`view`, `value`, `reason`.
 
 ## Read a metric's series
 
@@ -63,13 +64,23 @@ SELECT target_column, source_table, source_column, expression FROM column_mappin
 ```
 
 ```glossql
-SELECT subject, aspect, value, state FROM GLOSSARY(stays.booked_nights);
+SELECT subject, property, value, state FROM GLOSSARY(stays.booked_nights);
 ```
 
 `column_mapping()` is the column lineage: each column a view serves,
 the loaded column it comes from, the source system that table is
-loaded from, and the expression between them. Lineage needs no work of its own. Each
-load and each view definition records it.
+loaded from, and the expression between them. Lineage needs no work
+of its own: each load and each view definition records it.
+
+## Find what a dataset keeps
+
+`find()` returns the views, tables and columns a term names: by name,
+meaning, tags, and for a view the columns it reads. A query an agent
+kept to decide a mapping or a unit is found this way:
+
+```sql
+SELECT asset, what, kind, meaning, tags, matched_on, sql FROM find('unit');
+```
 
 ## Over the interfaces
 
@@ -147,7 +158,7 @@ datasets.
 | Section | Shows |
 |---|---|
 | Overview | coverage of the required annotations, open work, the model, the history, lineage |
-| Catalog | each source, table, column and property with its annotations and measurements; tables and single values |
+| Catalog | each source, table, column and property with its annotations and results; tables and single values |
 | Views | each metric: its series, slices, what moved, its assumptions and its SQL |
 | Quality | test results worst first, each load with its dropped rows, required annotations nobody wrote |
 | Review | the review queue and the decisions |

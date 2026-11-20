@@ -94,9 +94,9 @@ fn relation_sql(name: &str) -> Option<String> {
             && !s.starts_with(|c: char| c.is_ascii_digit())
             && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     };
-    if let Some(aspect) = name.strip_prefix("read.") {
-        let relation = aspect.to_string();
-        return ident(aspect).then(|| format!("SELECT * FROM {relation}"));
+    if let Some(property) = name.strip_prefix("read.") {
+        let relation = property.to_string();
+        return ident(property).then(|| format!("SELECT * FROM {relation}"));
     }
     ident(name).then(|| format!("SELECT * FROM \"{name}\""))
 }

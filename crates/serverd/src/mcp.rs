@@ -34,27 +34,39 @@ async fn summary_counts(plane: &Plane) -> Result<SummaryCounts, String> {
 }
 
 const INSTRUCTIONS: &str = "glossdb is the data harness for people and agents. Here you \
-build this workspace's data intelligence layer in the lake, beside the data: source data in; \
-described and tested tables, single values and metrics out, readable by any tool that opens \
-the lake. There are four kinds of work. Integrate: declare a source, load its tables with \
-load queries, and define views, each a named SQL query on the dataset: a table, a single \
-value, or a metric (a value per period with dimensions). Describe: annotate the dataset, its \
-tables, columns and relationships. Test: the built-in tests run after each load, and you \
-declare your own. Review: state each judgment call as an assumption with a key and a \
-confidence; a person confirms or corrects it, and their decision outranks your annotation. \
-The kinds are not stages. A view needs a loaded table, a test needs something defined, a \
-review needs an open question; apart from that, work in the order the task asks for. Lineage \
-is recorded as you load and define, and a view can be queried once it is defined. \
+build this workspace's data intelligence layer in the lake, beside the data: what the data \
+means (metadata), how its sources map (integration), where a value comes from (lineage), \
+whether it is fit for its use (quality), and who decides (governance). The lineage is \
+computed for you. There are four kinds of work. Integrate: declare a source, load its tables with load queries, define views. \
+Describe: annotate the dataset, its tables, columns, relationships and views. Test: gauge whether the data is fit for its use. Read the values before you rely on them \
+(units, codes, ranges, gaps, duplicates), write what must hold as a rule view, and read the \
+built-in tests, which run after each write. Review: state each \
+judgment call as an assumption with a key and a confidence; a person confirms or corrects it, \
+and their decision outranks your annotation. The kinds are not stages: work in the order the \
+task asks for. \
+Everything you keep is a view: a named SQL query on the dataset with its reason, defined in \
+one statement, `GLOSS <name> ON <dataset> AS $${\"kind\": \"<kind>\", \"sql\": \"<query>\", \
+\"meaning\": \"<why it is kept>\", \"tags\": [\"<word>\"]}$$`. The kind says what it is for. \
+No kind: a query worth reading again, the evidence behind a decision (a profile, a \
+comparison, a mapping, a unit); it asks for nothing more. `table`, `value`, `metric`: what \
+the dataset serves; `next` asks for their descriptions, and the built-in tests run on them. \
+`rule`: a query whose rows break a rule; it must return none, a test runs on it after every \
+write, and only a person accepts a count of rows. Keep each query that decided something \
+and tag it: `find('<term>')` searches views by name, meaning, tags and the columns they \
+read, so the next agent and the reviewer find it. A function (`DECLARE FUNCTION`) is a \
+kit's machinery: one stored result per asset, computed again when what it read changed. \
+Write one only for a measure that many assets need. \
 One tool, `glossql`, runs glossql statements and SQL. Start with the entry skill: `SELECT \
-body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. It shows each kind of work with \
-a working example and names the references for depth. Every page this server serves is a \
-row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. \
+body FROM pages() WHERE uri = 'skill://glossql/SKILL.md'`. Every page this server serves is \
+a row of `pages()`; the language is `doc://SPEC.md` and `doc://grammar.ebnf`. Read the \
+catalog as `main.<relation>` (`main.next`, `main.glossary`, `main.results`): a table of the \
+same name in a dataset would hide it. \
 Every result ends with `status:`: whether the last statement ran or was refused. A call on \
 a dataset (`USE <dataset>;` or the dataset's own endpoint) adds `next:`, the count of what \
 must and what should be done on the dataset per kind of work, and `first:`, the first of them. \
 A call that changed what waits in the workspace adds `summary:`. \
-`SELECT level, kind, asset, state, open, statement FROM next` lists every open row with the \
-statement that opens the work; `<...>` marks what you fill in. Each row has a level. Must: \
+`SELECT level, kind, asset, state, open, statement FROM main.next` lists every open row with \
+the statement that opens the work; `<...>` marks what you fill in. Each row has a level. Must: \
 served data is wrong or cannot be served. Should: the layer is incomplete for what is served. \
 Could: what sits beside it, read on request with `WHERE level = 'could'`. Work on a dataset is \
 complete when no must is open; the should rows make the layer complete. Rows that wait for a \
@@ -196,7 +208,7 @@ impl GlossqlMcp {
         let opening = match bound {
             Some(dataset) => format!(
                 "Every call on this interface opens on `{dataset}`. Begin with `SELECT level, \
-                 kind, asset, state, open, statement FROM next WHERE level <> 'could'`."
+                 kind, asset, state, open, statement FROM main.next WHERE level <> 'could'`."
             ),
             None => self.summary.opening(),
         };
@@ -213,10 +225,10 @@ impl GlossqlMcp {
         // the modeling skill's load page is where it starts.
         let opening = if datasets == 0 {
             "No dataset exists yet. Declare a dataset, `DECLARE DATASET <name> SET (purpose: \
-             '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
+             '<what it is for>')`, then read `USE <name>; SELECT * FROM main.next`."
         } else {
             "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT level, kind, \
-             asset, state, open, statement FROM next WHERE level <> 'could'`."
+             asset, state, open, statement FROM main.next WHERE level <> 'could'`."
         }
         .to_string();
         match summary_counts(plane).await {
@@ -325,19 +337,19 @@ impl GlossqlMcp {
             "glossql",
             format!(
                 "Run glossql statements and SQL on the workspace: load sources, annotate, define \
-                 views, declare tests, read data and the catalog. One outcome per statement, \
+                 and keep views, read data and the catalog. One outcome per statement, \
                  `;`-separated. \
                  {opens} \
                  Outcomes: a read is `{{columns, rows, row_count, truncated}}`, rows capped at \
                  {} (`GLOSSARY()`, `TESTS()` and the catalog tables are not capped; a null \
-                 field is left out of its row); a write is `{{done}}` or `{{affected}}`; a view \
-                 definition (`GLOSS <view> ON <dataset>`) answers with the view's row of \
-                 `view_summary()`. A refused statement is an error that names what was wrong \
+                 field is left out of its row); a write is `{{done}}` or `{{affected}}`; the \
+                 definition of a table, a single value or a metric (`GLOSS <view> ON <dataset>`) \
+                 answers with the view's row of `view_summary()`. A refused statement is an error that names what was wrong \
                  and its place in the call; the statements before it stay stored \
                  (`{{completed}}`). Every result ends with `status:` (the last statement); a call \
                  on a dataset adds `next:` (what must and what should be done on it, per kind of \
                  work) and `first:` (the first of them); \
-                 `SELECT level, kind, asset, state, open, statement FROM next` gives each row's \
+                 `SELECT level, kind, asset, state, open, statement FROM main.next` gives each row's \
                  statement; work on a dataset is complete when no must is open. Start with `SELECT body FROM pages() WHERE uri = \
                  'skill://glossql/SKILL.md'`.",
                 self.plane.row_cap()
@@ -377,7 +389,7 @@ async fn open_question_count(plane: &Plane) -> Option<usize> {
         let Ok(session) = plane.channel(actor.clone(), Some(&dataset)).await else {
             continue;
         };
-        if let Some(n) = read_rows(&session, "SELECT count(*) AS n FROM open_questions")
+        if let Some(n) = read_rows(&session, "SELECT count(*) AS n FROM main.open_questions")
             .await
             .ok()
             .and_then(|rows| rows.first().and_then(|r| r["n"].as_u64()))
@@ -492,7 +504,7 @@ impl ServerHandler for GlossqlMcp {
                          describe, test, review): each row with its level (must, should, \
                          could), its asset, its state, what the newest load changed and the \
                          statement that opens the work. `next://{dataset}` serves every \
-                         row; the same rows through the tool are `SELECT * FROM next WHERE \
+                         row; the same rows through the tool are `SELECT * FROM main.next WHERE \
                          kind = '<kind>'`.",
                     )
                     .with_mime_type("text/markdown"),
@@ -820,7 +832,7 @@ impl GlossqlMcp {
             .channel(actor.clone(), Some(dataset))
             .await
             .map_err(|e| e.to_string())?;
-        let rows = read_rows(&session, "SELECT * FROM next").await?;
+        let rows = read_rows(&session, "SELECT * FROM main.next").await?;
         Ok(rows
             .into_iter()
             .filter(|row| kind.is_none_or(|k| row["kind"].as_str() == Some(k)))

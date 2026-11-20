@@ -76,10 +76,7 @@ must	integrate	ops	missing
 could	describe	ops.orders_raw	missing
 
 statement ok
-DECLARE ASPECT orders WITH $${"title": "Orders"}$$ AS VIEW;
-
-statement ok
-GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw"}$$;
+GLOSS orders ON ops AS $${"kind": "metric", "sql": "SELECT month, orders AS value, price FROM ops.orders_raw"}$$;
 
 statement ok
 GLOSS role ON orders.month AS $${"value": "timestamp"}$$;
@@ -118,7 +115,7 @@ WHERE f.returns IS NOT NULL AND f.declared_by LIKE 'kit:%'
 # expectation's own words kept; view_tests() names the check as `run`
 
 statement ok
-DECLARE ASPECT price_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
+DECLARE PROPERTY price_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
 
 statement ok
 DECLARE FUNCTION price_check FOR ops AS $$SELECT count(*) FILTER (WHERE price <= 11) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) FILTER (WHERE price <= 11) || ' rows are priced at 11 or under' AS finding FROM ops.orders_raw$$ RETURNS price_rule;
@@ -161,9 +158,35 @@ SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price'
 ----
 0
 
+# a property with no tolerance of its own: the rate is accepted by declaring the test again with it as threshold,
+# and the statement handed keeps who may annotate the property
+statement ok
+DECLARE PROPERTY orders_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
+
+statement ok
+DECLARE FUNCTION orders_check FOR ops AS $$SELECT 1.0::DOUBLE AS breach_rate, 'every row breaks it' AS finding FROM ops.orders_raw LIMIT 1$$ RETURNS orders_rule;
+
+statement ok
+DECLARE TEST orders_test ON orders_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+
+statement ok
+GLOSS orders_rule ON ops.orders_raw.orders AS $${"outcome": "no row has orders"}$$;
+
+statement ok
+SELECT orders_check() FROM ops.orders_raw.orders;
+
+query I
+SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.orders'
+  AND contains(statement, 'DECLARE TEST orders_test ON orders_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD');
+----
+1
+
+statement ok
+DELETE FROM glossary WHERE property = 'orders_rule';
+
 # a test on a measurement is set where its check ran, and is asked for nowhere else
 statement ok
-DECLARE ASPECT staff_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
+DECLARE PROPERTY staff_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;
 
 statement ok
 DECLARE FUNCTION staff_check FOR ops AS $$SELECT count(*) FILTER (WHERE staff < 1) / greatest(count(*), 1)::DOUBLE AS breach_rate, NULL::VARCHAR AS finding FROM ops.orders_raw$$ RETURNS staff_rule;
@@ -175,14 +198,11 @@ DECLARE TEST staff_test ON staff_rule DETECTOR rate_tolerance THRESHOLD 0.0;
 # asked on a table view, with its grain, and not on a metric
 
 statement ok
-DECLARE ASPECT order_list WITH $${"title": "Orders, listed", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS order_list ON ops AS $${"sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
+GLOSS order_list ON ops AS $${"kind": "table", "sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
 
 query II
 SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list' AND level = 'should' AND kind = 'review'),
-       (SELECT count(*) FROM open_questions WHERE aspect = 'order_list');
+       (SELECT count(*) FROM open_questions WHERE property = 'order_list');
 ----
 2	2
 
@@ -192,18 +212,6 @@ SELECT count(*) FILTER (WHERE contains(statement, 'GLOSS entity ON ops.order_lis
 FROM next WHERE kind = 'describe';
 ----
 1	0
-
-# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view
-
-query TT
-SELECT kind, meaning FROM view_definitions WHERE name = 'orders';
-----
-measure	orders taken per month
-
-query T
-SELECT kind FROM view_definitions WHERE name = 'order_list';
-----
-relation
 
 # --- every kind of view closes the row to define one, a stopped one does not. A test of one's own on a table view
 # is set on the view: its row names the view, its check and the statement that accepts its rate, and the table view's
@@ -220,10 +228,7 @@ CREATE TABLE side.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booke
   ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
 
 statement ok
-DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
-
-statement ok
-GLOSS ledger_rows ON side AS $${"sql": "SELECT count(*) AS value FROM side.ledger"}$$;
+GLOSS ledger_rows ON side AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM side.ledger"}$$;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
@@ -239,10 +244,7 @@ SELECT asset, state FROM next WHERE kind = 'integrate';
 side	missing
 
 statement ok
-DECLARE ASPECT ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS ledger_clean ON side AS $${"sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
+GLOSS ledger_clean ON side AS $${"kind": "table", "sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
@@ -250,7 +252,7 @@ SELECT count(*) FROM next WHERE kind = 'integrate';
 0
 
 statement ok
-DECLARE ASPECT fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
+DECLARE PROPERTY fund_coded WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"}, "breach_rate": {"type": "number"}, "rows": {"type": "integer"}}}$$ AS FACT ON TABLE;
 
 statement ok
 DECLARE FUNCTION fund_coded_check FOR side AS $$SELECT count(*) FILTER (WHERE fund NOT IN ('general', 'water')) / greatest(count(*), 1)::DOUBLE AS breach_rate, count(*) AS rows FROM side.ledger_clean$$ RETURNS fund_coded;
@@ -301,10 +303,7 @@ statement ok
 CREATE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, (i % 10)::DOUBLE AS points FROM range(60) t(i);
 
 statement ok
-DECLARE ASPECT driver_results WITH $${"title": "Results with their driver", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
+GLOSS driver_results ON harm AS $${"kind": "table", "sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
 
 query TTTTT
 SELECT level, kind, state, starts_with(open, 'relationship_test'), contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
@@ -323,10 +322,7 @@ green
 # --- a metric that serves no series is series_test on the metric, red, a must; the roles it asks for close it
 
 statement ok
-DECLARE ASPECT points_per_driver WITH $${"title": "Points per driver"}$$ AS VIEW;
-
-statement ok
-GLOSS points_per_driver ON harm AS $${"sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
+GLOSS points_per_driver ON harm AS $${"kind": "metric", "sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
 
 query TTT
 SELECT level, kind, state FROM next WHERE asset = 'harm.points_per_driver' AND starts_with(open, 'series_test');
@@ -352,13 +348,13 @@ statement ok
 USE grid;
 
 statement ok
-DECLARE ASPECT top_points WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
+DECLARE PROPERTY top_points WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
 
 statement ok
 DECLARE FUNCTION top_points FOR grid AS $$ SELECT max(points) AS n FROM grid.results $$ RETURNS top_points;
 
 statement ok
-DECLARE ASPECT top_seen WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
+DECLARE PROPERTY top_seen WITH $${"type": "number"}$$ AS MEASUREMENT ON DATASET;
 
 statement ok
 DECLARE FUNCTION top_seen FOR grid AS $$ SELECT max(value::DOUBLE) AS n FROM results('top_points', 'itself') $$ RETURNS top_seen;
@@ -376,7 +372,7 @@ top_points	changed
 top_seen	possibly
 
 query T
-SELECT state FROM GLOSSARY(grid) WHERE aspect = 'top_seen';
+SELECT state FROM GLOSSARY(grid) WHERE property = 'top_seen';
 ----
 possibly
 
@@ -398,4 +394,39 @@ query TTT
 SELECT function, what, reason FROM glossql_outdated() WHERE function IN ('top_points', 'top_seen') ORDER BY ALL;
 ----
 top_seen	result top_points	changed
+
+# --- a column whose name is no plain name: the statement results_due() hands out quotes it, and it runs
+
+statement ok
+COPY (SELECT 'k' || (i % 3) AS kind, i * 1.5 AS amount FROM range(9) t(i)) TO '{TEST_DIR}/kinds.csv' (HEADER);
+
+statement ok
+DECLARE DATASET shop SET (purpose: 'odd column names');
+
+statement ok
+USE shop;
+
+statement ok
+DECLARE SOURCE files SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE RECIPE items ON shop FROM files AS $$SELECT * FROM read_csv('kinds.csv')$$;
+
+statement ok
+GLOSS per_kind ON shop AS $${"kind": "table", "sql": "SELECT kind, count(*), sum(amount) AS \"order\" FROM items GROUP BY kind"}$$;
+
+statement ok
+GLOSS kinds ON shop AS $${"kind": "table", "sql": "SELECT p.kind, p.\"count_star()\" AS n, p.\"order\" AS total FROM per_kind p"}$$;
+
+# each write is followed by the results due, as the server follows it: the profiles of the odd columns are stored
+query TT
+SELECT subject, error IS NULL FROM results WHERE function = 'column_profile' AND subject IN ('shop.per_kind.count_star()', 'shop.per_kind.order') ORDER BY ALL;
+----
+shop.per_kind.count_star()	true
+shop.per_kind.order	true
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
 

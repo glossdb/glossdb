@@ -6,7 +6,7 @@
 -- judges: a measured defect carries no hue, only a result does.
 WITH d AS (SELECT dataset FROM current_dataset),
 a AS (
-  SELECT name, schema FROM aspects
+  SELECT name, schema FROM properties
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT ms.source_table || '.' || ms.source_column AS source,
@@ -17,24 +17,24 @@ reads AS (
 meanings AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'meaning' AND g.rank = 1),
+  WHERE g.property = 'meaning' AND g.rank = 1),
 w AS (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 results AS (
-  SELECT v.subject, v.aspect, v.test, v.state, v.score, v.error, v.computed_at, w.detector, w.threshold,
+  SELECT v.subject, v.property, v.test, v.state, v.score, v.error, v.computed_at, w.detector, w.threshold,
          CASE v.state WHEN 'red' THEN 4 WHEN 'orange' THEN 3 WHEN 'yellow' THEN 2 ELSE 1 END AS sev
   FROM TESTS() v JOIN w ON w.name = v.test
   WHERE w.detector IS NOT NULL AND v.state <> 'green'),
 annotations AS (
-  SELECT g.subject, g.aspect,
+  SELECT g.subject, g.property,
          string_agg(g.actor_kind || ': ' || coalesce(json_extract_string(g.body, '$.value'), g.body::VARCHAR), ' · '
            ORDER BY CASE g.actor_kind WHEN 'human' THEN 0 WHEN 'agent' THEN 1 ELSE 2 END, g.begin_snapshot DESC) AS said
   FROM glossary g JOIN d ON d.dataset = g.dataset
-  JOIN (SELECT DISTINCT subject, aspect FROM results) v ON v.subject = g.subject AND v.aspect = g.aspect
-  GROUP BY g.subject, g.aspect),
+  JOIN (SELECT DISTINCT subject, property FROM results) v ON v.subject = g.subject AND v.property = g.property
+  GROUP BY g.subject, g.property),
 judged AS (
   SELECT v.state AS chip, 'warn' AS scls,
          CASE v.detector
-           WHEN 'value_entropy' THEN 'The annotations on ' || v.aspect || ' differ on ' || substr(v.subject, len(d.dataset) + 2) || '.'
+           WHEN 'value_entropy' THEN 'The annotations on ' || v.property || ' differ on ' || substr(v.subject, len(d.dataset) + 2) || '.'
            ELSE CASE WHEN v.state = 'error' THEN v.test || ' could not score ' || substr(v.subject, len(d.dataset) + 2) || '.'
                      ELSE v.test || ' reads ' || v.state || ' on ' || substr(v.subject, len(d.dataset) + 2) || '.' END END AS headline,
          CASE v.detector
@@ -46,7 +46,7 @@ judged AS (
                      ELSE 'The detector ' || v.detector || ' scored ' || fmt_number(v.score)
                        || coalesce(' against the threshold ' || CAST(v.threshold AS VARCHAR), '') || '.' END END AS why,
          coalesce(rd.views, '') AS reads,
-         v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on ' || v.aspect
+         v.test || ' · ' || v.detector || coalesce(' @ ' || CAST(v.threshold AS VARCHAR), '') || ' on ' || v.property
            || ' · measured ' || strftime(v.computed_at, '%d %b %Y %H:%M') AS meta,
          '?test=' || v.test || '&kind=' || CASE v.detector WHEN 'value_entropy' THEN 'values' ELSE 'results' END AS link,
          'the test' AS link_text,
@@ -54,10 +54,10 @@ judged AS (
          CAST(v.score AS DOUBLE) AS size
   FROM results v
   CROSS JOIN d
-  LEFT JOIN annotations vo ON vo.subject = v.subject AND vo.aspect = v.aspect
+  LEFT JOIN annotations vo ON vo.subject = v.subject AND vo.property = v.property
   LEFT JOIN reads rd ON d.dataset || '.' || rd.source = v.subject),
 measured AS (
-  SELECT g.subject, g.aspect, g.body, g.written_at
+  SELECT g.subject, g.property, g.body, g.written_at
   FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.current),
 orphaned AS (
@@ -66,7 +66,7 @@ orphaned AS (
          json_extract(rel, '$.filled')::BIGINT AS filled,
          written_at
   FROM (SELECT m.body AS rel, m.written_at
-        FROM measured m WHERE m.aspect = 'relationship_coherence' AND json_extract_string(m.body, '$.relationship') IS NOT NULL)
+        FROM measured m WHERE m.property = 'relationship_coherence' AND json_extract_string(m.body, '$.relationship') IS NOT NULL)
   WHERE json_extract(rel, '$.orphans')::BIGINT > 0),
 orphans AS (
   SELECT 'measured' AS chip, '' AS scls,
@@ -94,7 +94,7 @@ broken AS (
          json_extract(cand, '$.violations')::BIGINT AS violations,
          written_at
   FROM (SELECT m.subject, unnest(json_extract(m.body, '$.candidates')::JSON[]) AS cand, m.written_at
-        FROM measured m WHERE m.aspect = 'derivation_candidates')
+        FROM measured m WHERE m.property = 'derivation_candidates')
   WHERE json_extract(cand, '$.violations')::BIGINT > 0),
 breaks AS (
   SELECT 'measured' AS chip, '' AS scls,

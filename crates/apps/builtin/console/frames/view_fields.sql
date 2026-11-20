@@ -7,7 +7,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 roles AS (
   SELECT subject, json_extract_string(value, '$.value') AS role
-  FROM GLOSSARY() WHERE aspect = 'role' AND value IS NOT NULL),
+  FROM GLOSSARY() WHERE property = 'role' AND value IS NOT NULL),
 prov AS (
   SELECT DISTINCT s.target_column AS field, s.source_table || '.' || s.source_column AS source FROM column_mapping() s
   WHERE s.view = $view AND s.source_column IS NOT NULL),

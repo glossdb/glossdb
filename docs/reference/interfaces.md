@@ -42,7 +42,7 @@ The result is a JSON array with one outcome per statement:
 |---|---|
 | a read | `{"columns": [{"name", "type"}], "rows": […], "row_count": n, "truncated": bool}`; `columns` is present with zero rows |
 | a write | `{"done": "…"}` or `{"affected": n}` |
-| a view definition (`GLOSS` on a `VIEW` name) | the view's row of `view_summary()` |
+| the definition of a table, a single value or a metric (`GLOSS <view> ON <dataset>`) | the view's row of `view_summary()`; a plain view and a rule answer `{"done": "…"}` |
 | a refusal | a tool error with the reason. In a sequence it names its place (`statement 2 of 7 refused: …`), and `{"completed": […]}` carries the outcomes of the statements that ran. Where the refusal has a code, `_meta` carries it under `glossdb/refusal` as `{"code": "…"}` ([refusal codes](#refusal-codes)) |
 
 A data read returns at most `--row-cap` rows (default 200).

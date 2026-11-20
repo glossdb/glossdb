@@ -1,24 +1,34 @@
 # Define views
 
-A view is named SQL on a dataset, read as `FROM <dataset>.<name>`.
-There are three kinds, and each is a product in its own right:
+Everything an agent or a person keeps on a dataset is a view: named
+SQL on the dataset, read as `FROM <dataset>.<name>`, with its reason.
+Its kind, in the definition, says what it is for:
 
-| Kind | Declared with | Serves |
+| Kind | `"kind"` | What it is |
 |---|---|---|
-| a table | `"x-kind": "relation"` | rows: cleaned, joined or filtered data that people and other views read |
-| a single value | `"x-kind": "scalar"` | one row with a `value` column |
-| a metric | no `x-kind` | a value per period, sliced by dimensions |
+| a plain view | none | a query worth keeping, with its reason. It asks for nothing more |
+| a table | `"table"` | rows: cleaned, joined or filtered data that people and other views read |
+| a single value | `"value"` | one row with a `value` column |
+| a metric | `"metric"` | a value per period, sliced by dimensions |
+| a rule | `"rule"` | the rows that break a rule. It returns none while the rule holds; a test runs on it after every write |
 
-## Declare, then define
+A plain view keeps the evidence behind a decision: a profile, a
+comparison of two sources, the values a mapping covers, a unit. A
+table, a single value and a metric are what the dataset serves: the
+server asks for their descriptions and runs the built-in tests on
+them ([test](test.md)). A function is a kit's machinery, one stored
+value per asset; a query worth reading again is a view.
 
-Declare the name once (`AS VIEW`), with a title. Then annotate it on
-the dataset with its SQL. The annotation is the view definition.
+## Define
+
+One statement defines a view: an annotation on the dataset with its
+SQL. The first definition of a name declares it; a new one replaces
+it.
 
 ```glossql
 USE stays;
-DECLARE ASPECT confirmed_bookings WITH $${"title": "Confirmed bookings", "x-kind": "relation"}$$ AS VIEW;
 GLOSS confirmed_bookings ON stays AS $${
-  "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
+  "kind": "table", "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
   "assumptions": [
     {"dimension": "scope", "key": "confirmed-only",
      "assumption": "tentative and cancelled bookings are left out",
@@ -26,14 +36,23 @@ GLOSS confirmed_bookings ON stays AS $${
   ]
 }$$;
 
-DECLARE ASPECT room_count WITH $${"title": "Rooms", "x-kind": "scalar"}$$ AS VIEW;
-GLOSS room_count ON stays AS $${"sql": "SELECT count(*) AS value FROM rooms"}$$;
+GLOSS room_count ON stays AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM rooms"}$$;
+
+GLOSS status_values ON stays AS $${"sql": "SELECT status, count(*) AS bookings FROM bookings GROUP BY status",
+  "meaning": "the booking statuses the export carries; confirmed_bookings keeps one of them", "tags": ["status"]}$$;
+
+GLOSS stay_has_room ON stays AS $${"kind": "rule",
+  "sql": "SELECT b.booking_id FROM bookings b LEFT JOIN rooms r ON r.room_id = b.room_id WHERE r.room_id IS NULL",
+  "meaning": "every booking names a room of the hotel"}$$;
 ```
 
-The body holds `sql`, or `stopped` with the reason no number is
-served, and `assumptions`. The server answers a view definition with
-the view's row of `view_summary()`: whether it is served, and what it
-still needs.
+The body holds `sql`, or `stopped` with the reason no query is
+served; `kind`; `meaning` and `tags`, written as the view's
+annotations of those names; and `assumptions`. The server answers the
+definition of a table, a single value or a metric with the view's row
+of `view_summary()`: whether it is served, and what it still needs. A
+person's definition of a view outranks an agent's
+([review and decide](review.md)).
 
 A view and a loaded table of one dataset do not share a name. A view
 may read other views.
@@ -44,9 +63,8 @@ A metric's definition also says which column is the time, which the
 measure and how it adds up, and which columns slice it:
 
 ```glossql
-DECLARE ASPECT booked_nights WITH $${"title": "Booked nights"}$$ AS VIEW;
 GLOSS booked_nights ON stays AS $${
-  "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
+  "kind": "metric", "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
   "time": "check_in",
   "measure": {"column": "value", "additivity": "additive", "unit": "nights"},
   "dimensions": ["room_type"]
@@ -68,9 +86,8 @@ annotations yourself on `<dataset>.<view>.<column>`.
 | `non-additive` | does not combine | one row per period |
 
 ```glossql
-DECLARE ASPECT occupancy WITH $${"title": "Occupancy"}$$ AS VIEW;
 GLOSS occupancy ON stays AS $${
-  "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
+  "kind": "metric", "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
   "time": "period",
   "measure": {"column": "value", "additivity": "ratio", "numerator": "sold", "denominator": "available", "unit": "share"},
   "dimensions": ["room_type"]
@@ -150,12 +167,11 @@ GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 
 ## Stop instead of serving
 
-Where the data cannot carry the number, state why in place of the
-SQL. Readers get the reason, and a person's definition with `sql`
-lifts the stop.
+Where the data cannot carry the view, state why in place of the SQL.
+The view serves nothing, readers get the reason, and a person's
+definition with `sql` lifts the stop.
 
 ```glossql
-DECLARE ASPECT revenue_per_room WITH $${"title": "Revenue per available room"}$$ AS VIEW;
 GLOSS revenue_per_room ON stays AS $${
   "stopped": "room rates were not loaded: the export carries nights and no price"
 }$$;
@@ -163,18 +179,22 @@ GLOSS revenue_per_room ON stays AS $${
 
 ## The business glossary of the views
 
-A view's meaning is its `meaning` annotation, `GLOSS meaning ON
-<dataset>.<view>`, and a metric's unit is its measure's.
-`view_definitions` serves both.
+A view's meaning is its `meaning` annotation, written in the body or
+as `GLOSS meaning ON <dataset>.<view>`, and a metric's unit is its
+measure's. `view_definitions` serves both.
 
 ```glossql
 GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available room nights"}$$;
 ```
 
+A view's `tags` are found by `find()` with its name, its meaning and
+the columns it reads ([tags](describe.md#tags),
+[find](read.md#find-what-a-dataset-keeps)).
+
 ## Read what you defined
 
 ```sql
-SELECT name, title, kind, unit, defined, stopped FROM view_definitions;
+SELECT name, kind, unit, defined, stopped FROM main.view_definitions;
 ```
 
 ```sql
@@ -182,6 +202,7 @@ SELECT view, kind, applicable, reason, floor, additivity, dims, missing, measure
 FROM view_summary();
 ```
 
+`view_summary()` has a row for each table, single value and metric.
 `applicable` says whether a metric's series is served, and `reason`
 what to change when it is not. A table and a single value have no
 series: `applicable`, `reason` and `floor` are empty on their rows.

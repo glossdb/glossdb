@@ -2,7 +2,7 @@
 -- with its detector, threshold and who may annotate.
 SELECT strftime(t.declared_at, '%Y-%m-%d %H:%M') AS "at",
        'declared' AS what,
-       t.aspect AS subject,
+       t.property AS subject,
        coalesce(array_to_string(t.actors, ', '), '') AS who,
        concat_ws(' · ', coalesce(t.detector, 'no detector'), 'threshold ' || coalesce(CAST(t.threshold AS VARCHAR), 'none')) AS value
 FROM tests_history t

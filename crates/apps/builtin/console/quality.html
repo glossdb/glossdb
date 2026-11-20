@@ -19,7 +19,7 @@
         <p class="t-asks">{asks}</p>
         <dl class="facts">
           <div><dt>Results</dt><dd>{measured}{stale}</dd></div>
-          <div><dt>Property</dt><dd><a href="/{{ dataset }}/app/console/p/glossary?aspect={aspect}">{aspect}</a></dd></div>
+          <div><dt>Property</dt><dd><a href="/{{ dataset }}/app/console/p/glossary?property={property}">{property}</a></dd></div>
           <div><dt>Scoring</dt><dd>{scoring}</dd></div>
           <div><dt>Last computed</dt><dd>{at}</dd></div>
         </dl>
@@ -53,7 +53,7 @@
 
 {% else %}
 {{ object::crumbs(dataset=dataset, top=bar_section) }}
-{# ---- tests per view, findings, the tests, the measurements --------- #}
+{# ---- tests per view, findings, the tests, the results --------- #}
 {# A finding is a sentence from the catalog's fields with the numbers
    behind it: a test result that is not green, a load whose casts
    could not read cells, a defect a function measured. #}
@@ -75,7 +75,7 @@
   </section>
   <section class="tile">
     <header><span class="eyebrow" title="What is wrong, worst first: a test result that is not green, cells a load could not read, a defect a measurement found. Test results carry their state; measurements carry none, since a measurement reports and never judges. When nothing is wrong, the page says so.">Findings</span>
-      <code class="chip">TESTS() · imports · measurements</code></header>
+      <code class="chip">TESTS() · imports · results</code></header>
     <p class="hint">What is wrong right now, worst first. Each finding says what was seen, what reads it and where it comes from.</p>
 
     <gl-rows frame="frames/findings" empty="Nothing is wrong: every test is green, every cell was read, every relationship resolves, every identity holds.">
@@ -109,11 +109,11 @@
   <section class="tile">
     <header><span class="eyebrow" title="Every measurement, with what it found, how many assets it covered and when. A measurement reports and never judges: a defect shows above as a finding, and becomes a result only through a test. Measurements nobody has run are folded under the list.">What was measured</span>
       <code class="chip">GLOSSARY(all =&gt; true) · kind = measurement</code></header>
-    <p class="hint">What the measurements found, property by property.</p>
+    <p class="hint">What the results found, property by property.</p>
     <gl-rows frame="frames/measured" empty="no function has measured anything here yet">
       <template>
         <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr) 9rem">
-          <span class="r-subj">{aspect}<br><span class="r-meta">{subjects}</span></span>
+          <span class="r-subj">{property}<br><span class="r-meta">{subjects}</span></span>
           <span class="r-what">{found}</span>
           <span class="r-meta">{at}</span>
         </div>
@@ -123,7 +123,7 @@
       <gl-rows frame="frames/unmeasured" empty="every declared measurement has run on something">
         <template>
           <div class="rrow" style="grid-template-columns:12rem minmax(0,1fr)">
-            <span class="r-subj">{aspect}</span>
+            <span class="r-subj">{property}</span>
             <span class="r-meta">{missing}</span>
           </div>
         </template>

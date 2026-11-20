@@ -3,7 +3,7 @@
 Describing a dataset fills the glossary: the business glossary and the
 data catalog in one store, kept in the lake. An annotation (`GLOSS`)
 is a value for one property on one asset: a dataset, a table, a
-column, a relationship or a source.
+column, a relationship, a view or a source.
 
 ## Annotate
 
@@ -24,18 +24,19 @@ person on the others. No statement names its own author.
 
 ## The properties that ship
 
-A property (`ASPECT`) is declared with a JSON Schema and the kind of
+A property (`PROPERTY`) is declared with a JSON Schema and the kind of
 asset it applies to. The `kpi` kit declares these:
 
 | Property | On | Value |
 |---|---|---|
-| `meaning` | table, column, relationship | `value`: what it is, in words; `term` |
+| `meaning` | table, column, relationship, view | `value`: what it is, in words; `term` |
 | `entity` | table | `value`: what one row is; `role` (`fact`, `dimension`), `grain` (the key columns), `time_axis` |
 | `role` | column | `key`, `measure`, `dimension`, `timestamp` or `attribute` |
 | `additivity` | a measure column | `additive`, `semi-additive`, `ratio` (with `numerator`, `denominator`) or `non-additive`; `basis` |
 | `unit` | a measure column | `value`; `source_column` |
 | `dimension` | a dimension column | `primary`, `supporting` or `none` |
 | `conventions` | source | free JSON: what each export of that system carries |
+| `tags` | any asset | `value`: a list of words; the core kit declares it |
 
 `additivity`, `unit` and `dimension` are required only where the
 column's `role` says so. The views kit adds `time_grains` on a
@@ -43,7 +44,7 @@ timestamp column and `validity` on an effective-dated table
 ([define views](views.md), [test](test.md)). Each declared property:
 
 ```sql
-SELECT name, kind, grains, condition FROM aspects ORDER BY name;
+SELECT name, kind, grains, condition FROM main.properties ORDER BY name;
 ```
 
 ## Relationships
@@ -58,7 +59,7 @@ DECLARE RELATIONSHIP absences.(employee_id, contract_no) -> staff.(employee_id, 
 
 ## Measure before you state
 
-A measurement is a function run over an asset. Its result is stored
+A kit's function runs over an asset. Its result is stored
 with the lake snapshot it read at and served again until something it
 read changes after that snapshot. A result the views' tests read is
 computed again by the server after that write; `next` lists any other
@@ -83,25 +84,27 @@ SELECT relationship_coherence() FROM staff.department -> departments.code;
 | `relationship_coherence()` | a declared relationship | `filled`, `orphans`, `orphan_rate`, and the dates of the two tables compared |
 | `detect_definition_collisions()` | a dataset | views that compute the same thing |
 
-A detection proposes; a declaration is yours to make.
+A detection proposes; a declaration is yours to make. A query you
+wrote to decide something is kept as a plain view
+([define views](views.md)).
 
 ## Read the glossary
 
 ```glossql
-SELECT subject, aspect, value, test_state, state FROM GLOSSARY(staff);
+SELECT subject, property, value, test_state, state FROM GLOSSARY(staff);
 ```
 
 `GLOSSARY(<asset>)` returns one row per asset and property for the
 asset and what lies under it; with no argument, the dataset in use.
 The value is the person's where one exists, else the agent's, else a
-measurement's.
+function's result.
 
 ### States
 
 | `state` | Meaning |
 |---|---|
 | `current` | served; the asset is unchanged since the write |
-| `stale` | served and marked: a load redefined, retyped or dropped the column, or an input of the measurement changed |
+| `stale` | served and marked: a load redefined, retyped or dropped the column, or an input of the function's result changed |
 | `possibly` | a computed value served and marked: a result it read is out of date and not computed again yet |
 | `missing` | required and not annotated; the row still appears |
 | `conflict` | a person's and an agent's values differ beyond the test's threshold; the value is withheld |
@@ -109,7 +112,7 @@ measurement's.
 Each value side by side, with its author:
 
 ```glossql
-SELECT subject, aspect, actor, body, written_at, current FROM GLOSSARY(staff.fte, all => true);
+SELECT subject, property, actor, body, written_at, current FROM GLOSSARY(staff.fte, all => true);
 ```
 
 ## What is still missing
@@ -117,13 +120,23 @@ SELECT subject, aspect, actor, body, written_at, current FROM GLOSSARY(staff.fte
 `next` lists the required annotations nobody wrote, with the
 statement that writes each. On the assets your views read or serve
 they are `should`; on the tables and columns no view reads they are
-`could`, written when a person asks. Two values that conflict are a
+`could`, written when a person asks. A plain view or a rule view asks
+for nothing. Two values that conflict are a
 `must`:
 
 ```sql
-SELECT level, asset, state, open, statement FROM next WHERE kind = 'describe';
+SELECT level, asset, state, open, statement FROM main.next WHERE kind = 'describe';
 ```
 
 Annotations are append-only. A new value from the same kind of actor
 replaces that actor's earlier value at read; the history stays in the
-`glossary` table. Removal is SQL: `DELETE FROM glossary WHERE …`.
+`glossary` table. Removal is SQL: `DELETE FROM main.glossary WHERE …`.
+
+## Tags
+
+`tags` is a list of words on a table, a column or a view; `tags` in a
+view's body writes it. Each actor's newest list replaces its list
+before; a person's and an agent's lists are read as one.
+`tag_statement('<dataset>.<asset>', ['<word>'])` gives the statement
+with a word added. `find()` finds an asset by its tags
+([read](read.md#find-what-a-dataset-keeps)).

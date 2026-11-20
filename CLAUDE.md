@@ -83,6 +83,12 @@ workspace version.
   tests. The core names no add-on and runs without each of them. What
   an add-on stores is tracked by the core's one dependency mechanism;
   an add-on gets no mechanism of its own.
+- **What is kept is a view.** Everything an agent keeps is a view: a
+  named query with its meaning and tags, defined in one statement.
+  Its kind says what it is for: none (a kept query), `table`, `value`,
+  `metric` (served), `rule` (its rows break a rule). A function is a
+  kit's machinery: one stored result per asset. What is open:
+  `.claude/plans/views.md`.
 - **`next`** has four kinds of work (integrate, describe, test,
   review) and three levels (must, should, could). An add-on's rows
   come in through its tests and its stored results.
@@ -123,7 +129,7 @@ workspace version.
   replaces is deleted in the same step, with its tests: one read
   answers one question. The suite follows the feature, not the
   reverse.
-- **Build on the engine.** A read, a measurement, a next step is SQL
+- **Build on the engine.** A read, a function, a next step is SQL
   in a kit. The extension owns the language and the catalog; the
   server owns the interfaces. Extend DuckDB and the extension at
   their own seams (the glossql-substrate skill).

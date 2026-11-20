@@ -46,7 +46,7 @@ async fn workspace() -> (Router, Arc<Plane>, tempfile::TempDir) {
         .unwrap();
 
     // The app, authored as glosses — the only way an app is written:
-    // one part per gloss under the four shipped aspects. Its name is
+    // one part per gloss under the four shipped properties. Its name is
     // its own: an `<app>.<part>` subject whose first segment names the
     // dataset would read as dataset-qualified (SPEC.md §3).
     session
@@ -360,7 +360,7 @@ async fn a_release_gates_what_is_served() {
     let frame = get(&app, "/perf/app/board/frames/monthly").await;
     assert_eq!(values(frame).await, vec![25.0, 8.0]);
     let first = session
-        .execute("SELECT min(written_at) FROM glossary_history WHERE aspect = 'app_release';")
+        .execute("SELECT min(written_at) FROM glossary_history WHERE property = 'app_release';")
         .await
         .unwrap();
     let glossdb_apps::engine::Outcome::Rows { batches, .. } = &first[0] else {
@@ -492,15 +492,15 @@ async fn every_page_renders_and_passes_the_shells_policy() {
         "/perf/app/console/p/glossary?table=ledger",
         "/perf/app/console/p/glossary?table=ledger&tab=history",
         "/perf/app/console/p/glossary?column=ledger.value",
-        "/perf/app/console/p/glossary?aspect=meaning",
+        "/perf/app/console/p/glossary?property=meaning",
         "/perf/app/console/p/glossary?source=erp",
         "/perf/app/console/p/glossary?source=erp&tab=used",
         "/perf/app/console/p/views",
         "/perf/app/console/p/views?view=dso",
-        "/perf/app/console/p/views?view=dso&tab=measurements",
+        "/perf/app/console/p/views?view=dso&tab=results",
         "/perf/app/console/p/views?view=dso&dim=cohort",
-        "/perf/app/console/p/views?view=cleaned&kind=relation",
-        "/perf/app/console/p/views?view=payables&kind=scalar",
+        "/perf/app/console/p/views?view=cleaned&kind=table",
+        "/perf/app/console/p/views?view=payables&kind=value",
         "/perf/app/console/p/quality",
         "/perf/app/console/p/quality?test=role_test",
         "/perf/app/console/p/review",
@@ -588,17 +588,14 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
     agent
         .execute(
             r#"USE perf;
-               DECLARE ASPECT dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-               DECLARE ASPECT payables WITH $${"title": "Outstanding payables", "x-kind": "scalar"}$$ AS VIEW;
-               DECLARE ASPECT cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS VIEW;
-               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger",
+               GLOSS dso ON perf AS $${"kind": "metric", "sql": "SELECT month, value, cohort FROM perf.ledger",
                  "assumptions": [
                    {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
                     "alternative": "doubled", "alternative_sql": "SELECT month, value * 2 AS value FROM ledger"},
                    {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
                  ]}$$;
-               GLOSS payables ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
-               GLOSS cleaned ON perf AS $${"sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
+               GLOSS payables ON perf AS $${"kind": "value", "sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
+               GLOSS cleaned ON perf AS $${"kind": "table", "sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
                GLOSS additivity ON dso.value AS $${"value": "additive"}$$;
@@ -651,7 +648,7 @@ async fn a_review_decision_is_signed_with_the_callers_own_name() {
                     "application/x-www-form-urlencoded",
                 )
                 .body(Body::from(
-                    "subject=perf&aspect=dso&key=per-line&stance=confirmed",
+                    "subject=perf&property=dso&key=per-line&stance=confirmed",
                 ))
                 .unwrap(),
         )
@@ -661,7 +658,7 @@ async fn a_review_decision_is_signed_with_the_callers_own_name() {
     // Signed with the name the gate carried in (`workspace()` holds
     // in for it with `ada`), not with a stand-in.
     let signed = human
-        .execute("SELECT actor_id FROM glossary WHERE aspect = 'review_decision' AND actor_kind = 'human';")
+        .execute("SELECT actor_id FROM glossary WHERE property = 'review_decision' AND actor_kind = 'human';")
         .await
         .unwrap();
     let glossdb_apps::engine::Outcome::Rows { batches, .. } = signed.last().unwrap() else {
@@ -695,7 +692,7 @@ async fn every_builtin_frame_executes_and_serves_classic_types() {
             };
             // Extra params are ignored by frames that bind none of them.
             let uri = format!(
-                "/perf/app/{}/frames/{stem}?view=dso&subject=ledger&dim=region&grain=month&span=24&test=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none&object=ledger",
+                "/perf/app/{}/frames/{stem}?view=dso&subject=ledger&dim=region&grain=month&span=24&test=none&stopped=0&table=ledger&column=ledger.value&property=meaning&kind=fact&source=none&object=ledger",
                 builtin.name
             );
             let response = get(&app, &uri).await;
@@ -729,8 +726,7 @@ async fn a_metric_without_additivity_refuses_its_own_page_and_no_other() {
         .await
         .execute(
             r#"USE perf;
-               DECLARE ASPECT lines WITH $${"title": "Lines"}$$ AS VIEW;
-               GLOSS lines ON perf AS $${"sql": "SELECT month, value FROM perf.ledger"}$$;
+               GLOSS lines ON perf AS $${"kind": "metric", "sql": "SELECT month, value FROM perf.ledger"}$$;
                GLOSS role ON lines.month AS $${"value": "timestamp"}$$;
                GLOSS role ON lines.value AS $${"value": "measure"}$$;
                SELECT temporal() FROM lines.month;"#,
@@ -783,8 +779,8 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         ("table_loads", "catalog"),
         ("column_head", "catalog"),
         ("column_values", "catalog"),
-        ("aspect_head", "catalog"),
-        ("aspect_values", "catalog"),
+        ("property_head", "catalog"),
+        ("property_values", "catalog"),
         ("findings", "catalog"),
         ("measured", "catalog"),
         ("relations", "catalog"),
@@ -802,7 +798,7 @@ async fn frames_declare_their_class_and_data_frames_never_read_the_glossary() {
         let response = get(
             &app,
             &format!(
-                "/perf/app/console/frames/{frame}?view=dso&subject=ledger&dim=region&grain=month&span=24&test=none&stopped=0&table=ledger&column=ledger.value&aspect=meaning&kind=fact&source=none"
+                "/perf/app/console/frames/{frame}?view=dso&subject=ledger&dim=region&grain=month&span=24&test=none&stopped=0&table=ledger&column=ledger.value&property=meaning&kind=fact&source=none"
             ),
         )
         .await;
@@ -857,9 +853,10 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     // A correction with the human's own words. The answer is the write
     // event, not a navigation: 204 with the trigger header the store
     // and every component listen for.
-    let response =
-        post("subject=perf&aspect=dso&key=per-line&stance=corrected&note=per+order,+not+per+line")
-            .await;
+    let response = post(
+        "subject=perf&property=dso&key=per-line&stance=corrected&note=per+order,+not+per+line",
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT, "{:?}", response);
     assert_eq!(
         response
@@ -893,7 +890,7 @@ async fn the_console_takes_a_review_decision_and_refuses_a_stale_one() {
     // refuses instead of writing a second review decision from a stale page —
     // and the refusal carries the trigger too, so the stale tab's
     // panels re-derive to the current state on their own.
-    let response = post("subject=perf&aspect=dso&key=per-line&stance=confirmed").await;
+    let response = post("subject=perf&property=dso&key=per-line&stance=confirmed").await;
     assert_eq!(response.status(), StatusCode::CONFLICT);
     assert_eq!(
         response
@@ -924,7 +921,7 @@ async fn an_unclear_review_decision_closes_the_question_without_taking_a_side() 
                     "application/x-www-form-urlencoded",
                 )
                 .body(Body::from(
-                    "subject=perf&aspect=dso&key=per-line&stance=unclear&note=which+lines%3F",
+                    "subject=perf&property=dso&key=per-line&stance=unclear&note=which+lines%3F",
                 ))
                 .unwrap(),
         )
@@ -1175,8 +1172,7 @@ async fn a_person_walks_the_dataset_a_table_and_a_view() {
         .await
         .execute(
             r#"USE perf;
-               DECLARE ASPECT cohorts WITH $${"title": "Cohorts", "x-kind": "relation"}$$ AS VIEW;
-               GLOSS cohorts ON perf AS $${"sql": "SELECT month, cohort, value FROM perf.ledger"}$$;"#,
+               GLOSS cohorts ON perf AS $${"kind": "table", "sql": "SELECT month, cohort, value FROM perf.ledger"}$$;"#,
         )
         .await
         .unwrap();

@@ -1,6 +1,6 @@
 ---
 name: glossql-substrate
-description: How to build ON DuckDB and the glossql extension rather than around them — what each owns, the seams, the rules that come with them, and the laptop's sharp edges. Use before writing or reviewing any server code that opens the engine, runs a statement, reads the catalog, or adds a read, a measurement or a next step.
+description: How to build ON DuckDB and the glossql extension rather than around them — what each owns, the seams, the rules that come with them, and the laptop's sharp edges. Use before writing or reviewing any server code that opens the engine, runs a statement, reads the catalog, or adds a read, a function or a next step.
 ---
 
 # The substrate
@@ -8,7 +8,7 @@ description: How to build ON DuckDB and the glossql extension rather than around
 glossql is a database built on DuckDB. The glossql extension owns the
 language and the catalog; DuckLake owns the lake; this repository
 owns the interfaces (MCP, query, console). A read is SQL the engine plans, a kit is SQL the
-engine runs, a measurement is a SQL body the engine executes. Nothing
+engine runs, a function is a SQL body the engine executes. Nothing
 in Rust re-implements what the engine does, and nothing in Rust
 computes what a kit can say in SQL.
 
@@ -40,7 +40,7 @@ mode; this file is so nobody has to rediscover it.
   <subject>`), the cells of a dataset (`dataset_cells`), a
   metric's series summed over a view's typed columns (`series_aggregate`), the service
   call (`glossql_service`), and the kit loader (`glossql_kit`).
-- **A kit** owns vocabulary about the data: aspects, functions,
+- **A kit** owns vocabulary about the data: properties, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
   `../gloss/kits/` and the server's in `kits/`, run at every open,
@@ -72,24 +72,24 @@ mode; this file is so nobody has to rediscover it.
   `next` joins what it needs instead of a correlated subquery: DuckDB
   plans each correlated subquery as a dependent join and walks the whole
   plan once per such join. An arm of `next` reads the catalog and
-  never the data: what a goal judges is a measurement, read back.
-- **A read is a table macro; a measurement is a function with a
-  body.** A new read, measurement or next step is a statement in a kit,
+  never the data: what a goal judges is a stored result, read back.
+- **A read is a table macro; a stored result comes from a function
+  with a body.** A new read, function or next step is a statement in a kit,
   never a change to the server. A macro's body is bound at CREATE,
   so a macro a kit's macro calls must stand before it in the file.
-  A macro's named parameters spell `:=`; a measurement reads its
+  A macro's named parameters spell `:=`; a function reads its
   subject as `$subject`.
 - **A view's columns are subjects.** A metric's definition is a view
   under its name, and the words that make it a series — role,
   additivity, the time grains — are glosses on its columns. A re-gloss of
   the view retires its columns' glosses by the stale rule; the reads
   serve what the catalog says and re-mark nothing.
-- **Measurements carry their provenance.** The lake's snapshot id is
-  the only version. A measurement stores the snapshot it read at and
+- **Results carry their provenance.** The lake's snapshot id is
+  the only version. A result stores the snapshot it read at and
   one `inputs` row per node it read; it is current while no node it
   read changed after that snapshot. A
-  measurement is no input of a data version: a next step that must compare two
-  measurements compares them itself.
+  result is no input of a data version: a next step that must compare two
+  results compares them itself.
 - **A refusal is a value where the kit must hold.** The service
   call's soft form, `glossql.service_soft`, answers a refusal as
   `{"error": …}`; DuckDB's `TRY()` refuses volatile functions, so

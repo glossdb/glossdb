@@ -16,9 +16,16 @@ before you load. Then pick the kind of view per item:
 
 | The person asks for | Define |
 |---|---|
-| a cleaned, joined or reshaped table; a table in a given format (a data contract); a harmonised list across source systems | a table (`x-kind: relation`) |
-| one number with no date: a count, a balance today, a threshold | a single value (`x-kind: scalar`) |
-| a number over time, by region, product or team | a metric |
+| a cleaned, joined or reshaped table; a table in a given format (a data contract); a harmonised list across source systems | a table (`"kind": "table"`) |
+| one number with no date: a count, a balance today, a threshold | a single value (`"kind": "value"`) |
+| a number over time, by region, product or team | a metric (`"kind": "metric"`) |
+| a condition the data must hold: a key that is unique, a code that is in its code table, two totals that match | a rule (`"kind": "rule"`): the rows that break it |
+
+The queries you run on the way decide the served views: the values a
+mapping covers, the unit a column is in, which rows a filter drops.
+Keep each one that decided something as a plain view (no `kind`),
+with its `meaning` and `tags`, so the next agent and the reviewer find
+it with `find('<term>')`.
 
 Build shared logic once: a table view that cleans a source can feed
 several metrics and single values, and a decision on it reaches all
@@ -116,13 +123,16 @@ data settles the rest. Run the function; do not ask.
 | a level or a movement, where an event table exists | `SELECT additivity_evidence() FROM t.c` |
 | two views with the same definition | `SELECT detect_definition_collisions() FROM <dataset>` |
 
-A measurement is called in the SELECT list with its asset in FROM.
+A function is called in the SELECT list with its asset in FROM.
 `SELECT * FROM column_profile()` is refused. Its result is stored and
 served again while the data is unchanged. Every function:
 
 ```sql
-SELECT name, scope, returns FROM functions ORDER BY name
+SELECT name, scope, returns FROM main.functions ORDER BY name
 ```
+
+A query of your own that settles a question is a plain view, not a
+function: keep it with the reason it decided something.
 
 ## The engine
 
@@ -152,9 +162,9 @@ row count, a metric's total. Then report in three lists:
 | Page | When |
 |---|---|
 | `references/load.md` | sources, load queries, CSV files, dropped rows |
-| `references/define.md` | the three kinds of view; a table to a data contract; metric shapes; stopping a view |
+| `references/define.md` | the kinds of view; a table to a data contract; metric shapes; stopping a view |
 | `references/harmonise.md` | several systems of record mapped onto one target table: the branches, the contract, the mapping, the reconciliation (preview) |
-| `references/tests.md` | the built-in tests, tests of your own, tolerances |
+| `references/tests.md` | the built-in tests, rule views, a test with a tolerance |
 | `references/time-grains.md` | reading a metric: grains, windows, dimensions |
 | `references/interfaces.md` | the console, the query endpoint, exports |
 | `skill://glossql/references/review.md` | assumptions, review decisions, conflicts |

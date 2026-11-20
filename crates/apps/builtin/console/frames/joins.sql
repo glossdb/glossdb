@@ -10,12 +10,12 @@ coh AS (
          json_extract(rel, '$.filled')::BIGINT AS filled
   FROM (SELECT g.body AS rel
         FROM GLOSSARY(all => true) g
-        WHERE lower(g.kind) = 'measurement' AND g.current AND g.aspect = 'relationship_coherence'
+        WHERE lower(g.kind) = 'measurement' AND g.current AND g.property = 'relationship_coherence'
           AND json_extract_string(g.body, '$.relationship') IS NOT NULL)),
 m AS (
   SELECT g.subject, json_extract_string(g.body, '$.value') AS meaning, g.actor_kind
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.rank = 1),
+  WHERE g.property = 'meaning' AND strpos(g.subject, ' -> ') > 0 AND g.rank = 1),
 rels AS (
   SELECT r.left_side, r.op, r.right_side,
          substr(r.left_side, len(d.dataset) + 2) AS left_path,

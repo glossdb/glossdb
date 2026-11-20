@@ -46,7 +46,7 @@
              no navigation, nothing to go back to. #}
           <form class="decide" hx-post="/{{ dataset }}/app/console/decide" hx-swap="none">
             <input type="hidden" name="subject" value="{subj_id}">
-            <input type="hidden" name="aspect" value="{asp_id}">
+            <input type="hidden" name="property" value="{asp_id}">
             <input type="hidden" name="key" value="{key_id}">
             <button type="submit" name="stance" value="confirmed">Correct as stated</button>
             <details>

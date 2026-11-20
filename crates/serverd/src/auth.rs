@@ -17,7 +17,7 @@
 //! signs; it is which interface the request came through. `/mcp` is the
 //! agent interface, everything else is a human interface, and the gate stamps the
 //! interface's kind on the caller. That is the supersession key's third leg
-//! (subject, aspect, actor kind), settled by the transport as §1 says.
+//! (subject, property, actor kind), settled by the transport as §1 says.
 //!
 //! **What binds a token to this server.** RFC 8707, which the MCP
 //! authorization spec makes a MUST: the token's `aud` names this

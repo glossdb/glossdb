@@ -3,7 +3,7 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 t AS (SELECT name, detector FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
 SELECT substr(a.subject, len(d.dataset) + 2) AS subject,
-       a.aspect,
+       a.property,
        a.test,
        a.state,
        coalesce(fmt_number(a.score), '') AS score,
@@ -15,4 +15,4 @@ LEFT JOIN t ON t.name = a.test
 WHERE a.subject = d.dataset || '.' || CAST($subject AS VARCHAR)
    OR a.subject LIKE d.dataset || '.' || CAST($subject AS VARCHAR) || '.%'
 ORDER BY CASE a.state WHEN 'red' THEN 0 WHEN 'orange' THEN 1 WHEN 'yellow' THEN 2 WHEN 'error' THEN 3 ELSE 4 END,
-         a.subject, a.aspect
+         a.subject, a.property

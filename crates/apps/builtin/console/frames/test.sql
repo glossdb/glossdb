@@ -10,7 +10,7 @@ v AS (
   FROM TESTS() a WHERE a.test = $test),
 about AS (
   SELECT json_extract_string(a.schema, '$.description') AS description
-  FROM aspects a JOIN w ON w.aspect = a.name
+  FROM properties a JOIN w ON w.property = a.name
   QUALIFY row_number() OVER (ORDER BY a.begin_snapshot DESC) = 1),
 folded AS (
   SELECT count(v.state) AS n,
@@ -25,8 +25,8 @@ folded AS (
          coalesce(bool_and(v.current), true) AS current
   FROM v)
 SELECT w.name AS test,
-       w.aspect,
-       coalesce((SELECT description FROM about), 'The property ' || w.aspect || '.') AS asks,
+       w.property,
+       coalesce((SELECT description FROM about), 'The property ' || w.property || '.') AS asks,
        CASE w.detector
          WHEN 'value_entropy' THEN 'Compares the annotations of the agent and of people on each asset. Green while they agree.'
          WHEN 'rate_tolerance' THEN 'A function measures the share of rows that fail. Green while it stays within the tolerance: '

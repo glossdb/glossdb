@@ -143,5 +143,7 @@ PREVIEW workshop_files AS $$SELECT hours, count(*) AS n
 Measure what you loaded: `SELECT column_profile() FROM bookings.hours`
 gives the share of nulls, distinct values, minimum and maximum;
 `temporal()` on a date column its grain, span and gaps. Write what is
-true of this load into `meaning` on the table or column. What must
-stay true is a test (`tests.md`).
+true of this load into `meaning` on the table or column. Keep a query
+that decided a cast or a filter as a plain view with its reason and
+tags. What must stay true is a rule view, tested after every write
+(`tests.md`).

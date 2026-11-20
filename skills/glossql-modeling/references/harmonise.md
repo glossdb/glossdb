@@ -68,18 +68,20 @@ so in its `meaning`.
 
 ## 4. Define the target, one branch per system
 
-A table view (`x-kind: relation`) with one `SELECT` per system,
+A table view (`"kind": "table"`) with one `SELECT` per system,
 joined by `UNION ALL`. Each branch names its system, reads its
 system's table first, joins the mapping tables, and names every code
 it maps:
 
 ```glossql
-DECLARE ASPECT onhand WITH $${"title": "Stock on hand", "x-kind": "relation"}$$ AS VIEW;
-GLOSS onhand ON supply AS $${"sql": "SELECT 'sap' AS source_system, i.global_material AS part, s.site, CASE s.uom WHEN 'PAL' THEN s.unrestricted * u.cases_per_pallet WHEN 'CS' THEN s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'd365', i.global_material, d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet WHEN 'Cs' THEN d.physical - d.reserved END FROM stock_d365 d JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'mono', i.global_material, m.warehouse, CASE m.unit WHEN 'pal' THEN m.quantity * u.cases_per_pallet WHEN 'kart' THEN m.quantity END FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D'"}$$;
+GLOSS onhand ON supply AS $${"kind": "table", "sql": "SELECT 'sap' AS source_system, i.global_material AS part, s.site, CASE s.uom WHEN 'PAL' THEN s.unrestricted * u.cases_per_pallet WHEN 'CS' THEN s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'd365', i.global_material, d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet WHEN 'Cs' THEN d.physical - d.reserved END FROM stock_d365 d JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT 'mono', i.global_material, m.warehouse, CASE m.unit WHEN 'pal' THEN m.quantity * u.cases_per_pallet WHEN 'kart' THEN m.quantity END FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D'"}$$;
 ```
 
 - **Name each code, with no `ELSE`.** A code the `CASE` does not name
-  is then NULL, and the server lists it. An `ELSE` hides it.
+  is then NULL, and the server lists it. An `ELSE` hides it. Keep the
+  query that listed each system's codes and units as a plain view,
+  tagged with the column it maps (`"tags": ["uom", "mapping"]`), so the
+  reviewer finds why the `CASE` reads as it does.
 - **Name the system as a literal, once per branch.** `'sap' AS
   source_system`: the reconciliation counts the target's rows per
   system by it. The mapping knows each table's system without it.
@@ -152,7 +154,7 @@ Read the `must` rows first; the full list with its statements is
 long:
 
 ```sql
-SELECT kind, asset, state, open, statement FROM next WHERE level = 'must'
+SELECT kind, asset, state, open, statement FROM main.next WHERE level = 'must'
 ```
 
 A `must` here is served data that is wrong:
@@ -185,7 +187,7 @@ yellow and is no row of `next`.
 The server computes it after each load. Read it per system:
 
 ```sql
-SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
+SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys, r->'measures' AS measures FROM main.results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation' AND subject = 'supply.onhand' ORDER BY system, period
 ```
 
 Per system (and per period, where the view has a `time_axis`): the

@@ -23,7 +23,7 @@ cols AS (
 views AS (
   SELECT name, kind FROM view_definitions),
 test AS (
-  SELECT name, aspect, detector
+  SELECT name, property, detector
   FROM tests
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 pages(top, label, link, o) AS (
@@ -55,16 +55,16 @@ FROM (
   FROM cols
   UNION ALL
   SELECT 'Integration', 1, 'Tables', '', name, name,
-         (SELECT * FROM base) || 'views?view=' || name || '&kind=relation', 0
-  FROM views WHERE kind = 'relation'
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=table', 0
+  FROM views WHERE kind = 'table'
   UNION ALL
   SELECT 'Integration', 3, 'Metrics', '', name, name,
          (SELECT * FROM base) || 'views?view=' || name, 0
-  FROM views WHERE kind NOT IN ('scalar', 'relation')
+  FROM views WHERE kind = 'metric'
   UNION ALL
   SELECT 'Integration', 2, 'Single values', '', name, name,
-         (SELECT * FROM base) || 'views?view=' || name || '&kind=scalar', 0
-  FROM views WHERE kind = 'scalar'
+         (SELECT * FROM base) || 'views?view=' || name || '&kind=value', 0
+  FROM views WHERE kind = 'value'
   UNION ALL
   SELECT 'Quality', 1, 'Tests', '', name, name,
          (SELECT * FROM base) || 'quality?test=' || name || CASE WHEN detector = 'range_state' THEN '&kind=range' ELSE '' END, 0

@@ -4,15 +4,15 @@
 -- `table.column`, spelled without the dataset.
 WITH d AS (SELECT dataset FROM current_dataset),
 cur AS (
-  SELECT g.aspect, json_extract_string(g.body, '$.value') AS value
+  SELECT g.property, json_extract_string(g.body, '$.value') AS value
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.subject = d.dataset || '.' || CAST($column AS VARCHAR) AND g.aspect IN ('role', 'meaning') AND g.rank = 1),
+  WHERE g.subject = d.dataset || '.' || CAST($column AS VARCHAR) AND g.property IN ('role', 'meaning') AND g.rank = 1),
 col AS (
   SELECT c.table_name, c.column_name, c.data_type
   FROM information_schema.columns c JOIN d ON d.dataset = c.table_schema
   WHERE c.table_catalog = current_database() AND c.table_name || '.' || c.column_name = CAST($column AS VARCHAR)),
 a AS (
-  SELECT name, schema FROM aspects
+  SELECT name, schema FROM properties
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views
@@ -28,5 +28,5 @@ SELECT col.table_name,
        '?table=' || col.table_name AS link_table
 FROM col
 CROSS JOIN reads rd
-LEFT JOIN cur r ON r.aspect = 'role'
-LEFT JOIN cur m ON m.aspect = 'meaning'
+LEFT JOIN cur r ON r.property = 'role'
+LEFT JOIN cur m ON m.property = 'meaning'

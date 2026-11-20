@@ -18,8 +18,8 @@ not a stored list. An assumption is in it when:
 - no person has decided that key on that view.
 
 ```sql
-SELECT o.aspect AS view, o.key, o.assumption, o.basis, o.alternative, o.conf
-FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
+SELECT o.property AS view, o.key, o.assumption, o.basis, o.alternative, o.conf
+FROM main.open_questions o JOIN main.current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf;
 ```
 
@@ -47,7 +47,7 @@ person:
 
 ```glossql
 GLOSS review_decision ON logistics AS $${"decisions": [
-  {"aspect": "on_time_rate", "key": "promise-date", "stance": "corrected",
+  {"property": "on_time_rate", "key": "promise-date", "stance": "corrected",
    "note": "measure against the first promised date, not the rescheduled one"}
 ]}$$;
 ```
@@ -64,7 +64,7 @@ the correction says. `next` lists it as a `review` row, with the
 statement to edit:
 
 ```sql
-SELECT level, asset, state, who, open, statement FROM next WHERE kind = 'review';
+SELECT level, asset, state, who, open, statement FROM main.next WHERE kind = 'review';
 ```
 
 | `level` | `state` | `who` | Meaning |
@@ -75,7 +75,7 @@ SELECT level, asset, state, who, open, statement FROM next WHERE kind = 'review'
 `review_decisions` shows each decision and whether it is applied:
 
 ```sql
-SELECT subject, aspect, key, stance, note, folded_in FROM review_decisions;
+SELECT subject, property, key, stance, note, folded_in FROM main.review_decisions;
 ```
 
 `folded_in` turns true once no assumption below full confidence
@@ -84,14 +84,22 @@ carries the decided key on that view. Nothing is marked done by hand.
 ## Which value is served
 
 Annotations are appended, not updated. A person's value, an agent's
-value and each measurement stay side by side. A read serves one value
-per asset and property: the person's, else the agent's, else the
-measurement's. Only a signed-in person, on the console or the query
+value and each function's result stay side by side. A read serves one
+value per asset and property: the person's, else the agent's, else the
+function's. Only a signed-in person, on the console or the query
 endpoint, writes a person's value.
 
-Two more things a person decides:
+What else a person decides:
 
-- **A test result.** Accept a measured rate as a tolerance with a
-  reason ([test](test.md#accept-a-result)).
+- **A view.** A person's view definition, written over the query
+  endpoint, outranks the agent's under the same name: a person's
+  `sql` serves over an agent's `stopped`, and a person's `stopped`
+  stops an agent's `sql`. A person approves a view as it is by
+  recording the agent's definition as their own.
 - **A view's meaning.** Annotate `meaning` on the view
   ([define views](views.md)).
+- **A test result.** Accept a measured rate as a tolerance with a
+  reason ([test](test.md#accept-a-result)).
+- **A rule's count.** Only a person accepts the rows a rule view
+  returns, with `accepted` and the reason on `rule_check`
+  ([test](test.md)).

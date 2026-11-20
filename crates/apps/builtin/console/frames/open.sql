@@ -5,16 +5,16 @@ SELECT o.conf,
        CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR) AS pct,
        CASE WHEN o.conf >= 1.0 THEN '1.00'
             ELSE '0.' || lpad(CAST(CAST(round(o.conf * 100) AS INT) AS VARCHAR), 2, '0') END AS cf,
-       o.aspect AS subj,
+       o.property AS subj,
        coalesce(o.dimension, '-') || ' · ' || o.key AS asp,
        o.assumption AS what,
        coalesce(o.basis, 'unstated') AS basis,
        coalesce(o.sibling, '') AS sibling,
        coalesce('or: ' || nullif(o.alternative, ''), '') AS rival,
        o.subject AS subj_id,
-       o.aspect AS asp_id,
+       o.property AS asp_id,
        o.key AS key_id,
-       '/' || d.dataset || '/app/console/p/views?view=' || o.aspect AS link
+       '/' || d.dataset || '/app/console/p/views?view=' || o.property AS link
 FROM open_questions o
 JOIN current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf ASC, subj, asp

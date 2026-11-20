@@ -5,11 +5,11 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 tbl AS (SELECT d.dataset || '.' || CAST($table AS VARCHAR) AS subject FROM d),
 m AS (
-  SELECT g.aspect, g.body FROM GLOSSARY(all => true) g
+  SELECT g.property, g.body FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.current AND g.subject = (SELECT subject FROM tbl)
-    AND g.aspect IN ('derivation_candidates', 'hierarchy_candidates')),
+    AND g.property IN ('derivation_candidates', 'hierarchy_candidates')),
 cands AS (
-  SELECT unnest(json_extract(body, '$.candidates')::JSON[]) AS cand FROM m WHERE aspect = 'derivation_candidates'),
+  SELECT unnest(json_extract(body, '$.candidates')::JSON[]) AS cand FROM m WHERE property = 'derivation_candidates'),
 identities AS (
   SELECT 'identity' AS kind,
          json_extract_string(cand, '$.target') || ' = ' || json_extract_string(cand, '$.operands[0]')
@@ -23,9 +23,9 @@ identities AS (
   FROM cands),
 found AS (SELECT count(*) AS n FROM cands),
 ran AS (
-  SELECT count(*) FILTER (WHERE aspect = 'derivation_candidates') AS derivations,
-         count(*) FILTER (WHERE aspect = 'hierarchy_candidates') AS hierarchies,
-         max(CASE WHEN aspect = 'hierarchy_candidates' THEN json_array_length(body, '$.candidates') END) AS trees
+  SELECT count(*) FILTER (WHERE property = 'derivation_candidates') AS derivations,
+         count(*) FILTER (WHERE property = 'hierarchy_candidates') AS hierarchies,
+         max(CASE WHEN property = 'hierarchy_candidates' THEN json_array_length(body, '$.candidates') END) AS trees
   FROM m),
 searched AS (
   SELECT 'identities' AS kind,

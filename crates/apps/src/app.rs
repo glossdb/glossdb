@@ -72,7 +72,7 @@ fn manifest_toml(origin: &str, text: &str) -> Result<Manifest, String> {
     Ok(manifest(&value))
 }
 
-/// A glossed app's manifest is the `app` aspect's JSON body.
+/// A glossed app's manifest is the `app` property's JSON body.
 fn manifest_json(origin: &str, text: &str) -> Result<Manifest, String> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("{origin}: {e}"))?;

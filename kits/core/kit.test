@@ -1,5 +1,5 @@
 # name: kits/core/kit.test
-# description: the core kit — the workspace's own vocabulary, the review decision and the app aspects, and the interface's reads over the catalog; run again, it holds
+# description: the core kit — the workspace's own vocabulary, the review decision and the app properties, and the interface's reads over the catalog; run again, it holds
 # group: [sql]
 
 require glossql
@@ -39,7 +39,7 @@ SELECT list_contains(null_markers(), 'N/A'), list_contains(null_markers(), '-');
 true	false
 
 query I
-SELECT count(*) FROM aspects WHERE name IN ('recipe_change', 'review_decision', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
+SELECT count(*) FROM properties WHERE name IN ('recipe_change', 'review_decision', 'app', 'app_page', 'app_frame', 'app_spec', 'app_release');
 ----
 7
 
