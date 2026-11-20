@@ -463,7 +463,7 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT 'must', 2, 'integrate', ds.d || '.' || o.tbl, 'decided', 'agent',
            'a person approved a change to the load query of ' || o.tbl || '; it is not declared yet', '',
            '-- a person approved a new load query for ' || o.tbl || '; read it, then declare it:' || chr(10)
-             || 'SELECT body FROM glossary WHERE property = ''recipe_change'';' || chr(10)
+             || 'SELECT body FROM main.glossary WHERE property = ''recipe_change'';' || chr(10)
              || 'DECLARE RECIPE ' || o.tbl || ' ON ' || ds.d || ' FROM <source> AS $$<the approved sql>$$;'
     FROM approved o, ds),
   s_describe AS (
@@ -482,7 +482,7 @@ CREATE OR REPLACE VIEW main.next AS
                   || '-- what the newest load of each table changed: SELECT table_name, cause FROM load_changes();' || chr(10)
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss)
              ELSE CASE WHEN bool_or(h.unshaped)
-                       THEN '-- the shape of a value: SELECT name, schema FROM properties WHERE name = ''<property>'';' || chr(10)
+                       THEN '-- the shape of a value: SELECT name, schema FROM main.properties WHERE name = ''<property>'';' || chr(10)
                        ELSE '' END
                   || string_agg(DISTINCT h.gloss, chr(10) ORDER BY h.gloss) END
     FROM homed h
@@ -543,7 +543,7 @@ CREATE OR REPLACE VIEW main.next AS
     UNION ALL
     SELECT 'should', 6, 'review', ds.d || '.' || q.property, 'waiting', 'person',
            'the assumption ' || q.key || ' waits for a person''s decision: ' || q.assumption, q.property,
-           'SELECT key, assumption, basis, alternative FROM open_questions WHERE property = ''' || q.property || ''' AND key = ''' || q.key || ''';'
+           'SELECT key, assumption, basis, alternative FROM main.open_questions WHERE property = ''' || q.property || ''' AND key = ''' || q.key || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d),
   s_views AS (
     SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '',

@@ -196,7 +196,7 @@ impl GlossqlMcp {
         let opening = match bound {
             Some(dataset) => format!(
                 "Every call on this interface opens on `{dataset}`. Begin with `SELECT level, \
-                 kind, asset, state, open, statement FROM next WHERE level <> 'could'`."
+                 kind, asset, state, open, statement FROM main.next WHERE level <> 'could'`."
             ),
             None => self.summary.opening(),
         };
@@ -216,7 +216,7 @@ impl GlossqlMcp {
              '<what it is for>')`, then read `USE <name>; SELECT * FROM next`."
         } else {
             "Begin with `SELECT name FROM datasets`, then `USE <dataset>; SELECT level, kind, \
-             asset, state, open, statement FROM next WHERE level <> 'could'`."
+             asset, state, open, statement FROM main.next WHERE level <> 'could'`."
         }
         .to_string();
         match summary_counts(plane).await {
@@ -492,7 +492,7 @@ impl ServerHandler for GlossqlMcp {
                          describe, test, review): each row with its level (must, should, \
                          could), its asset, its state, what the newest load changed and the \
                          statement that opens the work. `next://{dataset}` serves every \
-                         row; the same rows through the tool are `SELECT * FROM next WHERE \
+                         row; the same rows through the tool are `SELECT * FROM main.next WHERE \
                          kind = '<kind>'`.",
                     )
                     .with_mime_type("text/markdown"),
