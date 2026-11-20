@@ -187,20 +187,9 @@ measure's. `view_definitions` serves both.
 GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available room nights"}$$;
 ```
 
-## Find what a dataset keeps
-
-`tags` is a list of words on a view, a table or a column. An actor's
-newest list replaces its own list before; a person's list and an
-agent's are read together. `find()` searches the names, meanings and
-tags of the dataset's views, tables and columns, and the columns each
-view reads:
-
-```sql
-SELECT asset, what, kind, meaning, tags, matched_on, reads FROM find('status');
-```
-
-`tag_statement('<dataset>.<asset>', ['<word>'])` gives the statement
-that adds a word to the list the actor holds.
+A view's `tags` are found by `find()` with its name, its meaning and
+the columns it reads ([tags](describe.md#tags),
+[find](read.md#find-what-a-dataset-keeps)).
 
 ## Read what you defined
 

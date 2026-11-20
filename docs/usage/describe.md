@@ -137,10 +137,6 @@ replaces that actor's earlier value at read; the history stays in the
 `tags` is a list of words on a table, a column or a view; `tags` in a
 view's body writes it. Each actor's newest list replaces its list
 before; a person's and an agent's lists are read as one.
-`tag_statement()` writes the statement with a word added, and
-`find()` searches names, meanings, tags and the columns each view
-reads:
-
-```sql
-SELECT asset, what, kind, meaning, tags, matched_on FROM find('unit');
-```
+`tag_statement('<dataset>.<asset>', ['<word>'])` gives the statement
+with a word added. `find()` finds an asset by its tags
+([read](read.md#find-what-a-dataset-keeps)).
