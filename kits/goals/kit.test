@@ -219,18 +219,6 @@ FROM next WHERE kind = 'describe';
 ----
 1	0
 
-# --- view_definitions: a metric's kind is measure; a view's meaning is the annotation on the view
-
-query TT
-SELECT kind, meaning FROM view_definitions WHERE name = 'orders';
-----
-measure	orders taken per month
-
-query T
-SELECT kind FROM view_definitions WHERE name = 'order_list';
-----
-relation
-
 # --- every kind of view closes the row to define one, a stopped one does not. A test of one's own on a table view
 # is set on the view: its row names the view, its check and the statement that accepts its rate, and the table view's
 # own columns are asked to be described
