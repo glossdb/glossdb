@@ -161,6 +161,32 @@ SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.price'
 ----
 0
 
+# a property with no tolerance of its own: the rate is accepted by declaring the test again with it as threshold,
+# and the statement handed keeps who may annotate the property
+statement ok
+DECLARE ASPECT orders_rule WITH $${"type": "object", "properties": {"outcome": {"type": "string"}, "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
+
+statement ok
+DECLARE FUNCTION orders_check FOR ops AS $$SELECT 1.0::DOUBLE AS breach_rate, 'every row breaks it' AS finding FROM ops.orders_raw LIMIT 1$$ RETURNS orders_rule;
+
+statement ok
+DECLARE TEST orders_test ON orders_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance;
+
+statement ok
+GLOSS orders_rule ON ops.orders_raw.orders AS $${"outcome": "no row has orders"}$$;
+
+statement ok
+SELECT orders_check() FROM ops.orders_raw.orders;
+
+query I
+SELECT count(*) FROM next WHERE kind = 'test' AND asset = 'ops.orders_raw.orders'
+  AND contains(statement, 'DECLARE TEST orders_test ON orders_rule BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD');
+----
+1
+
+statement ok
+DELETE FROM glossary WHERE aspect = 'orders_rule';
+
 # a test on a measurement is set where its check ran, and is asked for nowhere else
 statement ok
 DECLARE ASPECT staff_rule WITH $${"type": "object", "properties": {"breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS MEASUREMENT ON COLUMN;

@@ -496,7 +496,8 @@ CREATE OR REPLACE VIEW main.next AS
     SELECT w.name AS test,
            CASE WHEN a.kind = 'FACT' AND json_extract(a.schema, '$.properties.tolerance') IS NOT NULL THEN 'tolerance'
                 ELSE 'threshold' END AS by,
-           w.aspect
+           w.aspect,
+           CASE WHEN len(w.actors) > 0 THEN ' BY (' || array_to_string(w.actors, ', ') || ')' ELSE '' END AS actors
     FROM main.tests w JOIN main.aspects a ON a.name = w.aspect
     WHERE w.detector = 'rate_tolerance'),
   s_test AS (
@@ -519,7 +520,7 @@ CREATE OR REPLACE VIEW main.next AS
                                                  '{"tolerance": ' || ceil(t.score * 1000) / 1000 || ', "basis": "<who accepted the rate and why>"}')::VARCHAR)
                                         WHEN 'threshold' THEN 'declare the test again with it, and say in the meaning of ' || t.subject || ' who accepted it and why:' || chr(10)
                                                || '-- DECLARE TEST ' || t.test || ' ON ' || k.aspect
-                                               || ' DETECTOR rate_tolerance THRESHOLD ' || ceil(t.score * 1000) / 1000 || ';' END, '') END,
+                                               || k.actors || ' DETECTOR rate_tolerance THRESHOLD ' || ceil(t.score * 1000) / 1000 || ';' END, '') END,
                     nullif(t.run, ''),
                     'SELECT subject, aspect, actor, body, current FROM GLOSSARY(' || t.subject || ', all => true);')
     FROM vo t LEFT JOIN accepts k ON k.test = t.test
