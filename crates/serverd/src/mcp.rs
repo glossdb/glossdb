@@ -52,7 +52,7 @@ comparison, a mapping, a unit); it asks for nothing more. `table`, `value`, `met
 the dataset serves; `next` asks for their descriptions, and the built-in tests run on them. \
 `rule`: a query whose rows break a rule; it must return none, a test runs on it after every \
 write, and only a person accepts a count of rows. Keep each query that decided something \
-and tag it: `find('<term>')` searches views by name, meaning, tags and the columns they \
+and tag it: `find('<term>')` searches views by name, meaning, tags, kind and the columns they \
 read, so the next agent and the reviewer find it. A function (`DECLARE FUNCTION`) is a \
 kit's machinery: one stored result per asset, computed again when what it read changed. \
 Write one only for a measure that many assets need. \

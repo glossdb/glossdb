@@ -265,13 +265,13 @@ DECLARE FUNCTION code_check FOR GLOBAL AS $$
     SELECT col, regexp_extract(m, '\(([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1) AS path,
            regexp_extract_all(regexp_extract(m, ':[A-Z][A-Z0-9_ ]*(, .*)\)$', 1),
                               '''(?:[^'']|'''')*''|cast\([^()]* as|-?[0-9][0-9.]*') AS literals
-    FROM cols, unnest(regexp_extract_all(derivation,
-      '(?:^|[^a-z_<>!~=])(?:=|in)\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:[A-Z][A-Z0-9_ ]*(?:, (?:''(?:[^'']|'''')*''|cast\([^()]* as [A-Z]+\)|-?[0-9][0-9.]*))+\)')) u(m)),
+    FROM cols, unnest(list_distinct(regexp_extract_all(derivation,
+      '(?:^|[^a-z_<>!~=])(?:=|in)\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:[A-Z][A-Z0-9_ ]*(?:, (?:''(?:[^'']|'''')*''|cast\([^()]* as [A-Z]+\)|-?[0-9][0-9.]*))+\)'))) u(m)),
   -- a test the literals do not tell: a range, a pattern, or a function of the column
   untold AS (
     SELECT DISTINCT col, regexp_extract(m, '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1) AS path
-    FROM cols, unnest(regexp_extract_all(derivation,
-      '(?:^|[^a-z_<>!~=])(?:(?:<>|!=|<=|>=|<|>|~~\*?|!~~\*?|regexp_matches|regexp_full_match|prefix|suffix|starts_with|contains)\(|(?:=|in)\([a-z_]+\()[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:')) u(m)),
+    FROM cols, unnest(list_distinct(regexp_extract_all(derivation,
+      '(?:^|[^a-z_<>!~=])(?:(?:<>|!=|<=|>=|<|>|~~\*?|!~~\*?|regexp_matches|regexp_full_match|prefix|suffix|starts_with|contains)\(|(?:=|in)\([a-z_]+\()[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*:'))) u(m)),
   named AS (
     SELECT col, path, list_sort(list(DISTINCT CASE WHEN starts_with(l, '''') THEN replace(l[2:-2], '''''', '''')
                                          WHEN starts_with(l, 'cast(') THEN trim(trim(l[6:-4]), '''')

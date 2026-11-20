@@ -54,8 +54,8 @@ When to write what:
 | one stored value per asset that many assets need | a function (`skill://glossql-functions/SKILL.md`); seldom needed |
 
 Keep each query that decided a filter, a cast, a mapping or a unit,
-and tag it. `find('<term>')` searches names, meanings, tags and the
-columns each view reads, so the next agent and the reviewer find it:
+and tag it. `find('<term>')` searches names, meanings, tags, kinds and
+the columns each view reads, so the next agent and the reviewer find it:
 
 ```sql
 SELECT asset, what, kind, meaning, tags, matched_on FROM find('status')
