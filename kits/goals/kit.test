@@ -463,3 +463,41 @@ query I
 SELECT count(*) FROM results_due();
 ----
 0
+
+# --- a rule view that reads stored measurements is tested again when a load changes them: its rows follow
+# the column's profile, and its lineage scans no loaded table
+
+statement ok
+GLOSS many_counts ON shop AS $${"kind": "rule", "sql": "SELECT subject, (value->>'total')::INT AS total FROM main.results WHERE dataset = 'shop' AND function = 'column_profile' AND subject = 'shop.counts.n' AND (value->>'total')::INT > 12"}$$;
+
+query I
+SELECT count(*) FROM main.views_scans('shop') WHERE view = 'many_counts';
+----
+0
+
+query I
+SELECT (value->>'rows')::INT FROM results WHERE function = 'rule_check' AND subject = 'shop.many_counts';
+----
+0
+
+statement ok
+COPY (SELECT i AS n FROM range(15) t(i)) TO '{TEST_DIR}/counts.csv' (HEADER);
+
+statement ok
+IMPORT counts;
+
+query II
+SELECT (value->>'total')::INT, (SELECT (value->>'rows')::INT FROM results WHERE function = 'rule_check' AND subject = 'shop.many_counts')
+FROM results WHERE function = 'column_profile' AND subject = 'shop.counts.n';
+----
+15	1
+
+query I
+SELECT count(*) FROM results_due();
+----
+0
+
+query I
+SELECT count(*) FROM results_due();
+----
+0

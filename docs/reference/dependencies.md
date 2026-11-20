@@ -32,6 +32,7 @@ kit.
 | Result | Out of date when |
 |---|---|
 | a function's result (`SELECT column_profile() FROM orders.amount`) | a node it read changed: the data of a table it read, an annotation or another function's result it read, the function's own declaration, a macro its body calls |
+| a result that reads a view over the stored results (a rule view that compares each column's profile with the previous load's) | a measurement of the dataset was stored with another value: a result of a function whose property is a MEASUREMENT. A FACT's result, such as the rule's own check, a test's result and a view's lineage leave it current |
 | a test's result, per asset and test | the asset's values of the tested property, the asset's definition, or the declarations of the test and its detector changed |
 | a view's lineage (function `lineage` on the view) | the view's definition, the definition of a table or view its SQL names, through the views it reads, or a macro it calls changed |
 | an annotation | it is an input, not a result. It reads `stale` once a load redefined, retyped or dropped its column, or once the view it is on was defined again ([describe](../usage/describe.md#states)) |

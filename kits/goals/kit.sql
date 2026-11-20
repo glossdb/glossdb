@@ -130,7 +130,8 @@ SELECT 3, test, subject, 'SELECT ' || test || '() FROM ' || current_schema() FRO
 -- the next, after the snapshot `since` it began at: each result of the
 -- bound dataset that read a node the round changed before it changed (a
 -- result computed again with another value or retired, read through its
--- function's results or its property's values; a function's declaration
+-- function's results or its property's values, or, where its property is a
+-- MEASUREMENT, through the measurements of the dataset; a function's declaration
 -- taken again), now due or waiting for what it read; and each view whose
 -- lineage the round changed, since what is wanted follows from it.
 -- A result computed after what it read, in the same round, reads it as it
@@ -146,6 +147,12 @@ WITH moved AS (
 declared AS (SELECT lower(name) AS asset, begin_snapshot AS changed_at FROM main.functions WHERE begin_snapshot > since)
 SELECT r.function, r.subject FROM moved m
 JOIN main.inputs i ON lower(i.asset) = m.asset AND i.what IN ('result ' || m.function, 'value ' || m.property)
+JOIN main.results r ON r.id = i.result AND r.dataset = m.dataset AND r.function <> m.function
+WHERE m.changed_at > since AND m.changed_at > r.read_at
+UNION
+SELECT r.function, r.subject FROM moved m
+JOIN main.properties p ON p.name = m.property AND p.kind = 'MEASUREMENT'
+JOIN main.inputs i ON lower(i.asset) = lower(m.dataset) AND i.what = 'measurements'
 JOIN main.results r ON r.id = i.result AND r.dataset = m.dataset AND r.function <> m.function
 WHERE m.changed_at > since AND m.changed_at > r.read_at
 UNION
