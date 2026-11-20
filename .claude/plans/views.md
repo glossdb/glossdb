@@ -24,7 +24,7 @@ for.** A function is a kit's machinery.
 |---|---|
 | none | a plain view: a query worth keeping, with its reason. Asked for no descriptions and no served-view tests |
 | `table`, `value`, `metric` | what the dataset serves |
-| `rule` | a query whose rows are the violations. It must return none; the kit's test runs on it with no further statement |
+| `rule` | a query whose rows are the violations. It must return none; the kit's test runs on it with no further statement. A person accepts a count of rows, not a rate |
 
 ## The metadata, one home each
 
@@ -32,27 +32,27 @@ for.** A function is a kit's machinery.
 |---|---|---|
 | The definition | one statement, `GLOSS name ON dataset AS {"sql": …}`, which declares the property where it is missing; the view is created and annotated in one go | `DECLARE ASPECT … AS VIEW` before it |
 | The kind | `kind` in the body; a new definition may change it | `x-kind` in the declaration, with three spellings |
-| The description | the `meaning` annotation | `title` and `description` in the declaration |
-| Keywords | the property `tags`, a list, annotated on a table, a column or a view; agents add to it, `next` shows it, a search read finds by it | `x-indicators`, read by nothing |
+| The description | the `meaning` annotation; `meaning` in the body is shorthand for it, so one statement keeps a query with its reason | `title` and `description` in the declaration |
+| Keywords | the property `tags`, a list, annotated on a table, a column or a view; `tags` in the body is shorthand. An actor's new list replaces its own, so `next` hands out the list with the word added; a person's and an agent's lists are read as their union. `next` shows it, a search read finds by it | `x-indicators`, read by nothing |
 | The assumptions, the stop | the body, as today | |
 | A metric's `time`, `measure`, `dimensions` | shorthand in the body, written as annotations; the spec says so | the spec's "never keyed in the body" |
 | Words | "view definition"; a "result" is what a function stores; "measurement" is a kit's computed property | "metric definition", three meanings of "measurement" |
 
 Grammar and names, approved by the project lead: the keyword `ASPECT`
-becomes `PROPERTY`; `DECLARE ASPECT … AS VIEW` is dropped; the
-relation `measurements` becomes `results`.
+becomes `PROPERTY` with the relation `properties` and the column
+`property` (done); the relation `measurements` becomes `results`
+(done); `DECLARE PROPERTY … AS VIEW` is dropped.
 
-Open, to be answered by the spike: DuckDB's own `CREATE VIEW` in a
-dataset, taken up as a plain view with who wrote it logged. Views are
-established, and it would relax the forms further; an agent that knows
-`GLOSS` creates and annotates in one go may not need it.
+DuckDB's own `CREATE VIEW` in a dataset is left until access control
+(`gate.md`): taking it up as a plain view needs the statement hook
+that work builds.
 
 ## Steps
 
 | # | Element | Risk | What it touches | When |
 |---|---|---|---|---|
-| 1 | Spike, standalone, on three real builds: the one-statement view, the kind in the body, a plain view that asks for nothing, `tags` and a search read, a rule view with its test, `CREATE VIEW` taken up and attributed | Medium | copies of the kits in a scratch folder | Now |
-| 2 | The extension: a definition declares its property, the kind in the body, the keyword `PROPERTY`, `AS VIEW` dropped, `results`; the corpus and `grammar.ebnf` with it | High: every statement an agent writes and every fixture | `grammar.ebnf`, `SPEC.md` §5 to §7, the store, the lineage kit's places, the corpus | After the spike |
+| 1 | A check that reads its subject's rows records the subject, not the dataset: today each new view makes the reconciliation, the contract check and the key check due (measured: about 19 s per kept view on ferc-steam, 3 s on the two others). Then why the reconciliation takes 19 s on 35,000 rows | High: the dependency mechanism | the extension's read tracker (`glossql_runner.cpp`, `DataRead`) | Now |
+| 2 | The extension: a definition declares its property, the kind in the body, `AS VIEW` dropped; the corpus and `grammar.ebnf` with it | High: every statement an agent writes and every fixture | `grammar.ebnf`, `SPEC.md` §5 to §7, the store, the lineage kit's places, the corpus | After 1 |
 | 3 | The kits: kinds read from the body, the plain view, `rule` and its test, `tags`, the search read; `next` and `view_tests()` on kinds. What a rule view replaces in the tests reference is deleted | High | `kits/views`, `kits/goals`, `kits/core`, the extension's `kpi` kit, the console's frames | With 2 |
 | 4 | One pass over every text an agent reads, in the order it meets them: the MCP instructions, the entry skill, what `next` hands out, the references, the docs, the spec. One rule, one count of statements per form | Medium | `crates/serverd/src/mcp.rs`, `skills/`, `docs/`, `SPEC.md` | After 3 |
 | 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | After 4 |
@@ -73,6 +73,16 @@ established, and it would relax the forms further; an agent that knows
   wrong number.
 - A rule check on a view ran in 0.15 to 0.55 s.
 
+- The spike on three builds: with the kind read from the body, ten
+  kept plain views leave `next` as it was (ferc 5, eia 6, erp 43 rows;
+  today 94, 88, 146). `find(term)` over name, meaning, tags and the
+  columns a view reads takes 22 to 27 ms. Of 15 hand-written checks 4
+  became rule views as written, 7 with a small rewrite, 4 written as
+  rates had to be restructured. The kits' diff: core +26/-2, views
+  +130/-29, goals +19/-12.
+- A table of the user's named `results` hides the catalog's `results`
+  for a bare read while its dataset is in use.
+
 ## Next issue
 
-Not drafted before the spike reports.
+Step 1.
