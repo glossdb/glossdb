@@ -113,35 +113,13 @@ SELECT count(*) FROM metric_series(grain := 'day');
 ----
 0
 
-# --- where each column comes from: the column mapping, read off the view's SQL
-
-# every column has its row with the column it is computed from, the summed value and a column passed
-# through unchanged alike; no row stands for a table alone
-query TTTTT
-SELECT target_column, branch, source_table, source_column, expression FROM column_mapping('spend') ORDER BY target_column, source_column;
-----
-fund	1	ledger	fund	fin.ledger.fund:VARCHAR
-object	1	ledger	object	fin.ledger.object:VARCHAR
-period	1	ledger	booked	cast(date_trunc('month', fin.ledger.booked:TIMESTAMP) as DATE)
-value	1	ledger	amount	sum(fin.ledger.amount:DOUBLE)
-
-# a column computed by a CASE or a COALESCE comes from the columns inside it; a table read under three
-# aliases reads as three reads, the coalesce's order kept; a column named with a blank passes through
+# --- where each column comes from: a column computed by a CASE or a COALESCE, a table read under three
+# aliases, a column named with a blank
 statement ok
 CREATE TABLE fin.products AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'D' ELSE 'A' END AS status, 'brand' || i AS global_brand, i AS parent, i * 1.5 AS "unit price" FROM range(4) t(i);
 
 statement ok
 GLOSS product_forms ON fin AS $${"kind": "metric", "sql": "SELECT p.id, CASE WHEN p.status = 'D' THEN 'available' ELSE 'other' END AS availability, coalesce(p.global_brand, up.global_brand, top.global_brand) AS brand, p.\"unit price\" FROM fin.products p JOIN fin.products up ON p.parent = up.id JOIN fin.products top ON up.parent = top.id"}$$;
-
-query TTTTTT
-SELECT target_column, source_table, source_column, alias, array_to_string(literals, ' '), complete FROM column_mapping('product_forms') ORDER BY target_column, alias;
-----
-availability	products	status	p	'D' 'available' 'other'	true
-brand	products	global_brand	p	(empty)	true
-brand	products	global_brand	top	(empty)	true
-brand	products	global_brand	up	(empty)	true
-id	products	id	p	(empty)	true
-unit price	products	unit price	p	(empty)	true
 
 statement ok
 GLOSS product_forms ON fin AS $${"stopped": "the lineage case only"}$$;
