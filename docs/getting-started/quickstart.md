@@ -137,7 +137,7 @@ A view is named SQL on the dataset. Declare the name (`AS VIEW`), then
 annotate it with its SQL.
 
 ```glossql
-DECLARE ASPECT shipped_orders WITH $${"title": "Shipped orders", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY shipped_orders WITH $${"title": "Shipped orders", "x-kind": "relation"}$$ AS VIEW;
 GLOSS shipped_orders ON shop AS $${
   "sql": "SELECT o.order_id, o.ordered, o.amount, c.region FROM orders o JOIN customers c ON c.customer_id = o.customer_id WHERE o.status = 'shipped'",
   "assumptions": [
@@ -146,10 +146,10 @@ GLOSS shipped_orders ON shop AS $${
   ]
 }$$;
 
-DECLARE ASPECT customer_count WITH $${"title": "Customers", "x-kind": "scalar"}$$ AS VIEW;
+DECLARE PROPERTY customer_count WITH $${"title": "Customers", "x-kind": "scalar"}$$ AS VIEW;
 GLOSS customer_count ON shop AS $${"sql": "SELECT count(*) AS value FROM customers"}$$;
 
-DECLARE ASPECT order_value WITH $${"title": "Order value"}$$ AS VIEW;
+DECLARE PROPERTY order_value WITH $${"title": "Order value"}$$ AS VIEW;
 GLOSS order_value ON shop AS $${
   "sql": "SELECT ordered, amount AS value, region FROM shipped_orders",
   "time": "ordered",
@@ -224,7 +224,7 @@ GLOSS orphan_check ON shop.order_value AS $${"tolerance": 0.1,
 GLOSS orphan_check ON shop.shipped_orders AS $${"tolerance": 0.1,
   "basis": "C9 is a walk-in customer without a master record"}$$;
 GLOSS review_decision ON shop AS $${"decisions": [
-  {"aspect": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
+  {"property": "shipped_orders", "key": "shipped-only", "stance": "confirmed",
    "note": "cancelled orders are not revenue"}]}$$;
 ```
 

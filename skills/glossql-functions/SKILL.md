@@ -34,7 +34,7 @@ SELECT script FROM functions WHERE name = 'rate_tolerance'
 ## A measurement
 
 ```glossql
-DECLARE ASPECT late_deliveries WITH $${"type": "object",
+DECLARE PROPERTY late_deliveries WITH $${"type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION late_delivery_check FOR logistics AS $$
@@ -55,7 +55,7 @@ $$ RETURNS late_deliveries;
   says which kind of asset the function runs on: `ON COLUMN`, `ON
   TABLE`, `ON DATASET`.
 - The body can read what a call can: tables, views by name, the
-  catalog tables, other functions' stored results in `measurements`.
+  catalog tables, other functions' stored results in `results`.
 - `$subject` is the asset the function was run on, as a string.
   `subject_column($subject)` is that column as a relation named `v`,
   for a function that runs on any column.
@@ -76,7 +76,7 @@ Run it in the SELECT list, with the asset in FROM:
 SELECT late_delivery_check() FROM deliveries;
 ```
 
-A run stores a row in `measurements` with the versions of the data it
+A run stores a row in `results` with the versions of the data it
 read. The same call returns the stored result while those are
 unchanged (`computed` is false) and computes again when they moved. A
 result with a `summary` object returns the summary; the full result
@@ -92,7 +92,7 @@ query. Keep `applicable` in the property's `required` list.
 ## A detector
 
 A detector's query reads `annotations`: one row per author's value
-for the test's property, `(subject, aspect, kind, test, actor,
+for the test's property, `(subject, property, kind, test, actor,
 actor_kind, current, written_at, body)`. `actor_kind` is `human`,
 `agent` or `function`. `current` is false for a function's value
 stored before the last change. `body` is a struct where every value

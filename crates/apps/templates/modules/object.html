@@ -23,7 +23,7 @@
 {% macro subtabs(q, tab, used="Used by", history="History", measured=true) %}
 <nav class="subtabs" aria-label="sections">
   <a href="?{{ q }}"{% if tab == "description" %} class="current" aria-current="page"{% endif %}>Description</a>
-  {% if measured %}<a href="?{{ q }}&tab=measurements"{% if tab == "measurements" %} class="current" aria-current="page"{% endif %}>Measurements</a>
+  {% if measured %}<a href="?{{ q }}&tab=results"{% if tab == "results" %} class="current" aria-current="page"{% endif %}>Measurements</a>
   <a href="?{{ q }}&tab=tests"{% if tab == "tests" %} class="current" aria-current="page"{% endif %}>Tests</a>{% endif %}
   <a href="?{{ q }}&tab=used"{% if tab == "used" %} class="current" aria-current="page"{% endif %}>{{ used }}</a>
   <a href="?{{ q }}&tab=history"{% if tab == "history" %} class="current" aria-current="page"{% endif %}>{{ history }}</a>
@@ -39,7 +39,7 @@
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:minmax(10rem,16rem) 10rem 10rem 5rem 5rem">
           <span class="r-subj">{subject}</span>
-          <span class="r-meta">{aspect}</span>
+          <span class="r-meta">{property}</span>
           <span class="r-meta">{test}</span>
           <span class="r-num">{score}</span>
           <code class="chip {scls}">{state}</code>

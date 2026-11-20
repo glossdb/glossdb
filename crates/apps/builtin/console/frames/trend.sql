@@ -8,7 +8,7 @@ WITH story AS (
   FROM metric_series(view := CAST($view AS VARCHAR), grain := $grain)
   WHERE dimension = ''),
 a AS (
-  SELECT name, schema FROM aspects WHERE name = CAST($view AS VARCHAR)
+  SELECT name, schema FROM properties WHERE name = CAST($view AS VARCHAR)
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 actuals AS (
   SELECT s.period,

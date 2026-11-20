@@ -63,7 +63,7 @@ SELECT target_column, source_table, source_column, expression FROM column_mappin
 ```
 
 ```glossql
-SELECT subject, aspect, value, state FROM GLOSSARY(stays.booked_nights);
+SELECT subject, property, value, state FROM GLOSSARY(stays.booked_nights);
 ```
 
 `column_mapping()` is the column lineage: each column a view serves,
@@ -147,7 +147,7 @@ datasets.
 | Section | Shows |
 |---|---|
 | Overview | coverage of the required annotations, open work, the model, the history, lineage |
-| Catalog | each source, table, column and property with its annotations and measurements; tables and single values |
+| Catalog | each source, table, column and property with its annotations and results; tables and single values |
 | Views | each metric: its series, slices, what moved, its assumptions and its SQL |
 | Quality | test results worst first, each load with its dropped rows, required annotations nobody wrote |
 | Review | the review queue and the decisions |

@@ -1,7 +1,7 @@
 //! The console's one write: a human review decision on a claim that holds open.
 //!
 //! The gate is the derivation itself. A posted review decision is accepted only
-//! if `open_questions` still carries that exact `(subject, aspect,
+//! if `open_questions` still carries that exact `(subject, property,
 //! key)` — so the page cannot decide something already decided, already
 //! folded in, or never disclosed, and a stale tab is refused rather
 //! than believed. The prose the review decision records comes from that read,
@@ -40,12 +40,12 @@ use crate::app::AppDef;
 #[derive(Deserialize)]
 pub struct Answer {
     subject: String,
-    aspect: String,
+    property: String,
     key: String,
     /// `confirmed`, `corrected`, or `unclear` — the stances the review
     /// serves. `unclear` refuses the question rather than the claim:
     /// the agent owes a reformulation, not an applied decision. Admission is the
-    /// one gate: the review decision aspect's schema holds the enum, so an
+    /// one gate: the review decision property's schema holds the enum, so an
     /// unknown stance answers with the store's own refusal.
     stance: String,
     /// The human's own words, empty allowed — the MCP interface writes the
@@ -86,7 +86,7 @@ pub async fn decide(
     let question = match crate::frames::one_open_question(
         &human,
         &answer.subject,
-        &answer.aspect,
+        &answer.property,
         &answer.key,
     )
     .await
@@ -110,7 +110,7 @@ pub async fn decide(
         &human,
         Decision {
             subject: &answer.subject,
-            aspect: &answer.aspect,
+            property: &answer.property,
             dimension: &question.dimension,
             key: &answer.key,
             assumption: &question.assumption,

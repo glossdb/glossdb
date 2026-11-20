@@ -17,7 +17,7 @@ said AS (
   SELECT count(*) FILTER (WHERE state <> 'missing') AS written,
          count(*) FILTER (WHERE state = 'stale') AS outdated
   FROM GLOSSARY()
-  WHERE aspect IN (SELECT name FROM aspects WHERE upper(kind) = 'FACT')),
+  WHERE property IN (SELECT name FROM properties WHERE upper(kind) = 'FACT')),
 rel AS (SELECT count(*) AS n FROM relationships r JOIN d ON d.dataset = r.dataset),
 t AS (
   SELECT count(*) AS n,

@@ -40,7 +40,7 @@ mode; this file is so nobody has to rediscover it.
   <subject>`), the cells of a dataset (`dataset_cells`), a
   metric's series summed over a view's typed columns (`series_aggregate`), the service
   call (`glossql_service`), and the kit loader (`glossql_kit`).
-- **A kit** owns vocabulary about the data: aspects, functions,
+- **A kit** owns vocabulary about the data: properties, functions,
   tests (`DECLARE TEST`), table macros that read the catalog and the views,
   and its next steps for the `next` read. A kit is SQL, the language's in
   `../gloss/kits/` and the server's in `kits/`, run at every open,
@@ -89,7 +89,7 @@ mode; this file is so nobody has to rediscover it.
   one `inputs` row per node it read; it is current while no node it
   read changed after that snapshot. A
   measurement is no input of a data version: a next step that must compare two
-  measurements compares them itself.
+  results compares them itself.
 - **A refusal is a value where the kit must hold.** The service
   call's soft form, `glossql.service_soft`, answers a refusal as
   `{"error": …}`; DuckDB's `TRY()` refuses volatile functions, so

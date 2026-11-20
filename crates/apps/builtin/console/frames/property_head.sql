@@ -1,8 +1,8 @@
--- One aspect's declaration: its kind, what it holds from its schema,
+-- One property's declaration: its kind, what it holds from its schema,
 -- where it is required from its grain and condition, who may annotate it, the
 -- test that holds on it with its detector and threshold, the
 -- schema's own description where it has one, and the schema itself.
--- One row, or none for a name no aspect carries.
+-- One row, or none for a name no property carries.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition, schema,
          CASE
@@ -11,22 +11,22 @@ WITH a AS (
            WHEN json_keys(schema, '$.properties') IS NOT NULL AND len(json_keys(schema, '$.properties')) > 0
              THEN array_to_string(json_keys(schema, '$.properties'), ', ')
            ELSE 'a JSON object' END AS holds
-  FROM aspects WHERE name = CAST($aspect AS VARCHAR)
+  FROM properties WHERE name = CAST($property AS VARCHAR)
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 w AS (
   SELECT string_agg(
            name || coalesce(' by ' || lower(array_to_string(actors, ', ')), '')
              || coalesce(', tested by ' || detector || coalesce(' at ' || CAST(threshold AS VARCHAR), ''), ''),
            ' · ' ORDER BY name) AS tests
-  FROM (SELECT * FROM tests WHERE aspect = CAST($aspect AS VARCHAR)
+  FROM (SELECT * FROM tests WHERE property = CAST($property AS VARCHAR)
         QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)),
 f AS (
   SELECT string_agg(name, ', ' ORDER BY name) AS fns
-  FROM (SELECT DISTINCT name FROM functions WHERE returns = CAST($aspect AS VARCHAR))),
+  FROM (SELECT DISTINCT name FROM functions WHERE returns = CAST($property AS VARCHAR))),
 counts AS (
   SELECT count(*) AS required, count(*) FILTER (WHERE state <> 'missing') AS annotated,
          count(*) FILTER (WHERE state = 'conflict') AS conflict
-  FROM GLOSSARY() WHERE aspect = CAST($aspect AS VARCHAR))
+  FROM GLOSSARY() WHERE property = CAST($property AS VARCHAR))
 SELECT a.name,
        CASE a.kind WHEN 'fact' THEN 'asserted: written by the agent or a person'
                    WHEN 'view' THEN 'a view: SQL with its assumptions disclosed'
@@ -39,7 +39,7 @@ SELECT a.name,
          WHEN a.grains IS NULL OR len(a.grains) = 0 THEN 'anywhere'
          WHEN len(a.grains) = 1 AND a.grains[1] = 'DATASET' THEN 'on the dataset'
          ELSE 'on a ' || array_to_string(list_transform(a.grains, lambda x: replace(lower(x), 'relationship', 'join')), ', a ') END
-         || coalesce(' where ' || json_extract_string(a.condition, '$.aspect') || ' = ' || json_extract_string(a.condition, '$.value'), '')
+         || coalesce(' where ' || json_extract_string(a.condition, '$.property') || ' = ' || json_extract_string(a.condition, '$.value'), '')
          || coalesce(' where the type is ' || array_to_string(json_extract(a.condition, '$.type')::VARCHAR[], ' or '), '') AS required_on,
        CASE WHEN a.kind = 'measurement' THEN coalesce('computed by ' || f.fns, 'no function returns it')
             ELSE coalesce('test ' || w.tests, 'no test: anyone may annotate, nothing scores it') END AS guard,

@@ -18,7 +18,7 @@ that is kept.
 |---|---|
 | Revision | the lake's snapshot id. It is the only version: no digest, counter or fingerprint is stored beside it |
 | Input | a row of the catalog (an annotation on an asset, a view's definition, a relationship, a declaration) and a table's data. A row changed at the snapshot it begins or ends at; a table's data at the snapshot of its last load |
-| Derived value | a stored result of a function on an asset, a row of `measurements`. It carries the snapshot it read at (`read_at`) and the snapshot its value last changed at (`changed_at`) |
+| Derived value | a stored result of a function on an asset, a row of `results`. It carries the snapshot it read at (`read_at`) and the snapshot its value last changed at (`changed_at`) |
 | Dependency | one row of `inputs` per node the function read when it ran, recorded by the reads in the function's body |
 | Check | a result is current while nothing it read changed after `read_at`. The check runs on demand, along the result's inputs |
 | Early cutoff | a result computed again with the same value keeps its `changed_at`, so the results that read it stay current |
@@ -77,7 +77,7 @@ current.
 The stored results, with the snapshots they read at and changed at:
 
 ```sql
-SELECT function, subject, read_at, changed_at, error FROM measurements;
+SELECT function, subject, read_at, changed_at, error FROM results;
 ```
 
 What each result read, by the result's `id`:

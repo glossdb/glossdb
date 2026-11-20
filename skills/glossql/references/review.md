@@ -41,7 +41,7 @@ meaning, a choice between two readings.
 ## The review queue
 
 ```sql
-SELECT o.aspect, o.dimension, o.key, o.assumption, o.basis, o.conf
+SELECT o.property, o.dimension, o.key, o.assumption, o.basis, o.conf
 FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf
 ```

@@ -1,7 +1,7 @@
 -- A metric's title line: its name and kind, its newest value with the
 -- unit its definition names, and the period that value is for.
 WITH a AS (
-  SELECT name, schema FROM aspects WHERE name = CAST($view AS VARCHAR)
+  SELECT name, schema FROM properties WHERE name = CAST($view AS VARCHAR)
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 defs AS (SELECT unit FROM view_definitions WHERE name = CAST($view AS VARCHAR)),
 latest AS (

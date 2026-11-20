@@ -175,7 +175,7 @@ There are three kinds, each read as `FROM <view>`.
 **A table** (`x-kind: relation`): cleaned, joined or reshaped rows.
 
 ```glossql
-DECLARE ASPECT clean_deliveries WITH $${"title": "Deliveries, cleaned", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY clean_deliveries WITH $${"title": "Deliveries, cleaned", "x-kind": "relation"}$$ AS VIEW;
 GLOSS clean_deliveries ON logistics AS $${
   "sql": "SELECT delivery_id, depot_id, delivered_on, parcels, weight_kg, lower(status) AS status FROM deliveries",
   "assumptions": [{"dimension": "convention", "key": "status-lower-case", "assumption": "status is served in lower case; DELIVERED and delivered are one status", "basis": "1 of 10 rows is upper case", "confidence": 0.8}]
@@ -185,7 +185,7 @@ GLOSS clean_deliveries ON logistics AS $${
 **A single value** (`x-kind: scalar`): one row with a column `value`.
 
 ```glossql
-DECLARE ASPECT depots_in_service WITH $${"title": "Depots in service", "x-kind": "scalar"}$$ AS VIEW;
+DECLARE PROPERTY depots_in_service WITH $${"title": "Depots in service", "x-kind": "scalar"}$$ AS VIEW;
 GLOSS depots_in_service ON logistics AS $${"sql": "SELECT count(*) AS value FROM depots"}$$;
 ```
 
@@ -193,7 +193,7 @@ GLOSS depots_in_service ON logistics AS $${"sql": "SELECT count(*) AS value FROM
 column, the measure with its additivity, and the dimension columns:
 
 ```glossql
-DECLARE ASPECT parcels_delivered WITH $${"title": "Parcels delivered"}$$ AS VIEW;
+DECLARE PROPERTY parcels_delivered WITH $${"title": "Parcels delivered"}$$ AS VIEW;
 GLOSS parcels_delivered ON logistics AS $${
   "sql": "SELECT d.delivered_on, d.parcels AS value, d.depot_id, p.city FROM clean_deliveries d JOIN depots p ON p.depot_id = d.depot_id WHERE d.status = 'delivered'",
   "time": "delivered_on",
@@ -235,7 +235,7 @@ function that measures how often the data breaks it, the test, and
 the expectation annotated on the asset it holds for.
 
 ```glossql
-DECLARE ASPECT delivery_key_unique WITH $${"type": "object",
+DECLARE PROPERTY delivery_key_unique WITH $${"type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION delivery_key_check FOR logistics AS $$
@@ -267,7 +267,7 @@ A test on one column is declared `ON COLUMN`, and annotated and run
 on the column:
 
 ```glossql
-DECLARE ASPECT weight_filled WITH $${"type": "object",
+DECLARE PROPERTY weight_filled WITH $${"type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON COLUMN;
 DECLARE FUNCTION weight_filled_check FOR logistics AS $$
@@ -299,7 +299,7 @@ below 1, as in the examples above. Each is a question in the review
 queue:
 
 ```sql
-SELECT aspect, key, assumption, basis, conf FROM open_questions
+SELECT property, key, assumption, basis, conf FROM open_questions
 ```
 
 A person confirms or corrects it in the console. Where the person is
@@ -316,7 +316,7 @@ data can tell you: measure it. More: `references/review.md`.
 | `IMPORT t;` | loads the table again from the source |
 | `DROP TABLE t;` | removes a table; refused while it holds data or annotations |
 | `DECLARE RELATIONSHIP a.(x, y) -> b.(x, y);` | a join on a composite key |
-| `DECLARE ASPECT p WITH $$json schema$$ AS FACT ON TABLE, COLUMN;` | adds a property that agents and people annotate; `AS MEASUREMENT` for one only a function fills, such as a profile |
+| `DECLARE PROPERTY p WITH $$json schema$$ AS FACT ON TABLE, COLUMN;` | adds a property that agents and people annotate; `AS MEASUREMENT` for one only a function fills, such as a profile |
 | `DECLARE TEST t ON p BY (AGENT, HUMAN) DETECTOR f THRESHOLD x;` | a test; `BY` names who may annotate the property; `THRESHOLD` applies where no annotation carries a `tolerance` |
 
 A body goes inside `$$…$$` as it is, with plain double quotes. `CREATE
@@ -336,10 +336,10 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 | `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
 | `fact_values()` | each single value: `view`, `value`, `reason` |
 | `metric_series(grain := 'month')` | each metric per period, dimension and member; `dimension = ''` is the total. `view := '<metric>'` reads one metric alone. It serves the newest periods only, by default 48 months or 20 years: `window_periods` in `view_summary()` (`time-grains.md`) |
-| `GLOSSARY(asset)` | the annotations in force: `subject, aspect, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
-| `TESTS(asset)` | test results: `subject, aspect, test, state, score, computed_at, current, error` |
+| `GLOSSARY(asset)` | the annotations in force: `subject, property, value, test_state, score, state`; `GLOSSARY(asset, all => true)` gives every author's value |
+| `TESTS(asset)` | test results: `subject, property, test, state, score, computed_at, current, error` |
 | `open_questions`, `review_decisions`, `agent_assumptions` | the review queue, a person's decisions, your assumptions |
-| `datasets`, `sources`, `recipes`, `imports`, `relationships`, `aspects`, `functions`, `tests`, `glossary`, `measurements` | the catalog tables |
+| `datasets`, `sources`, `recipes`, `imports`, `relationships`, `properties`, `functions`, `tests`, `glossary`, `results` | the catalog tables |
 | `pages()` | every page this server serves: `uri`, `title`, `body` |
 
 `DESCRIBE <read>` gives the columns of any of them. The loaded schema

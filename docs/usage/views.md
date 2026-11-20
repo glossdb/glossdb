@@ -16,7 +16,7 @@ the dataset with its SQL. The annotation is the view definition.
 
 ```glossql
 USE stays;
-DECLARE ASPECT confirmed_bookings WITH $${"title": "Confirmed bookings", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY confirmed_bookings WITH $${"title": "Confirmed bookings", "x-kind": "relation"}$$ AS VIEW;
 GLOSS confirmed_bookings ON stays AS $${
   "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
   "assumptions": [
@@ -26,7 +26,7 @@ GLOSS confirmed_bookings ON stays AS $${
   ]
 }$$;
 
-DECLARE ASPECT room_count WITH $${"title": "Rooms", "x-kind": "scalar"}$$ AS VIEW;
+DECLARE PROPERTY room_count WITH $${"title": "Rooms", "x-kind": "scalar"}$$ AS VIEW;
 GLOSS room_count ON stays AS $${"sql": "SELECT count(*) AS value FROM rooms"}$$;
 ```
 
@@ -44,7 +44,7 @@ A metric's definition also says which column is the time, which the
 measure and how it adds up, and which columns slice it:
 
 ```glossql
-DECLARE ASPECT booked_nights WITH $${"title": "Booked nights"}$$ AS VIEW;
+DECLARE PROPERTY booked_nights WITH $${"title": "Booked nights"}$$ AS VIEW;
 GLOSS booked_nights ON stays AS $${
   "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
   "time": "check_in",
@@ -68,7 +68,7 @@ annotations yourself on `<dataset>.<view>.<column>`.
 | `non-additive` | does not combine | one row per period |
 
 ```glossql
-DECLARE ASPECT occupancy WITH $${"title": "Occupancy"}$$ AS VIEW;
+DECLARE PROPERTY occupancy WITH $${"title": "Occupancy"}$$ AS VIEW;
 GLOSS occupancy ON stays AS $${
   "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
   "time": "period",
@@ -155,7 +155,7 @@ SQL. Readers get the reason, and a person's definition with `sql`
 lifts the stop.
 
 ```glossql
-DECLARE ASPECT revenue_per_room WITH $${"title": "Revenue per available room"}$$ AS VIEW;
+DECLARE PROPERTY revenue_per_room WITH $${"title": "Revenue per available room"}$$ AS VIEW;
 GLOSS revenue_per_room ON stays AS $${
   "stopped": "room rates were not loaded: the export carries nights and no price"
 }$$;

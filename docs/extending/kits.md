@@ -30,14 +30,14 @@ Statements in order: properties, then functions, then the tests that
 name both.
 
 ```glossql
-DECLARE ASPECT currency WITH $${
+DECLARE PROPERTY currency WITH $${
   "type": "object", "required": ["value"],
   "properties": {"value": {"type": "string", "pattern": "^[A-Z]{3}$"}}
 }$$ AS FACT ON COLUMN WHEN unit = 'money';
 
 DECLARE TEST currency_test ON currency BY (AGENT, HUMAN) DETECTOR value_entropy THRESHOLD 0.7;
 
-DECLARE ASPECT unit_check WITH $${
+DECLARE PROPERTY unit_check WITH $${
   "type": "object", "x-subject": "metric",
   "properties": {"applicable": {"type": "boolean"}, "breach_rate": {"type": ["number", "null"]},
                  "finding": {"type": ["string", "null"]}, "fix": {"type": ["string", "null"]},
@@ -47,7 +47,7 @@ DECLARE ASPECT unit_check WITH $${
 DECLARE FUNCTION unit_check FOR GLOBAL AS $$
   WITH v AS (SELECT view, value_column FROM main.view_summary() WHERE view = split_part($subject, '.', 2)),
   u AS (SELECT count(*) AS n FROM main.glossary g, v
-        WHERE g.subject = $subject || '.' || v.value_column AND g.aspect = 'unit')
+        WHERE g.subject = $subject || '.' || v.value_column AND g.property = 'unit')
   SELECT true AS applicable,
          CASE WHEN u.n > 0 THEN 0.0 ELSE 1.0 END AS breach_rate,
          CASE WHEN u.n = 0 THEN 'the value of ' || split_part($subject, '.', 2) || ' has no unit' END AS finding,
@@ -58,7 +58,7 @@ $$ RETURNS unit_check;
 DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tolerance THRESHOLD 0.0;
 ```
 
-- **A property** (`DECLARE ASPECT`) has a JSON Schema and a kind:
+- **A property** (`DECLARE PROPERTY`) has a JSON Schema and a kind:
   `AS FACT` for a value someone states, `AS MEASUREMENT` for a
   function's result, `AS VIEW` for a view name. `ON` names the assets
   it applies to: `DATASET`, `TABLE`, `COLUMN`, `RELATIONSHIP`,

@@ -64,7 +64,7 @@ object store adds the network to each.
 A container has no workspace directory: without both variables the
 server does not start and names them. The catalog holds the loaded
 tables' versions and the `glossql_*` tables: annotations,
-measurements, tests, load history. Back up the database and the
+results, tests, load history. Back up the database and the
 bucket together.
 
 A `gs://` bucket named without a key pair is reached as the service

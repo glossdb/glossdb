@@ -64,7 +64,7 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
     say(
         &app,
         FIN,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
@@ -115,7 +115,7 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
-           DECLARE ASPECT ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
+           DECLARE PROPERTY ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
            GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
@@ -123,9 +123,7 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
         rows(
             &app,
             FIN,
-            &format!(
-                "SELECT subject FROM measurements WHERE function = '{function}' ORDER BY subject"
-            ),
+            &format!("SELECT subject FROM results WHERE function = '{function}' ORDER BY subject"),
         )
         .await
         .iter()
@@ -202,7 +200,7 @@ async fn the_statement_next_hands_over_runs_with_its_comments() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
-           DECLARE ASPECT ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
+           DECLARE PROPERTY ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
            GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
@@ -230,7 +228,7 @@ async fn the_statement_next_hands_over_runs_with_its_comments() {
 async fn the_next_page_carries_the_test_and_its_statement() {
     let (app, _, _dir) = fin().await;
     say(&app, FIN,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
@@ -263,7 +261,7 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     // and how it adds up, and which slice it: the server writes the
     // column annotations, profiles the time column and runs the tests.
     let outcomes = say(&app, FIN,
-        r#"DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#,
     )
     .await;
@@ -321,7 +319,7 @@ async fn the_server_reconciles_a_contracted_view_after_each_load() {
     say(
         &app,
         FIN,
-        r#"DECLARE ASPECT free_stock WITH $${"title": "Free stock", "x-kind": "relation"}$$ AS VIEW;
+        r#"DECLARE PROPERTY free_stock WITH $${"title": "Free stock", "x-kind": "relation"}$$ AS VIEW;
            GLOSS free_stock ON fin AS $${"sql": "SELECT i.global AS item, sum(s.qty) AS qty FROM fin.stock s JOIN fin.items i ON i.local = s.item WHERE s.status = 'D' GROUP BY ALL"}$$;
            GLOSS entity ON fin.free_stock AS $${"value": "the stock of one item", "grain": ["item"]}$$;
            GLOSS contract ON fin.free_stock.item AS $${"type": "VARCHAR", "required": true}$$;"#,
@@ -342,7 +340,7 @@ async fn the_server_reconciles_a_contracted_view_after_each_load() {
         &app,
         FIN,
         "SELECT sum((r->>'missing_rows')::BIGINT) AS missing, sum((r->>'excluded_rows')::BIGINT) AS excluded \
-         FROM measurements, unnest(from_json(value->'rows', '[\"JSON\"]')) t(r) \
+         FROM results, unnest(from_json(value->'rows', '[\"JSON\"]')) t(r) \
          WHERE function = 'reconciliation' AND subject = 'fin.free_stock'",
     )
     .await;
@@ -389,7 +387,7 @@ async fn a_load_that_adds_a_column_brings_the_lineage_of_the_view_over_it_curren
     )
     .await;
     say(&app, FIN,
-        r#"DECLARE ASPECT booked_rows WITH $${"title": "Booked rows", "x-kind": "relation"}$$ AS VIEW;
+        r#"DECLARE PROPERTY booked_rows WITH $${"title": "Booked rows", "x-kind": "relation"}$$ AS VIEW;
            GLOSS booked_rows ON fin AS $${"sql": "SELECT booked, amount FROM fin.bookings"}$$;"#,
     )
     .await;
@@ -397,7 +395,7 @@ async fn a_load_that_adds_a_column_brings_the_lineage_of_the_view_over_it_curren
         rows(
             &app,
             FIN,
-            "SELECT begin_snapshot, changed_at FROM measurements \
+            "SELECT begin_snapshot, changed_at FROM results \
              WHERE function = 'lineage' AND subject = 'fin.booked_rows'",
         )
         .await
@@ -497,7 +495,7 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT 'general' AS fund;
-           DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+           DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
            GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
            SELECT level, kind, who FROM next"#,
     )
@@ -552,7 +550,7 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
 async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_console() {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
-                   DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+                   DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
                    GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
     let next = "SELECT level, kind, asset, state, who, open, statement FROM next";
     let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
@@ -575,7 +573,7 @@ async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_consol
         for page in [
             "/fin/app/console",
             "/fin/app/console/p/quality",
-            "/fin/app/console/p/views?view=spend&tab=measurements",
+            "/fin/app/console/p/views?view=spend&tab=results",
             "/fin/app/console/frames/next_rows",
             "/fin/app/console/frames/functions",
             "/fin/app/console/frames/front",
@@ -613,7 +611,7 @@ async fn the_next_rows_follow_a_write_made_beside_the_interface() {
         .expect("a channel on fin");
     session
         .execute(
-            r#"DECLARE ASPECT ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
+            r#"DECLARE PROPERTY ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
                GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
         )
         .await

@@ -15,7 +15,7 @@ rec AS (
 conv AS (
   SELECT g.body
   FROM ranked_annotations g CROSS JOIN rec
-  WHERE g.aspect = 'conventions' AND g.subject = rec.source AND g.rank = 1),
+  WHERE g.property = 'conventions' AND g.subject = rec.source AND g.rank = 1),
 keyed AS (SELECT body, unnest(json_keys(body)) AS key FROM conv),
 said AS (
   SELECT string_agg(key || ': ' || coalesce(json_extract_string(body, '$.' || key), json_extract(body, '$.' || key)::VARCHAR), ' · ' ORDER BY key) AS lines

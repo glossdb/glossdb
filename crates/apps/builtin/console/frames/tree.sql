@@ -23,7 +23,7 @@ cols AS (
 views AS (
   SELECT name, kind FROM view_definitions),
 test AS (
-  SELECT name, aspect, detector
+  SELECT name, property, detector
   FROM tests
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 pages(top, label, link, o) AS (

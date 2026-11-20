@@ -17,23 +17,23 @@ load AS (
   FROM imports i JOIN d ON d.dataset = i.dataset
   QUALIFY row_number() OVER (PARTITION BY i.table_name ORDER BY i.begin_snapshot DESC) = 1),
 said AS (
-  SELECT subject, aspect, value FROM GLOSSARY()
-  WHERE aspect IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
+  SELECT subject, property, value FROM GLOSSARY()
+  WHERE property IN ('role', 'additivity', 'unit', 'dimension', 'entity') AND value IS NOT NULL),
 ent AS (
   SELECT substr(s.subject, len(d.dataset) + 2) AS tbl,
          json_extract_string(s.value, '$.value') AS what,
          json_extract_string(s.value, '$.time_axis') AS time_axis,
          coalesce(from_json(json_extract(s.value, '$.grain'), '["VARCHAR"]'), []) AS grain
   FROM said s CROSS JOIN d
-  WHERE s.aspect = 'entity'),
+  WHERE s.property = 'entity'),
 colsaid AS (
   SELECT subject,
-         max(CASE WHEN aspect = 'role' THEN json_extract_string(value, '$.value') END) AS role,
-         max(CASE WHEN aspect = 'additivity' THEN json_extract_string(value, '$.value') END) AS additivity,
-         max(CASE WHEN aspect = 'unit' THEN json_extract_string(value, '$.value') END) AS unit,
-         max(CASE WHEN aspect = 'dimension' THEN json_extract_string(value, '$.value') END) AS dimension
+         max(CASE WHEN property = 'role' THEN json_extract_string(value, '$.value') END) AS role,
+         max(CASE WHEN property = 'additivity' THEN json_extract_string(value, '$.value') END) AS additivity,
+         max(CASE WHEN property = 'unit' THEN json_extract_string(value, '$.value') END) AS unit,
+         max(CASE WHEN property = 'dimension' THEN json_extract_string(value, '$.value') END) AS dimension
   FROM said
-  WHERE aspect <> 'entity'
+  WHERE property <> 'entity'
   GROUP BY subject),
 cols AS (
   SELECT c.table_name AS node, 'table' AS kind, c.column_name AS col,

@@ -366,7 +366,7 @@ code { font-family: var(--mono); font-size: 0.95em; }
 .v-none { display: none; }
 .v[title] { cursor: help; }
 
-/* The vocabulary's rail: per aspect, the share of required subjects
+/* The vocabulary's rail: per property, the share of required subjects
    annotated — ink on the raised ground, since a count is not a
    result; settled green only when every required value is filled. */
 .rail-h {

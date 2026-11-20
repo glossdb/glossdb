@@ -146,7 +146,7 @@ GLOSS conventions ON mono AS $${"units": "jm: kart a case, pal a pallet", "numbe
 # onhand: stock in cases per global part, site and system, one branch per system; the pallet units are written
 # PAL, Pl and pal
 statement ok
-DECLARE ASPECT onhand WITH $${"title": "Stock on hand", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY onhand WITH $${"title": "Stock on hand", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS onhand ON supply AS $${"sql": "WITH pl AS (SELECT i.global_material AS part, m.warehouse AS site, CASE WHEN m.unit = 'pal' THEN m.quantity * u.cases_per_pallet ELSE m.quantity END AS cases FROM stock_mono m JOIN model_identities i ON i.market = 'PL' AND i.local_code = m.indeks JOIN model_parts u ON u.global_material = i.global_material WHERE m.status = 'D') SELECT i.global_material AS part, s.site, CASE WHEN s.uom = 'PAL' THEN s.unrestricted * u.cases_per_pallet ELSE s.unrestricted END AS cases FROM stock_sap s JOIN model_identities i ON i.market = 'DK' AND i.local_code = s.matnr JOIN model_parts u ON u.global_material = i.global_material UNION ALL SELECT coalesce(p.global_item, i.global_material), d.site_id, CASE d.unit_id WHEN 'Pl' THEN (d.physical - d.reserved) * u.cases_per_pallet ELSE d.physical - d.reserved END FROM stock_d365 d LEFT JOIN product_d365 p ON p.item_id = d.item_id LEFT JOIN model_identities i ON i.market = 'CH' AND i.local_code = d.item_id LEFT JOIN model_parts u ON u.global_material = coalesce(p.global_item, i.global_material) UNION ALL SELECT * FROM pl"}$$;
@@ -154,7 +154,7 @@ GLOSS onhand ON supply AS $${"sql": "WITH pl AS (SELECT i.global_material AS par
 # part: one row per part of the group's list, the brand through each market's hierarchy node, the hierarchy read
 # under three aliases, Switzerland's and Poland's reading before Denmark's
 statement ok
-DECLARE ASPECT part WITH $${"title": "Part", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY part WITH $${"title": "Part", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS part ON supply AS $${"sql": "SELECT u.global_material AS part, u.description, coalesce(ch.global_brand, pl.global_brand, dk.global_brand) AS brand FROM model_parts u LEFT JOIN model_identities idk ON idk.market = 'DK' AND idk.global_material = u.global_material LEFT JOIN material_sap ms ON ms.matnr = idk.local_code LEFT JOIN model_hierarchy dk ON dk.market = 'DK' AND dk.local_node = ms.hierarchy_node LEFT JOIN model_identities ich ON ich.market = 'CH' AND ich.global_material = u.global_material LEFT JOIN product_d365 pd ON pd.item_id = ich.local_code LEFT JOIN model_hierarchy ch ON ch.market = 'CH' AND ch.local_node = pd.category_path LEFT JOIN model_identities ipl ON ipl.market = 'PL' AND ipl.global_material = u.global_material LEFT JOIN product_mono pm ON pm.indeks = ipl.local_code LEFT JOIN model_hierarchy pl ON pl.market = 'PL' AND pl.local_node = pm.group_code"}$$;
@@ -248,7 +248,7 @@ statement ok
 SELECT source_systems() FROM stock_d365;
 
 query TT
-SELECT subject, value::VARCHAR FROM main.measurements WHERE function = 'source_systems' ORDER BY subject;
+SELECT subject, value::VARCHAR FROM main.results WHERE function = 'source_systems' ORDER BY subject;
 ----
 supply.onhand	{"systems":[{"system":"d365","conventions":"missing"},{"system":"model","conventions":"missing"},{"system":"mono","conventions":"current"},{"system":"sap","conventions":"current"}],"without_conventions":2}
 supply.stock_d365	{"systems":[{"system":"d365","conventions":"missing"}],"without_conventions":1}
@@ -267,7 +267,7 @@ statement ok
 SELECT source_systems() FROM onhand;
 
 query I
-SELECT (value->>'without_conventions')::INT FROM main.measurements WHERE function = 'source_systems' AND subject = 'supply.onhand';
+SELECT (value->>'without_conventions')::INT FROM main.results WHERE function = 'source_systems' AND subject = 'supply.onhand';
 ----
 1
 
@@ -314,7 +314,7 @@ SELECT code_check() FROM onhand;
 # the Swiss item with no global number has no part
 query TTIT
 SELECT b.column, b.rule, b.count, array_to_string(b.examples, ' ')
-FROM main.measurements m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
+FROM main.results m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
 WHERE m.function = 'contract_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
 ----
 part	required	1	(empty)
@@ -324,7 +324,7 @@ part	required	1	(empty)
 # contract
 query TTTTT
 SELECT c.column, c.system, c.source, array_to_string(c.literals, ' '), (SELECT string_agg(u.value || ':' || u.rows, ' ' ORDER BY u.value) FROM unnest(c.unnamed) x(u))
-FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"column": "VARCHAR", "system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
+FROM main.results m, unnest(from_json(m.value->'codes', '[{"column": "VARCHAR", "system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
 WHERE m.function = 'code_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
 ----
 cases	d365	stock_d365.unit_id	Pl	Cs:2
@@ -357,7 +357,7 @@ SELECT orphan_check() FROM onhand;
 
 query TRTI
 SELECT e.relationship, e.orphan_rate, k.key, k.rows
-FROM main.measurements m, unnest(from_json(m.value->'edges', '[{"relationship": "VARCHAR", "orphan_rate": "DOUBLE", "orphan_keys": [{"key": "VARCHAR", "rows": "BIGINT"}]}]')) t(e), unnest(e.orphan_keys) u(k)
+FROM main.results m, unnest(from_json(m.value->'edges', '[{"relationship": "VARCHAR", "orphan_rate": "DOUBLE", "orphan_keys": [{"key": "VARCHAR", "rows": "BIGINT"}]}]')) t(e), unnest(e.orphan_keys) u(k)
 WHERE m.function = 'orphan_check' AND m.subject = 'supply.onhand';
 ----
 supply.stock_mono.indeks -> supply.model_identities.local_code	0.25	X9	1
@@ -405,7 +405,7 @@ SELECT code_check() FROM onhand;
 
 query TTIT
 SELECT b.column, b.rule, b.count, array_to_string(b.examples, ' ')
-FROM main.measurements m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
+FROM main.results m, unnest(from_json(m.value->'breaches', '[{"column": "VARCHAR", "rule": "VARCHAR", "count": "BIGINT", "examples": ["VARCHAR"]}]')) t(b)
 WHERE m.function = 'contract_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
 ----
 cases	required	1	(empty)
@@ -415,7 +415,7 @@ site	values	1	PL02
 
 query TTTT
 SELECT c.system, c.source, array_to_string(c.literals, ' '), (SELECT string_agg(u.value || ':' || u.rows, ' ' ORDER BY u.value) FROM unnest(c.unnamed) x(u))
-FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
+FROM main.results m, unnest(from_json(m.value->'codes', '[{"system": "VARCHAR", "source": "VARCHAR", "literals": ["VARCHAR"], "unnamed": [{"value": "VARCHAR", "rows": "BIGINT"}]}]')) t(c)
 WHERE m.function = 'code_check' AND m.subject = 'supply.onhand' ORDER BY ALL;
 ----
 d365	stock_d365.unit_id	Cs Pl	NULL
@@ -441,7 +441,7 @@ green
 
 # a code the literals do not tell: a column that tests a unit by a pattern
 statement ok
-DECLARE ASPECT pallets WITH $${"title": "Pallets", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY pallets WITH $${"title": "Pallets", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS pallets ON supply AS $${"sql": "SELECT indeks, CASE WHEN jm_unit LIKE 'pa%' THEN quantity END AS pallets FROM (SELECT indeks, lower(unit) AS jm_unit, quantity FROM stock_mono)"}$$;
@@ -453,7 +453,7 @@ statement ok
 SELECT code_check() FROM pallets;
 
 query TT
-SELECT value->>'applicable', value->>'breach_rate' FROM main.measurements WHERE function = 'code_check' AND subject = 'supply.pallets';
+SELECT value->>'applicable', value->>'breach_rate' FROM main.results WHERE function = 'code_check' AND subject = 'supply.pallets';
 ----
 false	NULL
 
@@ -465,7 +465,7 @@ yellow
 # the told: false path of code_check: a column tests the status against literals, and the view's condition on
 # the table (an OR) cannot be applied, so the literals tell nothing and the check is not green
 statement ok
-DECLARE ASPECT stock_states WITH $${"title": "Stock states", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY stock_states WITH $${"title": "Stock states", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS stock_states ON supply AS $${"sql": "SELECT m.indeks, CASE m.status WHEN 'D' THEN 'free' WHEN 'K' THEN 'blocked' END AS state FROM stock_mono m WHERE m.quantity > 1 OR m.unit = 'pal'"}$$;
@@ -478,7 +478,7 @@ SELECT code_check() FROM stock_states;
 
 query TTTT
 SELECT c.source, array_to_string(c.literals, ' '), c.told, m.value->>'applicable'
-FROM main.measurements m, unnest(from_json(m.value->'codes', '[{"source": "VARCHAR", "literals": ["VARCHAR"], "told": "BOOLEAN"}]')) t(c)
+FROM main.results m, unnest(from_json(m.value->'codes', '[{"source": "VARCHAR", "literals": ["VARCHAR"], "told": "BOOLEAN"}]')) t(c)
 WHERE m.function = 'code_check' AND m.subject = 'supply.stock_states';
 ----
 stock_mono.status	D K	false	false
@@ -597,7 +597,7 @@ statement ok
 DECLARE RECIPE utilities_xbrl ON ferc FROM ferc_files AS $$SELECT * FROM read_csv('utilities_new.csv')$$;
 
 statement ok
-DECLARE ASPECT steam_plants WITH $${"title": "Large steam plants", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY steam_plants WITH $${"title": "Large steam plants", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS steam_plants ON ferc AS $${"sql": "SELECT 'f1_steam_' || o.report_year || '_' || o.report_prd || '_' || o.respondent_id || '_' || o.spplmnt_num || '_' || o.row_number AS record_id, u.utility_id_ferc1, o.report_year, lower(trim(o.plant_name)) AS plant_name_ferc1, o.capacity_mw FROM f1_steam o JOIN utilities_dbf u ON u.respondent_id = o.respondent_id WHERE o.report_year <= 2020 UNION ALL SELECT 'steam_402_' || n.report_year || '_' || lower(n.entity_id) || '_' || regexp_replace(lower(n.plant_name_axis), '[^a-z0-9]+', '_', 'g'), u.utility_id_ferc1, n.report_year, lower(trim(n.plant_name_axis)), n.capacity FROM (SELECT * FROM steam_xbrl QUALIFY row_number() OVER (PARTITION BY entity_id, report_year, plant_name_axis ORDER BY filed_at DESC) = 1) n JOIN utilities_xbrl u ON u.entity_id = n.entity_id WHERE n.report_year >= 2021"}$$;
@@ -745,7 +745,7 @@ statement ok
 DECLARE RECIPE south_orders ON sales FROM south AS $$SELECT * FROM read_csv('south_orders.csv')$$;
 
 statement ok
-DECLARE ASPECT orders WITH $${"title": "Orders", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY orders WITH $${"title": "Orders", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS orders ON sales AS $${"sql": "SELECT 'north' AS source_system, o.order_id, o.order_date, c.region, o.amount FROM north_orders o JOIN north_customers c ON c.customer_id = o.customer_id WHERE o.status = 'D' UNION ALL SELECT 'south', s.id, s.booked, 'South', s.amount_eur FROM south_orders s WHERE s.booked >= DATE '2026-02-01'"}$$;
@@ -767,7 +767,7 @@ SELECT reconciliation() FROM orders;
 # north is compared on its key and the region it looks up, the south on its key
 query TTIIIITT
 SELECT r.system, r.period, r.source_rows, r.excluded_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' '), array_to_string(r.compared_on, ' ')
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "period": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"], "compared_on": ["VARCHAR"]}]')) t(r)
+FROM main.results m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "period": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"], "compared_on": ["VARCHAR"]}]')) t(r)
 WHERE m.function = 'reconciliation' AND m.subject = 'sales.orders' ORDER BY ALL;
 ----
 north	2026-01-01	2	0	2	0	(empty)	order_id region
@@ -807,7 +807,7 @@ statement ok
 DECLARE RECIPE items ON sales FROM north AS $$SELECT * FROM read_csv('items.csv')$$;
 
 statement ok
-DECLARE ASPECT stock WITH $${"title": "Stock per item and site", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY stock WITH $${"title": "Stock per item and site", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS stock ON sales AS $${"sql": "SELECT 'north' AS source_system, i.global_item AS item, s.site, sum(s.qty) AS qty FROM north_stock s JOIN items i ON i.system = 'north' AND i.local = s.item WHERE s.status = 'D' GROUP BY ALL UNION ALL SELECT 'south', i.global_item, t.site, sum(t.qty) FROM south_stock t JOIN items i ON i.system = 'south' AND i.local = t.item GROUP BY ALL"}$$;
@@ -823,7 +823,7 @@ SELECT reconciliation() FROM stock;
 
 query TIIIIT
 SELECT r.system, r.source_rows, r.excluded_rows, r.target_rows, r.missing_rows, array_to_string(r.missing_keys, ' ')
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"]}]')) t(r)
+FROM main.results m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "excluded_rows": "BIGINT", "target_rows": "BIGINT", "missing_rows": "BIGINT", "missing_keys": ["VARCHAR"]}]')) t(r)
 WHERE m.function = 'reconciliation' AND m.subject = 'sales.stock' ORDER BY ALL;
 ----
 north	4	1	2	1	A9, W1
@@ -848,7 +848,7 @@ green	0.0
 # a view of two branches with no column that names the system: not applicable, and next asks for the column. The
 # key built by an expression in the south is named in the notes
 statement ok
-DECLARE ASPECT bare WITH $${"title": "Orders, no system", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY bare WITH $${"title": "Orders, no system", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS bare ON sales AS $${"sql": "SELECT o.order_id, o.amount FROM north_orders o UNION ALL SELECT 'S' || s.id, s.amount_eur FROM south_orders s"}$$;
@@ -864,7 +864,7 @@ SELECT reconciliation() FROM bare;
 
 query TTTT
 SELECT m.value->>'applicable', t.state, n.level, m.value->>'fix' IS NOT NULL
-FROM main.measurements m, view_tests() t, next n
+FROM main.results m, view_tests() t, next n
 WHERE m.function = 'reconciliation' AND m.subject = 'sales.bare' AND t.test = 'reconciliation_test' AND t.view = 'bare'
   AND n.asset = 'sales.bare' AND n.open LIKE 'reconciliation_test%';
 ----
@@ -878,7 +878,7 @@ SELECT reconciliation() FROM bare;
 
 query TIIII
 SELECT r.system, r.source_rows, r.target_rows, r.missing_key_count, json_array_length(m.value->'notes')
-FROM main.measurements m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "target_rows": "BIGINT", "missing_key_count": "BIGINT"}]')) t(r)
+FROM main.results m, unnest(from_json(m.value->'rows', '[{"system": "VARCHAR", "source_rows": "BIGINT", "target_rows": "BIGINT", "missing_key_count": "BIGINT"}]')) t(r)
 WHERE m.function = 'reconciliation' AND m.subject = 'sales.bare' ORDER BY ALL;
 ----
 north	6	6	0	2

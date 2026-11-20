@@ -7,7 +7,7 @@ WITH d AS (SELECT dataset FROM current_dataset),
 e AS (
   SELECT g.body, g.actor_kind, g.written_at
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.rank = 1),
+  WHERE g.property = 'entity' AND g.subject = d.dataset || '.' || CAST($table AS VARCHAR) AND g.rank = 1),
 latest AS (
   SELECT i.table_name, i.rows, i.imported_at,
          row_number() OVER (ORDER BY i.imported_at DESC, i.begin_snapshot DESC) AS rn
@@ -17,7 +17,7 @@ cols AS (
   SELECT count(*) AS n FROM information_schema.columns c JOIN d ON d.dataset = c.table_schema
   WHERE c.table_catalog = current_database() AND c.table_name = CAST($table AS VARCHAR)),
 a AS (
-  SELECT name, schema FROM aspects
+  SELECT name, schema FROM properties
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 reads AS (
   SELECT string_agg(DISTINCT coalesce(json_extract_string(a.schema, '$.title'), ms.view), ', ') AS views

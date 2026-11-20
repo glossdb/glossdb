@@ -1,14 +1,14 @@
--- The facts: every VIEW aspect declared `x-kind: scalar` with the one
+-- The facts: every VIEW property declared `x-kind: scalar` with the one
 -- number its metric definition serves (`fact_values()`) and an as-of: the
 -- newest load of the tables the metric definition reads. Status and colour
 -- follow the measures frame's rule. `$stopped` picks the served facts (0) or
 -- the stopped ones (1).
 WITH asked AS (
-  SELECT q.aspect, count(*) AS n FROM open_questions q
-  JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.aspect),
+  SELECT q.property, count(*) AS n FROM open_questions q
+  JOIN current_dataset d ON d.dataset = q.dataset GROUP BY q.property),
 decided AS (
-  SELECT r.aspect, max(r.written_at) AS decided_at FROM review_decisions r
-  JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.aspect),
+  SELECT r.property, max(r.written_at) AS decided_at FROM review_decisions r
+  JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.property),
 reads AS (SELECT DISTINCT view, source_table AS t FROM column_mapping() WHERE source_table IS NOT NULL),
 loaded AS (
   SELECT i.table_name, max(i.imported_at) AS loaded_at
@@ -37,8 +37,8 @@ SELECT s.name,
 FROM view_definitions s
 LEFT JOIN fact_values() f ON f.view = s.name
 LEFT JOIN as_of a ON a.view = s.name
-LEFT JOIN asked q ON q.aspect = s.name
-LEFT JOIN decided r ON r.aspect = s.name
+LEFT JOIN asked q ON q.property = s.name
+LEFT JOIN decided r ON r.property = s.name
 WHERE s.kind = 'scalar'
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY s.name

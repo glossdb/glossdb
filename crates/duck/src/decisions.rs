@@ -8,7 +8,7 @@ use crate::{Session, SessionError, rows_as_text};
 /// One review decision as the app interface takes it.
 pub struct Decision<'a> {
     pub subject: &'a str,
-    pub aspect: &'a str,
+    pub property: &'a str,
     pub dimension: &'a str,
     pub key: &'a str,
     pub assumption: &'a str,
@@ -32,7 +32,7 @@ fn ident_path(text: &str, max_segments: usize) -> bool {
 pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, SessionError> {
     let Decision {
         subject,
-        aspect,
+        property,
         dimension,
         key,
         assumption,
@@ -46,8 +46,8 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
             ),
         });
     }
-    if !ident_path(aspect, 1) {
-        return Err(SessionError::BadAspectName(aspect.to_string()));
+    if !ident_path(property, 1) {
+        return Err(SessionError::BadPropertyName(property.to_string()));
     }
     let dataset = human.dataset().ok_or(SessionError::NoDataset)?;
     let qualified = if subject.starts_with(&format!("{dataset}.")) || subject == dataset {
@@ -59,7 +59,7 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
         .batches(
             &format!(
                 "SELECT body::VARCHAR FROM {}.main.glossary \
-                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND aspect = 'review_decision' AND actor_kind = 'human' \
+                 WHERE dataset = '{dataset}' AND subject = '{qualified}' AND property = 'review_decision' AND actor_kind = 'human' \
                  ORDER BY begin_snapshot DESC LIMIT 1",
                 crate::LAKE
             ),
@@ -74,9 +74,9 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
     let Some(decisions) = body.get_mut("decisions").and_then(|r| r.as_array_mut()) else {
         return Err(SessionError::DecisionValueNotDecisions);
     };
-    decisions.retain(|r| !(r["aspect"] == aspect && r["key"] == key));
+    decisions.retain(|r| !(r["property"] == property && r["key"] == key));
     let mut entry = serde_json::json!({
-        "aspect": aspect,
+        "property": property,
         "dimension": dimension,
         "key": key,
         "assumption": assumption,
@@ -97,14 +97,14 @@ pub async fn store(human: &Session, decision: Decision<'_>) -> Result<String, Se
             if stance == "unclear" {
                 format!(
                     "decided (unclear) on `{key}` — the question missed: \
-                     reword the assumption in `{aspect}` under a new key \
+                     reword the assumption in `{property}` under a new key \
                      and record it again; the clearer wording becomes a new \
                      question"
                 )
             } else {
                 format!(
                     "decided ({stance}) on `{key}` — apply it: record \
-                     `{aspect}` again carrying that key, citing the decision"
+                     `{property}` again carrying that key, citing the decision"
                 )
             }
         })

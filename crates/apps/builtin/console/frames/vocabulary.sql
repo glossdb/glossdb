@@ -1,31 +1,31 @@
--- The vocabulary: every declared aspect of the kind the page asks for —
+-- The vocabulary: every declared property of the kind the page asks for —
 -- `fact`, `query`, `measurement`, or `own` for the workspace's own
 -- words — with what it holds from its schema, where it is required from its
 -- grain and condition, how many required subjects carry a value and how
 -- many are conflict, who may annotate it, and whether a test judges
--- it. A row opens the aspect's page.
+-- it. A row opens the property's page.
 WITH a AS (
   SELECT name, lower(kind) AS kind, grains, condition, schema,
          CASE WHEN name IN ('app', 'app_page', 'app_frame', 'app_spec', 'app_release', 'review_decision', 'recipe_change') THEN 'own'
               ELSE lower(kind) END AS side
-  FROM aspects
+  FROM properties
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1),
 counts AS (
-  SELECT aspect, count(*) AS required,
+  SELECT property, count(*) AS required,
          count(*) FILTER (WHERE state <> 'missing') AS annotated,
          count(*) FILTER (WHERE state = 'conflict') AS conflict
-  FROM GLOSSARY() GROUP BY aspect),
+  FROM GLOSSARY() GROUP BY property),
 w AS (
-  SELECT aspect,
+  SELECT property,
          max(CASE WHEN detector IS NOT NULL THEN 1 ELSE 0 END) AS judged,
          max(array_to_string(actors, ', ')) AS actors
   FROM (SELECT * FROM tests QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
-  GROUP BY aspect),
+  GROUP BY property),
 f AS (
-  SELECT returns AS aspect, string_agg(name, ', ' ORDER BY name) AS fns
+  SELECT returns AS property, string_agg(name, ', ' ORDER BY name) AS fns
   FROM (SELECT DISTINCT name, returns FROM functions WHERE returns IS NOT NULL)
   GROUP BY returns)
-SELECT a.name AS aspect,
+SELECT a.name AS property,
        CASE
          WHEN a.kind = 'view' THEN 'SQL with its assumptions disclosed, served as a view under the name'
          WHEN json_extract(a.schema, '$.properties.value.enum') IS NOT NULL
@@ -39,7 +39,7 @@ SELECT a.name AS aspect,
          WHEN a.grains IS NULL OR len(a.grains) = 0 THEN 'anywhere'
          WHEN len(a.grains) = 1 AND a.grains[1] = 'DATASET' THEN 'on the dataset'
          ELSE 'on a ' || array_to_string(list_transform(a.grains, lambda x: replace(lower(x), 'relationship', 'join')), ', a ') END
-         || coalesce(' where ' || json_extract_string(a.condition, '$.aspect') || ' = ' || json_extract_string(a.condition, '$.value'), '')
+         || coalesce(' where ' || json_extract_string(a.condition, '$.property') || ' = ' || json_extract_string(a.condition, '$.value'), '')
          || coalesce(' where the type is ' || array_to_string(json_extract(a.condition, '$.type')::VARCHAR[], ' or '), '') AS required_on,
        CAST(coalesce(c.annotated, 0) AS VARCHAR) || ' of ' || CAST(coalesce(c.required, 0) AS VARCHAR)
          || CASE WHEN coalesce(c.conflict, 0) > 0 THEN ' · ' || CAST(c.conflict AS VARCHAR) || ' conflict' ELSE '' END AS annotated,
@@ -50,12 +50,12 @@ SELECT a.name AS aspect,
          WHEN w.actors IS NOT NULL THEN replace(replace(lower(w.actors), 'human', 'a person'), 'agent', 'the agent')
          ELSE 'the agent, a person' END
          || CASE WHEN coalesce(w.judged, 0) = 1 THEN ' · tested' ELSE '' END AS actors,
-       '?aspect=' || a.name AS link
+       '?property=' || a.name AS link
 FROM a
-LEFT JOIN counts c ON c.aspect = a.name
-LEFT JOIN w ON w.aspect = a.name
-LEFT JOIN f ON f.aspect = a.name
+LEFT JOIN counts c ON c.property = a.name
+LEFT JOIN w ON w.property = a.name
+LEFT JOIN f ON f.property = a.name
 WHERE a.side = CAST($kind AS VARCHAR)
 ORDER BY CASE array_to_string(a.grains, ',') WHEN 'COLUMN' THEN 0 WHEN 'TABLE' THEN 1 WHEN 'TABLE,COLUMN,RELATIONSHIP' THEN 2
                                               WHEN 'RELATIONSHIP' THEN 3 WHEN 'SOURCE' THEN 4 WHEN 'DATASET' THEN 5 ELSE 6 END,
-         share DESC, aspect
+         share DESC, property

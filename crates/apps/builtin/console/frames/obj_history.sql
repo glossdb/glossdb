@@ -5,7 +5,7 @@ WITH d AS (SELECT dataset FROM current_dataset)
 SELECT "at", what, subject, who, value FROM (
   SELECT g.written_at AS ts,
          strftime(g.written_at, '%Y-%m-%d %H:%M') AS at,
-         'annotated ' || g.aspect AS what,
+         'annotated ' || g.property AS what,
          substr(g.subject, len(d.dataset) + 2) AS subject,
          CASE g.actor_kind WHEN 'human' THEN 'a person' WHEN 'agent' THEN 'the agent' ELSE g.actor_kind END
            || coalesce(' · ' || g.actor_id, '') AS who,

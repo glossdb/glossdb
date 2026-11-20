@@ -5,7 +5,7 @@
 {% block main %}
 {% set table = state.table | default(value="") %}
 {% set column = state.column | default(value="") %}
-{% set aspect = state.aspect | default(value="") %}
+{% set property = state.property | default(value="") %}
 {% set source = state.source | default(value="") %}
 {% set tab = state.tab | default(value="description") %}
 
@@ -42,11 +42,11 @@
     </gl-rows>
   </section>
 
-{% elif tab == "measurements" %}
+{% elif tab == "results" %}
   <section class="tile">
     <header><span class="eyebrow" title="The newest result of each function on this object or its columns.">Measured</span>
-      <code class="chip">measurements</code></header>
-    <gl-rows frame="frames/obj_measurements?subject={{ table }}" empty="nothing has been measured here yet">
+      <code class="chip">results</code></header>
+    <gl-rows frame="frames/obj_results?subject={{ table }}" empty="nothing has been measured here yet">
       <template>
         <div class="rrow" style="grid-template-columns:14rem 10rem minmax(0,1fr) 9rem">
           <span class="r-subj">{subject}</span>
@@ -141,7 +141,7 @@
     <gl-rows frame="frames/column_values?column={{ column }}" empty="nothing is known about this column, and nothing is required">
       <template>
         <div class="rrow" style="grid-template-columns:11rem minmax(0,1fr) 9rem 7rem 9rem">
-          <span class="r-subj">{aspect}<br><span class="r-meta">{kind}</span></span>
+          <span class="r-subj">{property}<br><span class="r-meta">{kind}</span></span>
           <span class="r-what">{value} <span class="v {mcls}" title="{mark_title}">{mark}</span></span>
           <span class="r-meta">{written_by}</span>
           <span class="r-meta">{state}</span>
@@ -151,11 +151,11 @@
     </gl-rows>
   </section>
 
-{% elif tab == "measurements" %}
+{% elif tab == "results" %}
   <section class="tile">
     <header><span class="eyebrow" title="The newest result of each function on this object or its columns.">Measured</span>
-      <code class="chip">measurements</code></header>
-    <gl-rows frame="frames/obj_measurements?subject={{ column }}" empty="nothing has been measured here yet">
+      <code class="chip">results</code></header>
+    <gl-rows frame="frames/obj_results?subject={{ column }}" empty="nothing has been measured here yet">
       <template>
         <div class="rrow" style="grid-template-columns:14rem 10rem minmax(0,1fr) 9rem">
           <span class="r-subj">{subject}</span>
@@ -253,10 +253,10 @@
 {% endif %}
 </div>
 
-{% elif aspect %}
-{# ---- one aspect: the declaration, then every value ----------------- #}
-{{ object::crumbs(dataset=dataset, top=bar_section, section="Properties", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=aspect) }}
-<gl-rows frame="frames/aspect_head?aspect={{ aspect }}" empty="no aspect is named {{ aspect }}">
+{% elif property %}
+{# ---- one property: the declaration, then every value ----------------- #}
+{{ object::crumbs(dataset=dataset, top=bar_section, section="Properties", section_link="/" ~ dataset ~ "/app/console/p/glossary", object=property) }}
+<gl-rows frame="frames/property_head?property={{ property }}" empty="no property is named {{ property }}">
   <template>
     <p class="page-h"><code>{name}</code> — <span class="r-what">{kind}</span></p>
     <p class="f-meta">holds {holds} · {required_on} · {guard} · {annotated}</p>
@@ -271,7 +271,7 @@
     <div class="rrow rhead" style="grid-template-columns:14rem minmax(0,1fr) 9rem 7rem 9rem">
       <span>asset</span><span>value</span><span>written by</span><span>state</span><span>when</span>
     </div>
-    <gl-rows frame="frames/aspect_values?aspect={{ aspect }}" empty="no asset carries this property, and none requires it">
+    <gl-rows frame="frames/property_values?property={{ property }}" empty="no asset carries this property, and none requires it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:14rem minmax(0,1fr) 9rem 7rem 9rem">
           <span class="r-subj">{subject}</span>
@@ -296,13 +296,13 @@
 <div class="tiles">
   <section class="tile">
     <header><span class="eyebrow" title="Every declared property: what it holds (from its schema), where it is required (its scope and condition), who may annotate it (the test, or the function that computes it), and how many required assets carry a value; the rail shows the share. A row opens the property with every value.">Properties</span>
-      <code class="chip">aspects · tests · functions · GLOSSARY()</code></header>
+      <code class="chip">properties · tests · functions · GLOSSARY()</code></header>
     <p class="hint">What is recorded about every asset. A fact is written by the agent or a person; a view is SQL; a measurement is computed by a function and never written by hand. A row opens the property with every value under it.</p>
     <p class="grp">Written about the data, by the agent or a person</p>
     <gl-rows frame="frames/vocabulary?kind=fact" empty="no asserted property is declared">
       <template>
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
-          <span class="r-subj">{aspect}</span>
+          <span class="r-subj">{property}</span>
           <span class="r-what">{holds}</span>
           <span class="r-meta">{required_on}</span>
           <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
@@ -314,7 +314,7 @@
     <gl-rows frame="frames/vocabulary?kind=view" empty="no metric or view is declared yet">
       <template>
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
-          <span class="r-subj">{aspect}</span>
+          <span class="r-subj">{property}</span>
           <span class="r-what">{holds}</span>
           <span class="r-meta">{required_on}</span>
           <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
@@ -326,7 +326,7 @@
     <gl-rows frame="frames/vocabulary?kind=measurement" empty="no measured property is declared">
       <template>
         <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
-          <span class="r-subj">{aspect}</span>
+          <span class="r-subj">{property}</span>
           <span class="r-what">{holds}</span>
           <span class="r-meta">{required_on}</span>
           <span class="r-meta">{annotated}<span class="rail-h {full}"><i style="width:{share}%"></i></span></span>
@@ -339,7 +339,7 @@
       <gl-rows frame="frames/vocabulary?kind=own" empty="">
         <template>
           <a class="rrow sub" href="{link}" style="grid-template-columns:13rem minmax(0,1fr) 11rem 8rem 10rem">
-            <span class="r-subj">{aspect}</span>
+            <span class="r-subj">{property}</span>
             <span class="r-what">{holds}</span>
             <span class="r-meta">{required_on}</span>
             <span class="r-meta">{annotated}</span>

@@ -18,7 +18,7 @@ not a stored list. An assumption is in it when:
 - no person has decided that key on that view.
 
 ```sql
-SELECT o.aspect AS view, o.key, o.assumption, o.basis, o.alternative, o.conf
+SELECT o.property AS view, o.key, o.assumption, o.basis, o.alternative, o.conf
 FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset
 ORDER BY o.conf;
 ```
@@ -47,7 +47,7 @@ person:
 
 ```glossql
 GLOSS review_decision ON logistics AS $${"decisions": [
-  {"aspect": "on_time_rate", "key": "promise-date", "stance": "corrected",
+  {"property": "on_time_rate", "key": "promise-date", "stance": "corrected",
    "note": "measure against the first promised date, not the rescheduled one"}
 ]}$$;
 ```
@@ -75,7 +75,7 @@ SELECT level, asset, state, who, open, statement FROM next WHERE kind = 'review'
 `review_decisions` shows each decision and whether it is applied:
 
 ```sql
-SELECT subject, aspect, key, stance, note, folded_in FROM review_decisions;
+SELECT subject, property, key, stance, note, folded_in FROM review_decisions;
 ```
 
 `folded_in` turns true once no assumption below full confidence

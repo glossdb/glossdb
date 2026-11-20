@@ -1,4 +1,4 @@
--- One aspect's values: every subject the collapsed read serves for it
+-- One property's values: every subject the collapsed read serves for it
 -- — the value in words, who wrote it, the value's state and when —
 -- and every subject it is required on where nobody wrote one, said so. The
 -- conflict first, then the stale, then the current, then the required; a
@@ -6,18 +6,18 @@
 -- the dataset's own prefix.
 WITH d AS (SELECT dataset FROM current_dataset),
 st AS (
-  SELECT subject, state, value FROM GLOSSARY() WHERE aspect = CAST($aspect AS VARCHAR)),
+  SELECT subject, state, value FROM GLOSSARY() WHERE property = CAST($property AS VARCHAR)),
 said AS (
   SELECT g.subject, g.actor_kind, g.actor_id, g.body, g.written_at
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = CAST($aspect AS VARCHAR) AND g.rank = 1),
+  WHERE g.property = CAST($property AS VARCHAR) AND g.rank = 1),
 fn AS (
   SELECT g.subject, g.actor, g.written_at, g.body
   FROM GLOSSARY(all => true) g
-  WHERE lower(g.kind) = 'measurement' AND g.aspect = CAST($aspect AS VARCHAR) AND g.current),
+  WHERE lower(g.kind) = 'measurement' AND g.property = CAST($property AS VARCHAR) AND g.current),
 loaded AS (SELECT DISTINCT i.table_name FROM imports i JOIN d ON d.dataset = i.dataset),
 a AS (
-  SELECT lower(kind) AS kind FROM aspects WHERE name = CAST($aspect AS VARCHAR)
+  SELECT lower(kind) AS kind FROM properties WHERE name = CAST($property AS VARCHAR)
   QUALIFY row_number() OVER (PARTITION BY name ORDER BY begin_snapshot DESC) = 1)
 SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subject, len(d.dataset) + 2) ELSE st.subject END AS subject,
        CASE
@@ -25,7 +25,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
          WHEN st.state = 'conflict' THEN 'withheld: the annotations differ'
          WHEN a.kind = 'measurement' THEN substr(f.body::VARCHAR, 1, 200)
          WHEN a.kind = 'view' THEN 'a metric definition in SQL; its page has the assumptions and the SQL'
-         ELSE CASE CAST($aspect AS VARCHAR)
+         ELSE CASE CAST($property AS VARCHAR)
            WHEN 'entity' THEN json_extract_string(s.body, '$.value')
              || coalesce(' · one row per ' || array_to_string(json_extract(s.body, '$.grain')::VARCHAR[], ', '), '')
              || coalesce(' · time axis ' || json_extract_string(s.body, '$.time_axis'), '')
@@ -51,7 +51,7 @@ SELECT CASE WHEN starts_with(st.subject, d.dataset || '.') THEN substr(st.subjec
             WHEN s.actor_kind = 'human' THEN 'written by ' || coalesce(s.actor_id, 'a person')
             ELSE '' END AS mark_title,
        CASE
-         WHEN a.kind = 'view' THEN '/' || d.dataset || '/app/console/p/views?view=' || CAST($aspect AS VARCHAR)
+         WHEN a.kind = 'view' THEN '/' || d.dataset || '/app/console/p/views?view=' || CAST($property AS VARCHAR)
          WHEN strpos(st.subject, ' -> ') > 0 THEN ''
          WHEN len(string_split(st.subject, '.')) = 3 THEN '?column=' || substr(st.subject, len(d.dataset) + 2)
          WHEN len(string_split(st.subject, '.')) = 2 AND l.table_name IS NOT NULL THEN '?table=' || substr(st.subject, len(d.dataset) + 2)

@@ -7,32 +7,32 @@
 WITH d AS (SELECT dataset FROM current_dataset),
 tbl AS (SELECT d.dataset || '.' || CAST($table AS VARCHAR) AS subject FROM d),
 cur AS (
-  SELECT g.subject, g.aspect, g.actor_kind, g.written_at, json_extract_string(g.body, '$.value') AS value
+  SELECT g.subject, g.property, g.actor_kind, g.written_at, json_extract_string(g.body, '$.value') AS value
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
   WHERE g.subject LIKE (SELECT subject FROM tbl) || '.%'
-    AND g.aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.rank = 1),
+    AND g.property IN ('role', 'meaning', 'unit', 'additivity', 'dimension') AND g.rank = 1),
 states AS (
   SELECT subject,
          max(CASE WHEN state = 'conflict' THEN 2 WHEN state = 'stale' THEN 1 ELSE 0 END) AS worst,
-         count(*) FILTER (WHERE aspect = 'meaning' AND state = 'missing') AS meaning_missing
+         count(*) FILTER (WHERE property = 'meaning' AND state = 'missing') AS meaning_missing
   FROM GLOSSARY()
   WHERE subject LIKE (SELECT subject FROM tbl) || '.%'
-    AND aspect IN ('role', 'meaning', 'unit', 'additivity', 'dimension')
+    AND property IN ('role', 'meaning', 'unit', 'additivity', 'dimension')
   GROUP BY subject),
 human AS (SELECT subject, max(written_at) AS annotated_at FROM cur WHERE actor_kind = 'human' GROUP BY subject),
 entity AS (
   SELECT json_extract_string(g.body, '$.time_axis') AS axis
   FROM ranked_annotations g JOIN d ON d.dataset = g.dataset
-  WHERE g.aspect = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.rank = 1),
+  WHERE g.property = 'entity' AND g.subject = (SELECT subject FROM tbl) AND g.rank = 1),
 measured AS (
-  SELECT g.subject, g.aspect, g.body
+  SELECT g.subject, g.property, g.body
   FROM GLOSSARY(all => true) g
   WHERE lower(g.kind) = 'measurement' AND g.current AND g.subject LIKE (SELECT subject FROM tbl) || '.%'),
 summaries AS (
   SELECT subject,
          string_agg(
-           CASE WHEN NOT coalesce(json_extract(body, '$.applicable')::BOOLEAN, true) THEN aspect || ': not applicable'
-             ELSE CASE aspect
+           CASE WHEN NOT coalesce(json_extract(body, '$.applicable')::BOOLEAN, true) THEN property || ': not applicable'
+             ELSE CASE property
                WHEN 'temporal_profile' THEN coalesce(json_extract_string(body, '$.granularity'), 'no grain found')
                  || coalesce(', ' || json_extract_string(body, '$.completeness.actual') || ' of ' || json_extract_string(body, '$.completeness.expected') || ' periods', '')
                  || coalesce(', ' || json_extract_string(body, '$.gaps.count') || ' gaps', '')
@@ -40,8 +40,8 @@ summaries AS (
                  || coalesce(', ' || fmt_number(json_extract(body, '$.null_ratio')::DOUBLE * 100) || '% null', '')
                  || coalesce(', ' || json_extract_string(body, '$.distinct') || ' distinct', '')
                WHEN 'outlier_profile' THEN 'outliers profiled'
-               ELSE aspect END END,
-           ' · ' ORDER BY aspect) AS measured
+               ELSE property END END,
+           ' · ' ORDER BY property) AS measured
   FROM measured GROUP BY subject),
 cols AS (
   SELECT c.column_name, c.ordinal_position, d.dataset || '.' || c.table_name || '.' || c.column_name AS subject,
@@ -70,11 +70,11 @@ SELECT c.column_name AS name,
             ELSE '' END AS mark_title,
        '?column=' || c.path AS link
 FROM cols c
-LEFT JOIN cur r ON r.subject = c.subject AND r.aspect = 'role'
-LEFT JOIN cur x ON x.subject = c.subject AND x.aspect = 'dimension'
-LEFT JOIN cur m ON m.subject = c.subject AND m.aspect = 'meaning'
-LEFT JOIN cur u ON u.subject = c.subject AND u.aspect = 'unit'
-LEFT JOIN cur b ON b.subject = c.subject AND b.aspect = 'additivity'
+LEFT JOIN cur r ON r.subject = c.subject AND r.property = 'role'
+LEFT JOIN cur x ON x.subject = c.subject AND x.property = 'dimension'
+LEFT JOIN cur m ON m.subject = c.subject AND m.property = 'meaning'
+LEFT JOIN cur u ON u.subject = c.subject AND u.property = 'unit'
+LEFT JOIN cur b ON b.subject = c.subject AND b.property = 'additivity'
 LEFT JOIN states st ON st.subject = c.subject
 LEFT JOIN human h ON h.subject = c.subject
 LEFT JOIN entity e ON true

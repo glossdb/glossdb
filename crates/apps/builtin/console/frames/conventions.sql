@@ -8,7 +8,7 @@ srcs AS (SELECT DISTINCT r.source FROM recipes r JOIN d ON d.dataset = r.dataset
 c AS (
   SELECT g.subject AS source, g.body
   FROM ranked_annotations g
-  WHERE g.aspect = 'conventions' AND g.subject IN (SELECT source FROM srcs) AND g.rank = 1),
+  WHERE g.property = 'conventions' AND g.subject IN (SELECT source FROM srcs) AND g.rank = 1),
 keyed AS (SELECT source, body, unnest(json_keys(body)) AS key FROM c),
 lines AS (
   SELECT source,

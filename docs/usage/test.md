@@ -32,7 +32,7 @@ loaded table whose `entity` states a `grain` gets the grain test:
 
 The server runs them after a call that defines the view, annotates
 what a test reads or loads a table the view scans. They read the
-definition's lineage and stored measurements: `column_profile()` on
+definition's lineage and stored results: `column_profile()` on
 the join columns and on each column the view serves, with the values
 each profile held before, `relationship_coherence()` on each declared
 relationship between the scanned tables. The server computes those
@@ -126,7 +126,7 @@ A test of your own has three parts: the expectation, the check that
 measures it, and the test that scores one against the other.
 
 ```glossql
-DECLARE ASPECT reading_filled WITH $${
+DECLARE PROPERTY reading_filled WITH $${
   "type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}

@@ -57,7 +57,7 @@ types and meanings, and the code tables.
    `harmonise.md`, step 5, which holds for one source as for several.
 
 ```glossql
-DECLARE ASPECT staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
 GLOSS staff ON hr AS $${
   "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
   "assumptions": [
@@ -110,7 +110,7 @@ can write the same annotations yourself, on `<view>.<column>`.
   assumption. A count per member is a metric of its own.
 
 ```glossql
-DECLARE ASPECT on_time_rate WITH $${"title": "On-time delivery rate"}$$ AS VIEW;
+DECLARE PROPERTY on_time_rate WITH $${"title": "On-time delivery rate"}$$ AS VIEW;
 GLOSS on_time_rate ON logistics AS $${
   "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
   "time": "delivered_on",

@@ -15,7 +15,7 @@
    rows. #}
 {% set tab = state.tab | default(value="description") %}
 {# A picked slice is a measurement: the slice link opens that tab. #}
-{% if dim and not state.tab %}{% set tab = "measurements" %}{% endif %}
+{% if dim and not state.tab %}{% set tab = "results" %}{% endif %}
 {% if kind == "relation" %}{% set section = "Tables" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% elif kind == "scalar" %}{% set section = "Single values" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "view=" ~ view %}{% endif %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section=section, object=view) }}
 <gl-rows frame="frames/view_head" empty="">
@@ -125,7 +125,7 @@
     </gl-rows>
   </section>
 
-{% elif tab == "measurements" %}
+{% elif tab == "results" %}
   {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
   {% if kind != "scalar" and kind != "relation" %}
   <section class="tile">
@@ -186,8 +186,8 @@
 
   <section class="tile">
     <header><span class="eyebrow" title="The newest result of each function on the view's columns.">Measured on its columns</span>
-      <code class="chip">measurements</code></header>
-    <gl-rows frame="frames/obj_measurements?subject={{ view }}" empty="nothing has been measured on this view's columns">
+      <code class="chip">results</code></header>
+    <gl-rows frame="frames/obj_results?subject={{ view }}" empty="nothing has been measured on this view's columns">
       <template>
         <div class="rrow" style="grid-template-columns:12rem 10rem minmax(0,1fr) 9rem">
           <span class="r-subj">{subject}</span>
@@ -275,7 +275,7 @@
   <section class="tile">
     <header><span class="eyebrow" title="The table views of the dataset: each a named SQL query over its tables. A table view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every view that reads it. The Export tab serves each as a file.">Table views</span>
       <code class="chip">view_definitions</code></header>
-    <gl-rows frame="frames/views?stopped=0" empty="no table view is defined: a table view is a VIEW aspect with x-kind relation and the SQL query that defines it">
+    <gl-rows frame="frames/views?stopped=0" empty="no table view is defined: a table view is a VIEW property with x-kind relation and the SQL query that defines it">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
           <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>

@@ -94,7 +94,7 @@ Four statements and one run:
    the column (`FROM <table>.<column>`).
 
 ```glossql
-DECLARE ASPECT hours_match WITH $${"type": "object",
+DECLARE PROPERTY hours_match WITH $${"type": "object",
   "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
                  "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}}$$ AS FACT ON TABLE;
 DECLARE FUNCTION hours_match_check FOR workshop AS $$

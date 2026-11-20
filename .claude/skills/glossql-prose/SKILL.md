@@ -41,7 +41,7 @@ versions.
 
 | Coding harness | Data harness | glossql |
 |---|---|---|
-| type system | the harness schema: what must be known per dataset, table, column, metric | aspect |
+| type system | the harness schema: what must be known per dataset, table, column, metric | property |
 | type annotations, docstrings | annotations | gloss |
 | compiler error | validation on write against a JSON Schema | |
 | linter | quality screens | the `quality` kit |
@@ -81,14 +81,14 @@ type it. Never a project word the reader cannot look up.
 | asset (a dataset, table, column) | — | subject, in the grammar |
 | annotation; annotate | — | `GLOSS` |
 | the glossary | — | `GLOSSARY()` |
-| property of the harness schema | — | `ASPECT` |
+| property of the harness schema | — | `PROPERTY` |
 | test | witness | `DECLARE TEST` |
 | test results | attestation | `TESTS()` |
-| view (a metric, a scalar, a derived relation) | query aspect | kind `VIEW` (`AS VIEW`); `x-kind: scalar` for a single value |
+| view (a metric, a scalar, a derived relation) | query property | kind `VIEW` (`AS VIEW`); `x-kind: scalar` for a single value |
 | preview, dry run | probe | `PREVIEW` |
 
 Name the statement where the reader will type it, once: "a test
-(`DECLARE TEST`)", "a view aspect (`AS VIEW`)". Do not repeat the
+(`DECLARE TEST`)", "a view property (`AS VIEW`)". Do not repeat the
 keyword as its own explanation: not "a test (`TEST`)".
 
 ## The rules

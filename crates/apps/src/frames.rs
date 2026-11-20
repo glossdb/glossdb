@@ -93,7 +93,7 @@ pub async fn frame(
 ///
 /// The console's review decision write is gated on this: a posted answer is
 /// accepted only if `open_questions` still carries that exact
-/// `(subject, aspect, key)`, and the prose it records is this read's,
+/// `(subject, property, key)`, and the prose it records is this read's,
 /// never the browser's. A tab left open across a applying the decision posts a
 /// question that no longer holds, and gets told so.
 pub(crate) struct OpenQuestion {
@@ -104,12 +104,12 @@ pub(crate) struct OpenQuestion {
 pub(crate) async fn one_open_question(
     session: &crate::engine::Session,
     subject: &str,
-    aspect: &str,
+    property: &str,
     key: &str,
 ) -> Result<Option<OpenQuestion>, String> {
     let pairs = vec![
         ("subject".to_string(), subject.to_string()),
-        ("aspect".to_string(), aspect.to_string()),
+        ("property".to_string(), property.to_string()),
         ("key".to_string(), key.to_string()),
     ];
     let query = crate::query_with(
@@ -123,7 +123,7 @@ pub(crate) async fn one_open_question(
         "SELECT coalesce(o.dimension, '-') AS dimension, o.assumption \
              FROM open_questions o JOIN current_dataset d ON d.dataset = o.dataset \
              WHERE o.subject = CAST($subject AS VARCHAR) \
-               AND o.aspect = CAST($aspect AS VARCHAR) \
+               AND o.property = CAST($property AS VARCHAR) \
                AND o.key = CAST($key AS VARCHAR) LIMIT 1",
         pairs,
     )

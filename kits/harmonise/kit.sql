@@ -17,7 +17,7 @@
 -- loads two filing systems). column_mapping() groups by it.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT system_of_record WITH $${
+DECLARE PROPERTY system_of_record WITH $${
   "description": "Preview. The system of record a loaded table's rows come from, where it is not the source the table is loaded from.",
   "type": "object", "required": ["value"],
   "properties": {"value": {"type": "string"}, "basis": {"type": "string"}}
@@ -34,7 +34,7 @@ DECLARE ASPECT system_of_record WITH $${
 -- source and carries none.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT source_systems WITH $${
+DECLARE PROPERTY source_systems WITH $${
   "description": "Preview. The source systems a table or a table view is loaded from, and whether the conventions of each are written down.",
   "type": "object",
   "properties": {
@@ -67,7 +67,7 @@ $$ RETURNS source_systems;
 -- (x-set-by: contract).
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT contract WITH $${
+DECLARE PROPERTY contract WITH $${
   "description": "Preview. A target column's part of the data contract: its type, whether a value is required, the allowed values.",
   "type": "object", "x-asked": "per table",
   "examples": [{"type": "<VARCHAR|BIGINT|DOUBLE|DATE|...>", "required": false}],
@@ -100,7 +100,7 @@ CREATE OR REPLACE MACRO main.contract_type_holds(served, stated) AS
 -- serve). breach_rate is the share of rows of the breach with the most.
 -- Not applicable until each code table relationship has its coherence
 -- stored, which the server computes first.
-DECLARE ASPECT contract_check WITH $${
+DECLARE PROPERTY contract_check WITH $${
   "description": "Preview. The rows of a target view keep its contract: the key is unique and filled, required values are filled, values are allowed, codes are in their code table, the types hold.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -247,7 +247,7 @@ CREATE OR REPLACE MACRO main.condition_holds(op, literals, v) AS
 -- column tests a code the literals tell.
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT code_check WITH $${
+DECLARE PROPERTY code_check WITH $${
   "description": "Preview. Every code a source column holds is named by the expression of the target column it reaches.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},
@@ -399,7 +399,7 @@ DECLARE TEST code_test ON code_check BY (AGENT, HUMAN) DETECTOR rate_tolerance T
 -- computes it after a write on each view with a contract (x-set-by).
 --===------------------------------------------------------------------===--
 
-DECLARE ASPECT reconciliation WITH $${
+DECLARE PROPERTY reconciliation WITH $${
   "description": "Preview. Per source system and period, the rows and the sum of each measure at the source against what a target view serves, and the source rows whose key the view does not serve.",
   "type": "object", "x-subject": "view", "x-set-by": "contract",
   "properties": {"applicable": {"type": "boolean"}, "reason": {"type": ["string", "null"]},

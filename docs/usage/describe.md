@@ -24,7 +24,7 @@ person on the others. No statement names its own author.
 
 ## The properties that ship
 
-A property (`ASPECT`) is declared with a JSON Schema and the kind of
+A property (`PROPERTY`) is declared with a JSON Schema and the kind of
 asset it applies to. The `kpi` kit declares these:
 
 | Property | On | Value |
@@ -43,7 +43,7 @@ timestamp column and `validity` on an effective-dated table
 ([define views](views.md), [test](test.md)). Each declared property:
 
 ```sql
-SELECT name, kind, grains, condition FROM aspects ORDER BY name;
+SELECT name, kind, grains, condition FROM properties ORDER BY name;
 ```
 
 ## Relationships
@@ -88,7 +88,7 @@ A detection proposes; a declaration is yours to make.
 ## Read the glossary
 
 ```glossql
-SELECT subject, aspect, value, test_state, state FROM GLOSSARY(staff);
+SELECT subject, property, value, test_state, state FROM GLOSSARY(staff);
 ```
 
 `GLOSSARY(<asset>)` returns one row per asset and property for the
@@ -109,7 +109,7 @@ measurement's.
 Each value side by side, with its author:
 
 ```glossql
-SELECT subject, aspect, actor, body, written_at, current FROM GLOSSARY(staff.fte, all => true);
+SELECT subject, property, actor, body, written_at, current FROM GLOSSARY(staff.fte, all => true);
 ```
 
 ## What is still missing

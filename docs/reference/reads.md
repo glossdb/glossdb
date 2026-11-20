@@ -23,26 +23,26 @@ write replaced or removed, with its `end_snapshot`.
 | `recipes` | `dataset`, `table_name`, `source`, `settings`, `sql`, `declared_at`, `declared_by` (the load queries) |
 | `imports` | `dataset`, `table_name`, `mode`, `rows`, `dropped_rows_count`, `lineage`, `snapshot_id`, `imported_at` (the loads) |
 | `relationships` | `dataset`, `left_side`, `op`, `right_side`, `declared_at`, `declared_by` |
-| `aspects` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
-| `glossary` | `dataset`, `subject`, `aspect`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
+| `properties` | `name`, `kind`, `grains`, `condition`, `schema`, `declared_at`, `declared_by` (the properties and view names) |
+| `glossary` | `dataset`, `subject`, `property`, `actor_kind`, `actor_id`, `body`, `written_at` (the annotations) |
 | `functions` | `name`, `scope`, `script`, `returns`, `reads` (what the body reads, by kind and place), `declared_at`, `declared_by` |
-| `measurements` | `id`, `dataset`, `function`, `subject`, `aspect`, `value`, `computed_at`, `error`, `read_at`, `changed_at` (the stored results: a measurement, a test's result, a view's lineage; the lake snapshot the result read at, and the one its value last changed at) |
+| `results` | `id`, `dataset`, `function`, `subject`, `property`, `value`, `computed_at`, `error`, `read_at`, `changed_at` (the stored results: a measurement, a test's result, a view's lineage; the lake snapshot the result read at, and the one its value last changed at) |
 | `inputs` | `result`, `asset`, `what` (each node a stored result read: an asset and what was read of it; `result` is the result's `id`) |
 | `edges` | `result`, `from`, `to`, `kind` (a view's lineage: one edge from the view to each table, column and view it reads) |
-| `tests` | `name`, `aspect`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
+| `tests` | `name`, `property`, `actors`, `detector`, `threshold`, `declared_at`, `declared_by` |
 | `kits` | `name`, `location`, `statements`, `loaded_at`, `hash` |
 
 `SHOW TABLES` lists the dataset's tables and views beside these. How
-`measurements`, `inputs` and `edges` decide whether a result is
+`results`, `inputs` and `edges` decide whether a result is
 current: [how results stay current](dependencies.md).
 
 ## The language's reads
 
 | Read | Returns |
 |---|---|
-| `GLOSSARY(<asset>)` | one row per asset and property: `subject`, `aspect`, `value`, `test_state`, `score`, `state` (`current`, `stale`, `possibly`, `missing`, `conflict`) |
-| `GLOSSARY(<asset>, all => true)` | each value side by side: `subject`, `aspect`, `kind`, `test`, `actor`, `body`, `written_at`, `current` |
-| `TESTS(<asset>)` | `subject`, `aspect`, `test`, `state`, `score`, `computed_at`, `current`, `error` |
+| `GLOSSARY(<asset>)` | one row per asset and property: `subject`, `property`, `value`, `test_state`, `score`, `state` (`current`, `stale`, `possibly`, `missing`, `conflict`) |
+| `GLOSSARY(<asset>, all => true)` | each value side by side: `subject`, `property`, `kind`, `test`, `actor`, `body`, `written_at`, `current` |
+| `TESTS(<asset>)` | `subject`, `property`, `test`, `state`, `score`, `computed_at`, `current`, `error` |
 
 With no argument both cover the dataset in use. `<asset>::<property>`
 narrows either to one property.
@@ -52,9 +52,9 @@ narrows either to one property.
 | View | Scope | Columns |
 |---|---|---|
 | `current_dataset` | | `dataset`; no row on a call bound to none |
-| `open_questions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
-| `agent_assumptions` | workspace | `dataset`, `subject`, `aspect`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
-| `review_decisions` | workspace | `dataset`, `subject`, `idx`, `aspect`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
+| `open_questions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
+| `agent_assumptions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
+| `review_decisions` | workspace | `dataset`, `subject`, `idx`, `property`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
 | `view_definitions` | dataset | `name`, `title`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
@@ -228,7 +228,7 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 | `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset with its kind and, where its definition serves no number, why: the rows of `view_summary()` without what its columns say |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
 | `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
-| `view_tests()` | `view`, `test`, `aspect`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset, worst first |
+| `view_tests()` | `view`, `test`, `property`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset, worst first |
 | `semantic_model()` | `document`: the dataset as one Apache Ossie document (the 0.3.0.dev0 draft, schema at apache/ossie `74a26bef`); units and a semi-additive or non-additive value in `nonportable_extensions` |
 | `lineage_events()` | `event`: OpenLineage run events (spec 2-0-2), one per load and one per view |
 | `pages()` | `uri`, `title`, `body`: each page the MCP interface serves |
@@ -323,7 +323,7 @@ SELECT source_systems() FROM onhand;
 SELECT test, state, evidence->>'finding' FROM view_tests() WHERE test IN ('contract_test', 'code_test', 'reconciliation_test');
 SELECT reconciliation() FROM onhand;
 SELECT r->>'system' AS system, r->>'period' AS period, r->'source_rows' AS source_rows, r->'target_rows' AS target_rows, r->'missing_keys' AS missing_keys
-FROM measurements, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
+FROM results, unnest(from_json(value->'rows', '["JSON"]')) t(r) WHERE function = 'reconciliation';
 ```
 
 `orphan_test` names the keys that find no parent on each relationship

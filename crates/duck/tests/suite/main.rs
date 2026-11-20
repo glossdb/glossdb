@@ -97,12 +97,12 @@ async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
         other => panic!("{other:?}"),
     };
     let glossed = agent
-        .execute("SELECT count(*) FROM glossary WHERE aspect = 'role'")
+        .execute("SELECT count(*) FROM glossary WHERE property = 'role'")
         .await
         .unwrap();
     assert_eq!(count(glossed), "1");
     match agent
-        .execute("DELETE FROM glossary WHERE aspect = 'role'")
+        .execute("DELETE FROM glossary WHERE property = 'role'")
         .await
         .unwrap()
         .as_slice()
@@ -111,7 +111,7 @@ async fn a_standard_actor_uses_the_workspace_and_not_the_engine_settings() {
         other => panic!("{other:?}"),
     }
     let gone = agent
-        .execute("SELECT count(*) FROM glossary WHERE aspect = 'role'")
+        .execute("SELECT count(*) FROM glossary WHERE property = 'role'")
         .await
         .unwrap();
     assert_eq!(count(gone), "0");
@@ -177,7 +177,7 @@ async fn the_language_runs_through_a_channel_and_the_glossary_reads_back() {
 
     let bound = plane.channel(agent(), Some("fin")).await.unwrap();
     let read = bound
-        .execute("SELECT subject, aspect, value FROM GLOSSARY(orders.amount)")
+        .execute("SELECT subject, property, value FROM GLOSSARY(orders.amount)")
         .await
         .unwrap();
     let rows = text(&read);
@@ -246,7 +246,7 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
         &session,
         glossdb_duck::decisions::Decision {
             subject: "orders.id",
-            aspect: "meaning",
+            property: "meaning",
             dimension: "scope",
             key: "k1",
             assumption: "ids are contiguous",
@@ -264,7 +264,7 @@ async fn a_review_decision_is_stored_as_the_person_and_counted() {
             .execute(
                 "SELECT actor_kind, actor_id, json_extract_string(body, '$.decisions[0].key'), \
                  json_extract_string(body, '$.decisions[0].stance') \
-                 FROM glossary WHERE aspect = 'review_decision'",
+                 FROM glossary WHERE property = 'review_decision'",
             )
             .await
             .unwrap(),
@@ -294,7 +294,7 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
     async fn count(plane: &Plane) -> String {
         let rows = text(
             &plane
-                .execute(agent(), None, "SELECT count(*) FROM aspects")
+                .execute(agent(), None, "SELECT count(*) FROM properties")
                 .await
                 .unwrap(),
         );
@@ -309,7 +309,7 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
         .execute(
             "DECLARE DATASET fin SET (purpose: 'reads');
              USE fin;
-             DECLARE ASPECT dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
+             DECLARE PROPERTY dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
              GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\", \"assumptions\": [
                {\"dimension\": \"definition\", \"key\": \"per-line\", \"assumption\": \"per line\", \"basis\": \"judgment\", \"confidence\": 0.7},
                {\"dimension\": \"grain\", \"key\": \"g\", \"assumption\": \"monthly\", \"basis\": \"measured\", \"confidence\": 1.0}]}$$;",
@@ -451,8 +451,8 @@ async fn two_writers_at_once_each_land_once_and_a_refusal_keeps_its_code() {
             &format!(
                 "DECLARE DATASET fin SET (purpose: 'two writers');
                  CREATE TABLE fin.wide AS SELECT {};
-                 DECLARE ASPECT remark WITH $${{\"type\": \"object\"}}$$ AS FACT ON COLUMN;
-                 DECLARE ASPECT raw WITH $${{\"type\": \"integer\"}}$$ AS MEASUREMENT ON TABLE;",
+                 DECLARE PROPERTY remark WITH $${{\"type\": \"object\"}}$$ AS FACT ON COLUMN;
+                 DECLARE PROPERTY raw WITH $${{\"type\": \"integer\"}}$$ AS MEASUREMENT ON TABLE;",
                 columns.join(", ")
             ),
         )
@@ -483,7 +483,7 @@ async fn two_writers_at_once_each_land_once_and_a_refusal_keeps_its_code() {
     let read = first
         .execute(
             "SELECT count(*), count(DISTINCT subject), count(DISTINCT begin_snapshot)
-             FROM glossary_history WHERE aspect = 'remark'",
+             FROM glossary_history WHERE property = 'remark'",
         )
         .await
         .unwrap();

@@ -48,7 +48,7 @@ CREATE TABLE fin.ledger AS
   FROM range(120) r(i);
 
 statement ok
-DECLARE ASPECT spend WITH $${"title": "Spend"}$$ AS VIEW;
+DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
 
 statement ok
 GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund, object FROM fin.ledger GROUP BY ALL"}$$;
@@ -134,7 +134,7 @@ statement ok
 CREATE TABLE fin.products AS SELECT i AS id, CASE WHEN i % 2 = 0 THEN 'D' ELSE 'A' END AS status, 'brand' || i AS global_brand, i AS parent, i * 1.5 AS "unit price" FROM range(4) t(i);
 
 statement ok
-DECLARE ASPECT product_forms WITH $${"title": "Product forms"}$$ AS VIEW;
+DECLARE PROPERTY product_forms WITH $${"title": "Product forms"}$$ AS VIEW;
 
 statement ok
 GLOSS product_forms ON fin AS $${"sql": "SELECT p.id, CASE WHEN p.status = 'D' THEN 'available' ELSE 'other' END AS availability, coalesce(p.global_brand, up.global_brand, top.global_brand) AS brand, p.\"unit price\" FROM fin.products p JOIN fin.products up ON p.parent = up.id JOIN fin.products top ON up.parent = top.id"}$$;
@@ -162,7 +162,7 @@ CREATE TABLE fin.levels AS SELECT * FROM (VALUES
   (DATE '2024-04-30', 'ops', 12.0), (DATE '2024-04-30', 'sales', 6.0)) t(d, dept, n);
 
 statement ok
-DECLARE ASPECT headcount WITH $${"title": "Headcount"}$$ AS VIEW;
+DECLARE PROPERTY headcount WITH $${"title": "Headcount"}$$ AS VIEW;
 
 statement ok
 GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n AS value, dept FROM fin.levels"}$$;
@@ -191,7 +191,7 @@ SELECT period::DATE, value FROM metric_series(view := 'headcount') WHERE dimensi
 # rows stop early fills zeros up to the newest instant of the dataset's metrics
 
 statement ok
-DECLARE ASPECT early WITH $${"title": "Early"}$$ AS VIEW;
+DECLARE PROPERTY early WITH $${"title": "Early"}$$ AS VIEW;
 
 statement ok
 GLOSS early ON fin AS $${"sql": "SELECT d AS period, n AS value FROM fin.levels WHERE d < DATE '2024-03-01'"}$$;
@@ -235,7 +235,7 @@ CREATE TABLE fin.offers AS SELECT * FROM (VALUES
   (DATE '2024-01-15', 'sales', 2, 2), (DATE '2024-02-15', 'sales', 0, 2)) t(d, dept, won, offered);
 
 statement ok
-DECLARE ASPECT win_rate WITH $${"title": "Win rate"}$$ AS VIEW;
+DECLARE PROPERTY win_rate WITH $${"title": "Win rate"}$$ AS VIEW;
 
 statement ok
 GLOSS win_rate ON fin AS $${"sql": "SELECT d AS period, dept, won, offered, won / offered AS value FROM fin.offers"}$$;
@@ -277,7 +277,7 @@ GLOSS headcount ON fin AS $${"sql": "SELECT d AS period, n * 1 AS value, dept FR
 # --- a single value serves one number; a stopped view serves its reason
 
 statement ok
-DECLARE ASPECT fte_cap WITH $${"title": "FTE cap", "x-kind": "scalar"}$$ AS VIEW;
+DECLARE PROPERTY fte_cap WITH $${"title": "FTE cap", "x-kind": "scalar"}$$ AS VIEW;
 
 statement ok
 GLOSS fte_cap ON fin AS $${"sql": "SELECT 40 AS value"}$$;
@@ -333,7 +333,7 @@ statement ok
 CREATE TABLE fin.lines AS SELECT (i % 90) AS line_id, DATE '2024-01-01' + INTERVAL (i) DAY AS booked, 1.0 AS amount FROM range(270) r(i);
 
 statement ok
-DECLARE ASPECT noted_spend WITH $${"title": "Noted spend"}$$ AS VIEW;
+DECLARE PROPERTY noted_spend WITH $${"title": "Noted spend"}$$ AS VIEW;
 
 statement ok
 GLOSS noted_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.lines l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
@@ -345,13 +345,13 @@ red	true	["lines.line_id ~ notes.line_id"]
 
 # the same join with one side reduced to one row per line inside the definition cannot multiply rows: green, whatever the table holds, by GROUP BY and by the latest row per key alike
 statement ok
-DECLARE ASPECT noted_spend_grouped WITH $${"title": "Noted spend, one note per line"}$$ AS VIEW;
+DECLARE PROPERTY noted_spend_grouped WITH $${"title": "Noted spend, one note per line"}$$ AS VIEW;
 
 statement ok
 GLOSS noted_spend_grouped ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM (SELECT line_id, sum(amount) AS amount, min(booked) AS booked FROM fin.lines GROUP BY line_id) l JOIN fin.notes n ON n.line_id = l.line_id GROUP BY ALL"}$$;
 
 statement ok
-DECLARE ASPECT noted_spend_latest WITH $${"title": "Noted spend, the latest booking per line"}$$ AS VIEW;
+DECLARE PROPERTY noted_spend_latest WITH $${"title": "Noted spend, the latest booking per line"}$$ AS VIEW;
 
 statement ok
 GLOSS noted_spend_latest ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount) AS value FROM fin.notes n JOIN (SELECT * FROM fin.lines QUALIFY row_number() OVER (PARTITION BY line_id ORDER BY booked DESC) = 1) l ON n.line_id = l.line_id GROUP BY ALL"}$$;
@@ -376,7 +376,7 @@ statement ok
 DECLARE RELATIONSHIP orders.customer_id -> customers.customer_id;
 
 statement ok
-DECLARE ASPECT customer_sales WITH $${"title": "Customer sales"}$$ AS VIEW;
+DECLARE PROPERTY customer_sales WITH $${"title": "Customer sales"}$$ AS VIEW;
 
 statement ok
 GLOSS customer_sales ON fin AS $${"sql": "SELECT date_trunc('month', o.booked)::DATE AS period, sum(o.amount) AS value, c.name FROM fin.orders o JOIN fin.customers c ON c.customer_id = o.customer_id JOIN fin.regions g ON g.region_id = o.region_id GROUP BY ALL"}$$;
@@ -404,7 +404,7 @@ SELECT relationship_coherence() FROM orders.(customer_id, region_id) -> customer
 
 query TTII
 SELECT state, json_extract_string(evidence, '$.breach_rate'), json_array_length(evidence->'edges'),
-       (SELECT count(*) FROM measurements WHERE function = 'relationship_coherence' AND subject LIKE '%(customer_id, region_id)%' AND (value->>'orphan_rate')::DOUBLE > 0.2)
+       (SELECT count(*) FROM results WHERE function = 'relationship_coherence' AND subject LIKE '%(customer_id, region_id)%' AND (value->>'orphan_rate')::DOUBLE > 0.2)
 FROM view_tests() WHERE view = 'customer_sales' AND test = 'orphan_test';
 ----
 red	0.2	2	1
@@ -425,7 +425,7 @@ statement ok
 GLOSS validity ON fin.prices AS $${"valid_from": "valid_from", "valid_to": "valid_to"}$$;
 
 statement ok
-DECLARE ASPECT priced_spend WITH $${"title": "Priced spend"}$$ AS VIEW;
+DECLARE PROPERTY priced_spend WITH $${"title": "Priced spend"}$$ AS VIEW;
 
 statement ok
 GLOSS priced_spend ON fin AS $${"sql": "SELECT date_trunc('month', l.booked)::DATE AS period, sum(l.amount * p.price) AS value FROM fin.lines l JOIN fin.prices p ON p.line_id = l.line_id GROUP BY ALL"}$$;
@@ -465,7 +465,7 @@ period	true
 # --- fan-out reads the join the definition makes: two tables read side by side with no join cannot fan out, whatever their columns share
 
 statement ok
-DECLARE ASPECT all_lines WITH $${"title": "All lines"}$$ AS VIEW;
+DECLARE PROPERTY all_lines WITH $${"title": "All lines"}$$ AS VIEW;
 
 statement ok
 GLOSS all_lines ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, count(*) AS value FROM (SELECT booked, line_id FROM fin.lines UNION ALL SELECT DATE '2024-01-01', line_id FROM fin.notes) GROUP BY ALL"}$$;
@@ -481,7 +481,7 @@ GLOSS join_check ON fin.noted_spend AS $${"tolerance": 1.0, "basis": "every note
 
 query T
 SELECT state FROM view_tests() WHERE view = 'noted_spend' AND test = 'join_test'
-UNION ALL SELECT state FROM GLOSSARY(fin.noted_spend) WHERE aspect = 'join_check';
+UNION ALL SELECT state FROM GLOSSARY(fin.noted_spend) WHERE property = 'join_check';
 ----
 green
 current
@@ -498,13 +498,13 @@ COMPLETE	view.fin.spend	amount
 # --- the additivity test reads how the value is computed: a ratio of two aggregates marked additive is red, and so is a metric that sums it; marked ratio with its two halves it is green
 
 statement ok
-DECLARE ASPECT amount_per_line WITH $${"title": "Amount per line"}$$ AS VIEW;
+DECLARE PROPERTY amount_per_line WITH $${"title": "Amount per line"}$$ AS VIEW;
 
 statement ok
 GLOSS amount_per_line ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS num, count(*) AS den, sum(amount) / count(*) AS value FROM fin.lines GROUP BY 1"}$$;
 
 statement ok
-DECLARE ASPECT amount_per_line_year WITH $${"title": "Amount per line, by year"}$$ AS VIEW;
+DECLARE PROPERTY amount_per_line_year WITH $${"title": "Amount per line, by year"}$$ AS VIEW;
 
 statement ok
 GLOSS amount_per_line_year ON fin AS $${"sql": "SELECT date_trunc('year', period)::DATE AS period, sum(value) AS value FROM fin.amount_per_line GROUP BY 1"}$$;
@@ -563,7 +563,7 @@ SELECT len(columns_without_role), len(missing) FROM view_summary() WHERE view = 
 # table's key from the grain of its entity and a metric's description from the meaning annotated on the view
 
 statement ok
-DECLARE ASPECT ledger_lines WITH $${"title": "Ledger lines", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY ledger_lines WITH $${"title": "Ledger lines", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS ledger_lines ON fin AS $${"sql": "SELECT booked, amount, fund FROM fin.ledger"}$$;
@@ -626,7 +626,7 @@ statement ok
 CREATE TABLE fin.coa AS SELECT b AS business_id, a AS code, 'account ' || a AS name FROM range(3) t(b), (VALUES ('4000'), ('5000')) v(a);
 
 statement ok
-DECLARE ASPECT booked_by_business WITH $${"title": "Booked by business", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY booked_by_business WITH $${"title": "Booked by business", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS booked_by_business ON fin AS $${"sql": "SELECT t.business_id, c.name, t.amount FROM fin.txn t JOIN fin.coa c ON c.business_id = t.business_id AND c.code = t.account"}$$;
@@ -660,7 +660,7 @@ CREATE OR REPLACE TABLE fin.status_lines AS
   SELECT i AS line_id, ['(OP) Operating', '(SB) Standby', '(RE) Retired'][i % 3 + 1] AS status, CASE WHEN i % 10 = 0 THEN 'note ' || i END AS note FROM range(100) r(i);
 
 statement ok
-DECLARE ASPECT line_status WITH $${"title": "Line status", "x-kind": "relation"}$$ AS VIEW;
+DECLARE PROPERTY line_status WITH $${"title": "Line status", "x-kind": "relation"}$$ AS VIEW;
 
 statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code, note FROM fin.status_lines"}$$;
@@ -780,13 +780,13 @@ statement ok
 GLOSS line_status ON fin AS $${"sql": "SELECT line_id, nullif(regexp_extract(status, '^\\((\\w+)\\)', 1), '') AS code FROM fin.status_lines"}$$;
 
 query T
-SELECT subject FROM measurements WHERE function IN ('completeness_check', 'completeness_test') AND subject LIKE 'fin.line_status.%' AND subject LIKE '%note';
+SELECT subject FROM results WHERE function IN ('completeness_check', 'completeness_test') AND subject LIKE 'fin.line_status.%' AND subject LIKE '%note';
 ----
 
 # --- a series over members that are not text: a boolean, a date and a decimal print as their text, a
 # missing member as NULL; the sums are those of the view's own rows
 statement ok
-DECLARE ASPECT kinds WITH $${"title": "Spend by kind"}$$ AS VIEW;
+DECLARE PROPERTY kinds WITH $${"title": "Spend by kind"}$$ AS VIEW;
 
 statement ok
 GLOSS kinds ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund = 'water' AS watered, CASE WHEN object = 'supplies' THEN NULL ELSE DATE '2024-01-01' END AS since, 1.50::DECIMAL(4, 2) AS band FROM fin.ledger GROUP BY ALL"}$$;
