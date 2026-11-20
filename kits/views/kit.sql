@@ -1621,12 +1621,13 @@ DECLARE TEST rule_test ON rule_check BY (HUMAN) DETECTOR count_tolerance THRESHO
 --===------------------------------------------------------------------===--
 -- find(term): what the bound dataset loads and keeps that a term names:
 -- each view (kept or served), loaded table and column whose name,
--- meaning or tags hold the term, and each view that reads a column whose
+-- meaning or tags hold the term, each view whose kind is the term, and
+-- each view that reads a column whose
 -- name holds it (through its stored lineage), the term matched without
 -- regard to case. asset (its path), what (view, table, column), kind (a
 -- view's: table, value, metric, rule, NULL for a plain view), meaning,
 -- tags (a person's and the agents' lists as one, the person's words
--- first), matched_on (name, meaning, tags, reads), reads (the columns it
+-- first), matched_on (name, meaning, tags, kind, reads), reads (the columns it
 -- reads that hold the term), sql (a view's). A stopped view is not found.
 -- Views first, then tables, then columns.
 --
@@ -1667,15 +1668,16 @@ judged AS (
          list_filter(coalesce(a.reads, []::VARCHAR[]), lambda c: contains(lower(split_part(c, '.', 3)), q.q)) AS reads_matching,
          contains(lower(a.name), q.q) AS by_name,
          contains(lower(coalesce(m.meaning, '')), q.q) AS by_meaning,
-         coalesce(list_bool_or(list_transform(g.tags, lambda w: contains(lower(w), q.q))), false) AS by_tags
+         coalesce(list_bool_or(list_transform(g.tags, lambda w: contains(lower(w), q.q))), false) AS by_tags,
+         coalesce(lower(a.kind) = q.q, false) AS by_kind
   FROM assets a CROSS JOIN q LEFT JOIN meanings m ON m.subject = a.asset LEFT JOIN tagged g ON g.subject = a.asset)
 SELECT asset, what, kind, meaning, tags,
-       list_filter(['name', 'meaning', 'tags', 'reads'], lambda x, i: [by_name, by_meaning, by_tags, len(reads_matching) > 0][i]) AS matched_on,
+       list_filter(['name', 'meaning', 'tags', 'kind', 'reads'], lambda x, i: [by_name, by_meaning, by_tags, by_kind, len(reads_matching) > 0][i]) AS matched_on,
        reads_matching AS reads, sql
 FROM judged
-WHERE by_name OR by_meaning OR by_tags OR len(reads_matching) > 0
+WHERE by_name OR by_meaning OR by_tags OR by_kind OR len(reads_matching) > 0
 ORDER BY CASE what WHEN 'view' THEN 0 WHEN 'table' THEN 1 ELSE 2 END,
-         CASE WHEN by_tags THEN 0 WHEN by_name THEN 1 WHEN by_meaning THEN 2 ELSE 3 END, asset;
+         CASE WHEN by_tags THEN 0 WHEN by_name THEN 1 WHEN by_meaning THEN 2 WHEN by_kind THEN 3 ELSE 4 END, asset;
 
 CREATE OR REPLACE MACRO main.tag_statement(subj, words) AS
   main.gloss_statement('tags', subj, (

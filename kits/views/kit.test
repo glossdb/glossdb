@@ -875,6 +875,13 @@ SELECT value->>'applicable', value->>'rows', value->>'reason' IS NOT NULL FROM m
 ----
 false	NULL	true
 
+# find() finds a view by its kind
+query TT
+SELECT asset, matched_on FROM find('rule');
+----
+kept.known_status	[kind]
+kept.large_orders	[kind]
+
 query TTT
 SELECT level, kind, contains(statement, 'GLOSS rule_check ON kept.large_orders AS $${"accepted": 4,') FROM next WHERE asset = 'kept.large_orders';
 ----

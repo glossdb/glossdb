@@ -75,7 +75,8 @@ of its own: each load and each view definition records it.
 ## Find what a dataset keeps
 
 `find()` returns the views, tables and columns a term names: by name,
-meaning, tags, and for a view the columns it reads. A query an agent
+meaning, tags, and for a view its kind and the columns it reads.
+`find('rule')` lists the rule views. A query an agent
 kept to decide a mapping or a unit is found this way:
 
 ```sql
