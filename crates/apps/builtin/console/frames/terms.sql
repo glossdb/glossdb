@@ -22,15 +22,15 @@ joined AS (
     SELECT r.right_side FROM relationships r JOIN d ON d.dataset = r.dataset)
   GROUP BY path),
 views AS (
-  SELECT s.title AS term, s.name,
-         CASE WHEN s.kind = 'relation' THEN 'view' WHEN s.kind IN ('', 'measure', 'metric') THEN 'metric' ELSE s.kind END AS kind,
+  SELECT s.name AS term, s.name,
+         CASE WHEN s.kind = 'table' THEN 'view' ELSE coalesce(s.kind, 'plain view') END AS kind,
          CASE WHEN s.stopped <> '' THEN 'stopped: ' || s.stopped
               ELSE coalesce(nullif(s.meaning, ''), 'no definition yet') END AS meaning,
          coalesce(s.unit, '') AS aside,
          CASE WHEN r.n > 0 THEN 'decided' ELSE '' END AS mark,
          CASE WHEN r.n > 0 THEN 'a person decided the definition, ' || strftime(r.decided_at, '%d %b %Y %H:%M') ELSE '' END AS mark_title,
          '/' || d.dataset || '/app/console/p/views?view=' || s.name
-           || CASE WHEN s.kind IN ('relation', 'scalar') THEN '&kind=' || s.kind ELSE '' END AS link
+           || CASE WHEN s.kind IN ('table', 'value') THEN '&kind=' || s.kind ELSE '' END AS link
   FROM view_definitions s
   CROSS JOIN d
   LEFT JOIN decisions r ON r.property = s.name),

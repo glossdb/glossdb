@@ -10,9 +10,9 @@ dataset; writing it again replaces it.
 
 | Kind | Declared with | Serves | Read with |
 |---|---|---|---|
-| a table | `"x-kind": "relation"` | rows | `FROM <view>` |
-| a single value | `"x-kind": "scalar"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
-| a metric | no `x-kind` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+| a table | `"kind": "table"` | rows | `FROM <view>` |
+| a single value | `"kind": "value"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
+| a metric | `"kind": "metric"` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
 
 The definition's body holds:
 
@@ -57,9 +57,8 @@ types and meanings, and the code tables.
    `harmonise.md`, step 5, which holds for one source as for several.
 
 ```glossql
-DECLARE PROPERTY staff WITH $${"title": "Staff", "x-kind": "relation"}$$ AS VIEW;
 GLOSS staff ON hr AS $${
-  "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
+  "kind": "table", "sql": "SELECT employee_id, trim(full_name) AS full_name, CAST(hired_on AS DATE) AS hired_on, upper(trim(department)) AS department_code FROM hr_export WHERE employee_id IS NOT NULL QUALIFY row_number() OVER (PARTITION BY employee_id ORDER BY exported_at DESC) = 1",
   "assumptions": [
     {"dimension": "scope", "key": "latest-export-row", "assumption": "where an employee_id repeats, the row of the newest export is kept", "basis": "14 ids repeat, each with one newer row", "confidence": 0.7},
     {"dimension": "scope", "key": "no-id-left-out", "assumption": "rows without an employee_id are left out", "basis": "3 rows, all without a name", "confidence": 0.8},
@@ -110,9 +109,8 @@ can write the same annotations yourself, on `<view>.<column>`.
   assumption. A count per member is a metric of its own.
 
 ```glossql
-DECLARE PROPERTY on_time_rate WITH $${"title": "On-time delivery rate"}$$ AS VIEW;
 GLOSS on_time_rate ON logistics AS $${
-  "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
+  "kind": "metric", "sql": "SELECT delivered_on, depot_id, count(*) FILTER (WHERE delivered_on <= promised_on) AS on_time, count(*) AS total, count(*) FILTER (WHERE delivered_on <= promised_on) / count(*)::DOUBLE AS value FROM deliveries GROUP BY delivered_on, depot_id",
   "time": "delivered_on",
   "measure": {"column": "value", "additivity": "ratio", "numerator": "on_time", "denominator": "total", "unit": "share"},
   "dimensions": ["depot_id"]

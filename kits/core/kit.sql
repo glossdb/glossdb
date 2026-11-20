@@ -151,20 +151,20 @@ CREATE OR REPLACE VIEW main.app_releases AS
          actor_kind, written_at::VARCHAR AS released_at
   FROM winning;
 
--- Every view of the bound dataset, with its state: one row per VIEW
--- property with a definition here, served or stopped — name, title, kind
--- (the property's x-kind: relation, scalar; measure for a metric),
--- meaning (the `meaning` annotation on the view), unit (the `unit`
--- annotation on the value column of a metric or a single value; a table
--- has none), defined (a definition with sql was written), stopped (the
--- definition's stop reason, '' where it serves). The numbers are
--- view_summary() and metric_series(); join on name.
+-- Every view of the bound dataset, with its state: one row per view
+-- with a definition here, kept, served or stopped — name, kind (its
+-- definition's: table, value, metric, rule; NULL for a plain view, a query
+-- kept with its reason), meaning (the `meaning` annotation on the view),
+-- unit (the `unit` annotation on the value column of a metric or a single
+-- value; a table has none), defined (a definition with sql was written),
+-- stopped (the definition's stop reason, '' where it serves). The numbers
+-- are view_summary() and metric_series(); join on name.
 CREATE OR REPLACE VIEW main.view_definitions AS
   WITH ds AS (SELECT current_schema() AS dataset),
-  properties AS (SELECT name, schema FROM main.properties WHERE kind = 'VIEW'),
+  bodies AS (SELECT view, kind FROM main.view_bodies(current_schema())),
   collapsed AS (
     SELECT g.property, g.body FROM main.ranked_annotations g, ds
-    WHERE g.rank = 1 AND g.subject = ds.dataset AND g.property IN (SELECT name FROM properties)),
+    WHERE g.rank = 1 AND g.subject = ds.dataset AND g.property IN (SELECT view FROM bodies)),
   defined AS (
     SELECT DISTINCT g.property FROM main.glossary g, ds
     WHERE g.dataset = ds.dataset AND g.subject = ds.dataset AND json_extract_string(g.body, '$.sql') IS NOT NULL),
@@ -181,19 +181,17 @@ CREATE OR REPLACE VIEW main.view_definitions AS
            arg_min(value->>'value', CASE WHEN split_part(subject, '.', 3) = 'value' THEN 0 ELSE 1 END) AS unit
     FROM in_force WHERE property = 'unit' AND len(string_split(subject, '.')) = 3
     GROUP BY 1)
-  SELECT a.name AS name,
-         coalesce(json_extract_string(a.schema, '$.title'), a.name) AS title,
-         coalesce(json_extract_string(a.schema, '$.x-kind'), 'measure') AS kind,
-         coalesce(CASE WHEN json_extract_string(a.schema, '$.x-kind') IS DISTINCT FROM 'relation' THEN u.unit END, '') AS unit,
+  SELECT b.view AS name,
+         b.kind,
+         coalesce(CASE WHEN b.kind IN ('value', 'metric') THEN u.unit END, '') AS unit,
          coalesce(m.meaning, '') AS meaning,
          g.property IS NOT NULL AS defined,
          coalesce(json_extract_string(c.body, '$.stopped'), '') AS stopped
-  FROM properties a
-  LEFT JOIN defined g ON g.property = a.name
-  LEFT JOIN collapsed c ON c.property = a.name
-  LEFT JOIN meanings m ON m.view = a.name
-  LEFT JOIN units u ON u.view = a.name
-  WHERE g.property IS NOT NULL OR c.property IS NOT NULL;
+  FROM bodies b
+  LEFT JOIN defined g ON g.property = b.view
+  LEFT JOIN collapsed c ON c.property = b.view
+  LEFT JOIN meanings m ON m.view = b.view
+  LEFT JOIN units u ON u.view = b.view;
 
 -- tested_properties(): the table and column properties that exist to
 -- be tested, by name: a test with a scoring function is declared on
@@ -302,3 +300,15 @@ CREATE OR REPLACE MACRO main.null_markers() AS
    '#N/A', '#NULL!', '#REF!', '#VALUE!', '#DIV/0!', '#NAME?',
    '--', '---',
    'MISSING', 'UNKNOWN', 'UNDEFINED', 'NOT SET', 'NOT PROVIDED', 'NO DATA', 'NO VALUE'];
+
+-- tags: words to find a table, a column or a view by, a list. An
+-- actor's newest list replaces its list before, so an actor adds a word
+-- by writing its list with the word (tag_statement() in the views kit);
+-- a person's list and an agent's are read as one (find()). Asked on no
+-- asset (x-asked: never).
+DECLARE PROPERTY tags WITH $${
+  "description": "Words to find a table, a column or a view by, in the words the business searches with.",
+  "type": "object", "required": ["value"], "x-asked": "never",
+  "examples": [{"value": ["<word>"]}],
+  "properties": {"value": {"type": "array", "items": {"type": "string"}}}
+}$$ AS FACT ON TABLE, COLUMN;

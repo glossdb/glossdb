@@ -11,8 +11,7 @@ WITH asked AS (
 decided AS (
   SELECT r.property, max(r.written_at) AS decided_at FROM review_decisions r
   JOIN current_dataset d ON d.dataset = r.dataset GROUP BY r.property)
-SELECT s.title,
-       s.name,
+SELECT s.name,
        s.kind AS view_kind,
        s.unit,
        CASE
@@ -37,6 +36,6 @@ FROM view_definitions s
 LEFT JOIN asked q ON q.property = s.name
 LEFT JOIN decided r ON r.property = s.name
 LEFT JOIN view_summary() x ON x.view = s.name
-WHERE s.kind NOT IN ('scalar', 'relation')
+WHERE s.kind = 'metric'
   AND (s.stopped <> '') = (coalesce($stopped, '0') = '1')
 ORDER BY name

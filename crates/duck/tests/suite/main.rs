@@ -309,8 +309,7 @@ async fn a_second_open_changes_nothing_and_a_changed_kit_runs_again() {
         .execute(
             "DECLARE DATASET fin SET (purpose: 'reads');
              USE fin;
-             DECLARE PROPERTY dso WITH $${\"title\": \"DSO\"}$$ AS VIEW;
-             GLOSS dso ON fin AS $${\"sql\": \"SELECT 1 AS value\", \"assumptions\": [
+             GLOSS dso ON fin AS $${\"kind\": \"metric\", \"sql\": \"SELECT 1 AS value\", \"assumptions\": [
                {\"dimension\": \"definition\", \"key\": \"per-line\", \"assumption\": \"per line\", \"basis\": \"judgment\", \"confidence\": 0.7},
                {\"dimension\": \"grain\", \"key\": \"g\", \"assumption\": \"monthly\", \"basis\": \"measured\", \"confidence\": 1.0}]}$$;",
         )

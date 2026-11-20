@@ -16,8 +16,8 @@ before you load. Then pick the kind of view per item:
 
 | The person asks for | Define |
 |---|---|
-| a cleaned, joined or reshaped table; a table in a given format (a data contract); a harmonised list across source systems | a table (`x-kind: relation`) |
-| one number with no date: a count, a balance today, a threshold | a single value (`x-kind: scalar`) |
+| a cleaned, joined or reshaped table; a table in a given format (a data contract); a harmonised list across source systems | a table (`"kind": "table"`) |
+| one number with no date: a count, a balance today, a threshold | a single value (`"kind": "value"`) |
 | a number over time, by region, product or team | a metric |
 
 Build shared logic once: a table view that cleans a source can feed

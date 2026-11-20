@@ -10,12 +10,10 @@ tables AS (
   SELECT table_name AS name, 'table' AS kind, CAST(n AS BIGINT) AS n, '' AS what FROM latest WHERE rn = 1),
 reads AS (
   SELECT s.name,
-         CASE WHEN s.kind IN ('', 'measure', 'metric') THEN 'metric'
-              WHEN s.kind = 'relation' THEN 'view'
-              ELSE s.kind END AS kind,
+         CASE WHEN s.kind = 'table' THEN 'view' ELSE s.kind END AS kind,
          CAST(NULL AS BIGINT) AS n, s.meaning AS what
   FROM view_definitions s
-  WHERE s.defined AND s.stopped = ''),
+  WHERE s.defined AND s.stopped = '' AND s.kind IN ('table', 'value', 'metric')),
 all_ AS (SELECT * FROM tables UNION ALL SELECT * FROM reads)
 SELECT name, kind,
        coalesce(CAST(n AS VARCHAR), '') AS rows,

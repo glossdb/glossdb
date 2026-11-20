@@ -9,19 +9,19 @@
 
 {% if view %}
 {# ---- one view: its title, then the tabs of every object #}
-{# A single value's link carries `kind=scalar` and a view's
-   `kind=relation`; the page draws either without the series tiles —
+{# A single value's link carries `kind=value` and a table view's
+   `kind=table`; the page draws either without the series tiles —
    there is no window, no story and no slice over one number or over
    rows. #}
 {% set tab = state.tab | default(value="description") %}
 {# A picked slice is a measurement: the slice link opens that tab. #}
 {% if dim and not state.tab %}{% set tab = "results" %}{% endif %}
-{% if kind == "relation" %}{% set section = "Tables" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% elif kind == "scalar" %}{% set section = "Single values" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "view=" ~ view %}{% endif %}
+{% if kind == "table" %}{% set section = "Tables" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% elif kind == "value" %}{% set section = "Single values" %}{% set q = "view=" ~ view ~ "&kind=" ~ kind %}{% else %}{% set section = "Metrics" %}{% set q = "view=" ~ view %}{% endif %}
 {{ object::crumbs(dataset=dataset, top=bar_section, section=section, object=view) }}
 <gl-rows frame="frames/view_head" empty="">
   <template>
     <h1 class="obj-h"><code>{name}</code><span class="kind">{kind}</span></h1>
-    <p class="f-meta">{title} · <span class="r-num">{latest}</span> {unit} {period}</p>
+    <p class="f-meta"><span class="r-num">{latest}</span> {unit} {period}</p>
   </template>
 </gl-rows>
 {{ object::subtabs(q=q, tab=tab, used="Source columns") }}
@@ -29,7 +29,7 @@
 
 
 {% if tab == "description" %}
-  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
+  {% if kind != "value" and kind != "table" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
   {# A declared fact: one number, no series. `frames/fact` serves a
      row only when this metric is a declared fact with a number, so
      the tile renders only then — `empty=""` states nothing for a
@@ -46,7 +46,7 @@
     </template>
   </gl-rows>
 
-  {% if kind != "scalar" and kind != "relation" %}
+  {% if kind != "value" and kind != "table" %}
   {{ tiles::chart(frame="frames/trend?grain=month&span=24", spec="specs/series.vl.json",
        title="Trend · " ~ view, chip="metric_series()",
        empty="no values at this grain — Grain and dimensions, below, says what is served; a grain finer than the metric's own serves nothing",
@@ -54,7 +54,7 @@
 
   {% endif %}
 
-  {% if kind == "relation" %}
+  {% if kind == "table" %}
   <section class="tile">
     <header><span class="eyebrow" title="Every column of the view, with the column it comes from and that column&#x27;s role. A column computed from several names them all; one with no source column shows its type.">Columns · {{ view }}</span>
       <code class="chip">information_schema · column_mapping()</code></header>
@@ -80,7 +80,7 @@
   </section>
   {% endif %}
 
-  <div{% if kind != "scalar" and kind != "relation" %} class="half"{% endif %}>
+  <div{% if kind != "value" and kind != "table" %} class="half"{% endif %}>
   <section class="tile">
     <header><span class="eyebrow" title="What the view means, as annotated on it, and what it is.">Definition · {{ view }}</span></header>
     <gl-rows frame="frames/view" empty="no view named {{ view }}">
@@ -126,8 +126,8 @@
   </section>
 
 {% elif tab == "results" %}
-  {% if kind != "scalar" and kind != "relation" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
-  {% if kind != "scalar" and kind != "relation" %}
+  {% if kind != "value" and kind != "table" %}<gl-window frame="frames/axes"></gl-window>{% endif %}
+  {% if kind != "value" and kind != "table" %}
   <section class="tile">
     <header><span class="eyebrow" title="The members of each dimension, ranked by their own change between the two newest periods at the grain you chose. A member&#x27;s change follows the metric&#x27;s additivity; it is never a share of the total.">Largest changes · {{ view }}</span>
       <code class="chip">metric_series()</code></header>
@@ -145,7 +145,7 @@
   </section>
   {% endif %}
 
-  {% if kind != "scalar" and kind != "relation" %}
+  {% if kind != "value" and kind != "table" %}
   <div class="half">
   <section class="tile">
     <header><span class="eyebrow" title="The dimensions this metric may be sliced by, most relevant first. A wide dimension shows its largest members and &#x27;other&#x27;.">Slice</span>
@@ -248,7 +248,7 @@
     <gl-rows frame="frames/measures?stopped=0" empty="no metric is declared yet">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em> {unit}</span></span>
+          <span class="r-subj">{name}<br><span class="r-meta"><em>{view_kind}</em> {unit}</span></span>
           <span class="r-meta">{axes}</span>
           <code class="chip {scls}">{status}</code>
         </a>
@@ -263,7 +263,7 @@
       <gl-rows frame="frames/measures?stopped=1" empty="none stopped: a metric definition its author stops is listed here with the reason">
         <template>
           <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
-            <span class="r-subj">{title}<br><span class="r-meta">{name} <em>{view_kind}</em></span></span>
+            <span class="r-subj">{name}<br><span class="r-meta"><em>{view_kind}</em></span></span>
             <span class="r-meta">{axes}</span>
             <code class="chip {scls}">{status}</code>
           </a>
@@ -275,10 +275,10 @@
   <section class="tile">
     <header><span class="eyebrow" title="The table views of the dataset: each a named SQL query over its tables. A table view serves rows, not a series, so it shows no number here. A review decision on its definition reaches every view that reads it. The Export tab serves each as a file.">Table views</span>
       <code class="chip">view_definitions</code></header>
-    <gl-rows frame="frames/views?stopped=0" empty="no table view is defined: a table view is a VIEW property with x-kind relation and the SQL query that defines it">
+    <gl-rows frame="frames/views?stopped=0" empty="no table view is defined: a table view is a definition of kind table, the SQL query that makes its rows">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+          <span class="r-subj">{name}</span>
           <span class="r-what">{meaning}</span>
           <code class="chip {scls}">{status}</code>
         </a>
@@ -289,7 +289,7 @@
       <gl-rows frame="frames/views?stopped=1" empty="none stopped: a view its author stops is listed here with the reason">
         <template>
           <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
-            <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+            <span class="r-subj">{name}</span>
             <span class="r-what">{meaning}</span>
             <code class="chip {scls}">{status}</code>
           </a>
@@ -301,10 +301,10 @@
   <section class="tile">
     <header><span class="eyebrow" title="Every single value with its number and the newest load of the tables it reads. No period and no change: a single value has no date of its own, so the data&#x27;s date is the one shown.">Single values</span>
       <code class="chip">view_definitions · fact_values()</code></header>
-    <gl-rows frame="frames/facts?stopped=0" empty="no single value is declared: a value with no date of its own is annotated with x-kind scalar, and is served whole">
+    <gl-rows frame="frames/facts?stopped=0" empty="no single value is defined: a value with no date of its own is a definition of kind value, and is served whole">
       <template>
         <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 9rem 11rem 11rem">
-          <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+          <span class="r-subj">{name}</span>
           <span class="r-what">{meaning}</span>
           <span class="r-num">{value}<br><span class="r-meta">{unit}</span></span>
           <span class="r-meta">{asof}{note}</span>
@@ -317,7 +317,7 @@
       <gl-rows frame="frames/facts?stopped=1" empty="none stopped: a single value its author stops is listed here with the reason">
         <template>
           <a class="rrow" href="{link}" style="grid-template-columns:11rem 1fr 11rem">
-            <span class="r-subj">{title}<br><span class="r-meta">{name}</span></span>
+            <span class="r-subj">{name}</span>
             <span class="r-what">{meaning}</span>
             <code class="chip {scls}">{status}</code>
           </a>

@@ -1,8 +1,8 @@
--- A declared fact's value (`x-kind: scalar`), served whole by
+-- A single value's number (kind value), served whole by
 -- `fact_values()` — one row when the view is one row with a `value`,
 -- none otherwise. Beside the number: the unit and meaning the
 -- definition carries, and the as-of, the newest load of the tables
--- the metric definition reads.
+-- the definition reads.
 WITH reads AS (
   SELECT DISTINCT source_table AS t FROM column_mapping()
   WHERE view = CAST($view AS VARCHAR) AND source_table IS NOT NULL),

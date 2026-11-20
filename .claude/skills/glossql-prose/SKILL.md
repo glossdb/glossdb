@@ -68,7 +68,7 @@ type it. Never a project word the reader cannot look up.
 | review decision | ruling | |
 | review queue | open questions, the round | `open_questions` |
 | missing, required; coverage | owed | `missing` |
-| metric definition | grounding | |
+| view definition | grounding, metric definition | |
 | load | landing, land | `IMPORT` |
 | load query | recipe (in prose) | `RECIPE` |
 | the catalog | the record, the store | `glossql_*` tables |
@@ -84,11 +84,11 @@ type it. Never a project word the reader cannot look up.
 | property of the harness schema | — | `PROPERTY` |
 | test | witness | `DECLARE TEST` |
 | test results | attestation | `TESTS()` |
-| view (a metric, a scalar, a derived relation) | query property | kind `VIEW` (`AS VIEW`); `x-kind: scalar` for a single value |
+| view (a table, a single value, a metric, a rule, a plain view) | query property | a definition, `GLOSS <name> ON <dataset>`; its `"kind"` in the body |
 | preview, dry run | probe | `PREVIEW` |
 
 Name the statement where the reader will type it, once: "a test
-(`DECLARE TEST`)", "a view property (`AS VIEW`)". Do not repeat the
+(`DECLARE TEST`)", "a view (`GLOSS <name> ON <dataset>`)". Do not repeat the
 keyword as its own explanation: not "a test (`TEST`)".
 
 ## The rules

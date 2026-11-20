@@ -499,8 +499,8 @@ async fn every_page_renders_and_passes_the_shells_policy() {
         "/perf/app/console/p/views?view=dso",
         "/perf/app/console/p/views?view=dso&tab=results",
         "/perf/app/console/p/views?view=dso&dim=cohort",
-        "/perf/app/console/p/views?view=cleaned&kind=relation",
-        "/perf/app/console/p/views?view=payables&kind=scalar",
+        "/perf/app/console/p/views?view=cleaned&kind=table",
+        "/perf/app/console/p/views?view=payables&kind=value",
         "/perf/app/console/p/quality",
         "/perf/app/console/p/quality?test=role_test",
         "/perf/app/console/p/review",
@@ -588,17 +588,14 @@ async fn seed_model_shapes(plane: &Arc<Plane>) {
     agent
         .execute(
             r#"USE perf;
-               DECLARE PROPERTY dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-               DECLARE PROPERTY payables WITH $${"title": "Outstanding payables", "x-kind": "scalar"}$$ AS VIEW;
-               DECLARE PROPERTY cleaned WITH $${"title": "Cleaned ledger", "x-kind": "relation"}$$ AS VIEW;
-               GLOSS dso ON perf AS $${"sql": "SELECT month, value, cohort FROM perf.ledger",
+               GLOSS dso ON perf AS $${"kind": "metric", "sql": "SELECT month, value, cohort FROM perf.ledger",
                  "assumptions": [
                    {"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7,
                     "alternative": "doubled", "alternative_sql": "SELECT month, value * 2 AS value FROM ledger"},
                    {"dimension": "grain", "key": "grain-preserving", "assumption": "grain-preserving", "basis": "measured", "confidence": 1.0}
                  ]}$$;
-               GLOSS payables ON perf AS $${"sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
-               GLOSS cleaned ON perf AS $${"sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
+               GLOSS payables ON perf AS $${"kind": "value", "sql": "SELECT sum(value) AS value FROM perf.ledger"}$$;
+               GLOSS cleaned ON perf AS $${"kind": "table", "sql": "SELECT month, value AS amount, cohort FROM perf.ledger WHERE value IS NOT NULL"}$$;
                GLOSS role ON dso.month AS $${"value": "timestamp"}$$;
                GLOSS role ON dso.value AS $${"value": "measure"}$$;
                GLOSS additivity ON dso.value AS $${"value": "additive"}$$;
@@ -729,8 +726,7 @@ async fn a_metric_without_additivity_refuses_its_own_page_and_no_other() {
         .await
         .execute(
             r#"USE perf;
-               DECLARE PROPERTY lines WITH $${"title": "Lines"}$$ AS VIEW;
-               GLOSS lines ON perf AS $${"sql": "SELECT month, value FROM perf.ledger"}$$;
+               GLOSS lines ON perf AS $${"kind": "metric", "sql": "SELECT month, value FROM perf.ledger"}$$;
                GLOSS role ON lines.month AS $${"value": "timestamp"}$$;
                GLOSS role ON lines.value AS $${"value": "measure"}$$;
                SELECT temporal() FROM lines.month;"#,
@@ -1176,8 +1172,7 @@ async fn a_person_walks_the_dataset_a_table_and_a_view() {
         .await
         .execute(
             r#"USE perf;
-               DECLARE PROPERTY cohorts WITH $${"title": "Cohorts", "x-kind": "relation"}$$ AS VIEW;
-               GLOSS cohorts ON perf AS $${"sql": "SELECT month, cohort, value FROM perf.ledger"}$$;"#,
+               GLOSS cohorts ON perf AS $${"kind": "table", "sql": "SELECT month, cohort, value FROM perf.ledger"}$$;"#,
         )
         .await
         .unwrap();

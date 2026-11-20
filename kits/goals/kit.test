@@ -76,10 +76,7 @@ must	integrate	ops	missing
 could	describe	ops.orders_raw	missing
 
 statement ok
-DECLARE PROPERTY orders WITH $${"title": "Orders"}$$ AS VIEW;
-
-statement ok
-GLOSS orders ON ops AS $${"sql": "SELECT month, orders AS value, price FROM ops.orders_raw"}$$;
+GLOSS orders ON ops AS $${"kind": "metric", "sql": "SELECT month, orders AS value, price FROM ops.orders_raw"}$$;
 
 statement ok
 GLOSS role ON orders.month AS $${"value": "timestamp"}$$;
@@ -201,10 +198,7 @@ DECLARE TEST staff_test ON staff_rule DETECTOR rate_tolerance THRESHOLD 0.0;
 # asked on a table view, with its grain, and not on a metric
 
 statement ok
-DECLARE PROPERTY order_list WITH $${"title": "Orders, listed", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS order_list ON ops AS $${"sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
+GLOSS order_list ON ops AS $${"kind": "table", "sql": "SELECT month, orders FROM ops.orders_raw", "assumptions": [{"dimension": "scope", "key": "all-months", "assumption": "every month is kept", "basis": "the rows", "confidence": 0.7}, {"dimension": "scope", "key": "staff-left-out", "assumption": "staff is left out", "basis": "not asked for", "confidence": 0.6}]}$$;
 
 query II
 SELECT (SELECT count(*) FROM next WHERE who = 'person' AND asset = 'ops.order_list' AND level = 'should' AND kind = 'review'),
@@ -234,10 +228,7 @@ CREATE TABLE side.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booke
   ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
 
 statement ok
-DECLARE PROPERTY ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
-
-statement ok
-GLOSS ledger_rows ON side AS $${"sql": "SELECT count(*) AS value FROM side.ledger"}$$;
+GLOSS ledger_rows ON side AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM side.ledger"}$$;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
@@ -253,10 +244,7 @@ SELECT asset, state FROM next WHERE kind = 'integrate';
 side	missing
 
 statement ok
-DECLARE PROPERTY ledger_clean WITH $${"title": "Ledger, cleaned", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS ledger_clean ON side AS $${"sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
+GLOSS ledger_clean ON side AS $${"kind": "table", "sql": "SELECT booked, amount, fund FROM side.ledger"}$$;
 
 query I
 SELECT count(*) FROM next WHERE kind = 'integrate';
@@ -315,10 +303,7 @@ statement ok
 CREATE TABLE harm.results AS SELECT i AS result_id, i % 6 AS driver_id, (i % 10)::DOUBLE AS points FROM range(60) t(i);
 
 statement ok
-DECLARE PROPERTY driver_results WITH $${"title": "Results with their driver", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS driver_results ON harm AS $${"sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
+GLOSS driver_results ON harm AS $${"kind": "table", "sql": "SELECT r.result_id, d.surname, r.points FROM harm.drivers d JOIN harm.results r ON d.driver_id = r.driver_id"}$$;
 
 query TTTTT
 SELECT level, kind, state, starts_with(open, 'relationship_test'), contains(statement, 'DECLARE RELATIONSHIP harm.results.driver_id -> harm.drivers.driver_id;')
@@ -337,10 +322,7 @@ green
 # --- a metric that serves no series is series_test on the metric, red, a must; the roles it asks for close it
 
 statement ok
-DECLARE PROPERTY points_per_driver WITH $${"title": "Points per driver"}$$ AS VIEW;
-
-statement ok
-GLOSS points_per_driver ON harm AS $${"sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
+GLOSS points_per_driver ON harm AS $${"kind": "metric", "sql": "SELECT DATE '2024-01-01' + result_id::INTEGER AS day, points AS value FROM harm.results"}$$;
 
 query TTT
 SELECT level, kind, state FROM next WHERE asset = 'harm.points_per_driver' AND starts_with(open, 'series_test');
@@ -431,16 +413,10 @@ statement ok
 DECLARE RECIPE items ON shop FROM files AS $$SELECT * FROM read_csv('kinds.csv')$$;
 
 statement ok
-DECLARE PROPERTY per_kind WITH $${"title": "Per kind", "x-kind": "relation"}$$ AS VIEW;
+GLOSS per_kind ON shop AS $${"kind": "table", "sql": "SELECT kind, count(*), sum(amount) AS \"order\" FROM items GROUP BY kind"}$$;
 
 statement ok
-GLOSS per_kind ON shop AS $${"sql": "SELECT kind, count(*), sum(amount) AS \"order\" FROM items GROUP BY kind"}$$;
-
-statement ok
-DECLARE PROPERTY kinds WITH $${"title": "Kinds", "x-kind": "relation"}$$ AS VIEW;
-
-statement ok
-GLOSS kinds ON shop AS $${"sql": "SELECT p.kind, p.\"count_star()\" AS n, p.\"order\" AS total FROM per_kind p"}$$;
+GLOSS kinds ON shop AS $${"kind": "table", "sql": "SELECT p.kind, p.\"count_star()\" AS n, p.\"order\" AS total FROM per_kind p"}$$;
 
 # each write is followed by the results due, as the server follows it: the profiles of the odd columns are stored
 query TT

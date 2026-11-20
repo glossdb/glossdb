@@ -1794,10 +1794,11 @@ fn measurement_call(sql: &str) -> bool {
     rest.trim_start().starts_with("from")
 }
 
-/// A metric definition's write answers with the metric's fact row: what the
+/// A view definition's write answers with the view's summary row: what the
 /// view's columns say and what is missing, at the data version the write moved
 /// to, in place of the outcome's one line. Any other gloss keeps its
-/// line; a metric with no row (the kit not loaded) keeps it too.
+/// line; a view with no row (a plain view or a rule, which the dataset keeps
+/// and does not serve, or the kit not loaded) keeps it too.
 fn definition_row(
     conn: &Connection,
     outcome: &str,
@@ -1829,14 +1830,18 @@ fn definition_row(
     Ok((rows > 0).then_some(row))
 }
 
-/// A metric definition may say what its columns are, beside its SQL:
-/// `time` (the period column), `measure` (`column`, `additivity`, and
-/// `unit`, `numerator`, `denominator` where they apply) and `dimensions`
-/// (the first leads the slices). The server writes them as the column
-/// annotations the kits read, and profiles the time column, so one
-/// statement serves the metric. Additivity takes the industry's words
-/// or the kit's: additive is a flow, semi-additive a stock, a ratio
-/// re-divides its halves, non-additive combines by no rule.
+/// A view definition may say what the view means and how it is found,
+/// beside its SQL: `meaning` (a sentence) and `tags` (a list of words),
+/// written as those annotations on the view by the definition's actor,
+/// so one statement keeps a query with its reason. A metric's
+/// definition may also say what its columns are: `time` (the period
+/// column), `measure` (`column`, `additivity`, and `unit`, `numerator`,
+/// `denominator` where they apply) and `dimensions` (the first leads the
+/// slices). The server writes them as the column annotations the kits
+/// read, and profiles the time column, so one statement serves the
+/// metric. Additivity takes the industry's words or the kit's: additive
+/// is a flow, semi-additive a stock, a ratio re-divides its halves,
+/// non-additive combines by no rule.
 fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), SessionError> {
     let Some(dataset) = rest
         .split(" on ")
@@ -1874,6 +1879,25 @@ fn inline_columns(conn: &Connection, metric: &str, rest: &str) -> Result<(), Ses
                 &format!("GLOSS {property} ON {dataset}.{metric}.{column} AS $${value}$$"),
             )
         };
+    // the view's own annotations; a text that holds `$$` rides in a tagged quote
+    let on_view = |property: &str, value: serde_json::Value| -> Result<(), SessionError> {
+        let quote = if value.to_string().contains("$$") {
+            "$glossdb$"
+        } else {
+            "$$"
+        };
+        run(
+            conn,
+            &format!("GLOSS {property} ON {dataset}.{metric} AS {quote}{value}{quote}"),
+        )
+    };
+    if let Some(meaning) = body.get("meaning").and_then(|m| m.as_str()) {
+        on_view("meaning", serde_json::json!({"value": meaning}))?;
+    }
+    if let Some(tags) = body.get("tags").and_then(|t| t.as_array()) {
+        let words: Vec<&str> = tags.iter().filter_map(|w| w.as_str()).collect();
+        on_view("tags", serde_json::json!({"value": words}))?;
+    }
     let mut wrote = false;
     let time = body.get("time").and_then(name);
     if let Some(column) = &time {
@@ -2080,8 +2104,7 @@ mod tests {
         let setup = r#"
         DECLARE DATASET fin SET (purpose: 'summary delivery');
         USE fin;
-        DECLARE PROPERTY dso WITH $${"title": "DSO", "x-kind": "metric"}$$ AS VIEW;
-        GLOSS dso ON fin AS $${"sql": "SELECT 1 AS v",
+        GLOSS dso ON fin AS $${"kind": "metric", "sql": "SELECT 1 AS v",
           "assumptions": [{"dimension": "definition", "key": "per-line", "assumption": "per line", "basis": "judgment", "confidence": 0.7}]}$$;
     "#;
         let shape = call_shape(setup);

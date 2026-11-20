@@ -60,7 +60,7 @@ DECLARE TEST unit_stated_test ON unit_check BY (AGENT, HUMAN) DETECTOR rate_tole
 
 - **A property** (`DECLARE PROPERTY`) has a JSON Schema and a kind:
   `AS FACT` for a value someone states, `AS MEASUREMENT` for a
-  function's result, `AS VIEW` for a view name. `ON` names the assets
+  function's result; a view's name is declared by its first definition. `ON` names the assets
   it applies to: `DATASET`, `TABLE`, `COLUMN`, `RELATIONSHIP`,
   `SOURCE`.
 - **A condition** makes a property required only where it applies:

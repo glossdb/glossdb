@@ -41,13 +41,13 @@ pub fn situation(refusal: Option<&str>, outcome: Option<&Value>) -> String {
     let reason = fact.get("reason").and_then(Value::as_str).unwrap_or("");
     let first = reason.split(". ").next().unwrap_or(reason);
     let mut line = format!("status: done — {view}: ");
-    if matches!(kind, "relation" | "scalar") {
+    if matches!(kind, "table" | "value") {
         // A table and a single value have no series to wait for: the
         // view can be read once it is defined. A reason is there only
         // where it is stopped or its definition serves no view.
         if !first.is_empty() {
             line.push_str(first);
-        } else if kind == "relation" {
+        } else if kind == "table" {
             line.push_str(&format!("defined as a table; read it FROM {view}"));
         } else {
             line.push_str(&format!(

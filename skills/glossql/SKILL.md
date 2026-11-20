@@ -172,30 +172,27 @@ value to check and record again.
 A view is named SQL on the dataset: declare the name, then define it.
 There are three kinds, each read as `FROM <view>`.
 
-**A table** (`x-kind: relation`): cleaned, joined or reshaped rows.
+**A table** (`"kind": "table"`): cleaned, joined or reshaped rows.
 
 ```glossql
-DECLARE PROPERTY clean_deliveries WITH $${"title": "Deliveries, cleaned", "x-kind": "relation"}$$ AS VIEW;
 GLOSS clean_deliveries ON logistics AS $${
-  "sql": "SELECT delivery_id, depot_id, delivered_on, parcels, weight_kg, lower(status) AS status FROM deliveries",
+  "kind": "table", "sql": "SELECT delivery_id, depot_id, delivered_on, parcels, weight_kg, lower(status) AS status FROM deliveries",
   "assumptions": [{"dimension": "convention", "key": "status-lower-case", "assumption": "status is served in lower case; DELIVERED and delivered are one status", "basis": "1 of 10 rows is upper case", "confidence": 0.8}]
 }$$;
 ```
 
-**A single value** (`x-kind: scalar`): one row with a column `value`.
+**A single value** (`"kind": "value"`): one row with a column `value`.
 
 ```glossql
-DECLARE PROPERTY depots_in_service WITH $${"title": "Depots in service", "x-kind": "scalar"}$$ AS VIEW;
-GLOSS depots_in_service ON logistics AS $${"sql": "SELECT count(*) AS value FROM depots"}$$;
+GLOSS depots_in_service ON logistics AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM depots"}$$;
 ```
 
 **A metric**: a value per period, with dimensions. Name the time
 column, the measure with its additivity, and the dimension columns:
 
 ```glossql
-DECLARE PROPERTY parcels_delivered WITH $${"title": "Parcels delivered"}$$ AS VIEW;
 GLOSS parcels_delivered ON logistics AS $${
-  "sql": "SELECT d.delivered_on, d.parcels AS value, d.depot_id, p.city FROM clean_deliveries d JOIN depots p ON p.depot_id = d.depot_id WHERE d.status = 'delivered'",
+  "kind": "metric", "sql": "SELECT d.delivered_on, d.parcels AS value, d.depot_id, p.city FROM clean_deliveries d JOIN depots p ON p.depot_id = d.depot_id WHERE d.status = 'delivered'",
   "time": "delivered_on",
   "measure": {"column": "value", "additivity": "additive", "unit": "parcels"},
   "dimensions": ["depot_id", "city"],
@@ -331,7 +328,7 @@ DuckDB, and its SQL guide is `doc://vendor/duckdb/sql/…`.
 |---|---|
 | `next` | what is open on the dataset: `level` (`must`, `should`, `could`), `kind` (the kind of work), the statement that opens it |
 | `view_summary()` | one row per view: `kind`, `stopped`, value column, `additivity`, `dims`, `missing`; for a metric also `applicable` and `reason` (whether a series is served), the period column, `floor` and `window_periods` |
-| `view_definitions` | every view: `name`, `title`, `kind` (`relation`, `scalar`, `measure` for a metric), `unit`, `meaning`, `defined`, `stopped` |
+| `view_definitions` | every view: `name`, `kind` (`table`, `value`, `metric`, `rule`, NULL for a plain view), `unit`, `meaning`, `defined`, `stopped` |
 | `view_tests()` | the tests on each view and on what it reads, worst first |
 | `column_mapping()` | lineage: per view column and branch of a union the source system, `table.column` and expression |
 | `fact_values()` | each single value: `view`, `value`, `reason` |

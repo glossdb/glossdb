@@ -81,16 +81,14 @@ async fn fin(dir: &Path) -> common::Served {
         FIN,
         r#"GLOSS entity ON fin.funds AS $${"value": "a fund", "grain": ["fund"]}$$;
            DECLARE RELATIONSHIP ledger.fund -> funds.fund;
-           DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;
+           GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;
            GLOSS role ON spend.period AS $${"value": "timestamp"}$$;
            GLOSS role ON spend.value AS $${"value": "measure"}$$;
            GLOSS role ON spend.fund AS $${"value": "dimension"}$$;
            GLOSS additivity ON spend.value AS $${"value": "additive"}$$;
            GLOSS unit ON spend.value AS $${"value": "EUR"}$$;
            GLOSS meaning ON fin.spend AS $${"value": "money booked per month"}$$;
-           DECLARE PROPERTY ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+           GLOSS ledger_funds ON fin AS $${"kind": "table", "sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
     served

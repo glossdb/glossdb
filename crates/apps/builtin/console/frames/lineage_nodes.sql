@@ -61,10 +61,10 @@ defs AS (SELECT name, kind FROM view_definitions),
 fields AS (
   SELECT s.view AS node, 'view' AS kind, s.target_column AS col,
          CAST(row_number() OVER (PARTITION BY s.view ORDER BY s.target_column) AS BIGINT) AS ord,
-         CASE v.kind WHEN 'relation' THEN 'table view' WHEN 'scalar' THEN 'single value'
-                     ELSE 'metric' END AS sub,
+         CASE v.kind WHEN 'table' THEN 'table view' WHEN 'value' THEN 'single value' WHEN 'metric' THEN 'metric'
+                     WHEN 'rule' THEN 'rule' ELSE 'plain view' END AS sub,
          (SELECT b FROM base) || 'views?view=' || s.view
-           || CASE WHEN v.kind IN ('relation', 'scalar') THEN '&kind=' || v.kind ELSE '' END AS link
+           || CASE WHEN v.kind IN ('table', 'value') THEN '&kind=' || v.kind ELSE '' END AS link
   FROM (SELECT DISTINCT view, target_column FROM column_mapping() WHERE target_column IS NOT NULL) s
   LEFT JOIN defs v ON v.name = s.view)
 SELECT node, kind, col, ord, role, detail, sub, link, tag FROM cols

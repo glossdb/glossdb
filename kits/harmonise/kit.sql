@@ -1,5 +1,5 @@
 -- The harmonise kit (preview): several systems of record mapped onto one
--- target table. The target is a table view (x-kind relation), each of its
+-- target table. The target is a table view (kind table), each of its
 -- branches reading one system's loaded tables. Where each target column
 -- comes from is read off the view's SQL by column_mapping() (the views
 -- kit), each source table's system being its `system_of_record` where the

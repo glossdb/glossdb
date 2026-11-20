@@ -1,24 +1,25 @@
 # Define views
 
 A view is named SQL on a dataset, read as `FROM <dataset>.<name>`.
-There are three kinds, and each is a product in its own right:
+Its kind, in the definition, says what it is for:
 
-| Kind | Declared with | Serves |
+| Kind | `"kind"` | What it is |
 |---|---|---|
-| a table | `"x-kind": "relation"` | rows: cleaned, joined or filtered data that people and other views read |
-| a single value | `"x-kind": "scalar"` | one row with a `value` column |
-| a metric | no `x-kind` | a value per period, sliced by dimensions |
+| a plain view | none | a query worth keeping, with its reason. It asks for nothing more |
+| a table | `"table"` | rows: cleaned, joined or filtered data that people and other views read |
+| a single value | `"value"` | one row with a `value` column |
+| a metric | `"metric"` | a value per period, sliced by dimensions |
+| a rule | `"rule"` | the rows that break a rule. It returns none while the rule holds; a test runs on it after each load |
 
-## Declare, then define
+## Define
 
-Declare the name once (`AS VIEW`), with a title. Then annotate it on
-the dataset with its SQL. The annotation is the view definition.
+One statement defines a view: an annotation on the dataset with its
+SQL. The first definition of a name declares it.
 
 ```glossql
 USE stays;
-DECLARE PROPERTY confirmed_bookings WITH $${"title": "Confirmed bookings", "x-kind": "relation"}$$ AS VIEW;
 GLOSS confirmed_bookings ON stays AS $${
-  "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
+  "kind": "table", "sql": "SELECT b.booking_id, b.check_in, b.nights, b.room_id, r.room_type FROM bookings b JOIN rooms r ON r.room_id = b.room_id WHERE b.status = 'confirmed'",
   "assumptions": [
     {"dimension": "scope", "key": "confirmed-only",
      "assumption": "tentative and cancelled bookings are left out",
@@ -26,8 +27,7 @@ GLOSS confirmed_bookings ON stays AS $${
   ]
 }$$;
 
-DECLARE PROPERTY room_count WITH $${"title": "Rooms", "x-kind": "scalar"}$$ AS VIEW;
-GLOSS room_count ON stays AS $${"sql": "SELECT count(*) AS value FROM rooms"}$$;
+GLOSS room_count ON stays AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM rooms"}$$;
 ```
 
 The body holds `sql`, or `stopped` with the reason no number is
@@ -44,9 +44,8 @@ A metric's definition also says which column is the time, which the
 measure and how it adds up, and which columns slice it:
 
 ```glossql
-DECLARE PROPERTY booked_nights WITH $${"title": "Booked nights"}$$ AS VIEW;
 GLOSS booked_nights ON stays AS $${
-  "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
+  "kind": "metric", "sql": "SELECT check_in, nights AS value, room_type FROM confirmed_bookings",
   "time": "check_in",
   "measure": {"column": "value", "additivity": "additive", "unit": "nights"},
   "dimensions": ["room_type"]
@@ -68,9 +67,8 @@ annotations yourself on `<dataset>.<view>.<column>`.
 | `non-additive` | does not combine | one row per period |
 
 ```glossql
-DECLARE PROPERTY occupancy WITH $${"title": "Occupancy"}$$ AS VIEW;
 GLOSS occupancy ON stays AS $${
-  "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
+  "kind": "metric", "sql": "SELECT night AS period, sold / nullif(available, 0) AS value, sold, available, room_type FROM room_nights",
   "time": "period",
   "measure": {"column": "value", "additivity": "ratio", "numerator": "sold", "denominator": "available", "unit": "share"},
   "dimensions": ["room_type"]
@@ -155,7 +153,6 @@ SQL. Readers get the reason, and a person's definition with `sql`
 lifts the stop.
 
 ```glossql
-DECLARE PROPERTY revenue_per_room WITH $${"title": "Revenue per available room"}$$ AS VIEW;
 GLOSS revenue_per_room ON stays AS $${
   "stopped": "room rates were not loaded: the export carries nights and no price"
 }$$;
@@ -174,7 +171,7 @@ GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available
 ## Read what you defined
 
 ```sql
-SELECT name, title, kind, unit, defined, stopped FROM view_definitions;
+SELECT name, kind, unit, defined, stopped FROM view_definitions;
 ```
 
 ```sql

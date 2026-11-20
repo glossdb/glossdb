@@ -287,7 +287,7 @@ FROM stated_state;
 --
 -- level:
 -- must: served data is wrong or cannot be served. No table is loaded, no
---   view is defined, a test is red (series_test: a metric serves no
+--   view is served, a test is red (series_test: a metric serves no
 --   series), two values conflict, a person decided something (a load
 --   query, a review decision) that is not carried yet.
 -- should: the layer is incomplete for what is served. An annotation is
@@ -302,7 +302,9 @@ FROM stated_state;
 --   would compute it yellow again.
 -- could: what sits beside. An annotation is missing or outdated on a
 --   table, a column, a relationship or the dataset that no view reads.
--- Work on a dataset is complete when no must is open.
+-- Work on a dataset is complete when no must is open. A view the dataset
+-- keeps and does not serve (a plain view, a rule) asks for nothing: its
+-- reads are not what is served, and a rule's row is its test's.
 --
 -- ord, inside a level, puts what blocks other work first: 1 a source, a
 -- table or a view to integrate, 2 a person's decision to carry, 3 a test,
@@ -320,9 +322,11 @@ FROM stated_state;
 -- is set, and is not asked for on the other assets.
 CREATE OR REPLACE VIEW main.next AS
   WITH ds AS (SELECT current_schema() AS d),
-  scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
-            FROM main.views_scans(current_schema())),
   summary AS MATERIALIZED (SELECT * FROM main.view_summary()),
+  scans AS (SELECT view, table_name AS tbl, unnest(columns) AS col
+            FROM main.views_scans(current_schema()) WHERE view IN (SELECT view FROM summary)),
+  -- the views the dataset keeps and does not serve: a plain view, a rule
+  kept AS (SELECT ds.d || '.' || k.view AS home FROM main.view_kinds() k, ds WHERE NOT main.served_kind(k.kind)),
   -- a load-query change a person approved, with no load of the table since
   approved AS (
     SELECT json_extract_string(a.body, '$.table') AS tbl FROM main.glossary a CROSS JOIN ds
@@ -358,7 +362,7 @@ CREATE OR REPLACE VIEW main.next AS
       UNION ALL
       SELECT ds.d || '.' || c.table_name || '.' || c.column_name, c.table_name
       FROM glossql_columns(current_schema()) c, ds
-      WHERE c.table_name IN (SELECT view FROM summary WHERE kind = 'relation' AND stopped IS NULL))
+      WHERE c.table_name IN (SELECT view FROM summary WHERE kind = 'table' AND stopped IS NULL))
     GROUP BY asset),
   -- what an agent or a person states: not a measurement, not a check
   -- the server runs; `shape` is the value to fill in: the fields the
@@ -380,6 +384,8 @@ CREATE OR REPLACE VIEW main.next AS
            name IN (SELECT p.name FROM main.tested_properties() p) AS expectation
     FROM main.properties
     WHERE kind = 'FACT' AND json_extract_string(schema, '$.x-subject') IS NULL
+      -- a property asked on no asset (tags): written where an actor chooses
+      AND json_extract_string(schema, '$.x-asked') IS DISTINCT FROM 'never'
       -- a kit's own result, such as a metric's expected ranges, is computed, not stated
       AND name NOT IN (SELECT returns FROM main.functions WHERE returns IS NOT NULL AND declared_by LIKE 'kit:%')),
   g AS (SELECT subject, property, state FROM glossql_glossary(current_schema(), NULL, false)),
@@ -423,7 +429,9 @@ CREATE OR REPLACE VIEW main.next AS
       -- `entity` says what one row of a table is: asked on a loaded
       -- table and on a table view, not on a metric or a single value
       AND NOT (g.property = 'entity' AND g.state = 'missing'
-               AND g.subject IN (SELECT ds.d || '.' || m.view FROM summary m, ds WHERE coalesce(m.kind, '') <> 'relation'))
+               AND g.subject IN (SELECT ds.d || '.' || m.view FROM summary m, ds WHERE m.kind <> 'table'))
+      -- a kept view asks for nothing on itself or its columns; a conflict on it is still a row
+      AND NOT (g.state <> 'conflict' AND array_to_string(string_split(g.subject, '.')[1:2], '.') IN (SELECT home FROM kept))
       AND NOT (g.state = 'conflict'
                AND {'subject': g.subject, 'property': g.property} IN (SELECT {'subject': subject, 'property': property} FROM vt WHERE state <> 'green'))
     UNION ALL
@@ -435,7 +443,8 @@ CREATE OR REPLACE VIEW main.next AS
     FROM (SELECT DISTINCT name FROM main.properties WHERE json_extract_string(schema, '$.x-asked') = 'per table') a
     JOIN stated s ON s.name = a.name CROSS JOIN ds CROSS JOIN glossql_columns(current_schema()) c
     LEFT JOIN reach x ON x.asset = ds.d || '.' || c.table_name || '.' || c.column_name
-    WHERE {'property': a.name, 'tbl': c.table_name} IN (
+    WHERE ds.d || '.' || c.table_name NOT IN (SELECT home FROM kept)
+      AND {'property': a.name, 'tbl': c.table_name} IN (
             SELECT {'property': w.property, 'tbl': split_part(w.subject, '.', 2)} FROM main.glossary w, ds
             WHERE w.dataset = ds.d AND w.actor_kind IN ('agent', 'human') AND len(string_split(w.subject, '.')) >= 3
               AND starts_with(w.subject, ds.d || '.'))
@@ -546,17 +555,16 @@ CREATE OR REPLACE VIEW main.next AS
            'SELECT key, assumption, basis, alternative FROM main.open_questions WHERE property = ''' || q.property || ''' AND key = ''' || q.key || ''';'
     FROM main.open_questions q, ds WHERE q.dataset = ds.d),
   s_views AS (
-    SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is defined (a table, a single value or a metric)', '',
-           '-- a view is named SQL on the dataset. Define the kind the job asks for.' || chr(10)
+    SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is served (a table, a single value or a metric)', '',
+           '-- a view is named SQL on the dataset, one statement each; its kind says what it is for.' || chr(10)
              || '-- a table:' || chr(10)
-             || 'DECLARE PROPERTY <table_view> WITH $${"title": "<its name in the business''s words>", "x-kind": "relation"}$$ AS VIEW;' || chr(10)
-             || main.gloss_statement('<table_view>', ds.d, '{"sql": "SELECT <columns> FROM <table>"}') || chr(10)
+             || main.gloss_statement('<table_view>', ds.d, '{"kind": "table", "sql": "SELECT <columns> FROM <table>", "meaning": "<what one row is>"}') || chr(10)
              || '-- a single value:' || chr(10)
-             || 'DECLARE PROPERTY <single_value> WITH $${"title": "<its name in the business''s words>", "x-kind": "scalar"}$$ AS VIEW;' || chr(10)
-             || main.gloss_statement('<single_value>', ds.d, '{"sql": "SELECT <expression> AS value FROM <table>"}') || chr(10)
+             || main.gloss_statement('<single_value>', ds.d, '{"kind": "value", "sql": "SELECT <expression> AS value FROM <table>", "meaning": "<what it counts>"}') || chr(10)
              || '-- a metric, a value per period with its dimensions:' || chr(10)
-             || 'DECLARE PROPERTY <metric> WITH $${"title": "<its name in the business''s words>"}$$ AS VIEW;' || chr(10)
-             || main.gloss_statement('<metric>', ds.d, '{"sql": "SELECT <period>, <value>, <dimension columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio|non-additive>", "unit": "<unit>"}, "dimensions": ["<column>"]}')
+             || main.gloss_statement('<metric>', ds.d, '{"kind": "metric", "sql": "SELECT <period>, <value>, <dimension columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio|non-additive>", "unit": "<unit>"}, "dimensions": ["<column>"]}') || chr(10)
+             || '-- a rule, whose rows break it (a test runs on it after each load):' || chr(10)
+             || main.gloss_statement('<rule>', ds.d, '{"kind": "rule", "sql": "SELECT <key columns> FROM <table> WHERE <the rule does not hold>", "meaning": "<the rule>"}')
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM summary WHERE stopped IS NULL)
       AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)),
   -- a stored result out of date that the server does not compute (a

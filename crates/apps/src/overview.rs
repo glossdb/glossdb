@@ -24,7 +24,7 @@ pub(crate) const COUNTS: &str = "WITH latest AS ( \
        (SELECT count(*) FROM latest WHERE rn = 1) AS tables, \
        (SELECT coalesce(sum(CAST(rows AS BIGINT)), 0) FROM latest WHERE rn = 1) AS rows, \
        (SELECT coalesce(max(imported_at)::VARCHAR, '') FROM latest) AS loaded, \
-       (SELECT count(*) FROM view_definitions WHERE defined AND stopped = '') AS served, \
+       (SELECT count(*) FROM view_definitions WHERE defined AND stopped = '' AND kind IN ('table', 'value', 'metric')) AS served, \
        (SELECT count(*) FROM view_definitions WHERE stopped <> '') AS stopped, \
        (SELECT count(*) FROM open_questions q \
         JOIN current_dataset d ON d.dataset = q.dataset) AS open";

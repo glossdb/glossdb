@@ -55,7 +55,7 @@ narrows either to one property.
 | `open_questions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `sibling`, `sibling_stance`, `sibling_note` |
 | `agent_assumptions` | workspace | `dataset`, `subject`, `property`, `idx`, `dimension`, `key`, `assumption`, `basis`, `alternative`, `conf`, `body` |
 | `review_decisions` | workspace | `dataset`, `subject`, `idx`, `property`, `key`, `stance`, `dimension`, `assumption`, `note`, `written_at`, `folded_in` |
-| `view_definitions` | dataset | `name`, `title`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
+| `view_definitions` | dataset | `name`, `kind`, `unit`, `meaning`, `defined`, `stopped` |
 | `next` | dataset | see below |
 | `app_parts` | workspace | `dataset`, `app`, `path`, `text`, `actor_kind` |
 | `app_releases` | workspace | `dataset`, `app`, `at`, `note`, `actor_kind`, `released_at` |
@@ -66,9 +66,9 @@ narrows either to one property.
 - `review_decisions`: `stance` is `confirmed`, `corrected` or
   `unclear`; `folded_in` is true once the definition carries the
   decision.
-- `view_definitions`: one row per view defined here, served or
-  stopped. `kind` is the declaration's `x-kind`: `relation`, `scalar`,
-  `plan`, or `measure` for a metric. `meaning` is the `meaning`
+- `view_definitions`: one row per view defined here, kept, served or
+  stopped. `kind` is the definition's: `table`, `value`, `metric`,
+  `rule`, NULL for a plain view. `meaning` is the `meaning`
   annotation on the view, `unit` the `unit` of a metric's or a single
   value's value column.
 - `tested_properties()` lists by `name` the properties that exist to
@@ -102,7 +102,7 @@ statement.
 
 What each level holds:
 
-- `must`: no table is loaded; no view is defined; a test is red (a
+- `must`: no table is loaded; no view is served; a test is red (a
   metric that serves no series is `series_test` red); two values of one property conflict; a
   person approved a load query or decided a review question, and the
   definition does not carry it yet; a keyed load
@@ -175,11 +175,12 @@ SELECT table_name, mode, rows, source_rows, identical, state, level FROM load_mo
 
 ### view_summary()
 
-One row per view of the dataset in use.
+One row per view the dataset in use serves (`table`, `value`,
+`metric`); a plain view and a rule are kept, not served.
 
 | Column | Holds |
 |---|---|
-| `view`, `kind` | the name; `relation`, `scalar`, or NULL for a metric |
+| `view`, `kind` | the name; `table`, `value` or `metric` |
 | `stopped` | the stop reason |
 | `applicable`, `reason` | whether a metric's series is served; else what to change. A table and a single value have no series: `applicable` is NULL, and `reason` is filled only where the view is stopped or its definition serves no view |
 | `period_column`, `value_column`, `numerator`, `denominator` | the columns the series reads; `period_column` is NULL for a table and a single value |
@@ -225,7 +226,9 @@ for the total), `member`, `period`, `value`, `num`, `den`,
 
 | Read | Columns |
 |---|---|
-| `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset with its kind and, where its definition serves no number, why: the rows of `view_summary()` without what its columns say |
+| `view_kinds()` | `view`, `kind`, `stopped`: each view of the dataset, kept or served, with its kind (`table`, `value`, `metric`, `rule`, NULL for a plain view) and, where its definition serves no number, why |
+| `find(term)` | `asset`, `what` (`view`, `table`, `column`), `kind`, `meaning`, `tags`, `matched_on`, `reads`, `sql`: each view, loaded table and column whose name, meaning or tags hold the term, and each view that reads a column whose name holds it; `tags` is a person's and the agents' lists as one; a stopped view is not found |
+| `tag_statement(asset, words)` | the statement that adds the words to the actor's own `tags` on the asset: an actor's newest list replaces its list before |
 | `fact_values()` | `view`, `value`, `reason`: each single value |
 | `column_mapping(for_view := NULL)` | `view`, `target_column`, `branch`, `system`, `source_table`, `source_column`, `alias`, `condition`, `lookup`, `expression`, `literals`, `complete`: where each column of a view comes from, read off its SQL. One row per target column, per branch of the union the view's rows come from (1 where it has none) and per source column. `system` is the source table's `system_of_record` where the table states one, else the source it is loaded from. `alias` names each read of a table the view reads more than once, as the expression does (`supply.hierarchy[dk].brand`). `condition` is what the view's joins and filters require of that read alone (`=(supply.hierarchy[dk].market, 'DK')`). `lookup` is the equality of the join that joins that read to the rows before it, the driving side first: the column a mapping table is looked up by (`=(supply.stock_sap.matnr, supply.identities.local_code)`). `literals` are the codes the expression tests or returns, as written. A column computed from no source column has one row with no source. `complete` is false where the lineage could not follow a step or reads two reads of one table alike; a view that does not plan has one row with no target column |
 | `view_tests()` | `view`, `test`, `property`, `declared_by`, `subject`, `state`, `current`, `score`, `evidence`, `run`: each test on each view and on what it reads, and on a result about the dataset, worst first |

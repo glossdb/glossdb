@@ -64,8 +64,7 @@ async fn the_server_runs_a_metrics_tests_after_each_write() {
     say(
         &app,
         FIN,
-        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
+        r#"GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
     let defined = states().await;
@@ -115,8 +114,7 @@ async fn the_server_runs_a_table_views_tests_after_each_write() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
-           DECLARE PROPERTY ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+           GLOSS ledger_funds ON fin AS $${"kind": "table", "sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
     let computed = async |function: &str| {
@@ -200,14 +198,13 @@ async fn the_statement_next_hands_over_runs_with_its_comments() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT unnest(['general', 'water']) AS fund, 'a fund' AS label;
-           DECLARE PROPERTY ledger_funds WITH $${"title": "Ledger with its fund", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+           GLOSS ledger_funds ON fin AS $${"kind": "table", "sql": "SELECT l.booked, l.amount, f.label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
     say(
         &app,
         FIN,
-        r#"GLOSS ledger_funds ON fin AS $${"sql": "SELECT l.booked, l.amount, CAST(NULL AS VARCHAR) AS label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
+        r#"GLOSS ledger_funds ON fin AS $${"kind": "table", "sql": "SELECT l.booked, l.amount, CAST(NULL AS VARCHAR) AS label FROM fin.ledger l JOIN fin.funds f ON f.fund = l.fund"}$$;"#,
     )
     .await;
     let red = rows(
@@ -228,8 +225,7 @@ async fn the_statement_next_hands_over_runs_with_its_comments() {
 async fn the_next_page_carries_the_test_and_its_statement() {
     let (app, _, _dir) = fin().await;
     say(&app, FIN,
-        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
+        r#"GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL"}$$;"#,
     )
     .await;
     let body = common::rpc(
@@ -254,6 +250,36 @@ async fn the_next_page_carries_the_test_and_its_statement() {
     assert!(closing.contains("next://fin/test"), "{closing}");
 }
 
+/// One statement keeps a query with its reason: the server writes the
+/// definition's `meaning` and `tags` as annotations on the view, by the
+/// definition's actor, and the search read finds the view by a tag.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_definitions_meaning_and_tags_are_annotations_on_its_view() {
+    let (app, _, _dir) = fin().await;
+    say(&app, FIN,
+        r#"GLOSS funds_seen ON fin AS $${"sql": "SELECT DISTINCT fund FROM fin.ledger", "meaning": "the funds the ledger books to", "tags": ["fund", "budget line"]}$$;"#,
+    )
+    .await;
+    let said = rows(
+        &app,
+        FIN,
+        "SELECT property, actor_kind, body->'value' AS value FROM main.glossary \
+         WHERE subject = 'fin.funds_seen' ORDER BY property",
+    )
+    .await;
+    assert_eq!(said.len(), 2, "{said:?}");
+    assert_eq!(text(&said[0], "property"), "meaning", "{said:?}");
+    assert_eq!(text(&said[1], "property"), "tags", "{said:?}");
+    assert!(
+        said.iter().all(|r| text(r, "actor_kind") == "agent"),
+        "{said:?}"
+    );
+    let found = rows(&app, FIN, "SELECT asset, kind FROM find('budget')").await;
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(text(&found[0], "asset"), "fin.funds_seen", "{found:?}");
+    assert_eq!(found[0]["kind"], Value::Null, "{found:?}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     let (app, _, _dir) = fin().await;
@@ -261,11 +287,10 @@ async fn a_definition_that_names_its_columns_is_served_in_one_statement() {
     // and how it adds up, and which slice it: the server writes the
     // column annotations, profiles the time column and runs the tests.
     let outcomes = say(&app, FIN,
-        r#"DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#,
+        r#"GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#,
     )
     .await;
-    let written = &outcomes[1]["rows"][0];
+    let written = &outcomes[0]["rows"][0];
     assert_eq!(written["applicable"], json!(true), "{outcomes}");
     assert_eq!(written["additivity"], json!("additive"), "{outcomes}");
     let open = open_tests(&app).await;
@@ -319,8 +344,7 @@ async fn the_server_reconciles_a_contracted_view_after_each_load() {
     say(
         &app,
         FIN,
-        r#"DECLARE PROPERTY free_stock WITH $${"title": "Free stock", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS free_stock ON fin AS $${"sql": "SELECT i.global AS item, sum(s.qty) AS qty FROM fin.stock s JOIN fin.items i ON i.local = s.item WHERE s.status = 'D' GROUP BY ALL"}$$;
+        r#"GLOSS free_stock ON fin AS $${"kind": "table", "sql": "SELECT i.global AS item, sum(s.qty) AS qty FROM fin.stock s JOIN fin.items i ON i.local = s.item WHERE s.status = 'D' GROUP BY ALL"}$$;
            GLOSS entity ON fin.free_stock AS $${"value": "the stock of one item", "grain": ["item"]}$$;
            GLOSS contract ON fin.free_stock.item AS $${"type": "VARCHAR", "required": true}$$;"#,
     )
@@ -387,8 +411,7 @@ async fn a_load_that_adds_a_column_brings_the_lineage_of_the_view_over_it_curren
     )
     .await;
     say(&app, FIN,
-        r#"DECLARE PROPERTY booked_rows WITH $${"title": "Booked rows", "x-kind": "relation"}$$ AS VIEW;
-           GLOSS booked_rows ON fin AS $${"sql": "SELECT booked, amount FROM fin.bookings"}$$;"#,
+        r#"GLOSS booked_rows ON fin AS $${"kind": "table", "sql": "SELECT booked, amount FROM fin.bookings"}$$;"#,
     )
     .await;
     let lineage = async || {
@@ -495,14 +518,13 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
         &app,
         FIN,
         r#"CREATE TABLE fin.funds AS SELECT 'general' AS fund;
-           DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-           GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
+           GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;
            SELECT level, kind, who FROM next"#,
     )
     .await;
     assert_ne!(body["result"]["isError"], json!(true), "{body}");
     let outcomes = common::outcomes(&body);
-    let listed = outcomes[3]["rows"].as_array().unwrap();
+    let listed = outcomes[2]["rows"].as_array().unwrap();
     let window = window(&body);
     let line = window
         .lines()
@@ -550,8 +572,7 @@ async fn the_next_line_counts_the_rows_the_same_call_lists() {
 async fn a_server_without_the_harmonise_kit_serves_next_the_tests_and_the_console() {
     let build = r#"CREATE TABLE fin.ledger AS SELECT DATE '2024-01-01' + INTERVAL (i) DAY AS booked,
                      (i % 7 + 1)::DOUBLE AS amount, ['general', 'water', 'parks'][i % 3 + 1] AS fund FROM range(120) r(i);
-                   DECLARE PROPERTY spend WITH $${"title": "Spend"}$$ AS VIEW;
-                   GLOSS spend ON fin AS $${"sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
+                   GLOSS spend ON fin AS $${"kind": "metric", "sql": "SELECT date_trunc('month', booked)::DATE AS period, sum(amount) AS value, fund FROM fin.ledger GROUP BY ALL", "time": "period", "measure": {"column": "value", "additivity": "additive", "unit": "EUR"}, "dimensions": ["fund"]}$$;"#;
     let next = "SELECT level, kind, asset, state, who, open, statement FROM next";
     let tests = "SELECT view, test, subject, state, current, run FROM view_tests() ORDER BY ALL";
     let (with, _, _with_dir) = common::app_on("fin").await;
@@ -611,8 +632,7 @@ async fn the_next_rows_follow_a_write_made_beside_the_interface() {
         .expect("a channel on fin");
     session
         .execute(
-            r#"DECLARE PROPERTY ledger_rows WITH $${"title": "Ledger rows", "x-kind": "scalar"}$$ AS VIEW;
-               GLOSS ledger_rows ON fin AS $${"sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
+            r#"GLOSS ledger_rows ON fin AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM fin.ledger"}$$;"#,
         )
         .await
         .expect("the view is defined");
