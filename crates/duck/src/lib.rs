@@ -84,7 +84,9 @@ const PAGES_DB: &str = "memory";
 pub enum SessionError {
     #[error("no dataset in use — USE one first")]
     NoDataset,
-    #[error("not a subject: {detail}")]
+    /// A name the catalog does not hold, in the engine's own words, or
+    /// the server's where it looked the name up itself.
+    #[error("{detail}")]
     UnknownName { detail: String },
     /// A read or a measurement that needs the model service, and none
     /// is named for the instance: `interface` is the service's path.
