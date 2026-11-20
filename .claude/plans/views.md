@@ -51,8 +51,7 @@ that work builds.
 
 | # | Element | Risk | What it touches | When |
 |---|---|---|---|---|
-| 4 | One pass over every text an agent reads, in the order it meets them: the MCP instructions, the entry skill, what `next` hands out, the references, the docs, the spec. One rule, one count of statements per form; every catalog read spelled `main.<relation>` (done in what `next` and the MCP text hand out) | Medium | `crates/serverd/src/mcp.rs`, `skills/`, `docs/`, `SPEC.md` | Now |
-| 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | After 4 |
+| 5 | A glossval round: do agents keep their queries, and what do the kept rules catch | | `../glossval` (run only) | When the branch is pushed and the pin moved, which the project lead says |
 | 6 | The queries an agent runs are logged, indexed by the columns they read, and served by the search read beside the kept views. Open: when the agent is asked to keep one; read access follows `gate.md` | Medium | the server, the extension's lineage of a SQL text | After 5 says what is still hidden |
 
 ## Measured
@@ -99,10 +98,12 @@ that work builds.
 | What | When |
 |---|---|
 | A kept view is not compared between loads: a profile that grows a row (a new unit, a new code) is not a row of `next`. A function or a test on the view would say it | After the glossval round shows what agents keep |
+| `find()` matches a view on a column it reads only through another view: the stored lineage of a view over a view names every column the inner view reads | Before the query log, which uses the same index |
+| An agent with only the MCP instructions and the entry skill does not learn the five statements of a test with a tolerance or how to write a function (a count and a link are given), nor that a person's definition outranks its own | The glossval round says whether that costs anything |
 | The console lists kept views nowhere of their own | With the text pass or after |
 | A rule view's scanned columns get a column profile computed, as a served view's do | Measure the cost first |
 | `next` says "no view is served" as a must on a dataset that holds only kept views | Shaped with the levels, which are on hold |
 
 ## Next issue
 
-Step 4, the pass over the texts.
+Step 5, the glossval round.
