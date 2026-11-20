@@ -44,7 +44,7 @@ lake need it?
 | # | Element | Risk | What it touches | Issue |
 |---|---|---|---|---|
 | 1 | Retire what has no caller: `glossql_service` (168 lines, no kit calls it), `json_schema_check`, the load fingerprint if `load_modes()` can do without it, and the lineage kit's macros nothing reads (`views_joins` and others; 20 of its 35 have no caller outside the kit, to be checked for use inside it) | Low | the extension | |
-| 2 | The plain view is the default kind; a metric states its kind. Every skill, doc, fixture and golden that defines a metric follows | Medium: every metric an agent writes changes | the store, the lineage kit's places, the views kit, `SPEC.md`, the skills | |
+| 2 | (Now in `views.md`, with the kind in the definition's body.) The plain view is the default kind; a metric states its kind. Every skill, doc, fixture and golden that defines a metric follows | Medium: every metric an agent writes changes | the store, the lineage kit's places, the views kit, `SPEC.md`, the skills | |
 | 3 | The kit contract, numbered: a kit's read states what it reads (the read tracker names four functions today); who owns a property's name (a user's own `unit` stops the vocabulary kit today) | High | the extension's runner and store, `SPEC.md` §5 and §6 | |
 | 4 | glossql names no vocabulary: `role`, `entity` and `period` leave the runner with the additivity cells, which become the data intelligence kit's code | Medium | the extension | |
 | 5 | glossql alone brings results current in one statement and has `next`: the generic rows (annotation states, tests, results out of date) and the read each kit adds | Medium | `results_due()` and `next` from the server's `goals` kit, the server's loop after a write | |

@@ -12,6 +12,7 @@ not kept.
 
 | Mission | Plan |
 |---|---|
+| What an agent keeps: views and their kinds, tags, rules; the texts that teach it | `views.md` |
 | A result is current or computed again, by one mechanism | `dependencies.md` |
 | Kits: the core and the add-ons, how a kit is versioned and bundled | `kits.md` |
 | glossdb works with the platform that is there: dbt, semantic models, lakes, the workspace as code | `platform.md` |
@@ -22,19 +23,15 @@ not kept.
 
 `snapshot-version` is merged in both repositories. The glossval round
 on it (`evaluation.md`) shows agents write their checks as ad hoc SQL
-and hardly use the kits' tests. The direction: the queries an agent
-writes are kept as views with their reason and become the checks (the
-first rows below). The kits plan is shaped together with it.
+and hardly use the kits' tests. `views.md` holds the design that
+follows from it and is the work in hand, on the branch `views-layer`.
+The kits plan is shaped together with it.
 
 ## Open outside the missions
 
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
-| Describe | A kept query: the spec and the skills present a view (`DECLARE ASPECT … AS VIEW`, `GLOSS … {"sql", "assumptions"}`) as any query worth keeping with its reason, a metric being one use; a function or a test on it makes it a check. Precondition: a plain view is asked for no descriptions and no served-view tests (`kits.md` step 2; measured: two kept queries took `next` from 6 to 22 rows) | Next, tried with glossval | |
-| Describe | The queries an agent runs are logged and indexed by the columns they read; `next` offers them for keeping and lists kept ones for reuse. Open: when and how the agent is asked. Measured on 38 builds: 81% of a view's decisions have an earlier query on their source column, but one query meets a median of 4 decisions | Not ready: the moment of the nudge is not based on a measurement yet | |
-| Test | `next` asks for checks before descriptions, and the three levels do not steer an agent. On hold until the two rows above are shaped | On hold | |
-| Test | A value is checked against a bound someone states: a `range` on a column, a rule across columns as a view of the violating rows. Measured: the capacity rule separates the wrong ferc-steam build (median 205 to 230) from the right one (0.22); a baseline taken from the build does not | With the rows above | |
-| Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after them | After the rows above | |
+| Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after `views.md` | After `views.md` | |
 | Integrate | The harmonisation kit (preview): the faults no test covers; a target that aggregates | After the smoke test | #244, #245 |
 | Integrate | The reconciliation counts rows that arrive as missing on a view of coarser grain than its source, and names no key where the target computes its key | Next (`evaluation.md`) | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
