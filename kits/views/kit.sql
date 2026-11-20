@@ -1551,13 +1551,14 @@ SELECT event FROM (SELECT * FROM load_events UNION ALL SELECT * FROM view_events
 --===------------------------------------------------------------------===--
 -- rule_check: on a view of kind rule, whose rows are the rows that break
 -- the rule its meaning states, so it returns none while the rule holds.
--- rows (how many it returns), sample (its first five rows, column to
--- value), finding (the count, the rule's meaning and the first rows) and
+-- rows (how many it returns), sample (five of its rows, column to value,
+-- the first by their values), finding (the count, the rule's meaning and the first rows) and
 -- fix (the read of its rows, and the statement by which a person accepts
 -- that count of rows with the reason). rule_test is red while the view
 -- returns more rows than a person accepted (count_tolerance: a count, not
 -- a rate), and is set on every rule view with no statement beyond its
--- definition (x-subject: rule).
+-- definition (x-subject: rule). On a loaded table or a view of another
+-- kind it is not applicable, with the reason, and reads no row.
 --===------------------------------------------------------------------===--
 DECLARE PROPERTY rule_check WITH $${
   "description": "A rule view returns no row: each row it returns breaks the rule its meaning states. A person accepts a count of rows, with the reason.",
@@ -1569,15 +1570,25 @@ DECLARE PROPERTY rule_check WITH $${
 }$$ AS FACT ON TABLE;
 
 DECLARE FUNCTION rule_check FOR GLOBAL AS $$
-  WITH cells AS MATERIALIZED (SELECT rn, "column", ci, val FROM dataset_cells($subject, true)),
-  n AS (SELECT count(DISTINCT rn) AS rows FROM cells),
-  firsts AS (SELECT DISTINCT rn FROM cells ORDER BY rn LIMIT 5),
+  WITH d AS (SELECT kind FROM definition('itself')),
+  ok AS (SELECT coalesce((SELECT kind = 'rule' FROM d), false) AS applicable,
+                CASE WHEN NOT EXISTS (SELECT 1 FROM d) THEN 'a loaded table is no rule view'
+                     ELSE 'a ' || coalesce((SELECT kind FROM d), 'plain view') || ' view is no rule view' END AS why),
+  -- the rows, each in one piece; the sample is the first five by their
+  -- values, so the same rows give the same sample whatever order they are read in
+  cells AS MATERIALIZED (
+    SELECT rn, "column", ci, val FROM dataset_cells($subject, true) WHERE (SELECT applicable FROM ok)),
+  keyed AS MATERIALIZED (SELECT rn, list(val ORDER BY ci) AS vals FROM cells GROUP BY rn),
+  n AS (SELECT count(*) AS rows FROM keyed),
+  firsts AS (SELECT rn, vals FROM keyed ORDER BY vals LIMIT 5),
   sample AS (
-    SELECT list(r ORDER BY rn) AS rows FROM (
-      SELECT rn, map_from_entries(list({'k': "column", 'v': val} ORDER BY ci)) AS r
-      FROM cells WHERE rn IN (SELECT rn FROM firsts) GROUP BY rn)),
+    SELECT list(r ORDER BY vals) AS rows FROM (
+      SELECT f.vals, map_from_entries(list({'k': c."column", 'v': c.val} ORDER BY c.ci)) AS r
+      FROM cells c JOIN firsts f USING (rn) GROUP BY f.rn, f.vals)),
   m AS (SELECT max(value->>'value') AS meaning FROM annotations('meaning', 'itself') WHERE value IS NOT NULL)
-  SELECT true AS applicable, NULL::VARCHAR AS reason, n.rows, sample.rows AS sample,
+  -- off a rule view nothing is read, n.rows is 0, and no finding or fix is made
+  SELECT ok.applicable, CASE WHEN NOT ok.applicable THEN ok.why END AS reason,
+         CASE WHEN ok.applicable THEN n.rows END AS rows, CASE WHEN ok.applicable THEN sample.rows END AS sample,
          CASE WHEN n.rows > 0
               THEN n.rows || CASE WHEN n.rows = 1 THEN ' row breaks' ELSE ' rows break' END || ' the rule '
                    || split_part($subject, '.', 2) || coalesce(' (' || m.meaning || ')', '') || '; the first: '
@@ -1587,7 +1598,7 @@ DECLARE FUNCTION rule_check FOR GLOBAL AS $$
            '-- fix the load query or the definition of a view the rule reads. Where a person accepts these rows as they are, they record the count and why:',
            '-- ' || main.gloss_statement('rule_check', $subject,
                       '{"accepted": ' || n.rows || ', "basis": "<who accepted the rows and why>"}')) END AS fix
-  FROM n, sample, m
+  FROM ok, n, sample, m
 $$ RETURNS rule_check;
 
 -- count_tolerance: the rule detector. Green while the rows a rule view
