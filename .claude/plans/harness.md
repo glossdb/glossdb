@@ -21,10 +21,10 @@ not kept.
 ## State
 
 `snapshot-version` is merged in both repositories. The glossval round
-on it (`evaluation.md`) says what comes next: `next` asks for checks
-before descriptions, and a value is checked against its unit (the
-first two rows below). The kits plan follows in the next streamlining
-session, with what glossval says can be simpler.
+on it (`evaluation.md`) shows agents write their checks as ad hoc SQL
+and hardly use the kits' tests. The direction: the queries an agent
+writes are kept as views with their reason and become the checks (the
+first rows below). The kits plan is shaped together with it.
 
 ## Open outside the missions
 
