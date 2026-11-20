@@ -89,6 +89,15 @@ due AS (
   FROM (SELECT unnest(measurements_to_run) AS w FROM main.view_summary()) x
   LEFT JOIN fns f ON f.name = split_part(x.w, ' over ', 1)
   UNION
+  -- what is stored on a loaded table or its columns stays current: a result someone computed there is
+  -- computed again when the table loads, one statement per function and table
+  SELECT DISTINCT 1, c.function, f.returns, l.tbl, 'SELECT ' || c.function || '() FROM ' || main.subject_path(l.tbl)
+  FROM changed c JOIN fns f ON f.name = c.function
+  JOIN (SELECT DISTINCT current_schema() || '.' || table_name AS tbl FROM glossql_columns(current_schema())
+        WHERE table_type = 'BASE TABLE') l
+    ON l.tbl = c.subject OR starts_with(c.subject, l.tbl || '.')
+  WHERE f.returns IS NOT NULL
+  UNION
   SELECT 2, t.property, t.property, t.subject, t.run
   FROM tests t LEFT JOIN stored s ON s.subject = t.subject AND s.property = t.property
   WHERE t.run <> '' AND NOT coalesce(s.current, false)),
