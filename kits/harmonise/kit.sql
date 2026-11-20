@@ -577,13 +577,15 @@ DECLARE FUNCTION reconciliation FOR GLOBAL AS $$
     SELECT q.branch, q.col, s.rn, list(CASE WHEN q.same_type THEN s.val ELSE main.reconciliation_value(s.val) END ORDER BY q.j) AS k
     FROM pairs q JOIN looked USING (branch, col) JOIN followed f ON f.branch = q.branch
     JOIN scells s ON s.t = f.table_name AND s.col = q.source_column
-    GROUP BY q.branch, q.col, s.rn HAVING count(s.val) = any_value(q.n)),
+    GROUP BY q.branch, q.col, s.rn
+    HAVING count(CASE WHEN q.same_type THEN s.val ELSE main.reconciliation_value(s.val) END) = any_value(q.n)),
   lookup_key AS (
     SELECT q.branch, q.col, l.rn, list(CASE WHEN q.same_type THEN l.val ELSE main.reconciliation_value(l.val) END ORDER BY q.j) AS k
     FROM pairs q JOIN looked USING (branch, col)
     JOIN scells l ON l.t = q.t AND l.col = q.lookup_column
     WHERE NOT EXISTS (SELECT 1 FROM left_out o WHERE o.branch = q.branch AND o.t = q.t AND o.rn = l.rn)
-    GROUP BY q.branch, q.col, l.rn HAVING count(l.val) = any_value(q.n)),
+    GROUP BY q.branch, q.col, l.rn
+    HAVING count(CASE WHEN q.same_type THEN l.val ELSE main.reconciliation_value(l.val) END) = any_value(q.n)),
   matched AS (
     SELECT s.branch, s.col, s.rn, l.rn AS lrn
     FROM source_key s JOIN lookup_key l ON l.branch = s.branch AND l.col = s.col AND l.k = s.k),
