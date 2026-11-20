@@ -1,22 +1,29 @@
-# Defining views: tables, single values, metrics, and a table to a data contract
+# Defining views: tables, single values, metrics, rules, and a table to a data contract
 
 Read before writing a view's SQL.
 
 ## Define
 
-A view is one name on the dataset. Its definition names its
-kind and holds its SQL; the first definition declares the name. The definition is one annotation on the
-dataset; writing it again replaces it.
+A view is one name on the dataset. Its definition holds its SQL and
+names its kind; the first definition declares the name. The
+definition is one annotation on the dataset; writing it again
+replaces it.
 
-| Kind | Declared with | Serves | Read with |
+| Kind | `"kind"` | Serves | Read with |
 |---|---|---|---|
-| a table | `"kind": "table"` | rows | `FROM <view>` |
-| a single value | `"kind": "value"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
-| a metric | `"kind": "metric"` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+| a plain view | none | a query kept with its reason; asks for nothing more | `FROM <view>`, `find()` |
+| a table | `"table"` | rows | `FROM <view>` |
+| a single value | `"value"` | one row with a column `value` | `fact_values()`, `FROM <view>` |
+| a metric | `"metric"` | a value per period, with dimensions | `metric_series()`, `FROM <view>` |
+| a rule | `"rule"` | the rows that break a rule; none while it holds | `FROM <view>`, `view_tests()` |
 
 The definition's body holds:
 
 - `sql`, the query; or `stopped`, the reason no query is given.
+- `kind`, as above. A new definition may change it.
+- `meaning` and `tags`: the view's `meaning` and `tags` annotations,
+  written in the same statement. `view_definitions` shows the
+  meaning; `find()` searches both.
 - `assumptions`: the judgment calls, each `{"dimension", "key",
   "assumption", "basis", "confidence"}` and optionally
   `"alternative"`. The review asks a person about each one with a
@@ -24,14 +31,11 @@ The definition's body holds:
   (`skill://glossql/references/review.md`).
 - for a metric: `time`, `measure` and `dimensions` (below).
 
-The statement answers with the view's row of `view_summary()`. A view
-can read another view by name, so a decision on one reaches every
-view built on it. Put the mechanics in SQL comments inside `sql`.
-Spell the `GROUP BY` out.
-
-A view's meaning is its `meaning` annotation (`GLOSS meaning ON
-<dataset>.<view>`), which `next` asks for. A metric's unit is the
-`unit` of its `measure`. `view_definitions` shows both.
+The definition of a table, a single value or a metric answers with
+the view's row of `view_summary()`. A view can read another view by
+name, so a decision on one reaches every view built on it. Put the
+mechanics in SQL comments inside `sql`. Spell the `GROUP BY` out. A
+metric's unit is the `unit` of its `measure`.
 
 ## A table to a data contract
 
@@ -76,7 +80,7 @@ GLOSS contract ON hr.staff.department_code AS $${"type": "VARCHAR", "required": 
 ```
 
 A rule the contract has no word for (a hire date not in the future) is
-a test of your own (`tests.md`). Where the export states its own key,
+a rule view (`tests.md`). Where the export states its own key,
 state it on the loaded table as well: `grain_test` holds each load
 against it, before any view reads the rows.
 
@@ -126,7 +130,7 @@ write. Reading a metric: `time-grains.md`.
 Serve with an assumption when the defect is bounded: you can say how
 many rows it touches and which way it moves the number. Put the count
 in the `basis`. Stop when it is not: rows are missing, a join key
-cannot be trusted, a column was not loaded. Do not serve a number
+cannot be trusted, a column was not loaded. Do not serve a view
 from a stand-in. Record the reason in place of the SQL:
 
 ```glossql
@@ -135,8 +139,9 @@ GLOSS utilisation ON fleet AS $${
 }$$;
 ```
 
-A stopped view is a finding to report. A definition with `sql`, yours
-or a person's, lifts the stop.
+A stopped view serves nothing, and its readers get the reason. It is
+a finding to report. A definition with `sql`, yours or a person's,
+lifts the stop.
 
 ## Defaults where the request is silent
 

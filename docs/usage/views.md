@@ -1,6 +1,7 @@
 # Define views
 
-A view is named SQL on a dataset, read as `FROM <dataset>.<name>`.
+Everything an agent or a person keeps on a dataset is a view: named
+SQL on the dataset, read as `FROM <dataset>.<name>`, with its reason.
 Its kind, in the definition, says what it is for:
 
 | Kind | `"kind"` | What it is |
@@ -9,12 +10,20 @@ Its kind, in the definition, says what it is for:
 | a table | `"table"` | rows: cleaned, joined or filtered data that people and other views read |
 | a single value | `"value"` | one row with a `value` column |
 | a metric | `"metric"` | a value per period, sliced by dimensions |
-| a rule | `"rule"` | the rows that break a rule. It returns none while the rule holds; a test runs on it after each load |
+| a rule | `"rule"` | the rows that break a rule. It returns none while the rule holds; a test runs on it after every write |
+
+A plain view keeps the evidence behind a decision: a profile, a
+comparison of two sources, the values a mapping covers, a unit. A
+table, a single value and a metric are what the dataset serves: the
+server asks for their descriptions and runs the built-in tests on
+them ([test](test.md)). A function is a kit's machinery, one stored
+value per asset; a query worth reading again is a view.
 
 ## Define
 
 One statement defines a view: an annotation on the dataset with its
-SQL. The first definition of a name declares it.
+SQL. The first definition of a name declares it; a new one replaces
+it.
 
 ```glossql
 USE stays;
@@ -28,12 +37,22 @@ GLOSS confirmed_bookings ON stays AS $${
 }$$;
 
 GLOSS room_count ON stays AS $${"kind": "value", "sql": "SELECT count(*) AS value FROM rooms"}$$;
+
+GLOSS status_values ON stays AS $${"sql": "SELECT status, count(*) AS bookings FROM bookings GROUP BY status",
+  "meaning": "the booking statuses the export carries; confirmed_bookings keeps one of them", "tags": ["status"]}$$;
+
+GLOSS stay_has_room ON stays AS $${"kind": "rule",
+  "sql": "SELECT b.booking_id FROM bookings b LEFT JOIN rooms r ON r.room_id = b.room_id WHERE r.room_id IS NULL",
+  "meaning": "every booking names a room of the hotel"}$$;
 ```
 
-The body holds `sql`, or `stopped` with the reason no number is
-served, and `assumptions`. The server answers a view definition with
-the view's row of `view_summary()`: whether it is served, and what it
-still needs.
+The body holds `sql`, or `stopped` with the reason no query is
+served; `kind`; `meaning` and `tags`, written as the view's
+annotations of those names; and `assumptions`. The server answers the
+definition of a table, a single value or a metric with the view's row
+of `view_summary()`: whether it is served, and what it still needs. A
+person's definition of a view outranks an agent's
+([review and decide](review.md)).
 
 A view and a loaded table of one dataset do not share a name. A view
 may read other views.
@@ -148,9 +167,9 @@ GLOSS role ON supply.onhand.cases AS $${"value": "measure"}$$;
 
 ## Stop instead of serving
 
-Where the data cannot carry the number, state why in place of the
-SQL. Readers get the reason, and a person's definition with `sql`
-lifts the stop.
+Where the data cannot carry the view, state why in place of the SQL.
+The view serves nothing, readers get the reason, and a person's
+definition with `sql` lifts the stop.
 
 ```glossql
 GLOSS revenue_per_room ON stays AS $${
@@ -160,18 +179,33 @@ GLOSS revenue_per_room ON stays AS $${
 
 ## The business glossary of the views
 
-A view's meaning is its `meaning` annotation, `GLOSS meaning ON
-<dataset>.<view>`, and a metric's unit is its measure's.
-`view_definitions` serves both.
+A view's meaning is its `meaning` annotation, written in the body or
+as `GLOSS meaning ON <dataset>.<view>`, and a metric's unit is its
+measure's. `view_definitions` serves both.
 
 ```glossql
 GLOSS meaning ON stays.occupancy AS $${"value": "sold room nights over available room nights"}$$;
 ```
 
+## Find what a dataset keeps
+
+`tags` is a list of words on a view, a table or a column. An actor's
+newest list replaces its own list before; a person's list and an
+agent's are read together. `find()` searches the names, meanings and
+tags of the dataset's views, tables and columns, and the columns each
+view reads:
+
+```sql
+SELECT asset, what, kind, meaning, tags, matched_on, reads FROM find('status');
+```
+
+`tag_statement('<dataset>.<asset>', ['<word>'])` gives the statement
+that adds a word to the list the actor holds.
+
 ## Read what you defined
 
 ```sql
-SELECT name, kind, unit, defined, stopped FROM view_definitions;
+SELECT name, kind, unit, defined, stopped FROM main.view_definitions;
 ```
 
 ```sql
@@ -179,6 +213,7 @@ SELECT view, kind, applicable, reason, floor, additivity, dims, missing, measure
 FROM view_summary();
 ```
 
+`view_summary()` has a row for each table, single value and metric.
 `applicable` says whether a metric's series is served, and `reason`
 what to change when it is not. A table and a single value have no
 series: `applicable`, `reason` and `floor` are empty on their rows.

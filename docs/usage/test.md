@@ -15,10 +15,12 @@ again after each write that changes what it read.
 
 ## The built-in tests
 
-Each view gets the join, orphan and relationship tests, on the tables
-its definition scans, and the completeness test on each column it
-serves; each metric also gets the additivity and series tests; each
-loaded table whose `entity` states a `grain` gets the grain test:
+Each view the dataset serves (a table, a single value, a metric)
+gets the join, orphan and relationship tests, on the tables its
+definition scans, and the completeness test on each column it serves;
+each metric also gets the additivity and series tests; each rule view
+gets the rule test; each loaded table whose `entity` states a `grain`
+gets the grain test. A plain view gets none:
 
 | Test | Checks | Red when |
 |---|---|---|
@@ -27,7 +29,8 @@ loaded table whose `entity` states a `grain` gets the grain test:
 | `completeness_test` | a column the view serves, against its share of empty values (NULL) before a load or a new definition emptied it. One result per column: a column can be unusable while the others are fine | the column's share of empty values rose by more than the threshold, 0.1, over its last share within it. The score is the rise. The finding gives the share before and now, and the cause: a load, where a table column it is computed from emptied too, else the definition. The test stays red after later loads until the column is filled again or a person accepts the rate on that column. A column that rises by less per load, or was mostly empty before, stays green |
 | `relationship_test` | a declared relationship for each join between two loaded tables | never red: where a join has none, the test is `yellow` and its fix declares it, from the side that repeats the key to the side that holds it once, where a profile or a stated grain says which side that is |
 | `measure_additivity_test` | the additivity of the value column | none is stated, or a ratio, an average or a distinct count is marked as summable |
-| `series_test` | the metric serves a series | no column carries role `timestamp` or role `measure`, or the period column has no grain; the fix is the annotation or the measurement that is missing |
+| `series_test` | the metric serves a series | no column carries role `timestamp` or role `measure`, or the period column has no grain; the fix is the annotation or the function run that is missing |
+| `rule_test` | a rule view: each row it returns breaks the rule its `meaning` states | the view returns more rows than a person accepted (none, until one did); the finding gives the count and the first rows |
 | `grain_test` | the grain the table's `entity` states, at each load | a key repeats in the loaded rows, such as a line sent twice; the score is the share of rows past the first per key |
 
 The server runs them after a call that defines the view, annotates
@@ -37,9 +40,7 @@ the join columns and on each column the view serves, with the values
 each profile held before, `relationship_coherence()` on each declared
 relationship between the scanned tables. The server computes those
 first, from what each test's check reads. A test whose evidence is
-missing is `yellow` and its `reason` names the measurement to run. A
-table view and a single value carry the join, orphan, relationship and
-completeness tests, the tests on what they read and the tests you declare on them.
+missing is `yellow` and its `reason` names the function to run.
 The harmonise kit (preview) adds `contract_test`, `code_test` and
 `reconciliation_test` on a target view that carries a data contract
 ([reads](../reference/reads.md#the-harmonise-kit-preview)).
@@ -53,7 +54,7 @@ SELECT view, test, subject, state, score, run FROM view_tests();
 `view_tests()` lists each test on each view and on the tables and
 columns it reads, worst first. `evidence` holds the check's result,
 `run` the statement that runs it again; it is empty for a test that
-compares annotations, which no function measures. A test on a result
+compares annotations, which no function computes. A test on a result
 about the dataset as a whole is a row too, with an empty `run`: an
 actor stores that result, and the server does not compute it after a
 write. `TESTS()` is the language's own read, for any asset:
@@ -92,7 +93,7 @@ is a `should`. A red test of your own without a `fix` gets the check
 to run again and the annotation that records an accepted rate:
 
 ```sql
-SELECT level, asset, state, open, statement FROM next WHERE kind = 'test';
+SELECT level, asset, state, open, statement FROM main.next WHERE kind = 'test';
 ```
 
 ```
@@ -122,72 +123,37 @@ red when the source drifts past it.
 
 ## Write your own test
 
-A test of your own has three parts: the expectation, the check that
-measures it, and the test that scores one against the other.
+A rule of your own is a rule view: a query whose rows break the rule,
+in one statement. `rule_test` runs on it after every write, with no
+further statement.
 
 ```glossql
-DECLARE PROPERTY reading_filled WITH $${
-  "type": "object",
-  "properties": {"outcome": {"type": "string"}, "tolerance": {"type": "number"}, "basis": {"type": "string"},
-                 "breach_rate": {"type": "number"}, "finding": {"type": ["string", "null"]}}
-}$$ AS FACT ON TABLE;
-
-DECLARE FUNCTION reading_filled_check FOR plant AS $$
-  SELECT CASE WHEN count(*) = 0 THEN 0.0
-              ELSE count(*) FILTER (WHERE value IS NULL) / count(*)::DOUBLE END AS breach_rate,
-         CASE WHEN count(*) FILTER (WHERE value IS NULL) > 0
-              THEN count(*) FILTER (WHERE value IS NULL) || ' readings carry no value' END AS finding
-  FROM readings
-$$ RETURNS reading_filled;
-
-DECLARE TEST reading_filled_test ON reading_filled BY (AGENT, HUMAN)
-  DETECTOR rate_tolerance;
-
-GLOSS reading_filled ON readings AS $${"outcome": "each reading carries a value",
-  "tolerance": 0.01, "basis": "a sensor drops out for a few seconds per shift"}$$;
-SELECT reading_filled_check() FROM readings;
+GLOSS reading_has_machine ON plant AS $${"kind": "rule",
+  "sql": "SELECT r.reading_id, r.machine_id FROM readings r LEFT JOIN machines m ON m.machine_id = r.machine_id WHERE m.machine_id IS NULL",
+  "meaning": "every reading comes from a machine in the register", "tags": ["machine"]}$$;
 ```
 
-1. **The property** (`AS FACT`) holds the expectation: an `outcome`
-   in words, a `tolerance` (the share of rows that may break it) and
-   a `basis` (why). The same schema holds what the check returns, so
-   it lists no `required` field.
-2. **The check** is a function whose `RETURNS` names the same
-   property and whose result carries `breach_rate`: the share of rows
-   that break the expectation. 0.0 passes. `finding` is one sentence
-   on what is wrong.
-3. **The test** (`DECLARE TEST`) names who may annotate the property
-   (`BY`) and the detector.
-4. **The annotation** sets the test on that asset: a table, or a
-   column for a property declared `ON COLUMN`. The test is on the
-   assets that carry the expectation and on no other; `next` counts
-   it there.
-5. **The detector** `rate_tolerance` compares the two: green at or
-   under the tolerance, red above it, yellow while no check result
-   exists. It reads a person's tolerance first, then an agent's, then
-   the test's `THRESHOLD`, then 0.0. It is one-sided.
-
-A test states the rule. Where the data breaks it, the test stays red
-until the load query or the data is fixed, or a person accepts the
-measured rate. The person annotates the same property on the same
-asset, with the rate as `tolerance` and the reason in `basis`:
+While the view returns rows, the test is red and a `must` row of
+`next`, with the count, the first rows, the read of the rows and the
+statement by which a person accepts the count as it is. Only a person
+writes it, in the console or over the query endpoint; the test stays
+green while the view returns no more rows than they accepted:
 
 ```glossql
-GLOSS reading_filled ON plant.readings AS $${"outcome": "each reading carries a value",
-  "tolerance": 0.03, "basis": "line 2 runs the old sensors until the refit in May"}$$;
+GLOSS rule_check ON plant.reading_has_machine AS $${"accepted": 2,
+  "basis": "two test rigs log readings and are not in the register"}$$;
 ```
 
-A tolerance set at the measured rate without that decision hides the
-defect. `next` lists a red test with its `finding`, the check to run
-again and that annotation to fill in. A check that also returns `fix`
-has it served as the row's statement, as the built-in tests do.
-
-A property declared `AS MEASUREMENT` holds only a function's result,
-such as a profile. It carries no expectation and no tolerance per
-asset, so a test of your own is declared on a `FACT` property.
-
-The result lists under each view that reads the table in
-`view_tests()`, and in `TESTS()`.
+A rule that allows a share of rows, such as 1% of readings without a
+value, needs a tolerance. That test of your own takes five
+statements: a property for the expectation, a function that computes
+the share of rows that break it, the test with the `rate_tolerance`
+detector, the expectation annotated on the asset, and a first run. The
+agents' skill teaches it
+(`skill://glossql-modeling/references/tests.md`). A person accepts a
+rate there as the same property on the same asset, with a higher
+`tolerance` and the reason in `basis`. The results list under each
+view that reads the table in `view_tests()`, and in `TESTS()`.
 
 ## Tests on annotations
 
