@@ -557,13 +557,15 @@ CREATE OR REPLACE VIEW main.next AS
   s_views AS (
     SELECT 'must', 1, 'integrate', ds.d, 'missing', 'agent', 'no view is served (a table, a single value or a metric)', '',
            '-- a view is named SQL on the dataset, one statement each; its kind says what it is for.' || chr(10)
+             || '-- a query worth reading again (a profile, a comparison, a mapping, a unit), kept with its reason and tags; it asks for nothing more:' || chr(10)
+             || main.gloss_statement('<query_name>', ds.d, '{"sql": "SELECT <columns> FROM <table>", "meaning": "<what it decided>", "tags": ["<word>"]}') || chr(10)
              || '-- a table:' || chr(10)
              || main.gloss_statement('<table_view>', ds.d, '{"kind": "table", "sql": "SELECT <columns> FROM <table>", "meaning": "<what one row is>"}') || chr(10)
              || '-- a single value:' || chr(10)
              || main.gloss_statement('<single_value>', ds.d, '{"kind": "value", "sql": "SELECT <expression> AS value FROM <table>", "meaning": "<what it counts>"}') || chr(10)
              || '-- a metric, a value per period with its dimensions:' || chr(10)
              || main.gloss_statement('<metric>', ds.d, '{"kind": "metric", "sql": "SELECT <period>, <value>, <dimension columns> FROM <table>", "time": "<period column>", "measure": {"column": "<value column>", "additivity": "<additive|semi-additive|ratio|non-additive>", "unit": "<unit>"}, "dimensions": ["<column>"]}') || chr(10)
-             || '-- a rule, whose rows break it (a test runs on it after each load):' || chr(10)
+             || '-- a rule, whose rows break it (a test runs on it after every write):' || chr(10)
              || main.gloss_statement('<rule>', ds.d, '{"kind": "rule", "sql": "SELECT <key columns> FROM <table> WHERE <the rule does not hold>", "meaning": "<the rule>"}')
     FROM ds WHERE NOT EXISTS (SELECT 1 FROM summary WHERE stopped IS NULL)
       AND EXISTS (SELECT 1 FROM duckdb_tables() t WHERE t.database_name = current_database() AND t.schema_name = ds.d)),
