@@ -14,7 +14,7 @@ not kept.
 |---|---|
 | What an agent keeps: views and their kinds, tags, rules; the texts that teach it | `views.md` |
 | A result is current or computed again, by one mechanism | `dependencies.md` |
-| Kits: the core and the add-ons, how a kit is versioned and bundled | `kits.md` |
+| Kits: the cut between glossql, the kits and the server, the packaging, and the one list of clean-up steps | `kits.md` |
 | glossdb works with the platform that is there: dbt, semantic models, lakes, the workspace as code | `platform.md` |
 | Access per user | `gate.md` |
 | What glossval measures | `evaluation.md` |
@@ -44,10 +44,6 @@ together 0.97 MB, a reload with everything recomputed in 103, 121 and
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
 | Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after `views.md` | After `views.md` | |
-| Integrate | A source's notes become annotations in one statement: annotate from a query. Measured: 5,620 single statements, 84 s at every size | After the harmonise kit; the statement form goes through the corpus and the project lead | |
-| Test | A profile of every loaded column is stored at each load without being asked (size, empty share, magnitude, code set). Today a stored result is kept current once someone computed it; the shipped profile has no magnitude and no code set | With the harmonise kit, which ships the profile | |
-| Test | A read for the previous load: a result as of the load before, and a table as of the load before. Today it is assembled from the result history by hand | With the harmonise kit, whose drift check needs it | |
-| Test | A check turns red only against what an actor stated or accepted. The join, orphan and completeness tests judge by a fixed rule today; the measured fact stays, the judgement becomes a stated expectation | After the harmonise kit | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
 | Integrate | Spreadsheets, documents and search as sources | When a customer brings the data | |
 | Describe | Citations to documents on tables, columns, relationships and metrics | With documents | #220 |
