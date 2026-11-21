@@ -35,7 +35,7 @@ tower-http = { workspace = true }
 opentelemetry-http = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 opentelemetry-appender-tracing = { workspace = true }
-jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
+jsonwebtoken = { version = "12", default-features = false, features = ["rust_crypto"] }
 # The two fetches a resource server makes: the issuer's discovery
 # document and its key set (the workspace line names the client).
 reqwest.workspace = true
