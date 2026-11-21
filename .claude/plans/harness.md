@@ -41,6 +41,10 @@ two queries) in the harmonise kit, which moves to `../glosskits`.
 | Kind of work | Element | When | Issue |
 |---|---|---|---|
 | Integrate | The mappings of free text and the transformations with no recorded assumption (harmonise kit): covered by kept queries where a profile stands behind the decision; what is left is shaped after `views.md` | After `views.md` | |
+| Integrate | A source's notes become annotations in one statement: annotate from a query. Measured: 5,620 single statements, 84 s at every size | After the harmonise kit; the statement form goes through the corpus and the project lead | |
+| Test | A profile of every loaded column is stored at each load without being asked (size, empty share, magnitude, code set). Today a stored result is kept current once someone computed it; the shipped profile has no magnitude and no code set | With the harmonise kit, which ships the profile | |
+| Test | A read for the previous load: a result as of the load before, and a table as of the load before. Today it is assembled from the result history by hand | With the harmonise kit, whose drift check needs it | |
+| Test | A check turns red only against what an actor stated or accepted. The join, orphan and completeness tests judge by a fixed rule today; the measured fact stays, the judgement becomes a stated expectation | After the harmonise kit | |
 | Integrate | The rejected lines of a CSV load are readable | | #255 |
 | Integrate | Spreadsheets, documents and search as sources | When a customer brings the data | |
 | Describe | Citations to documents on tables, columns, relationships and metrics | With documents | #220 |
