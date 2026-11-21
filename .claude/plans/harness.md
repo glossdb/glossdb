@@ -35,6 +35,9 @@ scanned and the join pairs, and no text of its expressions. The code
 check and the reconciliation, which parsed that text, are gone; their
 needs come back as stated inputs (a crosswalk table, control totals as
 two queries) in the harmonise kit, which moves to `../glosskits`.
+Measured on that case at 0.05, 0.5 and 5 GB a load: all lineage
+together 0.97 MB, a reload with everything recomputed in 103, 121 and
+260 s, a plain read in 0.25 s, no memory failure.
 
 ## Open outside the missions
 
@@ -50,6 +53,10 @@ two queries) in the harmonise kit, which moves to `../glosskits`.
 | Describe | Citations to documents on tables, columns, relationships and metrics | With documents | #220 |
 | Test | A recompute rule: a measure that does not sum from its members is recomputed, not summed | | #41 |
 | Review | A review decision made inside the chat | With the hosted trial | #20 |
+| Review | Governance: who owns an asset and who may use it, beyond accepting a count of rows | After the clean-up and further glossval tests | |
+| Review | A simulated collaboration: an agent and the project lead work through a complex dataset together | After governance | |
+| None of the four | The six-system test case (143 tables, 15 planted faults, three sizes) gets a durable home; it sits in a session scratchpad | The project lead says where | |
+| None of the four | glossval tests of other shapes than the five cases: many tables, several systems, a reload | With the glossval session | |
 | None of the four | The hosted trial: the platform is `../glossdeploy`'s. The server needs a check of the token's organization, extra allowed hosts, and an upload page in the console | When the trial is scheduled | |
 
 Housekeeping: #241 (a CSV load with `null_padding`), #60 (an

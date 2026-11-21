@@ -102,6 +102,14 @@ that work builds.
   `place_sources` listed 26,043 scanned columns where 347 are
   distinct. Listed once each, all 37 checks compute in 9 s.
 
+- How agents move across columns, on 1,076 reads of 32 builds: a
+  narrow read shares a column with the one before in 27%; 26% are the
+  first look at their columns; a column is looked at again 3 reads
+  later (median), after more than 5 reads in 30% of returns; one read
+  in five touches more than 10 columns. A lookup by column has an
+  opening on the return and at first contact; it does not reach the 7%
+  of decisions that had no query behind them.
+
 ## Open beside the steps
 
 | What | When |

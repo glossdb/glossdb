@@ -80,3 +80,23 @@ lake need it?
 ## Next issue
 
 Not drafted until the merge. The project lead picks the first step.
+
+## From the six-system test
+
+- **Harmonise is the first kit in `../glosskits`.** Three stated
+  inputs, each answering at once: which columns of different systems
+  are the same thing, with each one's unit (the column compared across
+  systems and against the previous load); a crosswalk table of source
+  codes to target codes (codes it does not hold, new ones since the
+  last load); two queries, source side and target side (control totals
+  per system and period). The comparison across systems comes first:
+  it is what customers name as the pain.
+- **Asked only in the data intelligence kit:** time grains, additivity
+  and the series check, where someone defines a metric. The core asks
+  for none of them.
+- **Measured:** across 72 evaluation runs the contract check led to a
+  fix in 23; the checks that parsed a view's SQL named no column that
+  was still wrong in 54 independent builds. On the six-system case
+  (143 tables, 15 planted faults) stated units and reference names, one
+  stored profile per column and rule views found 14.
+
