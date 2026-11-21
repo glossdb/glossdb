@@ -18,7 +18,7 @@
 # here against the DuckDB release the Rust side compiles in, the lake
 # not beside it (it is installed below). One RUN, so the layer holds
 # the loadable and the kits, not the build.
-FROM rust:1.99-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS extension
+FROM rust:1.100-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS extension
 ARG GH_TOKEN=
 RUN apt-get update && apt-get install -y --no-install-recommends python3 \
     && rm -rf /var/lib/apt/lists/*
@@ -30,7 +30,7 @@ RUN GH_TOKEN="$GH_TOKEN" sh /extension-at-pin.sh "$(cat /glossql.ref)" /out/shar
 # starts once the extension stage is done: two DuckDB builds at once
 # exhaust a builder's memory. The extension's share rides along and
 # leaves with the binary.
-FROM rust:1.99-trixie@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS build
+FROM rust:1.100-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS build
 COPY --from=extension /out/share/glossdb /out/share/glossdb
 WORKDIR /src
 COPY . .
