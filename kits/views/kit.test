@@ -889,3 +889,27 @@ query TT
 SELECT state, evidence->>'rows' FROM view_tests() WHERE view = 'large_orders';
 ----
 red	5
+
+# --- a load's run event traces each loaded column to the source columns the load stored for it
+
+statement ok
+COPY (SELECT 1 AS id, 2.5 AS amount) TO '{TEST_DIR}/views_payments.csv' (HEADER);
+
+statement ok
+DECLARE DATASET pay SET (purpose: 'a load traced as a run event');
+
+statement ok
+USE pay;
+
+statement ok
+DECLARE SOURCE pay_files SET (type: csv, location: '{TEST_DIR}');
+
+statement ok
+DECLARE RECIPE payments ON pay FROM pay_files AS $$SELECT id, amount * 2 AS doubled FROM read_csv('views_payments.csv')$$;
+
+query TT
+SELECT json_extract_string(event, '$.outputs[0].facets.columnLineage.fields.doubled.inputFields[0].name'),
+       json_extract_string(event, '$.outputs[0].facets.columnLineage.fields.doubled.inputFields[0].field')
+FROM lineage_events() WHERE json_extract_string(event, '$.job.name') = 'load.pay.payments';
+----
+pay_files	amount

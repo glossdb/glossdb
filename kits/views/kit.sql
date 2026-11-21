@@ -1460,8 +1460,8 @@ loads AS (
   FROM main.imports_history i, ds WHERE i.dataset = ds.dataset),
 load_fields AS (
   SELECT l.table_name, l.snapshot_id, k.key AS field,
-         (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': coalesce(l.source, split_part(leaf, '.', 1)), 'field': split_part(leaf, '.', 2)})
-          FROM unnest(regexp_extract_all(json_extract_string(l.lineage, '$."' || k.key || '"'), '([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*):', 1)) u(leaf)) AS inputs
+         (SELECT list(DISTINCT {'namespace': 'glossdb', 'name': coalesce(l.source, split_part(leaf, '.', 1)), 'field': string_split(leaf, '.')[-1]})
+          FROM unnest(from_json(json_extract(l.lineage, '$."' || k.key || '".inputs'), '["VARCHAR"]')) u(leaf)) AS inputs
   FROM loads l, (SELECT unnest(json_keys(l2.lineage)) AS key, l2.table_name, l2.snapshot_id FROM loads l2) k
   WHERE k.table_name = l.table_name AND k.snapshot_id = l.snapshot_id),
 load_events AS (

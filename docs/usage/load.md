@@ -89,8 +89,9 @@ loaded logistics.deliveries: 48210 rows, 0 dropped (new)
 ```
 
 `imports` keeps one row per load: `table_name`, `mode` (`replace` or
-`merge`), `rows`, `dropped_rows_count`, `lineage` (each column's
-expression over the source's columns), `snapshot_id`, `imported_at`,
+`merge`), `rows`, `dropped_rows_count`, `lineage` (per column, the
+source columns it is computed from and their types as the source
+delivered them), `snapshot_id`, `imported_at`,
 `source_rows` (the rows the load query returned), `changed_rows` (the
 rows a keyed load inserted or updated) and `identical` (a load without
 a key of 100,000 rows or more that holds the same rows as the load
@@ -154,8 +155,12 @@ yearly filing of FERC Form 1 carries 3.7% to 13.2% of the rows filed
 before it.
 
 Annotations stay across loads. A load whose columns differ from the
-table's alters the table in place. An annotation on a column the new
-load redefined, retyped or dropped reads `stale`
+table's alters the table in place. A load query declared again with
+other SQL makes every annotation on the table and its columns read
+`stale` until it is written again. Under the same load query, an
+annotation on a column reads `stale` when the load retyped or dropped
+the column, or computed it from other source columns or from a source
+column that arrived under another type
 ([describe](describe.md#states)); a column added leaves the others
 current ([how results stay current](../reference/dependencies.md)). After a load the server runs the
 built-in tests of each view that reads the table, a rule view's

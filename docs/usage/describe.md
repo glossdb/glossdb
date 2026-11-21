@@ -104,7 +104,7 @@ function's result.
 | `state` | Meaning |
 |---|---|
 | `current` | served; the asset is unchanged since the write |
-| `stale` | served and marked: a load redefined, retyped or dropped the column, or an input of the function's result changed |
+| `stale` | served and marked: the table's load query was declared with other SQL, a load retyped or dropped the column or computed it from other source columns or source types, or an input of the function's result changed |
 | `possibly` | a computed value served and marked: a result it read is out of date and not computed again yet |
 | `missing` | required and not annotated; the row still appears |
 | `conflict` | a person's and an agent's values differ beyond the test's threshold; the value is withheld |

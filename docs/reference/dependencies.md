@@ -35,7 +35,7 @@ kit.
 | a result that reads a view over the stored results (a rule view that compares each column's profile with the previous load's) | a measurement of the dataset was stored with another value: a result of a function whose property is a MEASUREMENT. A FACT's result, such as the rule's own check, a test's result and a view's lineage leave it current |
 | a test's result, per asset and test | the asset's values of the tested property, the asset's definition, or the declarations of the test and its detector changed |
 | a view's lineage (function `lineage` on the view) | the view's definition, the definition of a table or view its SQL names, through the views it reads, or a macro it calls changed |
-| an annotation | it is an input, not a result. It reads `stale` once a load redefined, retyped or dropped its column, or once the view it is on was defined again ([describe](../usage/describe.md#states)) |
+| an annotation | it is an input, not a result. It reads `stale` once its table's load query was declared with other SQL; once a load retyped or dropped its column, or computed it from other source columns or source types than the load before; or once the view it is on was defined again ([describe](../usage/describe.md#states)) |
 
 A result that read another result waits for it. Once that result is
 computed again, the same value leaves the reader current, and another
@@ -60,9 +60,20 @@ again ([reads](reads.md#next)).
 ## A load with other columns
 
 A load whose columns differ from the table's alters the table in
-place. An annotation on a column the load redefined, retyped or
-dropped reads `stale`; a column added leaves the other annotations
-current. The results that read the table's data are out of date: the
+place. An annotation on a column the load retyped or dropped reads
+`stale`; a column added leaves the other annotations current.
+
+## A load query with other SQL
+
+Each load stores per column the source columns it is computed from
+and their types as the source delivered them (`imports.lineage`).
+Under the same load query, a column whose source columns or types
+differ from the load before's changes its definition, and its
+annotations read `stale`. A load query declared with SQL text that
+differs from the one before it changes the definition of the table
+and of every column: every annotation on them reads `stale`, and is
+confirmed by writing it again. Both compare values the catalog
+stores; the lake's snapshot id stays the only version. The results that read the table's data are out of date: the
 server computes those it brings current after the load, and `next`
 lists the others.
 
